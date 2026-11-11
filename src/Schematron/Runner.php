@@ -41,8 +41,10 @@ final class Runner
             $handled = [];
             foreach ($pattern['rules'] as $rule) {
                 try {
-                    $matches = $evaluator->evaluate($rule['match'], $document);
+                    $matches = $evaluator->matchPattern($rule['match'], $document);
                 } catch (XPathError $error) {
+                    // A failing step predicate only drops its node (see Evaluator::matchPattern());
+                    // an error elsewhere in the pattern leaves the rule without any node.
                     $errors[] = new DynamicError(null, $error->errorCode, '/', "The rule context \"{$rule['context']}\" cannot be evaluated: {$error->getMessage()}");
 
                     continue;

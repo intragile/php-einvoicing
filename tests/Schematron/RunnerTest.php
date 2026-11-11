@@ -101,17 +101,26 @@ final class RunnerTest extends TestCase
         self::assertSame(['NEXT /t:Root[1]/t:Item[1]/t:Amount[1]', 'NEXT /t:Root[1]/t:Item[2]/t:Amount[1]'], self::summary($result));
     }
 
-    public function test_failing_rule_context_is_reported_without_rule_id_and_skipped(): void
+    public function test_node_whose_rule_context_predicate_fails_does_not_match_that_rule(): void
     {
         $result = self::runMini(['contexts' => [
-            ['t:Item[xs:decimal(t:Amount) > 0]', [['NEVER', 'fatal', 'false()']]],
+            ['t:Item[xs:decimal(t:Amount) > 0]', [['POSITIVE', 'fatal', 'false()']]],
             ['t:Item', [['OTHER', 'fatal', 'false()']]],
         ]]);
 
-        self::assertCount(1, $result->errors);
-        self::assertNull($result->errors[0]->ruleId);
-        self::assertSame('FORG0001', $result->errors[0]->errorCode);
-        self::assertSame(['OTHER /t:Root[1]/t:Item[1]', 'OTHER /t:Root[1]/t:Item[2]'], self::summary($result));
+        self::assertSame([], $result->errors);
+        self::assertSame(['POSITIVE /t:Root[1]/t:Item[1]', 'OTHER /t:Root[1]/t:Item[2]'], self::summary($result));
+    }
+
+    public function test_error_in_a_nested_predicate_fails_the_whole_context_predicate(): void
+    {
+        $result = self::runMini(['contexts' => [
+            ['t:Root[count(t:Item[xs:decimal(t:Amount) > 0]) = 1]', [['NESTED', 'fatal', 'false()']]],
+            ['/t:Root//t:Item[@kind = \'y\'][xs:decimal(t:Amount) > 0] | t:Item[@kind = \'x\']', [['UNION', 'fatal', 'false()']]],
+        ]]);
+
+        self::assertSame([], $result->errors);
+        self::assertSame(['UNION /t:Root[1]/t:Item[1]'], self::summary($result));
     }
 
     public function test_reports_whether_the_root_rule_fired(): void

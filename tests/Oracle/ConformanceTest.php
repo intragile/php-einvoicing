@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Oracle;
 
+use DOMDocument;
+use DOMElement;
+use DOMXPath;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\Schematron\DynamicError;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
@@ -105,6 +108,33 @@ final class ConformanceTest extends TestCase
     }
 
     /**
+     * Documents in which only a rule-context predicate raises a dynamic error: a charge indicator
+     * that is not a boolean fails "udt:Indicator = false()" in the contexts of the allowance and
+     * charge rules. XSLT treats the error as "no match" and Saxon still produces a report.
+     *
+     * @return array<string, array{string, string}>
+     */
+    public static function contextErrorDocuments(): array
+    {
+        $cases = [];
+        foreach (['CII_example2.xml', 'CII_example5.xml', 'huf_example_cii.xml'] as $name) {
+            $document = new DOMDocument;
+            $document->loadXML(self::contents(self::example('cii', $name)), LIBXML_NONET);
+            $xpath = new DOMXPath($document);
+            $xpath->registerNamespace('ram', 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100');
+            $xpath->registerNamespace('udt', 'urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100');
+            $indicator = ($xpath->query('(//ram:SpecifiedTradeAllowanceCharge/ram:ChargeIndicator/udt:Indicator)[1]') ?: null)?->item(0);
+            if (! $indicator instanceof DOMElement) {
+                throw new RuntimeException("{$name} has no charge indicator.");
+            }
+            $indicator->textContent = 'yes';
+            $cases["context error cii {$name}"] = ['cii', (string) $document->saveXML()];
+        }
+
+        return $cases;
+    }
+
+    /**
      * @return array<string, array{string, string}>
      */
     public static function officialDocuments(): array
@@ -120,6 +150,7 @@ final class ConformanceTest extends TestCase
         self::assertCount(1169, self::unitTests());
         self::assertCount(34 * self::MUTATIONS_PER_EXAMPLE, self::mutations());
         self::assertCount(6, self::modelInvoices());
+        self::assertCount(3, self::contextErrorDocuments());
     }
 
     /**
@@ -164,6 +195,18 @@ final class ConformanceTest extends TestCase
     #[DataProvider('modelInvoices')]
     public function test_model_invoices(string $syntax, string $xml): void
     {
+        $this->assertParity($syntax, $xml);
+    }
+
+    #[DataProvider('contextErrorDocuments')]
+    public function test_rule_context_errors_drop_only_the_node(string $syntax, string $xml): void
+    {
+        try {
+            OfficialRules::run(Fixtures::officialXslt($syntax), $xml);
+        } catch (OracleDynamicError $error) {
+            self::fail("The crafted document must not stop Saxon, but it raised {$error->getMessage()}.");
+        }
+
         $this->assertParity($syntax, $xml);
     }
 
@@ -230,6 +273,17 @@ final class ConformanceTest extends TestCase
         file_put_contents($dir.'/document.xml', $xml);
         file_put_contents($dir.'/saxon.txt', $official."\n");
         file_put_contents($dir.'/ours.txt', $ours."\n");
+    }
+
+    private static function example(string $syntax, string $name): string
+    {
+        foreach (Fixtures::official($syntax) as $file) {
+            if (basename($file) === $name) {
+                return $file;
+            }
+        }
+
+        throw new RuntimeException("Official example {$name} not found.");
     }
 
     private static function contents(string $file): string

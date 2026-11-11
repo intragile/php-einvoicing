@@ -34,6 +34,9 @@ final class Evaluator
     /** @var array<string, AtomicValue> */
     private array $literals = [];
 
+    /** True while the steps of a match pattern are evaluated, outside their predicates. */
+    private bool $matchingPattern = false;
+
     public function __construct(private readonly DocumentIndex $index) {}
 
     /**
@@ -46,6 +49,28 @@ final class Evaluator
     public function evaluate(array $ast, DOMNode $context, array $variables = []): array
     {
         return $this->eval($ast, $context, $variables);
+    }
+
+    /**
+     * Nodes selected by a match pattern (an XSLT rule context), evaluated as an expression from the
+     * document node. As in XSLT 2.0 pattern matching, where a dynamic error is recoverable, a node
+     * for which a predicate of one of the pattern's own steps raises a dynamic error is not
+     * selected, and the other nodes still are. An error inside a nested predicate makes the
+     * enclosing step predicate fail as a whole.
+     *
+     * @param  array<mixed>  $ast
+     * @return list<DOMNode|AtomicValue>
+     *
+     * @throws XPathError when the pattern fails outside its step predicates
+     */
+    public function matchPattern(array $ast, DOMNode $context): array
+    {
+        $this->matchingPattern = true;
+        try {
+            return $this->eval($ast, $context, []);
+        } finally {
+            $this->matchingPattern = false;
+        }
     }
 
     /**
@@ -418,13 +443,7 @@ final class Evaluator
 
             $kept = [];
             foreach ($items as $position => $item) {
-                $value = $this->eval($predicate, $item, $variables);
-                $number = count($value) === 1 ? $value[0] : null;
-                if ($number instanceof IntegerValue || $number instanceof DecimalValue || $number instanceof DoubleValue) {
-                    if (Atomic::valueCompare('eq', $number, new IntegerValue(BigDecimal::of($position + 1)))) {
-                        $kept[] = $item;
-                    }
-                } elseif (Functions::boolean($value)) {
+                if ($this->keeps($predicate, $item, $position + 1, $variables)) {
                     $kept[] = $item;
                 }
             }
@@ -441,12 +460,51 @@ final class Evaluator
     private function allPredicatesHold(DOMNode $node, array $predicates, array $variables): bool
     {
         foreach ($predicates as $predicate) {
-            if (! Functions::boolean($this->eval($predicate, $node, $variables))) {
+            if (! $this->keeps($predicate, $node, null, $variables)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    /**
+     * Whether a predicate keeps an item: a numeric value compares with the position (null for a
+     * predicate known to be position-free), anything else by its effective boolean value. Within
+     * a match pattern a dynamic error drops the item instead of propagating.
+     *
+     * @param  array<mixed>  $predicate
+     * @param  array<string, list<DOMNode|AtomicValue>>  $variables
+     */
+    private function keeps(array $predicate, DOMNode|AtomicValue $item, ?int $position, array $variables): bool
+    {
+        if (! $this->matchingPattern) {
+            return $this->predicateHolds($predicate, $item, $position, $variables);
+        }
+
+        $this->matchingPattern = false;
+        try {
+            return $this->predicateHolds($predicate, $item, $position, $variables);
+        } catch (XPathError) {
+            return false;
+        } finally {
+            $this->matchingPattern = true;
+        }
+    }
+
+    /**
+     * @param  array<mixed>  $predicate
+     * @param  array<string, list<DOMNode|AtomicValue>>  $variables
+     */
+    private function predicateHolds(array $predicate, DOMNode|AtomicValue $item, ?int $position, array $variables): bool
+    {
+        $value = $this->eval($predicate, $item, $variables);
+        $number = $position !== null && count($value) === 1 ? $value[0] : null;
+        if ($number instanceof IntegerValue || $number instanceof DecimalValue || $number instanceof DoubleValue) {
+            return Atomic::valueCompare('eq', $number, new IntegerValue(BigDecimal::of($position)));
+        }
+
+        return Functions::boolean($value);
     }
 
     /**
