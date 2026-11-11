@@ -13,6 +13,8 @@ final class Fixtures
 {
     private const OFFICIAL_DIR = __DIR__.'/fixtures/official/cen-1.3.17';
 
+    private const UBL_SCHEMA_DIR = __DIR__.'/fixtures/official/ubl-2.1/xsd/maindoc';
+
     private const STYLESHEETS = [
         'ubl' => 'EN16931-UBL-validation.xslt',
         'cii' => 'EN16931-CII-validation.xslt',
@@ -40,6 +42,14 @@ final class Fixtures
     public static function officialXslt(string $syntax): string
     {
         return self::syntaxDir($syntax).'/xslt/'.self::STYLESHEETS[$syntax];
+    }
+
+    /**
+     * Absolute path of the OASIS UBL 2.1 main document schema for an Invoice or a CreditNote.
+     */
+    public static function ublSchema(bool $creditNote): string
+    {
+        return self::UBL_SCHEMA_DIR.($creditNote ? '/UBL-CreditNote-2.1.xsd' : '/UBL-Invoice-2.1.xsd');
     }
 
     private static function syntaxDir(string $syntax): string

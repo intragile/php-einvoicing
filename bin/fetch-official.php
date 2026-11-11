@@ -12,6 +12,10 @@ declare(strict_types=1);
  *
  * The examples inside the release zips are byte-identical to ubl/examples and cii/examples
  * in the repository at the same tag.
+ *
+ * It also downloads the OASIS UBL 2.1 OS package and unpacks the Invoice and CreditNote schemas
+ * with their common modules into tests/fixtures/official/ubl-2.1/xsd/, for schema validation of
+ * written documents.
  */
 
 const TAG = 'validation-1.3.17';
@@ -34,9 +38,20 @@ const LICENCE = ['LICENSE.txt', 'fc22ec1dcd8bee4636a395fb332e2308cde870fb3fdc71a
  */
 const EXTRACT_PREFIXES = ['examples/', 'xslt/', 'schematron/codelist/'];
 
+/** The OASIS UBL 2.1 OS package: URL, file name and SHA-256 sum. */
+const UBL_SCHEMA = [
+    'https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.zip',
+    'UBL-2.1.zip',
+    '60b80d76394a8a2add90723ecb8e0e2e9d826775de9749df37a72d60703f86ed',
+];
+
+/** Schema files unpacked from the UBL package: the two main documents and what they import. */
+const UBL_SCHEMA_PREFIXES = ['xsd/common/', 'xsd/maindoc/UBL-Invoice-2.1.xsd', 'xsd/maindoc/UBL-CreditNote-2.1.xsd'];
+
 $root = dirname(__DIR__);
 $cacheDir = $root.'/.cache/official';
 $targetDir = $root.'/tests/fixtures/official/cen-1.3.17';
+$schemaDir = $root.'/tests/fixtures/official/ubl-2.1';
 
 try {
     if (! class_exists(ZipArchive::class)) {
@@ -48,7 +63,7 @@ try {
 
     foreach (ARCHIVES as $syntax => [$file, $sha256]) {
         $archive = fetchVerified(RELEASE_URL.$file, $cacheDir.'/'.$file, $sha256);
-        unpackArchive($archive, $targetDir.'/'.$syntax);
+        unpackArchive($archive, $targetDir.'/'.$syntax, EXTRACT_PREFIXES);
         fwrite(STDOUT, "{$syntax}: unpacked {$file}\n");
     }
 
@@ -56,6 +71,11 @@ try {
     $licence = fetchVerified(RAW_URL.$licenceFile, $cacheDir.'/'.$licenceFile, $licenceSha256);
     copyFile($licence, $targetDir.'/'.$licenceFile);
     fwrite(STDOUT, "licence: copied {$licenceFile}\n");
+
+    [$schemaUrl, $schemaFile, $schemaSha256] = UBL_SCHEMA;
+    $schemaArchive = fetchVerified($schemaUrl, $cacheDir.'/'.$schemaFile, $schemaSha256);
+    unpackArchive($schemaArchive, $schemaDir, UBL_SCHEMA_PREFIXES);
+    fwrite(STDOUT, "ubl-2.1: unpacked {$schemaFile}\n");
 } catch (RuntimeException $e) {
     fwrite(STDERR, 'fetch-official: '.$e->getMessage()."\n");
     exit(1);
@@ -73,7 +93,7 @@ function fetchVerified(string $url, string $path, string $sha256): string
     $context = stream_context_create([
         'http' => [
             'user_agent' => USER_AGENT,
-            'timeout' => 120,
+            'timeout' => 300,
             'follow_location' => 1,
             'max_redirects' => 5,
         ],
@@ -97,9 +117,11 @@ function fetchVerified(string $url, string $path, string $sha256): string
 }
 
 /**
- * Replaces $target with the selected directories of the archive.
+ * Replaces $target with the archive entries that start with one of the prefixes.
+ *
+ * @param  list<string>  $prefixes
  */
-function unpackArchive(string $archive, string $target): void
+function unpackArchive(string $archive, string $target, array $prefixes): void
 {
     $zip = new ZipArchive;
     if ($zip->open($archive, ZipArchive::RDONLY) !== true) {
@@ -113,7 +135,7 @@ function unpackArchive(string $archive, string $target): void
     try {
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = $zip->getNameIndex($i);
-            if ($name === false || str_ends_with($name, '/') || ! isSelected($name)) {
+            if ($name === false || str_ends_with($name, '/') || ! isSelected($name, $prefixes)) {
                 continue;
             }
 
@@ -142,9 +164,12 @@ function unpackArchive(string $archive, string $target): void
     }
 }
 
-function isSelected(string $name): bool
+/**
+ * @param  list<string>  $prefixes
+ */
+function isSelected(string $name, array $prefixes): bool
 {
-    foreach (EXTRACT_PREFIXES as $prefix) {
+    foreach ($prefixes as $prefix) {
         if (str_starts_with($name, $prefix)) {
             return true;
         }

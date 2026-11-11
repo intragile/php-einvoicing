@@ -49,15 +49,32 @@ The `tests/` directory is excluded from the Composer dist archive (`.gitattribut
 `export-ignore`), so these files are present in the Git repository only, never in an installed
 package.
 
+## OASIS UBL 2.1 schemas
+
+The files under `ubl-2.1/xsd/` are unmodified copies of the OASIS UBL 2.1 schemas. They are used
+only by the test suite, to validate written documents with `DOMDocument::schemaValidate()`.
+
+| | |
+|---|---|
+| Project | [OASIS Universal Business Language (UBL) 2.1 OS](https://docs.oasis-open.org/ubl/os-UBL-2.1/) (4 November 2013) |
+| Archive | `https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.zip`, SHA-256 `60b80d76394a8a2add90723ecb8e0e2e9d826775de9749df37a72d60703f86ed` |
+
+Only `xsd/maindoc/UBL-Invoice-2.1.xsd`, `xsd/maindoc/UBL-CreditNote-2.1.xsd` and the
+`xsd/common/` modules they import are kept. Every file carries its OASIS copyright notice
+("Copyright (c) OASIS Open 2013. All Rights Reserved."), which the
+[OASIS IPR Policy](https://www.oasis-open.org/policies-guidelines/ipr/) requires to stay with
+copies of OASIS specifications; the files are not covered by this package's MIT licence.
+
 ## Refreshing
 
 ```bash
 php bin/fetch-official.php
 ```
 
-The script downloads the two release archives and the licence text, verifies each against the
-SHA-256 sums above, and rebuilds `cen-1.3.17/`. Verified downloads are cached in the
-git-ignored `.cache/official/`, so repeated runs work offline and produce the same files. It
+The script downloads the two release archives, the licence text and the UBL 2.1 package,
+verifies each against the SHA-256 sums above, and rebuilds `cen-1.3.17/` and `ubl-2.1/`.
+Verified downloads are cached in the git-ignored `.cache/official/`, so repeated runs work
+offline and produce the same files. It
 needs the `zip` extension.
 
 ---
