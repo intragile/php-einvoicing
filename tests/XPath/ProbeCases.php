@@ -304,6 +304,21 @@ final class ProbeCases
             'every lines' => ['every $l in //cac:InvoiceLine satisfies exists($l/cbc:ID)', $u, '(xs:boolean:true)'],
             'every two bindings' => ['every $a in (1, 2), $b in ($a, 3) satisfies $b >= $a', $u, '(xs:boolean:true)'],
 
+            // errors in "and" / "or": Saxon raises an operand's error only when the other operand
+            // does not decide the result, and when both fail it raises the right operand's error
+            'and error decided by right' => ["(normalize-space(/r/a) = 'x') and not(/r/b)", $p, '(xs:boolean:false)'],
+            'and error decided by left' => ["not(/r/b) and (normalize-space(/r/a) = 'x')", $p, '(xs:boolean:false)'],
+            'and error undecided' => ["(normalize-space(/r/a) = 'x') and exists(/r/b)", $p, 'error:XPTY0004'],
+            'and right error undecided' => ['exists(/r/b) and (xs:decimal(/r/a[1]) = 1)', $p, 'error:FORG0001'],
+            'and both errors' => ["(xs:decimal(/r/a[1]) = 1) and (normalize-space(/r/a) = 'x')", $p, 'error:XPTY0004'],
+            'and both errors reversed' => ["(normalize-space(/r/a) = 'x') and (xs:decimal(/r/a[1]) = 1)", $p, 'error:FORG0001'],
+            'or error decided by right' => ['(xs:decimal(/r/a[1]) = 1) or exists(/r/b)', $p, '(xs:boolean:true)'],
+            'or error undecided' => ['(xs:decimal(/r/a[1]) = 1) or empty(/r/b)', $p, 'error:FORG0001'],
+            'or both errors' => ["(normalize-space(/r/a) = 'x') or (xs:decimal(/r/a[1]) = 1)", $p, 'error:FORG0001'],
+            'or literal true decides' => ["xs:decimal('x') = 1 or true()", $u, '(xs:boolean:true)'],
+            'or literal false keeps error' => ["xs:decimal('x') = 1 or false()", $u, 'error:FORG0001'],
+            'predicate error decided' => ["count(/r[(normalize-space(a) = 'x' or normalize-space(a) = 'y') and not(b)])", $p, '(xs:integer:0)'],
+
             // paths and axes
             'root' => ['/', $u, '(node:/)'],
             'context' => ['.', $u, '(node:/)'],

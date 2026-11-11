@@ -95,15 +95,9 @@ final class Evaluator
 
                 return Functions::call(self::text($ast, 1), $arguments, $item);
             case Op::OR:
-                return [new BooleanValue(
-                    Functions::boolean($this->eval(self::sub($ast, 1), $item, $variables))
-                    || Functions::boolean($this->eval(self::sub($ast, 2), $item, $variables)),
-                )];
+                return [new BooleanValue($this->logical(true, $ast, $item, $variables))];
             case Op::AND:
-                return [new BooleanValue(
-                    Functions::boolean($this->eval(self::sub($ast, 1), $item, $variables))
-                    && Functions::boolean($this->eval(self::sub($ast, 2), $item, $variables)),
-                )];
+                return [new BooleanValue($this->logical(false, $ast, $item, $variables))];
             case Op::GCMP:
                 return [new BooleanValue(Atomic::generalCompare(
                     self::text($ast, 1),
@@ -195,6 +189,36 @@ final class Evaluator
         }
 
         return $atomics !== [] ? $atomics : $this->index->sort($nodes);
+    }
+
+    /**
+     * Evaluates "or" ($decisive true) or "and" ($decisive false) as Saxon does: an operand that
+     * yields $decisive decides the result even when the other operand raises a dynamic error; the
+     * error is raised only when the result stays open, and when both operands fail the error of
+     * the right operand wins. XPath 2.0 (section 3.6) leaves this choice to the processor.
+     *
+     * @param  array<mixed>  $ast
+     * @param  array<string, list<DOMNode|AtomicValue>>  $variables
+     */
+    private function logical(bool $decisive, array $ast, DOMNode|AtomicValue $item, array $variables): bool
+    {
+        try {
+            $left = Functions::boolean($this->eval(self::sub($ast, 1), $item, $variables));
+        } catch (XPathError $error) {
+            $left = $error;
+        }
+        if ($left === $decisive) {
+            return $decisive;
+        }
+
+        if (Functions::boolean($this->eval(self::sub($ast, 2), $item, $variables)) === $decisive) {
+            return $decisive;
+        }
+        if ($left instanceof XPathError) {
+            throw $left;
+        }
+
+        return ! $decisive;
     }
 
     /**

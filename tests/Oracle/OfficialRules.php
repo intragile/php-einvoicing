@@ -16,6 +16,12 @@ use Saxon\XsltExecutable;
  * Runs the official CEN EN 16931 validation stylesheets (compiled Schematron, XSLT 2.0)
  * through the SaxonC-HE PHP extension and returns the failed assertions from the SVRL report.
  *
+ * The official stylesheet is not run as the entry point but imported, unchanged, by a small XSLT
+ * 3.0 wrapper whose only template catches dynamic errors around xsl:apply-imports. The SaxonC 13
+ * PHP API exposes no error code for a failed transformation (the exception carries only the
+ * description) and crashes the process on the next transformation after such an exception, so
+ * the error code is taken from the XSLT catch instead.
+ *
  * Calling it without the extension marks the running test as skipped; the image built from
  * docker/oracle/Dockerfile provides the extension.
  */
@@ -25,10 +31,15 @@ final class OfficialRules
 
     private const SVRL = 'http://purl.oclc.org/dsdl/svrl';
 
+    private const ERROR_NAMESPACE = 'urn:intragile:oracle';
+
     private static ?SaxonProcessor $processor = null;
 
     /** @var array<string, XsltExecutable> */
     private static array $executables = [];
+
+    /** @var array<string, XsltExecutable> */
+    private static array $directExecutables = [];
 
     public static function available(): bool
     {
@@ -40,22 +51,33 @@ final class OfficialRules
      * in report order.
      *
      * @return list<FiredRule>
+     *
+     * @throws OracleDynamicError when Saxon stops the stylesheet with a dynamic error
      */
     public static function run(string $xsltPath, string $xml): array
     {
-        if (! self::available()) {
-            Assert::markTestSkipped('The SaxonC-HE PHP extension ("'.self::EXTENSION.'") is not loaded; run docker/oracle/run.sh.');
-        }
+        $processor = self::processor();
+        $executable = self::$executables[$xsltPath] ??= $processor->newXslt30Processor()->compileFromString(self::wrapper($xsltPath));
 
-        $processor = self::$processor ??= new SaxonProcessor;
-        $executable = self::$executables[$xsltPath] ??= self::compile($processor, $xsltPath);
-
-        $report = $executable->transformToString($processor->parseXmlFromString($xml));
-        if (! is_string($report) || $report === '') {
-            throw new RuntimeException("The stylesheet {$xsltPath} produced no SVRL report.");
-        }
+        $report = self::transform($processor, $executable, $xsltPath, $xml);
+        self::throwDynamicError($report);
 
         return self::firedRules($report, self::rootElement($xml));
+    }
+
+    /**
+     * Like run(), but with the official stylesheet itself as the entry point. Only for documents
+     * that raise no dynamic error: SaxonC then throws without an error code and the next
+     * transformation in the process crashes.
+     *
+     * @return list<FiredRule>
+     */
+    public static function runDirect(string $xsltPath, string $xml): array
+    {
+        $processor = self::processor();
+        $executable = self::$directExecutables[$xsltPath] ??= $processor->newXslt30Processor()->compileFromFile(self::existing($xsltPath));
+
+        return self::firedRules(self::transform($processor, $executable, $xsltPath, $xml), self::rootElement($xml));
     }
 
     /**
@@ -81,13 +103,77 @@ final class OfficialRules
         return $verdict;
     }
 
-    private static function compile(SaxonProcessor $processor, string $xsltPath): XsltExecutable
+    private static function processor(): SaxonProcessor
     {
-        if (! is_file($xsltPath)) {
+        if (! self::available()) {
+            Assert::markTestSkipped('The SaxonC-HE PHP extension ("'.self::EXTENSION.'") is not loaded; run docker/oracle/run.sh.');
+        }
+
+        return self::$processor ??= new SaxonProcessor;
+    }
+
+    private static function transform(SaxonProcessor $processor, XsltExecutable $executable, string $xsltPath, string $xml): string
+    {
+        $report = $executable->transformToString($processor->parseXmlFromString($xml));
+        if (! is_string($report) || $report === '') {
+            throw new RuntimeException("The stylesheet {$xsltPath} produced no SVRL report.");
+        }
+
+        return $report;
+    }
+
+    private static function existing(string $xsltPath): string
+    {
+        $path = realpath($xsltPath);
+        if ($path === false || ! is_file($path)) {
             throw new RuntimeException("Stylesheet not found: {$xsltPath}");
         }
 
-        return $processor->newXslt30Processor()->compileFromFile($xsltPath);
+        return $path;
+    }
+
+    /**
+     * An XSLT 3.0 stylesheet that imports the official one and runs it from a document-node
+     * template of higher import precedence, catching any dynamic error into an element in the
+     * ERROR_NAMESPACE that carries the local name of the error code.
+     */
+    private static function wrapper(string $xsltPath): string
+    {
+        $href = htmlspecialchars('file://'.str_replace('%2F', '/', rawurlencode(self::existing($xsltPath))), ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $namespace = self::ERROR_NAMESPACE;
+
+        return <<<XSL
+            <xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+                xmlns:err="http://www.w3.org/2005/xqt-errors" xmlns:oracle="{$namespace}" exclude-result-prefixes="err">
+              <xsl:import href="{$href}"/>
+              <xsl:template match="/">
+                <xsl:try>
+                  <xsl:apply-imports/>
+                  <xsl:catch>
+                    <oracle:dynamic-error code="{local-name-from-QName(\$err:code)}"><xsl:value-of select="\$err:description"/></oracle:dynamic-error>
+                  </xsl:catch>
+                </xsl:try>
+              </xsl:template>
+            </xsl:stylesheet>
+            XSL;
+    }
+
+    /**
+     * @throws OracleDynamicError when the wrapper caught a dynamic error
+     */
+    private static function throwDynamicError(string $report): void
+    {
+        if (! str_contains($report, self::ERROR_NAMESPACE)) {
+            return;
+        }
+        $document = new DOMDocument;
+        if (! $document->loadXML($report, LIBXML_NONET) || ! $document->documentElement instanceof DOMElement) {
+            throw new RuntimeException('The oracle report is not well-formed XML.');
+        }
+        $root = $document->documentElement;
+        if ($root->namespaceURI === self::ERROR_NAMESPACE && $root->localName === 'dynamic-error') {
+            throw new OracleDynamicError($root->getAttribute('code'), trim($root->textContent));
+        }
     }
 
     /**

@@ -136,13 +136,15 @@ final class EvaluatorTest extends TestCase
         self::assertFalse($this->evaluator->effectiveBoolean($ast, $this->document, ['currencies' => array_slice($currencies, 0, 1)]));
     }
 
-    public function test_and_or_short_circuit_left_to_right(): void
+    public function test_and_or_raise_an_operand_error_only_when_the_other_does_not_decide(): void
     {
         self::assertFalse($this->evaluator->effectiveBoolean($this->parse("false() and xs:decimal('x') = 1"), $this->document));
         self::assertTrue($this->evaluator->effectiveBoolean($this->parse("true() or xs:decimal('x') = 1"), $this->document));
+        self::assertTrue($this->evaluator->effectiveBoolean($this->parse("xs:decimal('x') = 1 or true()"), $this->document));
+        self::assertFalse($this->evaluator->effectiveBoolean($this->parse("xs:decimal('x') = 1 and false()"), $this->document));
 
         $this->expectException(XPathError::class);
-        $this->evaluator->effectiveBoolean($this->parse("xs:decimal('x') = 1 or true()"), $this->document);
+        $this->evaluator->effectiveBoolean($this->parse("xs:decimal('x') = 1 or false()"), $this->document);
     }
 
     public function test_index_orders_attributes_after_their_element_and_before_children(): void
