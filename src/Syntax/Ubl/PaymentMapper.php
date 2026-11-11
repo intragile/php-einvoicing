@@ -138,6 +138,11 @@ final class PaymentMapper
             return null;
         }
 
+        $network = $d->one('cbc:NetworkID', $card);
+        if ($network !== null && $network->textContent === Placeholder::CARD_NETWORK) {
+            $d->use($network);
+        }
+
         return new PaymentCard(primaryAccountNumber: $number, holderName: $d->text('cbc:HolderName', $card));
     }
 

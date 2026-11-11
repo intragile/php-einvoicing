@@ -17,12 +17,6 @@ use IntrAgile\EInvoicing\Syntax\WriterGuard;
  */
 final class PartyWriter
 {
-    /**
-     * Placeholder tax scheme for a seller tax registration (BT-32) that carries none: UBL makes
-     * cac:TaxScheme mandatory in cac:PartyTaxScheme. "TAX" is the Peppol BIS convention.
-     */
-    private const DEFAULT_TAX_REGISTRATION_SCHEME = 'TAX';
-
     public function __construct(private readonly UblOutput $out) {}
 
     /**
@@ -70,7 +64,7 @@ final class PartyWriter
         if ($role === PartyMapper::SELLER && $model->taxRegistration !== null) {
             $taxScheme = $out->add($party, 'cac:PartyTaxScheme');
             $out->text($taxScheme, 'cbc:CompanyID', $model->taxRegistration->identifier);
-            $out->taxScheme($taxScheme, $model->taxRegistration->taxScheme ?? self::DEFAULT_TAX_REGISTRATION_SCHEME);
+            $out->taxScheme($taxScheme, $model->taxRegistration->taxScheme ?? Placeholder::TAX_SCHEME);
         }
 
         if ($isTrader) {

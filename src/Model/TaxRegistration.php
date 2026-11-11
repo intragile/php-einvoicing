@@ -14,8 +14,9 @@ final readonly class TaxRegistration
         /** Seller tax registration identifier (BT-32). */
         public string $identifier,
         /**
-         * Tax scheme qualifier as found in the source syntax (UBL TaxScheme/ID, CII schemeID "FC").
-         * EN 16931 defines no scheme for BT-32; it is kept only so a read invoice round-trips.
+         * Tax scheme qualifier as found in UBL TaxScheme/ID. EN 16931 defines no scheme for BT-32;
+         * it is kept only so a read invoice round-trips. The writer placeholder "TAX" and the CII
+         * binding's fixed schemeID "FC" read as null.
          */
         public ?string $taxScheme = null,
     ) {}

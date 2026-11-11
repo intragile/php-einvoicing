@@ -111,16 +111,19 @@ final class UblRoundTripTest extends TestCase
 
             self::assertEquals($first->invoice, $second->invoice, $file);
             self::assertTrue($first->invoice == $second->invoice, $file);
+            self::assertSame([], $second->ignored, $file);
         }
     }
 
-    public function test_card_network_is_the_only_unmapped_element_written(): void
+    public function test_a_real_card_network_is_reported_and_the_written_placeholder_is_not(): void
     {
         $first = (new UblReader)->read(self::contents(self::FIXTURES.'/all-terms-invoice.xml'));
+        self::assertSame(['/Invoice/cac:PaymentMeans/cac:CardAccount/cbc:NetworkID'], $first->ignored);
 
-        $second = (new UblReader)->read((new UblWriter)->write($first->invoice));
+        $xml = (new UblWriter)->write($first->invoice);
 
-        self::assertSame(['/Invoice/cac:PaymentMeans/cac:CardAccount/cbc:NetworkID'], $second->ignored);
+        self::assertStringContainsString('<cbc:NetworkID>NA</cbc:NetworkID>', $xml);
+        self::assertSame([], (new UblReader)->read($xml)->ignored);
     }
 
     #[DataProvider('writtenDocuments')]

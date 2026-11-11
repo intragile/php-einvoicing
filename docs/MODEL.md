@@ -116,7 +116,7 @@ seller, buyer and payee names), it appears once per id.
 | BT-32 | `Party` | `$taxRegistration` | `?TaxRegistration` | Seller tax registration identifier (BT-32). |
 | BT-32 | `TaxRegistration` |  |  | Seller tax registration identifier (BT-32): a local tax number that is not the VAT identifier, e.g. the Hungarian "adószám". |
 | BT-32 | `TaxRegistration` | `$identifier` | `string` | Seller tax registration identifier (BT-32). |
-| BT-32 | `TaxRegistration` | `$taxScheme` | `?string` | Tax scheme qualifier as found in the source syntax (UBL TaxScheme/ID, CII schemeID "FC"). EN 16931 defines no scheme for BT-32; it is kept only so a read invoice round-trips. |
+| BT-32 | `TaxRegistration` | `$taxScheme` | `?string` | Tax scheme qualifier as found in UBL TaxScheme/ID. EN 16931 defines no scheme for BT-32; it is kept only so a read invoice round-trips. The writer placeholder "TAX" and the CII binding's fixed schemeID "FC" read as null. |
 | BT-33 | `Party` | `$additionalLegalInformation` | `?string` | Seller additional legal information (BT-33). |
 | BT-34 | `ElectronicAddress` |  |  | Electronic address of a party (BT-34 seller, BT-49 buyer). |
 | BT-34 | `ElectronicAddress` | `$value` | `string` | Electronic address (BT-34 / BT-49). |

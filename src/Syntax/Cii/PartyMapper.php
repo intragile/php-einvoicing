@@ -132,7 +132,7 @@ final class PartyMapper
     {
         $identifier = $this->taxRegistrationId($party, self::TAX_REGISTRATION_SCHEME);
 
-        return $identifier === null ? null : new TaxRegistration(identifier: $identifier, taxScheme: self::TAX_REGISTRATION_SCHEME);
+        return $identifier === null ? null : new TaxRegistration(identifier: $identifier);
     }
 
     private function electronicAddress(?DOMElement $uri): ?ElectronicAddress

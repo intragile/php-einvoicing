@@ -29,10 +29,12 @@ use InvalidArgumentException;
  * - cac:OrderReference/cbc:ID: "NA" when only a sales order reference (BT-14) exists, because UBL
  *   makes the order identifier mandatory.
  * - cac:PartyTaxScheme/cac:TaxScheme/cbc:ID: "TAX" for a seller tax registration (BT-32) without
- *   a scheme, because UBL makes cac:TaxScheme mandatory (see PartyWriter).
- * - cac:CardAccount/cbc:NetworkID: "NA", because UBL makes it mandatory (see PaymentWriter).
+ *   a scheme, because UBL makes cac:TaxScheme mandatory.
+ * - cac:CardAccount/cbc:NetworkID: "NA", because UBL makes it mandatory.
  * - cac:PaymentMeans with means code 1 for the due date (BT-9) of a credit note without payment
  *   instructions, because UBL makes cbc:PaymentMeansCode mandatory (see PaymentWriter).
+ *
+ * UblReader recognises these placeholders (see Placeholder) and does not read them as data.
  */
 final class UblWriter
 {
@@ -41,12 +43,6 @@ final class UblWriter
      * 16931 makes BT-24 mandatory, although UBL 2.1 declares cbc:CustomizationID optional.
      */
     public const SPECIFICATION_IDENTIFIER = 'urn:cen.eu:en16931:2017';
-
-    /**
-     * Placeholder for cac:OrderReference/cbc:ID when only a sales order reference (BT-14) exists:
-     * UBL makes the order identifier mandatory.
-     */
-    private const NOT_APPLICABLE = 'NA';
 
     /**
      * @throws InvalidArgumentException when the totals (BG-22), a line net amount (BT-131) or the
@@ -135,7 +131,7 @@ final class UblWriter
     {
         if ($invoice->purchaseOrderReference !== null || $invoice->salesOrderReference !== null) {
             $order = $out->add($root, 'cac:OrderReference');
-            $out->text($order, 'cbc:ID', $invoice->purchaseOrderReference ?? self::NOT_APPLICABLE);
+            $out->text($order, 'cbc:ID', $invoice->purchaseOrderReference ?? Placeholder::ORDER_ID);
             $out->text($order, 'cbc:SalesOrderID', $invoice->salesOrderReference);
         }
         foreach ($invoice->precedingInvoices as $preceding) {

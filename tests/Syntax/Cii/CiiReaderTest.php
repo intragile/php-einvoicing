@@ -68,9 +68,9 @@ final class CiiReaderTest extends TestCase
         'seller.identifiers.0.scheme' => ['0088', null],
         'seller.identifiers.1.value' => ['LOCAL-29', '5790000435968'],
         'seller.identifiers.1.scheme' => [null, '0088'],
-        // BT-32 has no scheme in EN 16931; the model keeps the syntax qualifier (UBL TaxScheme/ID,
-        // CII schemeID "FC").
-        'seller.taxRegistration.taxScheme' => ['LOC', 'FC'],
+        // BT-32 has no scheme in EN 16931; the model keeps the UBL TaxScheme/ID, while the fixed
+        // CII schemeID "FC" reads as null.
+        'seller.taxRegistration.taxScheme' => ['LOC', null],
     ];
 
     /**

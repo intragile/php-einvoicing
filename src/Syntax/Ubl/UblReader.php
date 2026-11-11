@@ -58,6 +58,11 @@ final class UblReader
         $taxCurrency = $d->code(CurrencyCode::class, $d->one('cbc:TaxCurrencyCode'));
         $typeExpression = $d->isCreditNote ? 'cbc:CreditNoteTypeCode' : 'cbc:InvoiceTypeCode';
         [$projectReference, $invoicedObject, $additionalDocuments] = $this->documentReferences($d);
+        $salesOrder = $d->text('cac:OrderReference/cbc:SalesOrderID');
+        $purchaseOrder = $d->text('cac:OrderReference/cbc:ID');
+        if ($salesOrder !== null && $purchaseOrder === Placeholder::ORDER_ID) {
+            $purchaseOrder = null;
+        }
         [$allowances, $charges] = $this->allowancesAndCharges($d, $lines);
         [$totalVat, $totalVatInAccountingCurrency, $vatBreakdown] = $this->taxTotals($d, $currency, $taxCurrency);
 
@@ -76,8 +81,8 @@ final class UblReader
             buyerReference: $d->text('cbc:BuyerReference'),
             projectReference: $projectReference,
             contractReference: $d->text('cac:ContractDocumentReference/cbc:ID'),
-            purchaseOrderReference: $d->text('cac:OrderReference/cbc:ID'),
-            salesOrderReference: $d->text('cac:OrderReference/cbc:SalesOrderID'),
+            purchaseOrderReference: $purchaseOrder,
+            salesOrderReference: $salesOrder,
             receivingAdviceReference: $d->text('cac:ReceiptDocumentReference/cbc:ID'),
             despatchAdviceReference: $d->text('cac:DespatchDocumentReference/cbc:ID'),
             tenderOrLotReference: $d->text('cac:OriginatorDocumentReference/cbc:ID'),

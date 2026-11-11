@@ -30,8 +30,8 @@ final class CrossSyntaxTest extends TestCase
      * - CII holds the price discount (BT-147) inside the gross price, whose amount the schema
      *   requires, so a discount without a gross price (BT-148) is written with the gross price it
      *   implies: net price plus discount (1273.00 + 225.00).
-     * - CII qualifies the seller tax registration (BT-32) with schemeID "FC"; the model keeps the
-     *   syntax qualifier, which UBL takes from cac:TaxScheme/cbc:ID.
+     * - CII qualifies every seller tax registration (BT-32) with the fixed schemeID "FC", which
+     *   reads as null; a UBL cac:TaxScheme/cbc:ID other than the placeholder "TAX" is kept.
      * - The CII schema puts every ram:ID (BT-29 without a scheme) before the first ram:GlobalID
      *   (with a scheme); UBL keeps the identifiers in any order.
      *
@@ -45,14 +45,14 @@ final class CrossSyntaxTest extends TestCase
             'lines.0.price.grossPrice' => [null, '1498'],
         ],
         'ubl-tc434-example5.xml' => [
-            'seller.taxRegistration.taxScheme' => ['LOC', 'FC'],
+            'seller.taxRegistration.taxScheme' => ['LOC', null],
         ],
         'all-terms-invoice.xml' => [
             'seller.identifiers.0.value' => ['5790000435968', 'LOCAL-29'],
             'seller.identifiers.0.scheme' => ['0088', null],
             'seller.identifiers.1.value' => ['LOCAL-29', '5790000435968'],
             'seller.identifiers.1.scheme' => [null, '0088'],
-            'seller.taxRegistration.taxScheme' => ['LOC', 'FC'],
+            'seller.taxRegistration.taxScheme' => ['LOC', null],
         ],
     ];
 

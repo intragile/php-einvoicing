@@ -24,12 +24,6 @@ use IntrAgile\EInvoicing\Model\PaymentInstructions;
 final class PaymentWriter
 {
     /**
-     * Placeholder for cac:CardAccount/cbc:NetworkID, which UBL makes mandatory but EN 16931 does
-     * not model.
-     */
-    private const UNKNOWN_CARD_NETWORK = 'NA';
-
-    /**
      * Means code ("Instrument not defined", UNTDID 4461) of the cac:PaymentMeans that carries
      * only the due date (BT-9) of a credit note without payment instructions, because UBL makes
      * cbc:PaymentMeansCode mandatory. PaymentMapper reads it back as BT-9 alone.
@@ -62,7 +56,7 @@ final class PaymentWriter
         if ($payment->card !== null) {
             $card = $out->add($means, 'cac:CardAccount');
             $out->text($card, 'cbc:PrimaryAccountNumberID', $payment->card->primaryAccountNumber);
-            $out->text($card, 'cbc:NetworkID', self::UNKNOWN_CARD_NETWORK);
+            $out->text($card, 'cbc:NetworkID', Placeholder::CARD_NETWORK);
             $out->text($card, 'cbc:HolderName', $payment->card->holderName);
         }
 

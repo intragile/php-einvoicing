@@ -146,7 +146,9 @@ final class PartyMapper
                 continue;
             }
 
-            return new TaxRegistration(identifier: $identifier, taxScheme: $this->document->token('cac:TaxScheme/cbc:ID', $taxScheme));
+            $scheme = $this->document->token('cac:TaxScheme/cbc:ID', $taxScheme);
+
+            return new TaxRegistration(identifier: $identifier, taxScheme: $scheme === Placeholder::TAX_SCHEME ? null : $scheme);
         }
 
         return null;
