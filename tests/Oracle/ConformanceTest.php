@@ -135,13 +135,16 @@ final class ConformanceTest extends TestCase
     }
 
     /**
+     * Every document of the corpus except the mutations, which test_wrapper_keeps_the_official_verdict_on_mutations
+     * builds one at a time.
+     *
      * @return array<string, array{string, string}>
      */
-    public static function officialDocuments(): array
+    public static function guardDocuments(): array
     {
         $cases = array_map(static fn (array $case): array => [$case[0], self::contents($case[1])], self::examples());
 
-        return [...$cases, ...self::unitTests()];
+        return [...$cases, ...self::unitTests(), ...self::contextErrorDocuments(), ...self::modelInvoices()];
     }
 
     public function test_corpus_sizes(): void
@@ -158,20 +161,16 @@ final class ConformanceTest extends TestCase
      * on documents without such an error it must report exactly what the stylesheet reports when
      * it is the entry point itself.
      */
-    #[DataProvider('officialDocuments')]
+    #[DataProvider('guardDocuments')]
     public function test_wrapper_keeps_the_official_verdict(string $syntax, string $xml): void
     {
-        $xslt = Fixtures::officialXslt($syntax);
-        try {
-            $wrapped = OfficialRules::run($xslt, $xml);
-        } catch (OracleDynamicError $error) {
-            // The direct run would throw without a code and crash the next transformation.
-            self::assertNotSame('', $error->errorCode);
+        $this->assertWrapperKeepsVerdict($syntax, $xml);
+    }
 
-            return;
-        }
-
-        self::assertSame(OfficialRules::verdict(OfficialRules::runDirect($xslt, $xml)), OfficialRules::verdict($wrapped));
+    #[DataProvider('mutations')]
+    public function test_wrapper_keeps_the_official_verdict_on_mutations(string $syntax, string $file, string $label): void
+    {
+        $this->assertWrapperKeepsVerdict($syntax, self::mutated($file, $label));
     }
 
     #[DataProvider('examples')]
@@ -189,7 +188,7 @@ final class ConformanceTest extends TestCase
     #[DataProvider('mutations')]
     public function test_mutated_examples(string $syntax, string $file, string $label): void
     {
-        $this->assertParity($syntax, Mutator::mutation(self::contents($file), crc32(basename($file)), self::MUTATIONS_PER_EXAMPLE, $label));
+        $this->assertParity($syntax, self::mutated($file, $label));
     }
 
     #[DataProvider('modelInvoices')]
@@ -208,6 +207,21 @@ final class ConformanceTest extends TestCase
         }
 
         $this->assertParity($syntax, $xml);
+    }
+
+    private function assertWrapperKeepsVerdict(string $syntax, string $xml): void
+    {
+        $xslt = Fixtures::officialXslt($syntax);
+        try {
+            $wrapped = OfficialRules::run($xslt, $xml);
+        } catch (OracleDynamicError $error) {
+            // The direct run would throw without a code and crash the next transformation.
+            self::assertNotSame('', $error->errorCode);
+
+            return;
+        }
+
+        self::assertSame(OfficialRules::verdict(OfficialRules::runDirect($xslt, $xml)), OfficialRules::verdict($wrapped));
     }
 
     private function assertParity(string $syntax, string $xml): void
@@ -273,6 +287,11 @@ final class ConformanceTest extends TestCase
         file_put_contents($dir.'/document.xml', $xml);
         file_put_contents($dir.'/saxon.txt', $official."\n");
         file_put_contents($dir.'/ours.txt', $ours."\n");
+    }
+
+    private static function mutated(string $file, string $label): string
+    {
+        return Mutator::mutation(self::contents($file), crc32(basename($file)), self::MUTATIONS_PER_EXAMPLE, $label);
     }
 
     private static function example(string $syntax, string $name): string
