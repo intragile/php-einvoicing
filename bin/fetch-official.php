@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /*
  * Downloads the CEN EN 16931 validation artefacts (release validation-1.3.17) and unpacks the
- * examples, the compiled XSLT and the code-list Schematron into
+ * examples, the compiled XSLT, the preprocessed Schematron and the code-list Schematron into
  * tests/fixtures/official/cen-1.3.17/{ubl,cii}/.
  *
  * Every download is verified against a pinned SHA-256 sum. Verified archives are cached in
@@ -12,6 +12,12 @@ declare(strict_types=1);
  *
  * The examples inside the release zips are byte-identical to ubl/examples and cii/examples
  * in the repository at the same tag.
+ *
+ * It also downloads the repository archive at the same tag and unpacks its test/ tree (the CEN
+ * unit tests) into tests/fixtures/official/cen-1.3.17/unit-tests/. GitHub does not guarantee
+ * byte-stable source archives, so every unpacked file is verified against the per-file SHA-256
+ * sums in unit-tests/MANIFEST.sha256 instead of pinning the archive. Pass --write-manifest to
+ * (re)create that manifest from the archive instead of verifying against it.
  *
  * It also downloads the OASIS UBL 2.1 OS package and unpacks the Invoice and CreditNote schemas
  * with their common modules into tests/fixtures/official/ubl-2.1/xsd/, for schema validation of
@@ -27,6 +33,16 @@ const RELEASE_URL = 'https://github.com/ConnectingEurope/eInvoicing-EN16931/rele
 const RAW_URL = 'https://raw.githubusercontent.com/ConnectingEurope/eInvoicing-EN16931/'.TAG.'/';
 const USER_AGENT = 'IntrAgile Kft. info@intragile.eu';
 
+/** The repository source archive at TAG, its cached file name and the top-level folder inside. */
+const REPOSITORY_ARCHIVE = [
+    'https://github.com/ConnectingEurope/eInvoicing-EN16931/archive/refs/tags/'.TAG.'.zip',
+    'eInvoicing-EN16931-'.TAG.'.zip',
+    'eInvoicing-EN16931-'.TAG.'/',
+];
+
+/** Per-file SHA-256 sums of the unpacked unit tests, relative to the unit-tests directory. */
+const UNIT_TEST_MANIFEST = 'MANIFEST.sha256';
+
 /** Release assets per syntax: file name and its SHA-256 sum. */
 const ARCHIVES = [
     'ubl' => ['en16931-ubl-1.3.17.zip', 'bf02a0e3f6cbe692a4a28e70be7bdcaded5612b4169b543e13d6cb4f33c29e92'],
@@ -38,9 +54,10 @@ const LICENCE = ['LICENSE.txt', 'fc22ec1dcd8bee4636a395fb332e2308cde870fb3fdc71a
 
 /**
  * Archive directories that are unpacked. The code-list Schematron feeds bin/generate-codelists.php;
- * the other Schematron sources are compiled into the XSLT and not needed.
+ * the preprocessed Schematron (all includes and abstract patterns resolved) is the input of the
+ * Schematron compiler. The other Schematron sources are already contained in the preprocessed file.
  */
-const EXTRACT_PREFIXES = ['examples/', 'xslt/', 'schematron/codelist/'];
+const EXTRACT_PREFIXES = ['examples/', 'xslt/', 'schematron/preprocessed/', 'schematron/codelist/'];
 
 /** The OASIS UBL 2.1 OS package: URL, file name and SHA-256 sum. */
 const UBL_SCHEMA = [
@@ -71,10 +88,18 @@ $cacheDir = $root.'/.cache/official';
 $targetDir = $root.'/tests/fixtures/official/cen-1.3.17';
 $schemaDir = $root.'/tests/fixtures/official/ubl-2.1';
 $ciiSchemaDir = $root.'/tests/fixtures/official/cii-d16b';
+$writeManifest = array_key_exists('write-manifest', getopt('', ['write-manifest']) ?: []);
 
 try {
     if (! class_exists(ZipArchive::class)) {
         throw new RuntimeException('The zip extension is required to unpack the official artefacts.');
+    }
+
+    // Staging folders and partial downloads left behind by an interrupted run.
+    foreach ([$cacheDir, dirname($targetDir), $targetDir] as $directory) {
+        foreach (glob($directory.'/*.tmp') ?: [] as $debris) {
+            removeTree($debris);
+        }
     }
 
     ensureDirectory($cacheDir);
@@ -85,6 +110,14 @@ try {
         unpackArchive($archive, $targetDir.'/'.$syntax, EXTRACT_PREFIXES);
         fwrite(STDOUT, "{$syntax}: unpacked {$file}\n");
     }
+
+    [$repositoryUrl, $repositoryFile, $repositoryRoot] = REPOSITORY_ARCHIVE;
+    $repositoryArchive = $cacheDir.'/'.$repositoryFile;
+    if (! is_file($repositoryArchive)) {
+        download($repositoryUrl, $repositoryArchive);
+    }
+    $unitTestCount = unpackUnitTests($repositoryArchive, $repositoryRoot.'test/', $targetDir.'/unit-tests', $writeManifest);
+    fwrite(STDOUT, "unit-tests: unpacked {$unitTestCount} files from {$repositoryFile}".($writeManifest ? ', manifest written' : ', manifest verified')."\n");
 
     [$licenceFile, $licenceSha256] = LICENCE;
     $licence = fetchVerified(RAW_URL.$licenceFile, $cacheDir.'/'.$licenceFile, $licenceSha256);
@@ -116,19 +149,7 @@ function fetchVerified(string $url, string $path, string $sha256): string
         return $path;
     }
 
-    $context = stream_context_create([
-        'http' => [
-            'user_agent' => USER_AGENT,
-            'timeout' => 300,
-            'follow_location' => 1,
-            'max_redirects' => 5,
-        ],
-    ]);
-
-    $body = @file_get_contents($url, false, $context);
-    if ($body === false) {
-        throw new RuntimeException("Download failed: {$url}");
-    }
+    $body = httpGet($url);
 
     $actual = hash('sha256', $body);
     if ($actual !== $sha256) {
@@ -143,20 +164,140 @@ function fetchVerified(string $url, string $path, string $sha256): string
 }
 
 /**
+ * Downloads a file whose contents are verified after unpacking rather than by an archive checksum.
+ */
+function download(string $url, string $path): void
+{
+    $body = httpGet($url);
+
+    // Written under a temporary name first, so an interrupted write never leaves a truncated cache.
+    $partial = $path.'.tmp';
+    if (file_put_contents($partial, $body) === false || ! rename($partial, $path)) {
+        throw new RuntimeException("Cannot write {$path}");
+    }
+}
+
+function httpGet(string $url): string
+{
+    $context = stream_context_create([
+        'http' => [
+            'user_agent' => USER_AGENT,
+            'timeout' => 300,
+            'follow_location' => 1,
+            'max_redirects' => 5,
+        ],
+    ]);
+
+    $body = @file_get_contents($url, false, $context);
+    if ($body === false) {
+        throw new RuntimeException("Download failed: {$url}");
+    }
+
+    return $body;
+}
+
+/**
+ * Replaces $target with the archive entries below $prefix (with $prefix removed) and checks them
+ * against the manifest of the current tree, or writes a new manifest. Returns the file count.
+ */
+function unpackUnitTests(string $archive, string $prefix, string $target, bool $writeManifest): int
+{
+    $manifestPath = $target.'/'.UNIT_TEST_MANIFEST;
+    $expected = $writeManifest ? null : readManifest($manifestPath);
+
+    $staging = $target.'.tmp';
+    removeTree($staging);
+    ensureDirectory($staging);
+    extractEntries($archive, $staging, [$prefix], $prefix);
+
+    $actual = [];
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($staging, FilesystemIterator::SKIP_DOTS));
+    /** @var SplFileInfo $file */
+    foreach ($files as $file) {
+        $relative = substr($file->getPathname(), strlen($staging) + 1);
+        $actual[$relative] = (string) hash_file('sha256', $file->getPathname());
+    }
+    ksort($actual, SORT_STRING);
+
+    if ($expected === null) {
+        $lines = array_map(static fn (string $name, string $sum): string => "{$sum}  {$name}\n", array_keys($actual), $actual);
+        if (file_put_contents($staging.'/'.UNIT_TEST_MANIFEST, implode('', $lines)) === false) {
+            throw new RuntimeException('Cannot write '.UNIT_TEST_MANIFEST);
+        }
+    } else {
+        $problems = [];
+        foreach (array_diff_key($expected, $actual) as $name => $sum) {
+            $problems[] = "missing {$name}";
+        }
+        foreach ($actual as $name => $sum) {
+            if (! isset($expected[$name])) {
+                $problems[] = "unexpected {$name}";
+            } elseif ($expected[$name] !== $sum) {
+                $problems[] = "checksum mismatch {$name}";
+            }
+        }
+        if ($problems !== []) {
+            removeTree($staging);
+            throw new RuntimeException("Unit tests in {$archive} do not match ".UNIT_TEST_MANIFEST
+                ." (delete the cached archive to download it again):\n  ".implode("\n  ", array_slice($problems, 0, 20)));
+        }
+        copyFile($manifestPath, $staging.'/'.UNIT_TEST_MANIFEST);
+    }
+
+    replaceTree($staging, $target);
+
+    return count($actual);
+}
+
+/**
+ * Reads a manifest in sha256sum format: one "<sum>  <relative path>" line per file.
+ *
+ * @return array<string, string> relative path => SHA-256 sum
+ */
+function readManifest(string $path): array
+{
+    $lines = is_file($path) ? file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : false;
+    if ($lines === false || $lines === []) {
+        throw new RuntimeException("Cannot read {$path}; run with --write-manifest to create it.");
+    }
+
+    $sums = [];
+    foreach ($lines as $line) {
+        if (preg_match('/^([0-9a-f]{64})  (.+)$/', $line, $match) !== 1) {
+            throw new RuntimeException("Malformed line in {$path}: {$line}");
+        }
+        $sums[$match[2]] = $match[1];
+    }
+
+    return $sums;
+}
+
+/**
  * Replaces $target with the archive entries that start with one of the prefixes.
  *
  * @param  list<string>  $prefixes
  */
 function unpackArchive(string $archive, string $target, array $prefixes): void
 {
+    $staging = $target.'.tmp';
+    removeTree($staging);
+    ensureDirectory($staging);
+    extractEntries($archive, $staging, $prefixes);
+    replaceTree($staging, $target);
+}
+
+/**
+ * Writes the archive entries that start with one of the prefixes below $destinationDir, with
+ * $strip removed from the start of each entry name.
+ *
+ * @param  list<string>  $prefixes
+ */
+function extractEntries(string $archive, string $destinationDir, array $prefixes, string $strip = ''): void
+{
     $zip = new ZipArchive;
     if ($zip->open($archive, ZipArchive::RDONLY) !== true) {
         throw new RuntimeException("Cannot open {$archive}");
     }
-
-    $staging = $target.'.tmp';
-    removeTree($staging);
-    ensureDirectory($staging);
 
     try {
         for ($i = 0; $i < $zip->numFiles; $i++) {
@@ -174,7 +315,7 @@ function unpackArchive(string $archive, string $target, array $prefixes): void
                 throw new RuntimeException("Cannot read {$name} from {$archive}");
             }
 
-            $destination = $staging.'/'.$name;
+            $destination = $destinationDir.'/'.substr($name, str_starts_with($name, $strip) ? strlen($strip) : 0);
             ensureDirectory(dirname($destination));
             if (file_put_contents($destination, $contents) === false) {
                 throw new RuntimeException("Cannot write {$destination}");
@@ -183,7 +324,10 @@ function unpackArchive(string $archive, string $target, array $prefixes): void
     } finally {
         $zip->close();
     }
+}
 
+function replaceTree(string $staging, string $target): void
+{
     removeTree($target);
     if (! rename($staging, $target)) {
         throw new RuntimeException("Cannot move {$staging} to {$target}");
@@ -262,6 +406,13 @@ function removeTree(string $path): void
     if (! file_exists($path)) {
         return;
     }
+    if (! is_dir($path)) {
+        if (! unlink($path)) {
+            throw new RuntimeException("Cannot remove {$path}");
+        }
+
+        return;
+    }
 
     $items = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),
@@ -270,8 +421,13 @@ function removeTree(string $path): void
 
     /** @var SplFileInfo $item */
     foreach ($items as $item) {
-        $item->isDir() ? rmdir($item->getPathname()) : unlink($item->getPathname());
+        $removed = $item->isDir() ? rmdir($item->getPathname()) : unlink($item->getPathname());
+        if (! $removed) {
+            throw new RuntimeException("Cannot remove {$item->getPathname()}");
+        }
     }
 
-    rmdir($path);
+    if (! rmdir($path)) {
+        throw new RuntimeException("Cannot remove {$path}");
+    }
 }

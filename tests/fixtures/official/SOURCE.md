@@ -14,13 +14,34 @@ artefacts. They are third-party material and are **not** covered by this package
 | UBL archive | `en16931-ubl-1.3.17.zip`, SHA-256 `bf02a0e3f6cbe692a4a28e70be7bdcaded5612b4169b543e13d6cb4f33c29e92` |
 | CII archive | `en16931-cii-1.3.17.zip`, SHA-256 `e5f3235824b6b38454b1d54cf3f14e01efb5b33971fbefc4e64997d0ef619e89` |
 | Licence text | `LICENSE.txt` at the tag, SHA-256 `fc22ec1dcd8bee4636a395fb332e2308cde870fb3fdc71a2e260b919877cdef5` |
+| Unit tests | `test/` of the repository archive at the tag (`https://github.com/ConnectingEurope/eInvoicing-EN16931/archive/refs/tags/validation-1.3.17.zip`), per-file SHA-256 in `cen-1.3.17/unit-tests/MANIFEST.sha256` |
 
-Only the `examples/`, `xslt/` and `schematron/codelist/` directories of each archive are kept.
+Only the `examples/`, `xslt/`, `schematron/preprocessed/` and `schematron/codelist/` directories
+of each archive are kept.
+The preprocessed Schematron (`EN16931-UBL-validation-preprocessed.sch`,
+`EN16931-CII-validation-preprocessed.sch`) is the official rule set with all includes and
+abstract patterns resolved; it is the input of the Schematron compiler.
 The code-list Schematron (`EN16931-UBL-codes.sch`, `EN16931-CII-codes.sch`) is the input of
 `bin/generate-codelists.php`, which derives the enums in `src/CodeList/` from it (see
 [`src/CodeList/SOURCE.md`](../../../src/CodeList/SOURCE.md)). The examples in the
 archives are byte-identical to `ubl/examples/` and `cii/examples/` in the repository at the same
 tag (their Git blob hashes match).
+
+### Unit tests
+
+`cen-1.3.17/unit-tests/` is an unmodified copy of the repository's `test/` directory at the tag:
+
+| Directory | Files | Content |
+|---|---|---|
+| `Invoice-unit-UBL/` | 206 | VEFA `testSet` files, one UBL Invoice per `<test>` |
+| `CreditNote-unit-UBL/` | 71 | VEFA `testSet` files, one UBL CreditNote per `<test>` |
+| `cii/` | 2 | VEFA `testSet` files, one CII invoice per `<test>` |
+| `testfiles/` | 29 | plain UBL invoices and credit notes |
+
+Together they hold 1,169 documents (1,160 UBL, 9 CII); `Fixtures::unitTests()` extracts each as
+a standalone document. GitHub does not guarantee that a source archive is byte-stable over time,
+so the archive is not pinned by checksum; instead, every unpacked file is verified against
+`MANIFEST.sha256` (the only file in that folder that is not from upstream).
 
 ## Licence
 
@@ -40,7 +61,8 @@ meets:
 - **Attribution:** the files are unmodified, and a copy of the licence travels with them in
   [`cen-1.3.17/LICENSE.txt`](cen-1.3.17/LICENSE.txt).
 - **Copyleft:** the copies are redistributed under EUPL v1.2, not under MIT. No code in this
-  package links against them. The examples and the XSLT are read as test input only; the only
+  package links against them. The examples, the XSLT, the preprocessed Schematron and the unit
+  tests are read as test input only; the only
   derived output is the set of code values in `src/CodeList/`, documented in
   [`src/CodeList/SOURCE.md`](../../../src/CodeList/SOURCE.md).
 - **Source code:** the source repository is named above.
@@ -132,9 +154,11 @@ Redistribution is therefore allowed on two conditions, which this folder meets:
 php bin/fetch-official.php
 ```
 
-The script downloads the two release archives, the licence text, the UBL 2.1 package and the CII
-D16B schemas, verifies each against the SHA-256 sums above, and rebuilds `cen-1.3.17/`,
-`ubl-2.1/` and `cii-d16b/`.
+The script downloads the two release archives, the repository archive, the licence text, the
+UBL 2.1 package and the CII D16B schemas, verifies each against the SHA-256 sums above (the
+unit tests file by file against `MANIFEST.sha256`), and rebuilds `cen-1.3.17/`, `ubl-2.1/` and
+`cii-d16b/`. `php bin/fetch-official.php --write-manifest` recreates the manifest from the
+archive instead of verifying against it; use it only when moving to a new tag.
 Verified downloads are cached in the git-ignored `.cache/official/`, so repeated runs work
 offline and produce the same files. It
 needs the `zip` extension.

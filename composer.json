@@ -34,6 +34,7 @@
         "brick/math": "^0.12|^0.13"
     },
     "require-dev": {
+        "ext-zip": "*",
         "laravel/pint": "^1.0",
         "phpstan/phpstan": "^2.0",
         "phpunit/phpunit": "^11.5"
