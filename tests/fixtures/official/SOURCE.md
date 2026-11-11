@@ -80,8 +80,9 @@ has no separate licence file; its terms are the "Notices" section of the specifi
 Redistribution is therefore allowed on two conditions, which this folder meets:
 
 - **Unmodified:** the schema files are byte-for-byte copies from the archive, notices included.
-- **Notice included:** `bin/fetch-official.php` copies the complete "Notices" section, verbatim,
-  to [`ubl-2.1/NOTICE.txt`](ubl-2.1/NOTICE.txt) next to the schemas.
+- **Notice included:** `bin/fetch-official.php` copies the complete "Notices" section to
+  [`ubl-2.1/NOTICE.txt`](ubl-2.1/NOTICE.txt) next to the schemas. It is converted from HTML to
+  plain text and reflowed: the wording is unchanged, link targets are omitted.
 
 Full policy: [OASIS IPR Policy](https://www.oasis-open.org/policies-guidelines/ipr/).
 

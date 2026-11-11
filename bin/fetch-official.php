@@ -191,9 +191,11 @@ function unpackArchive(string $archive, string $target, array $prefixes): void
 }
 
 /**
- * Copies the "Notices" section of the UBL 2.1 specification, verbatim as plain text, next to the
- * schemas. The OASIS notice permits copies only when the copyright notice and that section are
- * included; the schema files themselves carry the copyright line only.
+ * Copies the complete "Notices" section of the UBL 2.1 specification next to the schemas,
+ * converted from HTML to plain text: tags (including link targets) are removed, entities decoded
+ * and paragraphs reflowed; the wording is unchanged. The OASIS notice permits copies only when
+ * the copyright notice and that section are included; the schema files themselves carry the
+ * copyright line only.
  */
 function writeOasisNotice(string $archive, string $target): void
 {
@@ -217,8 +219,9 @@ function writeOasisNotice(string $archive, string $target): void
     }
 
     $notice = 'OASIS Universal Business Language (UBL) 2.1 OS: Notices'."\n"
-        .'Copied verbatim from '.UBL_SCHEMA[0].' ('.UBL_SPECIFICATION_PAGE.'),'."\n"
-        .'also published at https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.html'."\n\n"
+        .'Complete text from '.UBL_SCHEMA[0].' ('.UBL_SPECIFICATION_PAGE.'),'."\n"
+        .'converted to plain text and reflowed; wording unchanged, link targets omitted.'."\n"
+        .'Also published at https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.html'."\n\n"
         .implode("\n\n", $paragraphs)."\n";
 
     if (file_put_contents($target, $notice) === false) {

@@ -1,6 +1,7 @@
 OASIS Universal Business Language (UBL) 2.1 OS: Notices
-Copied verbatim from https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.zip (UBL-2.1.html),
-also published at https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.html
+Complete text from https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.zip (UBL-2.1.html),
+converted to plain text and reflowed; wording unchanged, link targets omitted.
+Also published at https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.html
 
 Copyright © OASIS Open 2001-2013. All Rights Reserved.
 
