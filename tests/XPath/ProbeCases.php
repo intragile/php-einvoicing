@@ -255,6 +255,7 @@ final class ProbeCases
             'integer arithmetic' => ['5 - 7', $u, '(xs:integer:-2)'],
             'decimal product' => ['2 * 3.0', $u, '(xs:decimal:6)'],
             'arithmetic empty' => ['1 + ()', $u, '()'],
+            // Saxon raises a static type error: xs:string is not promoted in arithmetic (only untyped values are cast).
             'string plus integer' => ["'abc' + 1", $u, 'error:XPTY0004'],
             'untyped plus integer invalid' => ['/*/cbc:ID + 1', $u, 'error:FORG0001'],
             'untyped plus integer' => ['/r/n9 + 1', $p, '(xs:double:10)'],
@@ -268,6 +269,9 @@ final class ProbeCases
             'general not equal' => ['//cbc:Percent != 25', $u, '(xs:boolean:true)'],
             'general untyped decimal' => ['//cbc:LineExtensionAmount = 50.5', $u, '(xs:boolean:true)'],
             'general untyped double' => ['/r/d = 0.1', $p, '(xs:boolean:true)'],
+            'general untyped promoted to double' => ['/r/d = 0.1000000000000000055511151231257827021181583404541015625', $p, '(xs:boolean:true)'],
+            'general untyped against double' => ['/r/d = 0.1e0', $p, '(xs:boolean:true)'],
+            'arithmetic untyped plus decimal is double' => ['/r/d + 0.2', $p, '(xs:double:0.30000000000000004)'],
             'general untyped strings' => ['/r/n9 < /r/n10', $p, '(xs:boolean:false)'],
             'general error before true' => ['/r/a = 1', $p, 'error:FORG0001'],
             'general true before error' => ['/r/b = 1', $p, '(xs:boolean:true)'],
