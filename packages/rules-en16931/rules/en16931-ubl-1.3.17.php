@@ -122,30 +122,30 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
-              array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
-              ),
-              2 => 
               array (
                 0 => 'path',
                 1 => 
                 array (
+                  0 => 'root',
+                ),
+                2 => 
+                array (
                   0 => 'path',
                   1 => 
+                  array (
+                    0 => 'step',
+                    1 => 'descendant-or-self',
+                    2 => 
+                    array (
+                      0 => 'node',
+                    ),
+                    3 => 
+                    array (
+                    ),
+                  ),
+                  2 => 
                   array (
                     0 => 'step',
                     1 => 'child',
@@ -159,35 +159,35 @@ return array (
                     array (
                     ),
                   ),
-                  2 => 
-                  array (
-                    0 => 'step',
-                    1 => 'child',
-                    2 => 
-                    array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'Party',
-                    ),
-                    3 => 
-                    array (
-                    ),
-                  ),
                 ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
                 2 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'EndpointID',
-                  ),
-                  3 => 
-                  array (
-                  ),
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'Party',
                 ),
+                3 => 
+                array (
+                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'EndpointID',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -232,30 +232,30 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
-              array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
-              ),
-              2 => 
               array (
                 0 => 'path',
                 1 => 
                 array (
+                  0 => 'root',
+                ),
+                2 => 
+                array (
                   0 => 'path',
                   1 => 
+                  array (
+                    0 => 'step',
+                    1 => 'descendant-or-self',
+                    2 => 
+                    array (
+                      0 => 'node',
+                    ),
+                    3 => 
+                    array (
+                    ),
+                  ),
+                  2 => 
                   array (
                     0 => 'step',
                     1 => 'child',
@@ -269,35 +269,35 @@ return array (
                     array (
                     ),
                   ),
-                  2 => 
-                  array (
-                    0 => 'step',
-                    1 => 'child',
-                    2 => 
-                    array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'Party',
-                    ),
-                    3 => 
-                    array (
-                    ),
-                  ),
                 ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
                 2 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'PostalAddress',
-                  ),
-                  3 => 
-                  array (
-                  ),
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'Party',
                 ),
+                3 => 
+                array (
+                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'PostalAddress',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -371,30 +371,30 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
-              array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
-              ),
-              2 => 
               array (
                 0 => 'path',
                 1 => 
                 array (
+                  0 => 'root',
+                ),
+                2 => 
+                array (
                   0 => 'path',
                   1 => 
+                  array (
+                    0 => 'step',
+                    1 => 'descendant-or-self',
+                    2 => 
+                    array (
+                      0 => 'node',
+                    ),
+                    3 => 
+                    array (
+                    ),
+                  ),
+                  2 => 
                   array (
                     0 => 'step',
                     1 => 'child',
@@ -408,35 +408,35 @@ return array (
                     array (
                     ),
                   ),
-                  2 => 
-                  array (
-                    0 => 'step',
-                    1 => 'child',
-                    2 => 
-                    array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'CardAccount',
-                    ),
-                    3 => 
-                    array (
-                    ),
-                  ),
                 ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
                 2 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'PrimaryAccountNumberID',
-                  ),
-                  3 => 
-                  array (
-                  ),
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'CardAccount',
                 ),
+                3 => 
+                array (
+                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'PrimaryAccountNumberID',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -490,30 +490,30 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
-              array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
-              ),
-              2 => 
               array (
                 0 => 'path',
                 1 => 
                 array (
+                  0 => 'root',
+                ),
+                2 => 
+                array (
                   0 => 'path',
                   1 => 
+                  array (
+                    0 => 'step',
+                    1 => 'descendant-or-self',
+                    2 => 
+                    array (
+                      0 => 'node',
+                    ),
+                    3 => 
+                    array (
+                    ),
+                  ),
+                  2 => 
                   array (
                     0 => 'step',
                     1 => 'child',
@@ -527,35 +527,35 @@ return array (
                     array (
                     ),
                   ),
-                  2 => 
-                  array (
-                    0 => 'step',
-                    1 => 'child',
-                    2 => 
-                    array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'DeliveryLocation',
-                    ),
-                    3 => 
-                    array (
-                    ),
-                  ),
                 ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
                 2 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'Address',
-                  ),
-                  3 => 
-                  array (
-                  ),
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'DeliveryLocation',
                 ),
+                3 => 
+                array (
+                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'Address',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -37479,27 +37479,27 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
                 array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
+                  0 => 'root',
                 ),
                 2 => 
                 array (
                   0 => 'path',
                   1 => 
+                  array (
+                    0 => 'step',
+                    1 => 'descendant-or-self',
+                    2 => 
+                    array (
+                      0 => 'node',
+                    ),
+                    3 => 
+                    array (
+                    ),
+                  ),
+                  2 => 
                   array (
                     0 => 'step',
                     1 => 'child',
@@ -37513,20 +37513,20 @@ return array (
                     array (
                     ),
                   ),
-                  2 => 
-                  array (
-                    0 => 'step',
-                    1 => 'child',
-                    2 => 
-                    array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'InvoicePeriod',
-                    ),
-                    3 => 
-                    array (
-                    ),
-                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'InvoicePeriod',
+                ),
+                3 => 
+                array (
                 ),
               ),
             ),
@@ -37535,27 +37535,27 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
                 array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
+                  0 => 'root',
                 ),
                 2 => 
                 array (
                   0 => 'path',
                   1 => 
+                  array (
+                    0 => 'step',
+                    1 => 'descendant-or-self',
+                    2 => 
+                    array (
+                      0 => 'node',
+                    ),
+                    3 => 
+                    array (
+                    ),
+                  ),
+                  2 => 
                   array (
                     0 => 'step',
                     1 => 'child',
@@ -37569,20 +37569,20 @@ return array (
                     array (
                     ),
                   ),
-                  2 => 
-                  array (
-                    0 => 'step',
-                    1 => 'child',
-                    2 => 
-                    array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'InvoicePeriod',
-                    ),
-                    3 => 
-                    array (
-                    ),
-                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'InvoicePeriod',
+                ),
+                3 => 
+                array (
                 ),
               ),
             ),
@@ -38303,24 +38303,8 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
@@ -38328,8 +38312,24 @@ return array (
                     0 => 'path',
                     1 => 
                     array (
+                      0 => 'root',
+                    ),
+                    2 => 
+                    array (
                       0 => 'path',
                       1 => 
+                      array (
+                        0 => 'step',
+                        1 => 'descendant-or-self',
+                        2 => 
+                        array (
+                          0 => 'node',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                      2 => 
                       array (
                         0 => 'step',
                         1 => 'child',
@@ -38343,34 +38343,6 @@ return array (
                         array (
                         ),
                       ),
-                      2 => 
-                      array (
-                        0 => 'step',
-                        1 => 'child',
-                        2 => 
-                        array (
-                          0 => 'name',
-                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                          2 => 'Item',
-                        ),
-                        3 => 
-                        array (
-                        ),
-                      ),
-                    ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'CommodityClassification',
-                      ),
-                      3 => 
-                      array (
-                      ),
                     ),
                   ),
                   2 => 
@@ -38380,13 +38352,41 @@ return array (
                     2 => 
                     array (
                       0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                      2 => 'ItemClassificationCode',
+                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                      2 => 'Item',
                     ),
                     3 => 
                     array (
                     ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
+                  2 => 
+                  array (
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'CommodityClassification',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                  2 => 'ItemClassificationCode',
+                ),
+                3 => 
+                array (
                 ),
               ),
             ),
@@ -38395,24 +38395,8 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
@@ -38420,8 +38404,24 @@ return array (
                     0 => 'path',
                     1 => 
                     array (
+                      0 => 'root',
+                    ),
+                    2 => 
+                    array (
                       0 => 'path',
                       1 => 
+                      array (
+                        0 => 'step',
+                        1 => 'descendant-or-self',
+                        2 => 
+                        array (
+                          0 => 'node',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                      2 => 
                       array (
                         0 => 'step',
                         1 => 'child',
@@ -38435,34 +38435,6 @@ return array (
                         array (
                         ),
                       ),
-                      2 => 
-                      array (
-                        0 => 'step',
-                        1 => 'child',
-                        2 => 
-                        array (
-                          0 => 'name',
-                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                          2 => 'Item',
-                        ),
-                        3 => 
-                        array (
-                        ),
-                      ),
-                    ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'CommodityClassification',
-                      ),
-                      3 => 
-                      array (
-                      ),
                     ),
                   ),
                   2 => 
@@ -38472,13 +38444,41 @@ return array (
                     2 => 
                     array (
                       0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                      2 => 'ItemClassificationCode',
+                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                      2 => 'Item',
                     ),
                     3 => 
                     array (
                     ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
+                  2 => 
+                  array (
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'CommodityClassification',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                  2 => 'ItemClassificationCode',
+                ),
+                3 => 
+                array (
                 ),
               ),
             ),
@@ -38527,24 +38527,8 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
@@ -38552,8 +38536,24 @@ return array (
                     0 => 'path',
                     1 => 
                     array (
+                      0 => 'root',
+                    ),
+                    2 => 
+                    array (
                       0 => 'path',
                       1 => 
+                      array (
+                        0 => 'step',
+                        1 => 'descendant-or-self',
+                        2 => 
+                        array (
+                          0 => 'node',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                      2 => 
                       array (
                         0 => 'step',
                         1 => 'child',
@@ -38567,34 +38567,6 @@ return array (
                         array (
                         ),
                       ),
-                      2 => 
-                      array (
-                        0 => 'step',
-                        1 => 'child',
-                        2 => 
-                        array (
-                          0 => 'name',
-                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                          2 => 'Item',
-                        ),
-                        3 => 
-                        array (
-                        ),
-                      ),
-                    ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'StandardItemIdentification',
-                      ),
-                      3 => 
-                      array (
-                      ),
                     ),
                   ),
                   2 => 
@@ -38604,13 +38576,41 @@ return array (
                     2 => 
                     array (
                       0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                      2 => 'ID',
+                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                      2 => 'Item',
                     ),
                     3 => 
                     array (
                     ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
+                  2 => 
+                  array (
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'StandardItemIdentification',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                  2 => 'ID',
+                ),
+                3 => 
+                array (
                 ),
               ),
             ),
@@ -38619,24 +38619,8 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
@@ -38644,8 +38628,24 @@ return array (
                     0 => 'path',
                     1 => 
                     array (
+                      0 => 'root',
+                    ),
+                    2 => 
+                    array (
                       0 => 'path',
                       1 => 
+                      array (
+                        0 => 'step',
+                        1 => 'descendant-or-self',
+                        2 => 
+                        array (
+                          0 => 'node',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                      2 => 
                       array (
                         0 => 'step',
                         1 => 'child',
@@ -38659,34 +38659,6 @@ return array (
                         array (
                         ),
                       ),
-                      2 => 
-                      array (
-                        0 => 'step',
-                        1 => 'child',
-                        2 => 
-                        array (
-                          0 => 'name',
-                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                          2 => 'Item',
-                        ),
-                        3 => 
-                        array (
-                        ),
-                      ),
-                    ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'StandardItemIdentification',
-                      ),
-                      3 => 
-                      array (
-                      ),
                     ),
                   ),
                   2 => 
@@ -38696,13 +38668,41 @@ return array (
                     2 => 
                     array (
                       0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                      2 => 'ID',
+                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                      2 => 'Item',
                     ),
                     3 => 
                     array (
                     ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
+                  2 => 
+                  array (
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'StandardItemIdentification',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                  2 => 'ID',
+                ),
+                3 => 
+                array (
                 ),
               ),
             ),
@@ -39420,27 +39420,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -39508,20 +39508,20 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'PayeeFinancialAccount',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'PayeeFinancialAccount',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -40264,30 +40264,30 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
-              array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
-              ),
-              2 => 
               array (
                 0 => 'path',
                 1 => 
                 array (
+                  0 => 'root',
+                ),
+                2 => 
+                array (
                   0 => 'path',
                   1 => 
+                  array (
+                    0 => 'step',
+                    1 => 'descendant-or-self',
+                    2 => 
+                    array (
+                      0 => 'node',
+                    ),
+                    3 => 
+                    array (
+                    ),
+                  ),
+                  2 => 
                   array (
                     0 => 'step',
                     1 => 'child',
@@ -40301,35 +40301,35 @@ return array (
                     array (
                     ),
                   ),
-                  2 => 
-                  array (
-                    0 => 'step',
-                    1 => 'child',
-                    2 => 
-                    array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'Party',
-                    ),
-                    3 => 
-                    array (
-                    ),
-                  ),
                 ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
                 2 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'EndpointID',
-                  ),
-                  3 => 
-                  array (
-                  ),
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'Party',
                 ),
+                3 => 
+                array (
+                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'EndpointID',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -40374,30 +40374,30 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
-              array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
-              ),
-              2 => 
               array (
                 0 => 'path',
                 1 => 
                 array (
+                  0 => 'root',
+                ),
+                2 => 
+                array (
                   0 => 'path',
                   1 => 
+                  array (
+                    0 => 'step',
+                    1 => 'descendant-or-self',
+                    2 => 
+                    array (
+                      0 => 'node',
+                    ),
+                    3 => 
+                    array (
+                    ),
+                  ),
+                  2 => 
                   array (
                     0 => 'step',
                     1 => 'child',
@@ -40411,35 +40411,35 @@ return array (
                     array (
                     ),
                   ),
-                  2 => 
-                  array (
-                    0 => 'step',
-                    1 => 'child',
-                    2 => 
-                    array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'Party',
-                    ),
-                    3 => 
-                    array (
-                    ),
-                  ),
                 ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
                 2 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'PostalAddress',
-                  ),
-                  3 => 
-                  array (
-                  ),
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'Party',
                 ),
+                3 => 
+                array (
+                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'PostalAddress',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -40751,27 +40751,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -40785,20 +40785,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'PostalAddress',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'PostalAddress',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -41112,27 +41112,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -41146,20 +41146,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxSubtotal',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxSubtotal',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -44301,27 +44301,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -44362,110 +44362,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'AE',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'AE',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -44523,27 +44523,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -44584,110 +44584,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'AE',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'AE',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -44748,30 +44748,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -44785,125 +44785,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'AE',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'AE',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -44914,30 +44914,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -44951,125 +44951,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'AE',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'AE',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -46655,27 +46655,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -46716,110 +46716,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'E',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'E',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -46877,27 +46877,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -46938,110 +46938,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'E',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'E',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -47102,30 +47102,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -47139,125 +47139,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'E',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'E',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -47268,30 +47268,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -47305,125 +47305,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'E',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'E',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -49009,27 +49009,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -49070,110 +49070,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'G',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'G',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -49231,27 +49231,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -49292,110 +49292,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'G',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'G',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -49456,30 +49456,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -49493,125 +49493,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'G',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'G',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -49622,30 +49622,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -49659,125 +49659,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'G',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'G',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -51363,27 +51363,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -51424,110 +51424,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'K',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'K',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -51585,27 +51585,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -51646,110 +51646,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'K',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'K',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -51810,30 +51810,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -51847,125 +51847,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'K',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'K',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -51976,30 +51976,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -52013,125 +52013,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'K',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'K',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -55936,27 +55936,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -55997,110 +55997,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'L',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'L',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -56150,27 +56150,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -56211,110 +56211,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'L',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'L',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -56367,30 +56367,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -56404,125 +56404,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'L',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'L',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -56533,30 +56533,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -56570,125 +56570,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'L',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'L',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -60485,27 +60485,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -60546,110 +60546,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'M',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'M',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -60699,27 +60699,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -60760,110 +60760,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'M',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'M',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -60916,30 +60916,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -60953,125 +60953,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'M',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'M',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -61082,30 +61082,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -61119,125 +61119,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'M',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'M',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -62815,27 +62815,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -62876,110 +62876,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'O',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'O',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -63026,27 +63026,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -63087,110 +63087,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'O',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'O',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -63240,30 +63240,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -63277,125 +63277,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'O',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'O',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -63406,30 +63406,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -63443,125 +63443,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'O',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'O',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -67931,27 +67931,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -67992,110 +67992,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'S',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'S',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -68145,27 +68145,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -68206,110 +68206,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'S',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'S',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -68362,30 +68362,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -68399,125 +68399,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'S',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'S',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -68528,30 +68528,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -68565,125 +68565,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'S',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'S',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -70253,27 +70253,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -70314,110 +70314,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'Z',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'Z',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -70475,27 +70475,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -70536,110 +70536,110 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'TaxCategory',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
-                  0 => 'step',
-                  1 => 'child',
+                  0 => 'gcmp',
+                  1 => '=',
                   2 => 
                   array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'TaxCategory',
+                    0 => 'call',
+                    1 => 'fn:normalize-space',
+                    2 => 
+                    array (
+                      0 => 
+                      array (
+                        0 => 'step',
+                        1 => 'child',
+                        2 => 
+                        array (
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                          2 => 'ID',
+                        ),
+                        3 => 
+                        array (
+                        ),
+                      ),
+                    ),
                   ),
                   3 => 
                   array (
-                    0 => 
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'Z',
+                  ),
+                ),
+                1 => 
+                array (
+                  0 => 'gcmp',
+                  1 => '=',
+                  2 => 
+                  array (
+                    0 => 'path',
+                    1 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'step',
+                      1 => 'child',
                       2 => 
                       array (
-                        0 => 'call',
-                        1 => 'fn:normalize-space',
-                        2 => 
-                        array (
-                          0 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                              2 => 'ID',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                        ),
+                        0 => 'name',
+                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                        2 => 'TaxScheme',
                       ),
                       3 => 
                       array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'Z',
                       ),
                     ),
-                    1 => 
+                    2 => 
                     array (
-                      0 => 'gcmp',
-                      1 => '=',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
                       2 => 
                       array (
-                        0 => 'path',
-                        1 => 
-                        array (
-                          0 => 'step',
-                          1 => 'child',
-                          2 => 
-                          array (
-                            0 => 'name',
-                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                            2 => 'TaxScheme',
-                          ),
-                          3 => 
-                          array (
-                          ),
-                        ),
-                        2 => 
+                        0 => 
                         array (
                           0 => 'call',
-                          1 => 'fn:normalize-space',
+                          1 => 'fn:upper-case',
                           2 => 
                           array (
                             0 => 
                             array (
-                              0 => 'call',
-                              1 => 'fn:upper-case',
+                              0 => 'step',
+                              1 => 'child',
                               2 => 
                               array (
-                                0 => 
-                                array (
-                                  0 => 'step',
-                                  1 => 'child',
-                                  2 => 
-                                  array (
-                                    0 => 'name',
-                                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                    2 => 'ID',
-                                  ),
-                                  3 => 
-                                  array (
-                                  ),
-                                ),
+                                0 => 'name',
+                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                2 => 'ID',
+                              ),
+                              3 => 
+                              array (
                               ),
                             ),
                           ),
                         ),
                       ),
-                      3 => 
-                      array (
-                        0 => 'literal',
-                        1 => 'xs:string',
-                        2 => 'VAT',
-                      ),
                     ),
+                  ),
+                  3 => 
+                  array (
+                    0 => 'literal',
+                    1 => 'xs:string',
+                    2 => 'VAT',
                   ),
                 ),
               ),
@@ -70700,30 +70700,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -70737,125 +70737,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'Z',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'Z',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -70866,30 +70866,30 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
-                array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
-                2 => 
                 array (
                   0 => 'path',
                   1 => 
                   array (
+                    0 => 'root',
+                  ),
+                  2 => 
+                  array (
                     0 => 'path',
                     1 => 
+                    array (
+                      0 => 'step',
+                      1 => 'descendant-or-self',
+                      2 => 
+                      array (
+                        0 => 'node',
+                      ),
+                      3 => 
+                      array (
+                      ),
+                    ),
+                    2 => 
                     array (
                       0 => 'step',
                       1 => 'child',
@@ -70903,125 +70903,125 @@ return array (
                       array (
                       ),
                     ),
-                    2 => 
-                    array (
-                      0 => 'step',
-                      1 => 'child',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                        2 => 'Item',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
+                ),
+                2 => 
+                array (
+                  0 => 'step',
+                  1 => 'child',
                   2 => 
                   array (
-                    0 => 'step',
-                    1 => 'child',
+                    0 => 'name',
+                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                    2 => 'Item',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                  2 => 'ClassifiedTaxCategory',
+                ),
+                3 => 
+                array (
+                  0 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
                     2 => 
                     array (
-                      0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                      2 => 'ClassifiedTaxCategory',
+                      0 => 'call',
+                      1 => 'fn:normalize-space',
+                      2 => 
+                      array (
+                        0 => 
+                        array (
+                          0 => 'step',
+                          1 => 'child',
+                          2 => 
+                          array (
+                            0 => 'name',
+                            1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                            2 => 'ID',
+                          ),
+                          3 => 
+                          array (
+                          ),
+                        ),
+                      ),
                     ),
                     3 => 
                     array (
-                      0 => 
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'Z',
+                    ),
+                  ),
+                  1 => 
+                  array (
+                    0 => 'gcmp',
+                    1 => '=',
+                    2 => 
+                    array (
+                      0 => 'path',
+                      1 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'step',
+                        1 => 'child',
                         2 => 
                         array (
-                          0 => 'call',
-                          1 => 'fn:normalize-space',
-                          2 => 
-                          array (
-                            0 => 
-                            array (
-                              0 => 'step',
-                              1 => 'child',
-                              2 => 
-                              array (
-                                0 => 'name',
-                                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                2 => 'ID',
-                              ),
-                              3 => 
-                              array (
-                              ),
-                            ),
-                          ),
+                          0 => 'name',
+                          1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                          2 => 'TaxScheme',
                         ),
                         3 => 
                         array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'Z',
                         ),
                       ),
-                      1 => 
+                      2 => 
                       array (
-                        0 => 'gcmp',
-                        1 => '=',
+                        0 => 'call',
+                        1 => 'fn:normalize-space',
                         2 => 
                         array (
-                          0 => 'path',
-                          1 => 
-                          array (
-                            0 => 'step',
-                            1 => 'child',
-                            2 => 
-                            array (
-                              0 => 'name',
-                              1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                              2 => 'TaxScheme',
-                            ),
-                            3 => 
-                            array (
-                            ),
-                          ),
-                          2 => 
+                          0 => 
                           array (
                             0 => 'call',
-                            1 => 'fn:normalize-space',
+                            1 => 'fn:upper-case',
                             2 => 
                             array (
                               0 => 
                               array (
-                                0 => 'call',
-                                1 => 'fn:upper-case',
+                                0 => 'step',
+                                1 => 'child',
                                 2 => 
                                 array (
-                                  0 => 
-                                  array (
-                                    0 => 'step',
-                                    1 => 'child',
-                                    2 => 
-                                    array (
-                                      0 => 'name',
-                                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                                      2 => 'ID',
-                                    ),
-                                    3 => 
-                                    array (
-                                    ),
-                                  ),
+                                  0 => 'name',
+                                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                                  2 => 'ID',
+                                ),
+                                3 => 
+                                array (
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        3 => 
-                        array (
-                          0 => 'literal',
-                          1 => 'xs:string',
-                          2 => 'VAT',
-                        ),
                       ),
+                    ),
+                    3 => 
+                    array (
+                      0 => 'literal',
+                      1 => 'xs:string',
+                      2 => 'VAT',
                     ),
                   ),
                 ),
@@ -71240,27 +71240,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -71274,20 +71274,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-                    2 => 'Party',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                2 => 'Party',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -125514,27 +125514,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -125548,20 +125548,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'DescriptionCode',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'DescriptionCode',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -125671,27 +125671,27 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
                 array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
+                  0 => 'root',
                 ),
                 2 => 
                 array (
                   0 => 'path',
                   1 => 
+                  array (
+                    0 => 'step',
+                    1 => 'descendant-or-self',
+                    2 => 
+                    array (
+                      0 => 'node',
+                    ),
+                    3 => 
+                    array (
+                    ),
+                  ),
+                  2 => 
                   array (
                     0 => 'step',
                     1 => 'child',
@@ -125730,32 +125730,32 @@ return array (
                       ),
                     ),
                   ),
-                  2 => 
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                  2 => 'ID',
+                ),
+                3 => 
+                array (
+                  0 => 
                   array (
                     0 => 'step',
-                    1 => 'child',
+                    1 => 'attribute',
                     2 => 
                     array (
                       0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                      2 => 'ID',
+                      1 => '',
+                      2 => 'schemeID',
                     ),
                     3 => 
                     array (
-                      0 => 
-                      array (
-                        0 => 'step',
-                        1 => 'attribute',
-                        2 => 
-                        array (
-                          0 => 'name',
-                          1 => '',
-                          2 => 'schemeID',
-                        ),
-                        3 => 
-                        array (
-                        ),
-                      ),
                     ),
                   ),
                 ),
@@ -125766,27 +125766,27 @@ return array (
               0 => 'path',
               1 => 
               array (
-                0 => 'root',
-              ),
-              2 => 
-              array (
                 0 => 'path',
                 1 => 
                 array (
-                  0 => 'step',
-                  1 => 'descendant-or-self',
-                  2 => 
-                  array (
-                    0 => 'node',
-                  ),
-                  3 => 
-                  array (
-                  ),
+                  0 => 'root',
                 ),
                 2 => 
                 array (
                   0 => 'path',
                   1 => 
+                  array (
+                    0 => 'step',
+                    1 => 'descendant-or-self',
+                    2 => 
+                    array (
+                      0 => 'node',
+                    ),
+                    3 => 
+                    array (
+                    ),
+                  ),
+                  2 => 
                   array (
                     0 => 'step',
                     1 => 'child',
@@ -125825,32 +125825,32 @@ return array (
                       ),
                     ),
                   ),
-                  2 => 
+                ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
+                2 => 
+                array (
+                  0 => 'name',
+                  1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                  2 => 'ID',
+                ),
+                3 => 
+                array (
+                  0 => 
                   array (
                     0 => 'step',
-                    1 => 'child',
+                    1 => 'attribute',
                     2 => 
                     array (
                       0 => 'name',
-                      1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                      2 => 'ID',
+                      1 => '',
+                      2 => 'schemeID',
                     ),
                     3 => 
                     array (
-                      0 => 
-                      array (
-                        0 => 'step',
-                        1 => 'attribute',
-                        2 => 
-                        array (
-                          0 => 'name',
-                          1 => '',
-                          2 => 'schemeID',
-                        ),
-                        3 => 
-                        array (
-                        ),
-                      ),
                     ),
                   ),
                 ),
@@ -125980,27 +125980,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -126014,32 +126014,32 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'ID',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
                   0 => 'step',
-                  1 => 'child',
+                  1 => 'attribute',
                   2 => 
                   array (
                     0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'ID',
+                    1 => '',
+                    2 => 'schemeID',
                   ),
                   3 => 
                   array (
-                    0 => 
-                    array (
-                      0 => 'step',
-                      1 => 'attribute',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => '',
-                        2 => 'schemeID',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
                 ),
               ),
@@ -126312,27 +126312,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -126346,32 +126346,32 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'CompanyID',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
                   0 => 'step',
-                  1 => 'child',
+                  1 => 'attribute',
                   2 => 
                   array (
                     0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'CompanyID',
+                    1 => '',
+                    2 => 'schemeID',
                   ),
                   3 => 
                   array (
-                    0 => 
-                    array (
-                      0 => 'step',
-                      1 => 'attribute',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => '',
-                        2 => 'schemeID',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
                 ),
               ),
@@ -126500,27 +126500,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -126534,32 +126534,32 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'ItemClassificationCode',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
                   0 => 'step',
-                  1 => 'child',
+                  1 => 'attribute',
                   2 => 
                   array (
                     0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'ItemClassificationCode',
+                    1 => '',
+                    2 => 'listID',
                   ),
                   3 => 
                   array (
-                    0 => 
-                    array (
-                      0 => 'step',
-                      1 => 'attribute',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => '',
-                        2 => 'listID',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
                 ),
               ),
@@ -126688,27 +126688,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -126722,20 +126722,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'IdentificationCode',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'IdentificationCode',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -126842,27 +126842,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -126876,20 +126876,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'IdentificationCode',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'IdentificationCode',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -126996,27 +126996,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -127030,20 +127030,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'PaymentMeansCode',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'PaymentMeansCode',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -127150,27 +127150,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -127184,20 +127184,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'ID',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'ID',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -127304,27 +127304,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -127338,20 +127338,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'ID',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'ID',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -127458,27 +127458,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -127519,20 +127519,20 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'AllowanceChargeReasonCode',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'AllowanceChargeReasonCode',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -127639,27 +127639,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -127700,20 +127700,20 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'AllowanceChargeReasonCode',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'AllowanceChargeReasonCode',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -127820,27 +127820,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -127854,32 +127854,32 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'ID',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
                   0 => 'step',
-                  1 => 'child',
+                  1 => 'attribute',
                   2 => 
                   array (
                     0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'ID',
+                    1 => '',
+                    2 => 'schemeID',
                   ),
                   3 => 
                   array (
-                    0 => 
-                    array (
-                      0 => 'step',
-                      1 => 'attribute',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => '',
-                        2 => 'schemeID',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
                 ),
               ),
@@ -128840,27 +128840,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -128874,32 +128874,32 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+                2 => 'ID',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
                   0 => 'step',
-                  1 => 'child',
+                  1 => 'attribute',
                   2 => 
                   array (
                     0 => 'name',
-                    1 => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-                    2 => 'ID',
+                    1 => '',
+                    2 => 'schemeID',
                   ),
                   3 => 
                   array (
-                    0 => 
-                    array (
-                      0 => 'step',
-                      1 => 'attribute',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => '',
-                        2 => 'schemeID',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
                 ),
               ),

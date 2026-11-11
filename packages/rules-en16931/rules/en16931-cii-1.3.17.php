@@ -76071,27 +76071,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -76105,20 +76105,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
-                    2 => 'TypeCode',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+                2 => 'TypeCode',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -77791,27 +77791,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -77825,20 +77825,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
-                    2 => 'ID',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+                2 => 'ID',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -77945,27 +77945,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -77979,20 +77979,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
-                    2 => 'TypeCode',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+                2 => 'TypeCode',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -78099,27 +78099,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -78133,20 +78133,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
-                    2 => 'CategoryCode',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+                2 => 'CategoryCode',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -78253,27 +78253,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -78287,20 +78287,20 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
-                    2 => 'CategoryCode',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+                2 => 'CategoryCode',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -78407,27 +78407,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -78486,20 +78486,20 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
-                    2 => 'ReasonCode',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+                2 => 'ReasonCode',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -78606,27 +78606,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -78685,20 +78685,20 @@ return array (
                     ),
                   ),
                 ),
-                2 => 
-                array (
-                  0 => 'step',
-                  1 => 'child',
-                  2 => 
-                  array (
-                    0 => 'name',
-                    1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
-                    2 => 'ReasonCode',
-                  ),
-                  3 => 
-                  array (
-                  ),
-                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+                2 => 'ReasonCode',
+              ),
+              3 => 
+              array (
               ),
             ),
           ),
@@ -78805,27 +78805,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -78839,32 +78839,32 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+                2 => 'GlobalID',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
                   0 => 'step',
-                  1 => 'child',
+                  1 => 'attribute',
                   2 => 
                   array (
                     0 => 'name',
-                    1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
-                    2 => 'GlobalID',
+                    1 => '',
+                    2 => 'schemeID',
                   ),
                   3 => 
                   array (
-                    0 => 
-                    array (
-                      0 => 'step',
-                      1 => 'attribute',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => '',
-                        2 => 'schemeID',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
                 ),
               ),
@@ -79599,27 +79599,27 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
               array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
+                0 => 'root',
               ),
               2 => 
               array (
                 0 => 'path',
                 1 => 
+                array (
+                  0 => 'step',
+                  1 => 'descendant-or-self',
+                  2 => 
+                  array (
+                    0 => 'node',
+                  ),
+                  3 => 
+                  array (
+                  ),
+                ),
+                2 => 
                 array (
                   0 => 'step',
                   1 => 'child',
@@ -79633,32 +79633,32 @@ return array (
                   array (
                   ),
                 ),
-                2 => 
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+                2 => 'URIID',
+              ),
+              3 => 
+              array (
+                0 => 
                 array (
                   0 => 'step',
-                  1 => 'child',
+                  1 => 'attribute',
                   2 => 
                   array (
                     0 => 'name',
-                    1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
-                    2 => 'URIID',
+                    1 => '',
+                    2 => 'schemeID',
                   ),
                   3 => 
                   array (
-                    0 => 
-                    array (
-                      0 => 'step',
-                      1 => 'attribute',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => '',
-                        2 => 'schemeID',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
                 ),
               ),
@@ -79787,30 +79787,30 @@ return array (
             0 => 'path',
             1 => 
             array (
-              0 => 'root',
-            ),
-            2 => 
-            array (
               0 => 'path',
               1 => 
-              array (
-                0 => 'step',
-                1 => 'descendant-or-self',
-                2 => 
-                array (
-                  0 => 'node',
-                ),
-                3 => 
-                array (
-                ),
-              ),
-              2 => 
               array (
                 0 => 'path',
                 1 => 
                 array (
+                  0 => 'root',
+                ),
+                2 => 
+                array (
                   0 => 'path',
                   1 => 
+                  array (
+                    0 => 'step',
+                    1 => 'descendant-or-self',
+                    2 => 
+                    array (
+                      0 => 'node',
+                    ),
+                    3 => 
+                    array (
+                    ),
+                  ),
+                  2 => 
                   array (
                     0 => 'step',
                     1 => 'child',
@@ -79824,47 +79824,47 @@ return array (
                     array (
                     ),
                   ),
-                  2 => 
-                  array (
-                    0 => 'step',
-                    1 => 'child',
-                    2 => 
-                    array (
-                      0 => 'name',
-                      1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
-                      2 => 'ShipToTradeParty',
-                    ),
-                    3 => 
-                    array (
-                    ),
-                  ),
                 ),
+              ),
+              2 => 
+              array (
+                0 => 'step',
+                1 => 'child',
                 2 => 
                 array (
+                  0 => 'name',
+                  1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+                  2 => 'ShipToTradeParty',
+                ),
+                3 => 
+                array (
+                ),
+              ),
+            ),
+            2 => 
+            array (
+              0 => 'step',
+              1 => 'child',
+              2 => 
+              array (
+                0 => 'name',
+                1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+                2 => 'GlobalID',
+              ),
+              3 => 
+              array (
+                0 => 
+                array (
                   0 => 'step',
-                  1 => 'child',
+                  1 => 'attribute',
                   2 => 
                   array (
                     0 => 'name',
-                    1 => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
-                    2 => 'GlobalID',
+                    1 => '',
+                    2 => 'schemeID',
                   ),
                   3 => 
                   array (
-                    0 => 
-                    array (
-                      0 => 'step',
-                      1 => 'attribute',
-                      2 => 
-                      array (
-                        0 => 'name',
-                        1 => '',
-                        2 => 'schemeID',
-                      ),
-                      3 => 
-                      array (
-                      ),
-                    ),
                   ),
                 ),
               ),

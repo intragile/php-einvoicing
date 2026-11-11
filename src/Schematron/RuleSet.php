@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Schematron;
 
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
-use IntrAgile\EInvoicing\XPath\Op;
 
 /**
  * A compiled Schematron rule set (the array a compiled rule file returns), with its shape checked.
@@ -129,48 +128,10 @@ final class RuleSet
 
         return [
             'context' => $context,
-            'match' => self::regroup(self::map($rule['match'] ?? null, "The match of {$what}")),
+            'match' => self::map($rule['match'] ?? null, "The match of {$what}"),
             'asserts' => $asserts,
             'roots' => self::roots($context, $namespaces),
         ];
-    }
-
-    /**
-     * Rewrites "/descendant-or-self::node()/(a/b/c)", the selection a relative context such as
-     * "a/b/c" compiles to, into "((/descendant-or-self::node()/a)/b)/c", the grouping of a literal
-     * "//a/b/c". Both select the same nodes because "/" is associative over nodes, but only the
-     * latter lets the evaluator answer the first step from its name index instead of visiting every
-     * node of the document.
-     *
-     * @param  array<mixed>  $ast
-     * @return array<mixed>
-     */
-    private static function regroup(array $ast): array
-    {
-        if (($ast[0] ?? null) === Op::UNION && is_array($ast[1] ?? null) && is_array($ast[2] ?? null)) {
-            return [Op::UNION, self::regroup($ast[1]), self::regroup($ast[2])];
-        }
-
-        $descendants = [Op::STEP, 'descendant-or-self', ['node'], []];
-        if (($ast[0] ?? null) !== Op::PATH || ($ast[1] ?? null) !== [Op::ROOT]
-            || ! is_array($ast[2] ?? null) || ($ast[2][0] ?? null) !== Op::PATH || ($ast[2][1] ?? null) !== $descendants
-            || ! is_array($ast[2][2] ?? null)) {
-            return $ast;
-        }
-
-        $steps = [];
-        $first = $ast[2][2];
-        while (($first[0] ?? null) === Op::PATH && is_array($first[1] ?? null)) {
-            array_unshift($steps, $first[2] ?? null);
-            $first = $first[1];
-        }
-
-        $regrouped = [Op::PATH, [Op::ROOT], [Op::PATH, $descendants, $first]];
-        foreach ($steps as $step) {
-            $regrouped = [Op::PATH, $regrouped, $step];
-        }
-
-        return $regrouped;
     }
 
     /**

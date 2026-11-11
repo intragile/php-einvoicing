@@ -107,7 +107,8 @@ final class Parser
     /**
      * Parses an XSLT match pattern and returns the AST of the equivalent selection expression: each
      * union alternative that does not start at the root is evaluated as a descendant of the root, so
-     * "a/b" becomes "//a/b" and "@x" becomes "//@x".
+     * "a/b" becomes "//a/b" and "@x" becomes "//@x". The result has the same shape as the parsed
+     * "//a/b", with "//" bound to the first step, which the evaluator answers from its name index.
      *
      * @return array<mixed>
      */
@@ -118,7 +119,7 @@ final class Parser
             $this->assertPatternPath($alternative, true, $pattern);
             $alternatives[] = $this->startsAtRoot($alternative)
                 ? $alternative
-                : [Op::PATH, [Op::ROOT], [Op::PATH, self::descendantOrSelf(), $alternative]];
+                : self::descendantOfRoot($alternative);
         }
 
         $selection = array_shift($alternatives);
@@ -639,6 +640,24 @@ final class Parser
         }
 
         return $ast[0] === Op::ROOT;
+    }
+
+    /**
+     * Prefixes a relative path with "//": "a/b/c", parsed as (a/b)/c, becomes ((//a)/b)/c.
+     *
+     * @param  array<mixed>  $ast
+     * @return array<mixed>
+     */
+    private static function descendantOfRoot(array $ast): array
+    {
+        if ($ast[0] === Op::PATH) {
+            /** @var array<mixed> $left */
+            $left = $ast[1];
+
+            return [Op::PATH, self::descendantOfRoot($left), $ast[2]];
+        }
+
+        return [Op::PATH, [Op::ROOT], [Op::PATH, self::descendantOrSelf(), $ast]];
     }
 
     /**

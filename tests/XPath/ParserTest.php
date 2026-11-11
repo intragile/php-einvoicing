@@ -268,9 +268,11 @@ final class ParserTest extends TestCase
 
     public function test_pattern_makes_relative_alternatives_descendants_of_the_root(): void
     {
-        self::assertSame(self::parse('//(a[@x]/b)'), self::parsePattern('a[@x]/b'));
-        self::assertSame(self::parse('//(@x)'), self::parsePattern('@x'));
-        self::assertSame(self::parse('/a | //(b/c) | //d'), self::parsePattern('/a | b/c | //d'));
+        self::assertSame(self::parse('//a/b'), self::parsePattern('a/b'));
+        self::assertSame(self::parse('//a[@x]/b/c'), self::parsePattern('a[@x]/b/c'));
+        self::assertSame(self::parse('//@x'), self::parsePattern('@x'));
+        self::assertSame(self::parse('/a | //b/c | //d'), self::parsePattern('/a | b/c | //d'));
+        self::assertSame(self::parse('//a/b | //c/d/e'), self::parsePattern('a/b | c/d/e'));
     }
 
     public function test_pattern_rejects_non_pattern_expressions(): void
