@@ -181,8 +181,8 @@ final class TotalsCalculator
      * BR-CO-15, UBL artefact: exactly one BT-110 in the invoice currency, and
      * BT-112 = round((BT-109 + BT-110) * 100) div 100.
      *
-     * BT-111 is written as a second VAT total in the BT-6 currency, so a BT-111 with BT-6 equal to
-     * BT-5 makes two totals in the invoice currency and fails the count.
+     * BT-111 is written as a second VAT total in the BT-6 currency, so a BT-111 without BT-6, or
+     * with BT-6 equal to BT-5, makes two totals in the invoice currency and fails the count.
      *
      * The CII artefact additionally accepts BT-112 = BT-109 whatever BT-110 is; this mirrors UBL.
      */
@@ -192,7 +192,8 @@ final class TotalsCalculator
             return false;
         }
 
-        if ($totals->totalVatInAccountingCurrency !== null && $invoice->taxCurrency === $invoice->currency) {
+        if ($totals->totalVatInAccountingCurrency !== null
+            && ($invoice->taxCurrency === null || $invoice->taxCurrency === $invoice->currency)) {
             return false;
         }
 

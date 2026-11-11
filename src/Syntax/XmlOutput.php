@@ -8,13 +8,15 @@ use Brick\Math\BigDecimal;
 use DOMDocument;
 use DOMElement;
 use IntrAgile\EInvoicing\Model\Identifier;
+use InvalidArgumentException;
 use RuntimeException;
 
 /**
  * A syntax document under construction, with typed element builders.
  *
  * Text goes through DOM text nodes and attribute setters, so markup characters are escaped and
- * UTF-8 is kept as is. Decimals are written in their own plain notation with their scale.
+ * UTF-8 is kept as is. Text that is not valid UTF-8 or holds a character XML 1.0 forbids is
+ * refused rather than stripped, since no receiver could parse the document. Decimals are written in their own plain notation with their scale.
  *
  * @internal
  */
@@ -66,12 +68,22 @@ abstract class XmlOutput
      * Appends an element with text content; a null value writes nothing.
      *
      * @param  array<string, string|null>  $attributes  attributes with a null value are left out
+     *
+     * @throws InvalidArgumentException when the text or an attribute value is not valid UTF-8 or
+     *                                  contains a character outside the XML 1.0 Char production
      */
     public function text(DOMElement $parent, string $name, ?string $value, array $attributes = []): ?DOMElement
     {
         if ($value === null) {
             return null;
         }
+        self::assertXmlText($value, 'Text', $name);
+        foreach ($attributes as $attribute => $attributeValue) {
+            if ($attributeValue !== null) {
+                self::assertXmlText($attributeValue, 'Attribute '.$attribute, $name);
+            }
+        }
+
         $element = $this->add($parent, $name);
         $element->appendChild($this->document->createTextNode($value));
         foreach ($attributes as $attribute => $attributeValue) {
@@ -100,6 +112,24 @@ abstract class XmlOutput
     {
         if ($value !== null) {
             $this->text($parent, $name, (string) $value, $attributes);
+        }
+    }
+
+    /**
+     * XML 1.0 Char: #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF].
+     */
+    private static function assertXmlText(string $value, string $what, string $element): void
+    {
+        if (! mb_check_encoding($value, 'UTF-8')) {
+            throw new InvalidArgumentException(sprintf('%s is not valid UTF-8 in element %s.', $what, $element));
+        }
+        if (preg_match('/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}\x{10000}-\x{10FFFF}]/u', $value, $match) === 1) {
+            throw new InvalidArgumentException(sprintf(
+                '%s contains U+%04X, which is not allowed in XML 1.0, in element %s.',
+                $what,
+                mb_ord($match[0], 'UTF-8'),
+                $element,
+            ));
         }
     }
 }

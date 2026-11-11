@@ -11,6 +11,7 @@ use IntrAgile\EInvoicing\Model\DocumentAllowance;
 use IntrAgile\EInvoicing\Model\DocumentCharge;
 use IntrAgile\EInvoicing\Model\DocumentTotals;
 use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Syntax\WriterGuard;
 use InvalidArgumentException;
 
 /**
@@ -49,13 +50,17 @@ final class UblWriter
 
     /**
      * @throws InvalidArgumentException when the totals (BG-22), a line net amount (BT-131) or the
-     *                                  VAT total (BT-110) of a VAT breakdown are missing
+     *                                  VAT total (BT-110) of a VAT breakdown are missing, when
+     *                                  BT-111 has no VAT accounting currency (BT-6) other than
+     *                                  BT-5, when a buyer or payee has more than one identifier,
+     *                                  or when text cannot be written as XML 1.0
      */
     public function write(Invoice $invoice): string
     {
         if ($invoice->totals === null) {
             throw new InvalidArgumentException('The invoice has no document totals (BG-22); complete it with TotalsCalculator::complete() first.');
         }
+        WriterGuard::accountingCurrencyVat($invoice);
         $creditNote = $invoice->type->isCreditNote();
         $out = new UblOutput($creditNote);
         $root = $out->root;

@@ -375,6 +375,17 @@ final class TotalsCalculatorTest extends TestCase
         self::assertSame([], TotalsCalculator::check($completed));
     }
 
+    public function test_check_reports_br_co_15_for_bt111_without_a_tax_currency(): void
+    {
+        $invoice = TotalsCalculator::complete($this->invoice([$this->line('1', '1', '100.00', rate: '27')]));
+        self::assertNull($invoice->taxCurrency);
+
+        self::assertSame(
+            ['BR-CO-15'],
+            TotalsCalculator::check($invoice->withTotals($this->totalsWith($invoice, ['totalVatInAccountingCurrency' => '27.00']))),
+        );
+    }
+
     public function test_check_reports_br_co_15_for_bt111_when_tax_currency_equals_invoice_currency(): void
     {
         $invoice = TotalsCalculator::complete($this->invoice([$this->line('1', '1', '100.00', rate: '27')]));

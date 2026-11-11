@@ -8,6 +8,7 @@ use DOMElement;
 use IntrAgile\EInvoicing\Model\Identifier;
 use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\PostalAddress;
+use IntrAgile\EInvoicing\Syntax\WriterGuard;
 
 /**
  * Writes CII trade parties (BG-4, BG-7, BG-10, BG-11) and postal addresses; the inverse of
@@ -29,15 +30,19 @@ final class PartyWriter
      * Writes the party into $party in the element order of the D16B TradePartyType.
      *
      * @param  PartyMapper::SELLER|PartyMapper::BUYER|PartyMapper::PAYEE|PartyMapper::TAX_REPRESENTATIVE  $role
+     *
+     * @throws \InvalidArgumentException when a buyer or payee has more than one identifier
      */
     public function party(DOMElement $party, Party $model, string $role): void
     {
         $out = $this->out;
         $isTrader = $role === PartyMapper::SELLER || $role === PartyMapper::BUYER;
+        if ($role === PartyMapper::BUYER || $role === PartyMapper::PAYEE) {
+            WriterGuard::singlePartyIdentifier($model, $role);
+        }
 
         if ($role !== PartyMapper::TAX_REPRESENTATIVE) {
-            $identifiers = $role === PartyMapper::SELLER ? $model->identifiers : array_slice($model->identifiers, 0, 1);
-            $this->identifiers($party, $identifiers);
+            $this->identifiers($party, $model->identifiers);
         }
         $out->text($party, 'ram:Name', $model->name);
         if ($role === PartyMapper::SELLER) {

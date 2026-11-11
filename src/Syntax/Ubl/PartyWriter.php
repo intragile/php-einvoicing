@@ -8,6 +8,7 @@ use DOMElement;
 use IntrAgile\EInvoicing\Model\Identifier;
 use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\PostalAddress;
+use IntrAgile\EInvoicing\Syntax\WriterGuard;
 
 /**
  * Writes UBL parties (BG-4, BG-7, BG-10, BG-11) and postal addresses; the inverse of PartyMapper.
@@ -35,6 +36,9 @@ final class PartyWriter
     {
         $out = $this->out;
         $isTrader = $role === PartyMapper::SELLER || $role === PartyMapper::BUYER;
+        if ($role === PartyMapper::BUYER || $role === PartyMapper::PAYEE) {
+            WriterGuard::singlePartyIdentifier($model, $role);
+        }
 
         if ($isTrader && $model->electronicAddress !== null) {
             $out->text($party, 'cbc:EndpointID', $model->electronicAddress->value, ['schemeID' => $model->electronicAddress->scheme->value]);

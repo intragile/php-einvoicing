@@ -9,6 +9,7 @@ use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentCharge;
 use IntrAgile\EInvoicing\Model\DocumentTotals;
 use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Syntax\WriterGuard;
 use InvalidArgumentException;
 
 /**
@@ -65,12 +66,16 @@ final class CiiWriter
      *                                  missing, or when the invoice holds what CII D16B cannot
      *                                  carry: more than one preceding invoice (BG-3), a VAT point
      *                                  date code (BT-8) outside the three the binding maps, or a
-     *                                  VAT point date without a VAT breakdown
+     *                                  VAT point date without a VAT breakdown; also when BT-111 has
+     *                                  no VAT accounting currency (BT-6) other than BT-5, when a
+     *                                  buyer or payee has more than one identifier, or when text
+     *                                  cannot be written as XML 1.0
      */
     public function write(Invoice $invoice): string
     {
         $totals = $invoice->totals
             ?? throw new InvalidArgumentException('The invoice has no document totals (BG-22); complete it with TotalsCalculator::complete() first.');
+        WriterGuard::accountingCurrencyVat($invoice);
         if (count($invoice->precedingInvoices) > 1) {
             throw new InvalidArgumentException(sprintf(
                 'CII D16B carries one preceding invoice reference (BG-3); the invoice has %d.',
