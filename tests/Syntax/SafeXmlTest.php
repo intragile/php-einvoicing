@@ -14,20 +14,26 @@ use PHPUnit\Framework\TestCase;
 final class SafeXmlTest extends TestCase
 {
     /**
-     * @return array<string, array{string}>
+     * @return array<string, array{string, bool}>
      */
-    public static function hostile(): array
+    public static function hostileForBothLoaders(): array
     {
-        return HostileXml::cases();
+        $cases = [];
+        foreach (HostileXml::cases() as $name => [$xml]) {
+            $cases["{$name}, blanks dropped"] = [$xml, false];
+            $cases["{$name}, whitespace kept"] = [$xml, true];
+        }
+
+        return $cases;
     }
 
-    #[DataProvider('hostile')]
-    public function test_refuses_hostile_xml_quickly(string $xml): void
+    #[DataProvider('hostileForBothLoaders')]
+    public function test_refuses_hostile_xml_quickly(string $xml, bool $keepWhitespace): void
     {
         $started = hrtime(true);
 
         try {
-            SafeXml::load($xml);
+            $keepWhitespace ? SafeXml::loadPreservingWhitespace($xml) : SafeXml::load($xml);
             self::fail('UnsafeXml was not thrown.');
         } catch (UnsafeXml $e) {
             self::assertStringContainsString('DOCTYPE', $e->getMessage());
@@ -42,6 +48,35 @@ final class SafeXmlTest extends TestCase
 
         self::assertSame('a', $document->documentElement?->localName);
         self::assertSame(' x & y ', $document->documentElement->firstChild?->textContent);
+    }
+
+    public function test_drops_whitespace_only_text_next_to_a_comment(): void
+    {
+        $document = SafeXml::load('<a><b> <!--x-->O</b></a>');
+
+        self::assertSame('O', $document->documentElement?->firstChild?->textContent);
+    }
+
+    public function test_keeps_whitespace_only_text_when_asked(): void
+    {
+        $document = SafeXml::loadPreservingWhitespace("<a>\n  <b> <!--x-->O</b>\n</a>");
+
+        self::assertSame(' O', $document->getElementsByTagName('b')->item(0)?->textContent);
+        self::assertSame("\n  ", $document->documentElement?->firstChild?->textContent);
+    }
+
+    public function test_refuses_malformed_xml_when_keeping_whitespace(): void
+    {
+        $this->expectException(UnsupportedDocument::class);
+
+        SafeXml::loadPreservingWhitespace('<a><b></a>');
+    }
+
+    public function test_refuses_empty_input_when_keeping_whitespace(): void
+    {
+        $this->expectException(UnsupportedDocument::class);
+
+        SafeXml::loadPreservingWhitespace(" \n");
     }
 
     public function test_refuses_malformed_xml(): void

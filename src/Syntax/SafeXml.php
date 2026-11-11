@@ -25,7 +25,32 @@ final class SafeXml
 {
     private const OPTIONS = LIBXML_NONET | LIBXML_NOBLANKS;
 
+    /**
+     * Loads the document and drops whitespace-only text nodes (LIBXML_NOBLANKS), which suits
+     * readers that only look at element content.
+     *
+     * @throws UnsafeXml when the document carries a DOCTYPE declaration or declares entities
+     * @throws UnsupportedDocument when the document is empty or not well-formed XML
+     */
     public static function load(string $xml): DOMDocument
+    {
+        return self::parse($xml, self::OPTIONS);
+    }
+
+    /**
+     * Loads the document with every text node kept, as an XSLT processor without xsl:strip-space
+     * sees it. libxml drops whitespace-only text next to a comment under LIBXML_NOBLANKS, which
+     * would change string values such as "<a> <!--x-->O</a>".
+     *
+     * @throws UnsafeXml when the document carries a DOCTYPE declaration or declares entities
+     * @throws UnsupportedDocument when the document is empty or not well-formed XML
+     */
+    public static function loadPreservingWhitespace(string $xml): DOMDocument
+    {
+        return self::parse($xml, self::OPTIONS & ~LIBXML_NOBLANKS);
+    }
+
+    private static function parse(string $xml, int $options): DOMDocument
     {
         if (trim($xml) === '') {
             throw new UnsupportedDocument('The document is empty.');
@@ -38,7 +63,7 @@ final class SafeXml
             self::assertNoDoctype($xml);
 
             $document = new DOMDocument;
-            if (! $document->loadXML($xml, self::OPTIONS) || $document->documentElement === null) {
+            if (! $document->loadXML($xml, $options) || $document->documentElement === null) {
                 throw new UnsupportedDocument('The document is not well-formed XML: '.self::lastError());
             }
             if ($document->doctype !== null) {

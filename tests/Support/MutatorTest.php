@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Tests\Support;
 
 use DOMDocument;
 use IntrAgile\EInvoicing\Tests\Fixtures;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -49,6 +50,31 @@ final class MutatorTest extends TestCase
         self::assertStringContainsString('<cbc:EndDate>2013-06-01</cbc:EndDate>', $swaps[0][1]);
     }
 
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function bothSyntaxes(): array
+    {
+        return ['ubl' => ['ubl', 'guide-example1.xml'], 'cii' => ['cii', 'CII_example5.xml']];
+    }
+
+    #[DataProvider('bothSyntaxes')]
+    public function test_comment_and_space_are_inserted_before_leaf_text(string $syntax, string $name): void
+    {
+        $xml = self::example($syntax, $name);
+        $inserts = array_values(array_filter(
+            Mutator::mutations($xml, 3, 200),
+            static fn (array $mutation): bool => str_starts_with($mutation[0], 'comment-space '),
+        ));
+
+        self::assertNotEmpty($inserts);
+        foreach ($inserts as [$label, $mutated]) {
+            $document = new DOMDocument;
+            self::assertTrue($document->loadXML($mutated, LIBXML_NONET), $label);
+            self::assertSame(1, preg_match('~<([\w:]+)(?: [^>]*)?> <!--x-->[^<]+</\1>~', $mutated), $label);
+        }
+    }
+
     public function test_cii_mutations_cover_cii_specific_kinds(): void
     {
         $kinds = self::kinds(Mutator::mutations(self::example('cii', 'CII_example5.xml'), 7, 200));
@@ -56,6 +82,7 @@ final class MutatorTest extends TestCase
         self::assertContains('swap-dates', $kinds);
         self::assertContains('amount-abc', $kinds);
         self::assertContains('code-zzz', $kinds);
+        self::assertContains('comment-space', $kinds);
     }
 
     public function test_every_mutation_is_well_formed_changed_and_uniquely_labelled(): void

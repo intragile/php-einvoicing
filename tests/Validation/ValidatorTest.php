@@ -111,6 +111,20 @@ final class ValidatorTest extends TestCase
         self::assertContains('BR-CO-16', array_map(static fn ($finding): string => $finding->ruleId, $report->fatal()));
     }
 
+    public function test_whitespace_next_to_a_comment_is_kept_in_string_values(): void
+    {
+        $xml = self::contents(self::example('cii', 'CII_example7.xml'));
+        $code = '<ram:CategoryCode>O</ram:CategoryCode>';
+        $header = strrpos($xml, $code);
+        self::assertNotFalse($header);
+        $xml = substr_replace($xml, '<ram:CategoryCode> <!--x-->O</ram:CategoryCode>', $header, strlen($code));
+
+        $report = Validator::en16931()->validate($xml);
+
+        self::assertContains('BR-48 fatal', $report->verdict());
+        self::assertFalse($report->isValid());
+    }
+
     public function test_non_numeric_amount_reports_dynamic_error(): void
     {
         $xml = self::mutate(self::example('ubl', 'ubl-tc434-example1.xml'), static function (DOMXPath $xpath): void {

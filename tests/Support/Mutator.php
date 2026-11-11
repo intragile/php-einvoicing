@@ -14,11 +14,12 @@ use RuntimeException;
 /**
  * Derives deterministic, well-formed variants of an invoice that break it in the ways received
  * files tend to be broken: missing or repeated elements, empty values, non-numeric or shifted
- * amounts, unknown codes, another currency and reversed periods.
+ * amounts, unknown codes, another currency, reversed periods and a space plus a comment in front of
+ * a value (" <!--x-->O"), whose whitespace text node belongs to the string value.
  */
 final class Mutator
 {
-    public const KINDS = ['remove', 'duplicate', 'empty', 'amount-abc', 'amount-shift', 'code-zzz', 'currency', 'swap-dates'];
+    public const KINDS = ['remove', 'duplicate', 'empty', 'amount-abc', 'amount-shift', 'code-zzz', 'currency', 'swap-dates', 'comment-space'];
 
     private const START = ['StartDate' => 'EndDate', 'StartDateTime' => 'EndDateTime'];
 
@@ -120,6 +121,7 @@ final class Mutator
             }
             if ($leaf && $text !== '') {
                 $candidates['empty'][] = $index;
+                $candidates['comment-space'][] = $index;
             }
             if ($leaf && str_ends_with($name, 'Amount')) {
                 $candidates['amount-abc'][] = $index;
@@ -152,6 +154,7 @@ final class Mutator
             'amount-shift' => $element->textContent = (string) self::decimal(trim($element->textContent))?->plus('0.01'),
             'code-zzz' => $element->textContent = 'ZZZ',
             'currency' => $element->setAttribute('currencyID', $element->getAttribute('currencyID') === 'EUR' ? 'USD' : 'EUR'),
+            'comment-space' => self::prependCommentAndSpace($element),
             'swap-dates' => self::swap(...(self::period($element) ?? throw new RuntimeException('No period.'))),
             default => throw new RuntimeException("Unknown mutation kind {$kind}."),
         };
@@ -179,6 +182,17 @@ final class Mutator
         }
 
         return null;
+    }
+
+    /**
+     * Turns "<a>O</a>" into "<a> <!--x-->O</a>".
+     */
+    private static function prependCommentAndSpace(DOMElement $element): void
+    {
+        $document = $element->ownerDocument ?? throw new RuntimeException('Detached element.');
+        $first = $element->firstChild;
+        $element->insertBefore($document->createTextNode(' '), $first);
+        $element->insertBefore($document->createComment('x'), $first);
     }
 
     /**

@@ -61,7 +61,7 @@ final class Validator
      */
     public function validate(string $xml): ValidationReport
     {
-        $document = SafeXml::load($xml);
+        $document = SafeXml::loadPreservingWhitespace($xml);
         $syntax = Syntax::detect($document);
         $ruleSet = $this->ruleSets[$syntax->value];
 
