@@ -16,14 +16,25 @@ use IntrAgile\EInvoicing\Model\PaymentInstructions;
  * mandate and the first payee account. Each further credit transfer (BG-17) gets its own
  * cac:PaymentMeans with the same means code and remittance information.
  *
+ * A credit note keeps its due date (BT-9) in cac:PaymentMeans; without payment instructions it is
+ * written in a cac:PaymentMeans that holds only means code 1 and the due date.
+ *
  * @internal
  */
 final class PaymentWriter
 {
     /**
-     * UBL requires a card network identifier, which EN 16931 does not model.
+     * Placeholder for cac:CardAccount/cbc:NetworkID, which UBL makes mandatory but EN 16931 does
+     * not model.
      */
     private const UNKNOWN_CARD_NETWORK = 'NA';
+
+    /**
+     * Means code ("Instrument not defined", UNTDID 4461) of the cac:PaymentMeans that carries
+     * only the due date (BT-9) of a credit note without payment instructions, because UBL makes
+     * cbc:PaymentMeansCode mandatory. PaymentMapper reads it back as BT-9 alone.
+     */
+    public const DUE_DATE_ONLY_MEANS_CODE = '1';
 
     public function __construct(private readonly UblOutput $out) {}
 
@@ -33,6 +44,12 @@ final class PaymentWriter
     public function payment(DOMElement $root, ?PaymentInstructions $payment, ?DateTimeImmutable $dueDate): void
     {
         if ($payment === null) {
+            if ($dueDate !== null) {
+                $means = $this->out->add($root, 'cac:PaymentMeans');
+                $this->out->text($means, 'cbc:PaymentMeansCode', self::DUE_DATE_ONLY_MEANS_CODE);
+                $this->out->date($means, 'cbc:PaymentDueDate', $dueDate);
+            }
+
             return;
         }
         $out = $this->out;

@@ -60,10 +60,30 @@ only by the test suite, to validate written documents with `DOMDocument::schemaV
 | Archive | `https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.zip`, SHA-256 `60b80d76394a8a2add90723ecb8e0e2e9d826775de9749df37a72d60703f86ed` |
 
 Only `xsd/maindoc/UBL-Invoice-2.1.xsd`, `xsd/maindoc/UBL-CreditNote-2.1.xsd` and the
-`xsd/common/` modules they import are kept. Every file carries its OASIS copyright notice
-("Copyright (c) OASIS Open 2013. All Rights Reserved."), which the
-[OASIS IPR Policy](https://www.oasis-open.org/policies-guidelines/ipr/) requires to stay with
-copies of OASIS specifications; the files are not covered by this package's MIT licence.
+`xsd/common/` modules they import are kept, unmodified. The files are not covered by this
+package's MIT licence.
+
+### Licence
+
+Each schema file carries "Copyright (c) OASIS Open 2013. All Rights Reserved." The package itself
+has no separate licence file; its terms are the "Notices" section of the specification
+(`UBL-2.1.html` in the archive, also at
+<https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.html>), which says:
+
+> This document and translations of it may be copied and furnished to others, and derivative works
+> that comment on or otherwise explain it or assist in its implementation may be prepared, copied,
+> published, and distributed, in whole or in part, without restriction of any kind, provided that
+> the above copyright notice and this section are included on all such copies and derivative
+> works. However, this document itself may not be modified in any way, including by removing the
+> copyright notice or references to OASIS, [...]
+
+Redistribution is therefore allowed on two conditions, which this folder meets:
+
+- **Unmodified:** the schema files are byte-for-byte copies from the archive, notices included.
+- **Notice included:** `bin/fetch-official.php` copies the complete "Notices" section, verbatim,
+  to [`ubl-2.1/NOTICE.txt`](ubl-2.1/NOTICE.txt) next to the schemas.
+
+Full policy: [OASIS IPR Policy](https://www.oasis-open.org/policies-guidelines/ipr/).
 
 ## Refreshing
 

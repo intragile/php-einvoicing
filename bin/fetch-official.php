@@ -45,6 +45,9 @@ const UBL_SCHEMA = [
     '60b80d76394a8a2add90723ecb8e0e2e9d826775de9749df37a72d60703f86ed',
 ];
 
+/** The specification page whose "Notices" section must accompany every copy of the schemas. */
+const UBL_SPECIFICATION_PAGE = 'UBL-2.1.html';
+
 /** Schema files unpacked from the UBL package: the two main documents and what they import. */
 const UBL_SCHEMA_PREFIXES = ['xsd/common/', 'xsd/maindoc/UBL-Invoice-2.1.xsd', 'xsd/maindoc/UBL-CreditNote-2.1.xsd'];
 
@@ -75,7 +78,8 @@ try {
     [$schemaUrl, $schemaFile, $schemaSha256] = UBL_SCHEMA;
     $schemaArchive = fetchVerified($schemaUrl, $cacheDir.'/'.$schemaFile, $schemaSha256);
     unpackArchive($schemaArchive, $schemaDir, UBL_SCHEMA_PREFIXES);
-    fwrite(STDOUT, "ubl-2.1: unpacked {$schemaFile}\n");
+    writeOasisNotice($schemaArchive, $schemaDir.'/NOTICE.txt');
+    fwrite(STDOUT, "ubl-2.1: unpacked {$schemaFile} with NOTICE.txt\n");
 } catch (RuntimeException $e) {
     fwrite(STDERR, 'fetch-official: '.$e->getMessage()."\n");
     exit(1);
@@ -161,6 +165,42 @@ function unpackArchive(string $archive, string $target, array $prefixes): void
     removeTree($target);
     if (! rename($staging, $target)) {
         throw new RuntimeException("Cannot move {$staging} to {$target}");
+    }
+}
+
+/**
+ * Copies the "Notices" section of the UBL 2.1 specification, verbatim as plain text, next to the
+ * schemas. The OASIS notice permits copies only when the copyright notice and that section are
+ * included; the schema files themselves carry the copyright line only.
+ */
+function writeOasisNotice(string $archive, string $target): void
+{
+    $zip = new ZipArchive;
+    if ($zip->open($archive, ZipArchive::RDONLY) !== true) {
+        throw new RuntimeException("Cannot open {$archive}");
+    }
+    $page = $zip->getFromName(UBL_SPECIFICATION_PAGE);
+    $zip->close();
+
+    if ($page === false || preg_match('#<h2 class="notices-heading">Notices</h2>(.*?)</div>#s', $page, $match) !== 1) {
+        throw new RuntimeException('Cannot find the Notices section in '.UBL_SPECIFICATION_PAGE);
+    }
+
+    $paragraphs = [];
+    foreach (preg_split('#</p>#', $match[1]) ?: [] as $paragraph) {
+        $text = trim((string) preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($paragraph), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+        if ($text !== '') {
+            $paragraphs[] = wordwrap($text, 100);
+        }
+    }
+
+    $notice = 'OASIS Universal Business Language (UBL) 2.1 OS: Notices'."\n"
+        .'Copied verbatim from '.UBL_SCHEMA[0].' ('.UBL_SPECIFICATION_PAGE.'),'."\n"
+        .'also published at https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.html'."\n\n"
+        .implode("\n\n", $paragraphs)."\n";
+
+    if (file_put_contents($target, $notice) === false) {
+        throw new RuntimeException("Cannot write {$target}");
     }
 }
 

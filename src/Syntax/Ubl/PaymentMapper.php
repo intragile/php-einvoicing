@@ -20,6 +20,9 @@ use IntrAgile\EInvoicing\Model\PaymentInstructions;
  * payee account as another BG-17. Anything else in a further cac:PaymentMeans, or one with a
  * different means code, is not mapped and is reported as ignored.
  *
+ * On a credit note, a single cac:PaymentMeans holding only means code 1 and cbc:PaymentDueDate
+ * carries the due date (BT-9) alone and gives no BG-16; see PaymentWriter.
+ *
  * The bank assigned creditor identifier (BT-90) is the first seller or payee party identifier
  * with scheme "SEPA".
  *
@@ -38,6 +41,9 @@ final class PaymentMapper
         }
 
         $first = $means[0];
+        if (count($means) === 1 && $this->isDueDateOnly($first)) {
+            return null;
+        }
         $codeElement = $d->one('cbc:PaymentMeansCode', $first);
         $code = $d->code(PaymentMeansCode::class, $codeElement);
         if ($codeElement === null || $code === null) {
@@ -76,6 +82,30 @@ final class PaymentMapper
             card: $this->card($d->one('cac:CardAccount', $first)),
             directDebit: $this->directDebit($first),
         );
+    }
+
+    /**
+     * Whether this is the credit note placeholder that carries only the due date (BT-9): means
+     * code 1 without a name, followed by cbc:PaymentDueDate and nothing else. UblReader maps the
+     * due date; the means code is consumed here and yields no BG-16.
+     */
+    private function isDueDateOnly(DOMElement $means): bool
+    {
+        $d = $this->document;
+        if (! $d->isCreditNote) {
+            return false;
+        }
+        $children = $d->all('*', $means);
+        if (count($children) !== 2
+            || $children[0]->namespaceURI !== UblDocument::CBC || $children[0]->localName !== 'PaymentMeansCode'
+            || $children[1]->namespaceURI !== UblDocument::CBC || $children[1]->localName !== 'PaymentDueDate'
+            || trim($children[0]->textContent) !== PaymentWriter::DUE_DATE_ONLY_MEANS_CODE
+            || $d->attribute($children[0], 'name') !== null) {
+            return false;
+        }
+        $d->use($children[0]);
+
+        return true;
     }
 
     private function creditTransfer(DOMElement $account): ?CreditTransfer

@@ -64,6 +64,7 @@ final class UblRoundTripTest extends TestCase
             'mixed VAT' => [$mixed],
             'not subject to VAT' => [TotalsCalculator::complete(InvoiceFactory::notSubjectToVat())],
             'mixed VAT as credit note' => [$mixed->withType(InvoiceTypeCode::C_381)->withDueDate(null)],
+            'credit note with due date only' => [$mixed->withType(InvoiceTypeCode::C_381)],
             'credit note with payment and due date' => [$mixed->withType(InvoiceTypeCode::C_381)->withPayment(
                 new PaymentInstructions(meansCode: PaymentMeansCode::C_58, creditTransfers: [new CreditTransfer(accountIdentifier: 'HU42117730161111101800000000')]),
             )],
@@ -204,14 +205,31 @@ final class UblRoundTripTest extends TestCase
         self::assertStringContainsString('<cbc:CustomizationID>urn:cen.eu:en16931:2017</cbc:CustomizationID>', $invoiceXml);
     }
 
-    public function test_credit_note_due_date_needs_payment_instructions(): void
+    public function test_credit_note_due_date_without_payment_instructions_round_trips(): void
     {
         $creditNote = TotalsCalculator::complete(InvoiceFactory::mixedVat())->withType(InvoiceTypeCode::C_381);
+        self::assertNull($creditNote->payment);
+
+        $xml = (new UblWriter)->write($creditNote);
+        $read = (new UblReader)->read($xml);
+
+        self::assertStringContainsString("<cac:PaymentMeans>\n    <cbc:PaymentMeansCode>1</cbc:PaymentMeansCode>\n    <cbc:PaymentDueDate>2026-12-11</cbc:PaymentDueDate>\n  </cac:PaymentMeans>", $xml);
+        self::assertSame('2026-12-11', $read->invoice->dueDate?->format('Y-m-d'));
+        self::assertNull($read->invoice->payment, 'The placeholder payment means is not BG-16.');
+        self::assertSame([], $read->ignored);
+        self::assertEquals($creditNote, $read->invoice);
+        self::assertTrue($creditNote == $read->invoice);
+    }
+
+    public function test_real_payment_means_code_1_on_a_credit_note_stays_bg16(): void
+    {
+        $creditNote = TotalsCalculator::complete(InvoiceFactory::mixedVat())
+            ->withType(InvoiceTypeCode::C_381)
+            ->withPayment(new PaymentInstructions(meansCode: PaymentMeansCode::C_1, remittanceInformation: 'REF-1'));
 
         $read = (new UblReader)->read((new UblWriter)->write($creditNote))->invoice;
 
-        self::assertNotNull($creditNote->dueDate);
-        self::assertNull($read->dueDate, 'UBL keeps a credit note due date in cac:PaymentMeans, which needs a means code.');
+        self::assertEquals($creditNote, $read);
     }
 
     public function test_amounts_keep_their_scale_and_currency(): void

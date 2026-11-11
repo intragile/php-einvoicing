@@ -22,15 +22,29 @@ use InvalidArgumentException;
  * written as the model holds them, in the invoice currency (BT-5), except the VAT total in
  * accounting currency (BT-111), which carries BT-6.
  *
- * Model values UBL cannot carry: the payment due date (BT-9) of a credit note without payment
- * instructions, because UBL keeps it in cac:PaymentMeans, which needs a means code.
+ * Where an element is mandatory but the model holds no value for it, a placeholder is written:
+ * - cbc:CustomizationID: SPECIFICATION_IDENTIFIER when the invoice has no process control. UBL
+ *   2.1 declares the element optional, but EN 16931 makes BT-24 mandatory.
+ * - cac:OrderReference/cbc:ID: "NA" when only a sales order reference (BT-14) exists, because UBL
+ *   makes the order identifier mandatory.
+ * - cac:PartyTaxScheme/cac:TaxScheme/cbc:ID: "TAX" for a seller tax registration (BT-32) without
+ *   a scheme, because UBL makes cac:TaxScheme mandatory (see PartyWriter).
+ * - cac:CardAccount/cbc:NetworkID: "NA", because UBL makes it mandatory (see PaymentWriter).
+ * - cac:PaymentMeans with means code 1 for the due date (BT-9) of a credit note without payment
+ *   instructions, because UBL makes cbc:PaymentMeansCode mandatory (see PaymentWriter).
  */
 final class UblWriter
 {
-    /** Specification identifier (BT-24) written when the invoice carries no process control. */
+    /**
+     * Specification identifier (BT-24) written when the invoice carries no process control: EN
+     * 16931 makes BT-24 mandatory, although UBL 2.1 declares cbc:CustomizationID optional.
+     */
     public const SPECIFICATION_IDENTIFIER = 'urn:cen.eu:en16931:2017';
 
-    /** Purchase order reference written when only a sales order reference (BT-14) exists. */
+    /**
+     * Placeholder for cac:OrderReference/cbc:ID when only a sales order reference (BT-14) exists:
+     * UBL makes the order identifier mandatory.
+     */
     private const NOT_APPLICABLE = 'NA';
 
     /**

@@ -17,7 +17,8 @@ use IntrAgile\EInvoicing\Model\PostalAddress;
 final class PartyWriter
 {
     /**
-     * Tax scheme written for a seller tax registration (BT-32) that carries none, as in Peppol BIS.
+     * Placeholder tax scheme for a seller tax registration (BT-32) that carries none: UBL makes
+     * cac:TaxScheme mandatory in cac:PartyTaxScheme. "TAX" is the Peppol BIS convention.
      */
     private const DEFAULT_TAX_REGISTRATION_SCHEME = 'TAX';
 
