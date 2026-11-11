@@ -12,9 +12,11 @@ declare(strict_types=1);
  *
  *   php bin/generate-codelists.php           writes src/CodeList/*.php
  *   php bin/generate-codelists.php --check   exits 1 when a generated file is missing or stale
+ *   --source=DIR                             reads the artefacts from DIR instead of SOURCE_DIR
  *
  * Where a rule exists in both syntaxes, the UBL and CII lists must contain the same codes, or the
- * generator fails. Codes keep the order in which the UBL Schematron lists them (CII for lists that
+ * generator fails. Each assert must hold the number of code literals in EXPECTED_LITERALS (one by
+ * default), so a list added to a rule upstream cannot be dropped unnoticed. Codes keep the order in which the UBL Schematron lists them (CII for lists that
  * exist only there).
  *
  * Case names are derived from the code, never from its description:
@@ -33,6 +35,16 @@ const SCHEMATRON = [
     'cii' => 'cii/schematron/codelist/EN16931-CII-codes.sch',
 ];
 const HEADER = 'Generated from CEN EN 16931 validation artefacts 1.3.17 — do not edit';
+
+/**
+ * Code literals per assert where a rule holds more than one, per syntax. UBL BR-CL-01 lists the
+ * Invoice and the CreditNote type codes separately; UBL BR-CL-10 adds 'SEPA', which is allowed for
+ * the creditor identifier only and is not part of ISO 6523.
+ */
+const EXPECTED_LITERALS = [
+    'BR-CL-01' => ['ubl' => 2],
+    'BR-CL-10' => ['ubl' => 2],
+];
 
 /**
  * Enum name => [BR-CL rule, syntaxes that carry the list, short description].
@@ -67,12 +79,19 @@ const VAT_CATEGORY_NAMES = [
 ];
 
 $root = dirname(__DIR__);
-$check = in_array('--check', array_slice($argv ?? [], 1), true);
+$arguments = array_slice($argv ?? [], 1);
+$check = in_array('--check', $arguments, true);
+$sourceDir = $root.'/'.SOURCE_DIR;
+foreach ($arguments as $argument) {
+    if (str_starts_with($argument, '--source=')) {
+        $sourceDir = substr($argument, strlen('--source='));
+    }
+}
 
 try {
     $documents = [];
     foreach (SCHEMATRON as $syntax => $path) {
-        $documents[$syntax] = loadSchematron($root.'/'.SOURCE_DIR.'/'.$path);
+        $documents[$syntax] = loadSchematron($sourceDir.'/'.$path);
     }
 
     $stale = [];
@@ -176,21 +195,30 @@ function extractList(array $documents, string $enum, string $rule, array $syntax
     $sets = [];
     foreach ($syntaxes as $syntax) {
         $sets[$syntax] = literals($documents[$syntax], $rule);
+        $expected = EXPECTED_LITERALS[$rule][$syntax] ?? 1;
+        if (count($sets[$syntax]) !== $expected) {
+            throw new RuntimeException(sprintf(
+                '%s has %d code literals in %s, expected %d.',
+                $rule,
+                count($sets[$syntax]),
+                $syntax,
+                $expected,
+            ));
+        }
     }
 
     $creditNotes = [];
     if ($enum === 'InvoiceTypeCode') {
         // UBL lists invoice and credit note type codes separately (Invoice vs CreditNote root);
         // CII carries their union in one list.
-        if (count($sets['ubl']) !== 2 || count($sets['cii']) !== 1) {
-            throw new RuntimeException("Unexpected structure of {$rule}.");
-        }
         [$invoices, $creditNotes] = $sets['ubl'];
         $codes = $sets['cii'][0];
         assertSameCodes($rule, array_values(array_unique([...$invoices, ...$creditNotes])), $codes);
     } else {
-        // The first literal is the code list; UBL BR-CL-10 adds a second one ('SEPA' for the
-        // creditor identifier only), which is not part of ISO 6523.
+        // The first literal is the code list; see EXPECTED_LITERALS for the second one of BR-CL-10.
+        if ($rule === 'BR-CL-10' && $sets['ubl'][1] !== ['SEPA']) {
+            throw new RuntimeException("Unexpected second code literal in {$rule}.");
+        }
         $primary = $syntaxes[0];
         $codes = $sets[$primary][0];
         foreach ($syntaxes as $syntax) {

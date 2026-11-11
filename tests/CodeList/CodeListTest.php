@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\CodeList;
 
+use DOMDocument;
+use DOMElement;
+use DOMXPath;
 use IntrAgile\EInvoicing\CodeList\AllowanceReasonCode;
 use IntrAgile\EInvoicing\CodeList\ChargeReasonCode;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
@@ -48,6 +51,43 @@ final class CodeListTest extends TestCase
 
         foreach (['380', '384', '389', '751'] as $code) {
             self::assertFalse(InvoiceTypeCode::from($code)->isCreditNote(), $code);
+        }
+    }
+
+    /**
+     * The CreditNoteTypeCode branch of UBL BR-CL-01 in the CEN artefacts 1.3.17.
+     */
+    private const CREDIT_NOTE_CODES = ['81', '83', '261', '262', '296', '308', '381', '396', '420', '458', '502', '503', '532'];
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function creditNoteCodes(): array
+    {
+        $cases = [];
+        foreach (self::CREDIT_NOTE_CODES as $code) {
+            $cases['code '.$code] = [$code];
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('creditNoteCodes')]
+    public function test_each_br_cl_01_credit_note_code_is_a_credit_note(string $code): void
+    {
+        self::assertTrue(InvoiceTypeCode::from($code)->isCreditNote());
+    }
+
+    public function test_every_other_type_code_is_an_invoice(): void
+    {
+        $invoices = array_filter(
+            InvoiceTypeCode::cases(),
+            static fn (InvoiceTypeCode $type): bool => ! in_array($type->value, self::CREDIT_NOTE_CODES, true),
+        );
+
+        self::assertCount(count(InvoiceTypeCode::cases()) - count(self::CREDIT_NOTE_CODES), $invoices);
+        foreach ($invoices as $type) {
+            self::assertFalse($type->isCreditNote(), $type->value);
         }
     }
 
@@ -105,6 +145,40 @@ final class CodeListTest extends TestCase
         self::assertNotNull($enum::tryFrom($valid));
         self::assertFalse($isValid($invalid));
         self::assertNull($enum::tryFrom($invalid));
+    }
+
+    public function test_generator_refuses_an_unexpected_extra_code_literal(): void
+    {
+        $official = dirname(__DIR__).'/fixtures/official/cen-1.3.17';
+        $source = sys_get_temp_dir().'/einvoicing-codelists-'.bin2hex(random_bytes(4));
+        foreach (['ubl', 'cii'] as $syntax) {
+            $file = "{$syntax}/schematron/codelist/EN16931-".strtoupper($syntax).'-codes.sch';
+            mkdir(dirname("{$source}/{$file}"), 0777, true);
+            copy("{$official}/{$file}", "{$source}/{$file}");
+        }
+        $ubl = "{$source}/ubl/schematron/codelist/EN16931-UBL-codes.sch";
+        $document = new DOMDocument;
+        $document->load($ubl);
+        $asserts = (new DOMXPath($document))->query('//*[@id="BR-CL-04"]');
+        self::assertNotFalse($asserts);
+        $assert = $asserts->item(0);
+        self::assertInstanceOf(DOMElement::class, $assert);
+        $assert->setAttribute('test', $assert->getAttribute('test')." or contains(' XTS ', concat(' ', normalize-space(.), ' '))");
+        $document->save($ubl);
+
+        $command = escapeshellarg(PHP_BINARY).' '.escapeshellarg(dirname(__DIR__, 2).'/bin/generate-codelists.php')
+            .' --check '.escapeshellarg('--source='.$source).' 2>&1';
+        exec($command, $output, $status);
+        foreach (['ubl', 'cii'] as $syntax) {
+            unlink("{$source}/{$syntax}/schematron/codelist/EN16931-".strtoupper($syntax).'-codes.sch');
+            rmdir("{$source}/{$syntax}/schematron/codelist");
+            rmdir("{$source}/{$syntax}/schematron");
+            rmdir("{$source}/{$syntax}");
+        }
+        rmdir($source);
+
+        self::assertSame(1, $status, implode("\n", $output));
+        self::assertStringContainsString('BR-CL-04 has 2 code literals in ubl, expected 1', implode("\n", $output));
     }
 
     public function test_generated_enums_are_up_to_date(): void
