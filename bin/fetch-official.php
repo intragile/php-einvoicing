@@ -16,6 +16,10 @@ declare(strict_types=1);
  * It also downloads the OASIS UBL 2.1 OS package and unpacks the Invoice and CreditNote schemas
  * with their common modules into tests/fixtures/official/ubl-2.1/xsd/, for schema validation of
  * written documents.
+ *
+ * It also downloads the UN/CEFACT Cross Industry Invoice D16B schemas (SCRDM subset, uncoupled
+ * code lists) that the CEN repository ships at the same tag, into
+ * tests/fixtures/official/cii-d16b/, for schema validation of written CII documents.
  */
 
 const TAG = 'validation-1.3.17';
@@ -51,10 +55,22 @@ const UBL_SPECIFICATION_PAGE = 'UBL-2.1.html';
 /** Schema files unpacked from the UBL package: the two main documents and what they import. */
 const UBL_SCHEMA_PREFIXES = ['xsd/common/', 'xsd/maindoc/UBL-Invoice-2.1.xsd', 'xsd/maindoc/UBL-CreditNote-2.1.xsd'];
 
+/** The UN/CEFACT CII D16B schemas in the CEN repository at TAG. */
+const CII_SCHEMA_URL = RAW_URL.'cii/schema/D16B%20SCRDM%20(Subset)/uncoupled%20clm/CII/uncefact/data/standard/';
+
+/** CII schema files with their SHA-256 sums; the first is the main document schema. */
+const CII_SCHEMAS = [
+    'CrossIndustryInvoice_100pD16B.xsd' => 'b9798aafcba039d0630f0015ffae5092a1758bf924d19d97b6bf0bf9d95f22a0',
+    'CrossIndustryInvoice_QualifiedDataType_100pD16B.xsd' => 'a39e0662c31fbdca22237118d6b6bbfa16f69efbd1ee5b23787366349c5b924d',
+    'CrossIndustryInvoice_ReusableAggregateBusinessInformationEntity_100pD16B.xsd' => 'cc682d67791ffe16c45320619ff089a1c8f3ad22691fc426e4056f2e67909fe0',
+    'CrossIndustryInvoice_UnqualifiedDataType_100pD16B.xsd' => '5d4ce8a6445caa4b7691f6fba6ad08e312e6a853cd3a422666d121ee2d13ef8c',
+];
+
 $root = dirname(__DIR__);
 $cacheDir = $root.'/.cache/official';
 $targetDir = $root.'/tests/fixtures/official/cen-1.3.17';
 $schemaDir = $root.'/tests/fixtures/official/ubl-2.1';
+$ciiSchemaDir = $root.'/tests/fixtures/official/cii-d16b';
 
 try {
     if (! class_exists(ZipArchive::class)) {
@@ -80,6 +96,12 @@ try {
     unpackArchive($schemaArchive, $schemaDir, UBL_SCHEMA_PREFIXES);
     writeOasisNotice($schemaArchive, $schemaDir.'/NOTICE.txt');
     fwrite(STDOUT, "ubl-2.1: unpacked {$schemaFile} with NOTICE.txt\n");
+
+    ensureDirectory($ciiSchemaDir);
+    foreach (CII_SCHEMAS as $ciiSchemaFile => $ciiSchemaSha256) {
+        copyFile(fetchVerified(CII_SCHEMA_URL.$ciiSchemaFile, $cacheDir.'/'.$ciiSchemaFile, $ciiSchemaSha256), $ciiSchemaDir.'/'.$ciiSchemaFile);
+    }
+    fwrite(STDOUT, 'cii-d16b: copied '.count(CII_SCHEMAS)." schema files\n");
 } catch (RuntimeException $e) {
     fwrite(STDERR, 'fetch-official: '.$e->getMessage()."\n");
     exit(1);

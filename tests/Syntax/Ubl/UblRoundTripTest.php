@@ -4,28 +4,21 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Syntax\Ubl;
 
-use DOMDocument;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
 use IntrAgile\EInvoicing\CodeList\PaymentMeansCode;
 use IntrAgile\EInvoicing\CodeList\TextSubjectCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
-use IntrAgile\EInvoicing\Model\Contact;
 use IntrAgile\EInvoicing\Model\CreditTransfer;
 use IntrAgile\EInvoicing\Model\Invoice;
-use IntrAgile\EInvoicing\Model\InvoiceLine;
-use IntrAgile\EInvoicing\Model\Item;
-use IntrAgile\EInvoicing\Model\Note;
-use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\PaymentInstructions;
-use IntrAgile\EInvoicing\Model\PostalAddress;
 use IntrAgile\EInvoicing\Model\VatBreakdown;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblReader;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
+use IntrAgile\EInvoicing\Tests\Support\Xsd;
 use InvalidArgumentException;
-use LibXMLError;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -33,10 +26,7 @@ final class UblRoundTripTest extends TestCase
 {
     private const FIXTURES = __DIR__.'/../../fixtures/ubl';
 
-    /**
-     * Text that must survive a write and a read byte for byte.
-     */
-    private const HOSTILE_TEXT = "  Kft. & Co. <b>\"quoted\"</b> 'apostrophe' őŐűŰ 😀\nsecond line\n  ";
+    private const HOSTILE_TEXT = InvoiceFactory::HOSTILE_TEXT;
 
     /**
      * @return array<string, array{string}>
@@ -68,7 +58,7 @@ final class UblRoundTripTest extends TestCase
             'credit note with payment and due date' => [$mixed->withType(InvoiceTypeCode::C_381)->withPayment(
                 new PaymentInstructions(meansCode: PaymentMeansCode::C_58, creditTransfers: [new CreditTransfer(accountIdentifier: 'HU42117730161111101800000000')]),
             )],
-            'hostile text' => [self::hostileTextInvoice()],
+            'hostile text' => [InvoiceFactory::hostileText()],
         ];
     }
 
@@ -136,34 +126,14 @@ final class UblRoundTripTest extends TestCase
     #[DataProvider('writtenDocuments')]
     public function test_output_is_xsd_valid(string $xml): void
     {
-        $document = new DOMDocument;
-        self::assertTrue($document->loadXML($xml, LIBXML_NONET));
-        $root = $document->documentElement;
-        self::assertNotNull($root);
+        $creditNote = str_contains($xml, '<CreditNote xmlns=');
 
-        $previous = libxml_use_internal_errors(true);
-        libxml_set_external_entity_loader(
-            static fn (?string $public, string $system): ?string => str_contains($system, '://') ? null : $system,
-        );
-
-        try {
-            $valid = $document->schemaValidate(Fixtures::ublSchema($root->localName === 'CreditNote'));
-            $errors = array_map(
-                static fn (LibXMLError $error): string => sprintf('line %d: %s', $error->line, trim($error->message)),
-                libxml_get_errors(),
-            );
-        } finally {
-            libxml_clear_errors();
-            libxml_set_external_entity_loader(null);
-            libxml_use_internal_errors($previous);
-        }
-
-        self::assertTrue($valid, implode("\n", $errors));
+        self::assertSame([], Xsd::errors($xml, Fixtures::ublSchema($creditNote)));
     }
 
     public function test_text_content_survives_byte_exact(): void
     {
-        $invoice = self::hostileTextInvoice();
+        $invoice = InvoiceFactory::hostileText();
 
         $xml = (new UblWriter)->write($invoice);
         $read = (new UblReader)->read($xml)->invoice;
@@ -254,55 +224,6 @@ final class UblRoundTripTest extends TestCase
         $this->expectExceptionMessage('BG-22');
 
         (new UblWriter)->write(InvoiceFactory::mixedVat());
-    }
-
-    private static function hostileTextInvoice(): Invoice
-    {
-        $invoice = TotalsCalculator::complete(InvoiceFactory::mixedVat());
-        $text = self::HOSTILE_TEXT;
-
-        $seller = $invoice->seller;
-        $line = $invoice->lines[0];
-        $breakdown = $invoice->vatBreakdown;
-
-        return $invoice
-            ->withSeller(new Party(
-                name: $text,
-                tradingName: $text,
-                vatIdentifier: $seller->vatIdentifier,
-                address: new PostalAddress(country: $seller->address->country ?? throw new InvalidArgumentException, line1: $text, city: 'Budapest'),
-                contact: new Contact(name: $text, email: 'a&b@example.com'),
-            ))
-            ->withBuyer(new Party(name: $text, vatIdentifier: $invoice->buyer->vatIdentifier, address: $invoice->buyer->address))
-            ->withNotes([new Note(text: $text, subjectCode: TextSubjectCode::AAI), new Note(text: $text)])
-            ->withPaymentTerms($text)
-            ->withLines([
-                new InvoiceLine(
-                    id: $line->id,
-                    quantity: $line->quantity,
-                    unit: $line->unit,
-                    price: $line->price,
-                    item: new Item(name: $text, description: $text),
-                    vat: $line->vat,
-                    netAmount: $line->netAmount,
-                    note: $text,
-                    allowances: $line->allowances,
-                ),
-                ...array_slice($invoice->lines, 1),
-            ])
-            ->withVatBreakdown(array_map(
-                static fn (VatBreakdown $entry): VatBreakdown => $entry->exemptionReason === null
-                    ? $entry
-                    : new VatBreakdown(
-                        taxableAmount: $entry->taxableAmount,
-                        taxAmount: $entry->taxAmount,
-                        category: $entry->category,
-                        rate: $entry->rate,
-                        exemptionReason: $text,
-                        exemptionReasonCode: $entry->exemptionReasonCode,
-                    ),
-                $breakdown,
-            ));
     }
 
     private static function contents(string $file): string

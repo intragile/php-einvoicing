@@ -15,6 +15,8 @@ final class Fixtures
 
     private const UBL_SCHEMA_DIR = __DIR__.'/fixtures/official/ubl-2.1/xsd/maindoc';
 
+    private const CII_SCHEMA = __DIR__.'/fixtures/official/cii-d16b/CrossIndustryInvoice_100pD16B.xsd';
+
     private const STYLESHEETS = [
         'ubl' => 'EN16931-UBL-validation.xslt',
         'cii' => 'EN16931-CII-validation.xslt',
@@ -50,6 +52,14 @@ final class Fixtures
     public static function ublSchema(bool $creditNote): string
     {
         return self::UBL_SCHEMA_DIR.($creditNote ? '/UBL-CreditNote-2.1.xsd' : '/UBL-Invoice-2.1.xsd');
+    }
+
+    /**
+     * Absolute path of the UN/CEFACT Cross Industry Invoice D16B main schema.
+     */
+    public static function ciiSchema(): string
+    {
+        return self::CII_SCHEMA;
     }
 
     private static function syntaxDir(string $syntax): string

@@ -85,14 +85,55 @@ Redistribution is therefore allowed on two conditions, which this folder meets:
 
 Full policy: [OASIS IPR Policy](https://www.oasis-open.org/policies-guidelines/ipr/).
 
+## UN/CEFACT Cross Industry Invoice D16B schemas
+
+The files under `cii-d16b/` are unmodified copies of the UN/CEFACT Cross Industry Invoice D16B
+schemas (SCRDM subset, uncoupled code list modules), schema version 100.D16B of 10 October 2016.
+They are used only by the test suite, to validate written CII documents with
+`DOMDocument::schemaValidate()`. The CEN repository ships them at the same tag as the artefacts,
+in `cii/schema/D16B SCRDM (Subset)/uncoupled clm/CII/uncefact/data/standard/`; the four files
+form a closed set (they import only each other).
+
+| File | SHA-256 |
+|---|---|
+| `CrossIndustryInvoice_100pD16B.xsd` | `b9798aafcba039d0630f0015ffae5092a1758bf924d19d97b6bf0bf9d95f22a0` |
+| `CrossIndustryInvoice_QualifiedDataType_100pD16B.xsd` | `a39e0662c31fbdca22237118d6b6bbfa16f69efbd1ee5b23787366349c5b924d` |
+| `CrossIndustryInvoice_ReusableAggregateBusinessInformationEntity_100pD16B.xsd` | `cc682d67791ffe16c45320619ff089a1c8f3ad22691fc426e4056f2e67909fe0` |
+| `CrossIndustryInvoice_UnqualifiedDataType_100pD16B.xsd` | `5d4ce8a6445caa4b7691f6fba6ad08e312e6a853cd3a422666d121ee2d13ef8c` |
+
+Source: `https://raw.githubusercontent.com/ConnectingEurope/eInvoicing-EN16931/validation-1.3.17/cii/schema/D16B%20SCRDM%20(Subset)/uncoupled%20clm/CII/uncefact/data/standard/<file>`.
+The files are not covered by this package's MIT licence.
+
+### Licence
+
+Each schema file carries "Copyright (C) UN/CEFACT (2016). All Rights Reserved." followed by this
+permission:
+
+> This document and translations of it may be copied and furnished to others, and derivative works
+> that comment on or otherwise explain it or assist in its implementation may be prepared, copied,
+> published and distributed, in whole or in part, without restriction of any kind, provided that
+> the above copyright notice and this paragraph are included on all such copies and derivative
+> works. However, this document itself may not be modified in any way, such as by removing the
+> copyright notice or references to UN/CEFACT, [...]
+>
+> The limited permissions granted above are perpetual and will not be revoked by UN/CEFACT or its
+> successors or assigns.
+
+Redistribution is therefore allowed on two conditions, which this folder meets:
+
+- **Unmodified:** the files are byte-for-byte copies, verified against the sums above.
+- **Notice included:** the copyright notice and the permission paragraph are part of every file,
+  so no separate notice file is needed.
+
 ## Refreshing
 
 ```bash
 php bin/fetch-official.php
 ```
 
-The script downloads the two release archives, the licence text and the UBL 2.1 package,
-verifies each against the SHA-256 sums above, and rebuilds `cen-1.3.17/` and `ubl-2.1/`.
+The script downloads the two release archives, the licence text, the UBL 2.1 package and the CII
+D16B schemas, verifies each against the SHA-256 sums above, and rebuilds `cen-1.3.17/`,
+`ubl-2.1/` and `cii-d16b/`.
 Verified downloads are cached in the git-ignored `.cache/official/`, so repeated runs work
 offline and produce the same files. It
 needs the `zip` extension.

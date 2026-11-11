@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Support;
 
 use DateTimeImmutable;
+use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
 use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
+use IntrAgile\EInvoicing\CodeList\TextSubjectCode;
 use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\CodeList\VatExemptionReason;
+use IntrAgile\EInvoicing\Model\Contact;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentCharge;
 use IntrAgile\EInvoicing\Model\Identifier;
@@ -19,17 +22,25 @@ use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Model\Item;
 use IntrAgile\EInvoicing\Model\LineAllowance;
 use IntrAgile\EInvoicing\Model\LineVat;
+use IntrAgile\EInvoicing\Model\Note;
 use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\PostalAddress;
 use IntrAgile\EInvoicing\Model\Price;
 use IntrAgile\EInvoicing\Model\ProcessControl;
 use IntrAgile\EInvoicing\Model\VatBreakdown;
+use InvalidArgumentException;
 
 /**
  * Shared, internally consistent invoices for tests.
  */
 final class InvoiceFactory
 {
+    /**
+     * Text that must survive a write and a read byte for byte: markup characters, quotes,
+     * Hungarian letters, an emoji, line breaks and surrounding whitespace.
+     */
+    public const HOSTILE_TEXT = "  Kft. & Co. <b>\"quoted\"</b> 'apostrophe' őŐűŰ 😀\nsecond line\n  ";
+
     /**
      * An invoice with one line per VAT situation that EN 16931 allows together: S 27 %, S 5 %,
      * E, AE, K and Z.
@@ -207,5 +218,58 @@ final class InvoiceFactory
                 ),
             ],
         );
+    }
+
+    /**
+     * The mixed VAT invoice, completed, with hostile text in names, notes, payment terms, item
+     * name and description, line note and exemption reasons.
+     */
+    public static function hostileText(): Invoice
+    {
+        $invoice = TotalsCalculator::complete(self::mixedVat());
+        $text = self::HOSTILE_TEXT;
+
+        $seller = $invoice->seller;
+        $line = $invoice->lines[0];
+        $breakdown = $invoice->vatBreakdown;
+
+        return $invoice
+            ->withSeller(new Party(
+                name: $text,
+                tradingName: $text,
+                vatIdentifier: $seller->vatIdentifier,
+                address: new PostalAddress(country: $seller->address->country ?? throw new InvalidArgumentException, line1: $text, city: 'Budapest'),
+                contact: new Contact(name: $text, email: 'a&b@example.com'),
+            ))
+            ->withBuyer(new Party(name: $text, vatIdentifier: $invoice->buyer->vatIdentifier, address: $invoice->buyer->address))
+            ->withNotes([new Note(text: $text, subjectCode: TextSubjectCode::AAI), new Note(text: $text)])
+            ->withPaymentTerms($text)
+            ->withLines([
+                new InvoiceLine(
+                    id: $line->id,
+                    quantity: $line->quantity,
+                    unit: $line->unit,
+                    price: $line->price,
+                    item: new Item(name: $text, description: $text),
+                    vat: $line->vat,
+                    netAmount: $line->netAmount,
+                    note: $text,
+                    allowances: $line->allowances,
+                ),
+                ...array_slice($invoice->lines, 1),
+            ])
+            ->withVatBreakdown(array_map(
+                static fn (VatBreakdown $entry): VatBreakdown => $entry->exemptionReason === null
+                    ? $entry
+                    : new VatBreakdown(
+                        taxableAmount: $entry->taxableAmount,
+                        taxAmount: $entry->taxAmount,
+                        category: $entry->category,
+                        rate: $entry->rate,
+                        exemptionReason: $text,
+                        exemptionReasonCode: $entry->exemptionReasonCode,
+                    ),
+                $breakdown,
+            ));
     }
 }
