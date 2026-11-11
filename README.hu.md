@@ -12,7 +12,7 @@ számlamodell, EN 16931 szerinti összesítés, valamint a szabványhoz tartozó
 
 ## Mi van benne, és mi nincs
 
-Ma már megvan:
+Jelenleg tartalmazza:
 
 - A teljes EN 16931-1:2017+A1 szemantikai modell változtathatatlan PHP osztályokként
   ([fogalom–osztály tábla](docs/MODEL.md)).
@@ -38,11 +38,15 @@ composer require intragile/php-einvoicing
 ## Számla létrehozása
 
 A gyakori eset rövid. Az összegeket, mennyiségeket, árakat és kulcsokat szövegként vagy
-egész számként kell megadni, és `Brick\Math\BigDecimal` formában tárolódnak; `float` átadása
-típushiba.
+egész számként kell megadni, és `Brick\Math\BigDecimal` formában tárolódnak. Mindig kapcsolja be a
+`declare(strict_types=1)`-et: azzal a `float` átadása `TypeError`; nélküle a PHP csendben
+átalakítja az értéket.
 
 ```php
-use Brick\Math\BigDecimal;
+<?php
+
+declare(strict_types=1);
+
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\CodeList\{CountryCode, CurrencyCode, InvoiceTypeCode, UnitCode, VatCategory};
 use IntrAgile\EInvoicing\Model\{Invoice, InvoiceLine, Item, LineVat, Party, PostalAddress, Price};
@@ -114,16 +118,16 @@ entitás-kibontásos támadás (billion laughs) így nem lehetséges. Sérülék
 
 - A hivatalos CEN mintaszámlák
   ([1.3.17-es kiadás](https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/tag/validation-1.3.17))
-  olvasását, írását és körbejárását a tesztcsomag ellenőrzi, szintaxisok közötti olvasással
-  együtt.
+  olvasását, írását és oda-vissza átalakítását a tesztcsomag ellenőrzi, a szintaxisok közötti
+  olvasással együtt.
 - Egy opcionális tesztcsoport a hivatalos CEN validációs stíluslapokat (XSLT 2.0) futtatja
-  SaxonC-HE-vel Dockerben, orákulumként: az írók által előállított dokumentumoknak át kell
-  menniük a hivatalos szabályokon, magát az orákulumot pedig az ellenőrzi, hogy szándékosan
-  elrontott végösszegre szabályt vált ki (BR-CO-16). A `docker/oracle/run.sh 8.5` felépíti a képet és lefuttatja a csoportot;
-  Docker és telepített `vendor/` kell hozzá. Ez csak fejlesztői eszköz, nem része a
-  telepített csomagnak.
+  SaxonC-HE-vel Dockerben, referencia-ellenőrzőként (oracle): az írók által előállított
+  dokumentumoknak át kell menniük a hivatalos szabályokon, magát az ellenőrzőt pedig az
+  ellenőrzi, hogy szándékosan elrontott végösszegre szabályt vált ki (BR-CO-16). A
+  `docker/oracle/run.sh 8.5` felépíti a képet és lefuttatja a csoportot; Docker és telepített
+  `vendor/` kell hozzá. Ez csak fejlesztői eszköz, nem része a telepített csomagnak.
 - A CI PHPUnitot és PHPStant (max szint) futtat PHP 8.3, 8.4 és 8.5 alatt, továbbá Pintet és
-  az orákulumot.
+  az oracle-csoportot.
 
 ## Fejlesztés
 
@@ -139,7 +143,7 @@ php bin/generate-model-doc.php   # újragenerálja a docs/MODEL.md-t
 
 A könyvtár MIT licencű ([LICENSE](LICENSE)). A tesztekben használt CEN validációs csomag
 EUPL v1.2 licenc alatt áll, nem része a telepített csomagnak, leírása:
-[tests/fixtures/official/SOURCE.md](tests/fixtures/official/SOURCE.md). A `src/CodeList/`
+[tests/fixtures/official/SOURCE.md](https://github.com/intragile/php-einvoicing/blob/main/tests/fixtures/official/SOURCE.md). A `src/CodeList/`
 kódlistaértékei ebből származnak; a forrásmegjelölést lásd:
 [src/CodeList/SOURCE.md](src/CodeList/SOURCE.md).
 

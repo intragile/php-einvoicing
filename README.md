@@ -38,10 +38,14 @@ composer require intragile/php-einvoicing
 ## Create an invoice
 
 The common case is short. Amounts, quantities, prices and rates are given as strings or
-integers and held as `Brick\Math\BigDecimal`; passing a `float` is a type error.
+integers and held as `Brick\Math\BigDecimal`. Always enable `declare(strict_types=1)`: with it,
+passing a `float` is a `TypeError`; without it PHP coerces the value silently.
 
 ```php
-use Brick\Math\BigDecimal;
+<?php
+
+declare(strict_types=1);
+
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\CodeList\{CountryCode, CurrencyCode, InvoiceTypeCode, UnitCode, VatCategory};
 use IntrAgile\EInvoicing\Model\{Invoice, InvoiceLine, Item, LineVat, Party, PostalAddress, Price};
@@ -132,7 +136,7 @@ php bin/generate-model-doc.php   # regenerates docs/MODEL.md
 
 The library is MIT licensed ([LICENSE](LICENSE)). The CEN validation artefacts used in tests
 are licensed under the EUPL v1.2, are not part of the installed package, and are described in
-[tests/fixtures/official/SOURCE.md](tests/fixtures/official/SOURCE.md). The code-list values in
+[tests/fixtures/official/SOURCE.md](https://github.com/intragile/php-einvoicing/blob/main/tests/fixtures/official/SOURCE.md). The code-list values in
 `src/CodeList/` are derived from those artefacts; see
 [src/CodeList/SOURCE.md](src/CodeList/SOURCE.md) for the attribution.
 
