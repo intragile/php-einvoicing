@@ -240,7 +240,6 @@ final class TotalsCalculatorTest extends TestCase
             ['AE', '0', '360.00', '0.00'],
             ['K', '0', '460.00', '0.00'],
             ['Z', '0', '30.00', '0.00'],
-            ['O', '', '75.00', '0.00'],
         ], $this->breakdownRows($invoice));
 
         $reasons = array_map(static fn (VatBreakdown $b): ?string => $b->exemptionReason, $invoice->vatBreakdown);
@@ -251,12 +250,30 @@ final class TotalsCalculatorTest extends TestCase
             'Reverse charge',
             'Intra-community supply',
             null,
-            'Not subject to VAT',
         ], $reasons);
 
-        self::assertSame('2375.00', (string) $this->totalsOf($invoice)->sumOfLineNetAmounts);
+        self::assertSame('2300.00', (string) $this->totalsOf($invoice)->sumOfLineNetAmounts);
         self::assertSame('299.50', (string) $this->totalsOf($invoice)->totalVat);
-        self::assertSame('2674.50', (string) $this->totalsOf($invoice)->amountDue);
+        self::assertSame('2599.50', (string) $this->totalsOf($invoice)->amountDue);
+        self::assertSame([], TotalsCalculator::check($invoice));
+    }
+
+    public function test_not_subject_to_vat_invoice_gets_a_single_rateless_group(): void
+    {
+        $invoice = TotalsCalculator::complete(InvoiceFactory::notSubjectToVat());
+        $totals = $this->totalsOf($invoice);
+
+        self::assertSame([['O', '', '216.00', '0.00']], $this->breakdownRows($invoice));
+        self::assertSame('Not subject to VAT', $invoice->vatBreakdown[0]->exemptionReason);
+        self::assertSame('211.00', (string) $totals->sumOfLineNetAmounts);
+        self::assertNull($totals->sumOfAllowances);
+        self::assertSame('5.00', (string) $totals->sumOfCharges);
+        self::assertSame('216.00', (string) $totals->totalWithoutVat);
+        self::assertSame('0.00', (string) $totals->totalVat);
+        self::assertSame('216.00', (string) $totals->totalWithVat);
+        self::assertSame('216.00', (string) $totals->amountDue);
+        self::assertNull($invoice->seller->vatIdentifier);
+        self::assertNull($invoice->buyer->vatIdentifier);
         self::assertSame([], TotalsCalculator::check($invoice));
     }
 
@@ -305,26 +322,61 @@ final class TotalsCalculatorTest extends TestCase
         yield 'BT-108' => [['sumOfCharges' => '49.99'], ['BR-CO-12', 'BR-CO-13']];
         yield 'BT-109' => [['totalWithoutVat' => '1150.01'], ['BR-CO-13', 'BR-CO-15']];
         yield 'BT-110' => [['totalVat' => '255.49'], ['BR-CO-14', 'BR-CO-15']];
+        yield 'BT-110 missing' => [['totalVat' => null], ['BR-CO-14', 'BR-CO-15']];
         yield 'BT-112' => [['totalWithVat' => '1405.49'], ['BR-CO-15', 'BR-CO-16']];
         yield 'BT-113 without matching BT-115' => [['paidAmount' => '5.50'], ['BR-CO-16']];
         yield 'BT-113 and BT-114 consistent' => [['paidAmount' => '5.50', 'roundingAmount' => '0.30', 'amountDue' => '1400.30'], []];
+        yield 'BT-114 only, consistent' => [['roundingAmount' => '0.30', 'amountDue' => '1405.80'], []];
+        yield 'BT-114 only, inconsistent' => [['roundingAmount' => '0.30', 'amountDue' => '1405.50'], ['BR-CO-16']];
     }
 
-    public function test_check_reports_br_co_17_and_br_co_14_for_a_wrong_group_vat(): void
+    public function test_check_reports_br_co_14_but_tolerates_a_one_cent_group_vat_difference(): void
     {
         $invoice = TotalsCalculator::complete($this->invoiceWithAllowanceAndCharge());
         $breakdown = $invoice->vatBreakdown;
         $breakdown[0] = new VatBreakdown(taxableAmount: '900.00', taxAmount: '243.01', category: VatCategory::StandardRate, rate: '27');
 
-        self::assertSame(['BR-CO-14', 'BR-CO-17'], TotalsCalculator::check($invoice->withVatBreakdown($breakdown)));
+        self::assertSame(['BR-CO-14'], TotalsCalculator::check($invoice->withVatBreakdown($breakdown)));
     }
 
-    public function test_check_reports_br_co_17_for_vat_on_a_category_without_rate(): void
+    /**
+     * The CEN 1.3.17 UBL artefact accepts |BT-117| within less than 1.00 of
+     * round(|BT-116| x BT-119 / 100); 900.00 at 27 % gives 243.00.
+     *
+     * @param  list<string>  $expected
+     */
+    #[DataProvider('br17Tolerance')]
+    public function test_br_co_17_mirrors_the_official_tolerance(string $taxAmount, ?string $rate, VatCategory $category, array $expected): void
     {
-        $invoice = $this->invoice([$this->line('1', '1', '60.00', VatCategory::NotSubjectToVat, null)])
-            ->withVatBreakdown([new VatBreakdown(taxableAmount: '60.00', taxAmount: '1.00', category: VatCategory::NotSubjectToVat)]);
+        $invoice = $this->invoice([$this->line('1', '1', '900.00', $category, $rate)])
+            ->withVatBreakdown([new VatBreakdown(taxableAmount: '900.00', taxAmount: $taxAmount, category: $category, rate: $rate)]);
 
-        self::assertSame(['BR-CO-17'], TotalsCalculator::check($invoice));
+        self::assertSame($expected, TotalsCalculator::check($invoice));
+    }
+
+    /**
+     * @return iterable<string, array{string, string|null, VatCategory, list<string>}>
+     */
+    public static function br17Tolerance(): iterable
+    {
+        $s = VatCategory::StandardRate;
+        $o = VatCategory::NotSubjectToVat;
+        $z = VatCategory::ZeroRated;
+
+        yield 'exact' => ['243.00', '27', $s, []];
+        yield '+0.50 tolerated' => ['243.50', '27', $s, []];
+        yield '-0.50 tolerated' => ['242.50', '27', $s, []];
+        yield '+0.99 tolerated' => ['243.99', '27', $s, []];
+        yield '+1.00 reported' => ['244.00', '27', $s, ['BR-CO-17']];
+        yield '+1.01 reported' => ['244.01', '27', $s, ['BR-CO-17']];
+        yield '-1.01 reported' => ['241.99', '27', $s, ['BR-CO-17']];
+        yield 'sign ignored' => ['-243.00', '27', $s, []];
+        yield 'no rate, 0.49 tolerated' => ['0.49', null, $o, []];
+        yield 'no rate, -0.50 tolerated' => ['-0.50', null, $o, []];
+        yield 'no rate, 0.50 reported' => ['0.50', null, $o, ['BR-CO-17']];
+        yield 'no rate, 1.00 reported' => ['1.00', null, $o, ['BR-CO-17']];
+        yield 'zero rate, 0.49 tolerated' => ['0.49', '0', $z, []];
+        yield 'zero rate, 0.50 reported' => ['0.50', '0', $z, ['BR-CO-17']];
     }
 
     public function test_check_without_totals_only_evaluates_the_breakdown(): void

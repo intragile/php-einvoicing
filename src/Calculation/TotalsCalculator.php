@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Calculation;
 
 use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Model\DocumentTotals;
 use IntrAgile\EInvoicing\Model\Invoice;
@@ -47,8 +48,12 @@ final class TotalsCalculator
     /**
      * Returns the ids of the BR-CO calculation rules (BR-CO-10 to BR-CO-17) the invoice violates.
      *
-     * Each rule is evaluated on the values as given. A line without BT-131 counts with its computed
-     * net amount. Without BG-22 only BR-CO-17 is evaluated.
+     * Each rule mirrors the executable assertion of the CEN validation artefacts 1.3.17 for UBL
+     * (EN16931-UBL-validation.xslt), so check() and the official validator give the same verdict.
+     * That includes the artefact's tolerances, which are looser than the rule texts. XPath round()
+     * rounds half towards positive infinity, so the artefact's round(x * 100) div 100 is mirrored
+     * with RoundingMode::HALF_CEILING. A line without BT-131 counts with its computed net amount.
+     * Without BG-22 only BR-CO-17 is evaluated.
      *
      * @return list<string>
      */
@@ -58,69 +63,159 @@ final class TotalsCalculator
         $totals = $invoice->totals;
 
         if ($totals !== null) {
-            $zero = BigDecimal::zero();
-            $lineSum = $zero;
+            $lineSum = BigDecimal::zero();
             foreach ($invoice->lines as $line) {
                 $lineSum = $lineSum->plus($line->netAmount ?? self::lineNetAmount($line));
             }
-            $allowanceSum = self::allowanceSum($invoice);
-            $chargeSum = self::chargeSum($invoice);
-            $taxSum = $zero;
+            $taxSum = BigDecimal::zero();
             foreach ($invoice->vatBreakdown as $entry) {
                 $taxSum = $taxSum->plus($entry->taxAmount);
             }
 
-            // BR-CO-10: BT-106 = sum of BT-131.
-            if (! $totals->sumOfLineNetAmounts->isEqualTo(Rounding::amount($lineSum))) {
-                $violations[] = 'BR-CO-10';
-            }
-
-            // BR-CO-11: BT-107 = sum of BT-92; absent only when there are no document allowances.
-            if (! self::matchesSum($totals->sumOfAllowances, $allowanceSum)) {
-                $violations[] = 'BR-CO-11';
-            }
-
-            // BR-CO-12: BT-108 = sum of BT-99; absent only when there are no document charges.
-            if (! self::matchesSum($totals->sumOfCharges, $chargeSum)) {
-                $violations[] = 'BR-CO-12';
-            }
-
-            // BR-CO-13: BT-109 = BT-106 - BT-107 + BT-108.
-            $expectedWithoutVat = $totals->sumOfLineNetAmounts
-                ->minus($totals->sumOfAllowances ?? $zero)
-                ->plus($totals->sumOfCharges ?? $zero);
-            if (! $totals->totalWithoutVat->isEqualTo(Rounding::amount($expectedWithoutVat))) {
-                $violations[] = 'BR-CO-13';
-            }
-
-            // BR-CO-14: BT-110 = sum of BT-117.
-            if ($invoice->vatBreakdown !== [] && ! ($totals->totalVat ?? $zero)->isEqualTo(Rounding::amount($taxSum))) {
-                $violations[] = 'BR-CO-14';
-            }
-
-            // BR-CO-15: BT-112 = BT-109 + BT-110.
-            if (! $totals->totalWithVat->isEqualTo(Rounding::amount($totals->totalWithoutVat->plus($totals->totalVat ?? $zero)))) {
-                $violations[] = 'BR-CO-15';
-            }
-
-            // BR-CO-16: BT-115 = BT-112 - BT-113 + BT-114.
-            $expectedDue = $totals->totalWithVat
-                ->minus($totals->paidAmount ?? $zero)
-                ->plus($totals->roundingAmount ?? $zero);
-            if (! $totals->amountDue->isEqualTo(Rounding::amount($expectedDue))) {
-                $violations[] = 'BR-CO-16';
+            $rules = [
+                'BR-CO-10' => self::brCo10($totals, $lineSum),
+                'BR-CO-11' => self::brCo11And12($totals->sumOfAllowances, self::allowanceSum($invoice)),
+                'BR-CO-12' => self::brCo11And12($totals->sumOfCharges, self::chargeSum($invoice)),
+                'BR-CO-13' => self::brCo13($totals),
+                'BR-CO-14' => self::brCo14($totals, $invoice->vatBreakdown !== [], $taxSum),
+                'BR-CO-15' => self::brCo15($totals),
+                'BR-CO-16' => self::brCo16($totals),
+            ];
+            foreach ($rules as $rule => $satisfied) {
+                if (! $satisfied) {
+                    $violations[] = $rule;
+                }
             }
         }
 
-        // BR-CO-17: BT-117 = BT-116 x BT-119 / 100, rounded to two decimals; zero without a rate.
         foreach ($invoice->vatBreakdown as $entry) {
-            if (! $entry->taxAmount->isEqualTo(self::taxAmount($entry->taxableAmount, $entry->rate))) {
+            if (! self::brCo17($entry)) {
                 $violations[] = 'BR-CO-17';
                 break;
             }
         }
 
         return $violations;
+    }
+
+    /**
+     * BR-CO-10, UBL artefact: BT-106 = round(sum(BT-131) * 100) div 100.
+     */
+    private static function brCo10(DocumentTotals $totals, BigDecimal $lineSum): bool
+    {
+        return $totals->sumOfLineNetAmounts->isEqualTo(self::xpathRound2($lineSum));
+    }
+
+    /**
+     * BR-CO-11 / BR-CO-12, UBL artefact: BT-107 (BT-108) = round(sum(BT-92 (BT-99)) * 100) div 100,
+     * or neither the total nor any document allowance (charge) is present. A total of zero without
+     * allowances (charges) passes, since the sum of nothing is zero.
+     */
+    private static function brCo11And12(?BigDecimal $given, ?BigDecimal $sum): bool
+    {
+        if ($given === null) {
+            return $sum === null;
+        }
+
+        return $given->isEqualTo(self::xpathRound2($sum ?? BigDecimal::zero()));
+    }
+
+    /**
+     * BR-CO-13, UBL artefact: BT-109 = round((BT-106 + BT-108 - BT-107) * 100) div 100, with an absent
+     * BT-107 or BT-108 left out; with both absent BT-109 = BT-106 exactly.
+     */
+    private static function brCo13(DocumentTotals $totals): bool
+    {
+        $allowances = $totals->sumOfAllowances;
+        $charges = $totals->sumOfCharges;
+
+        if ($allowances === null && $charges === null) {
+            return $totals->totalWithoutVat->isEqualTo($totals->sumOfLineNetAmounts);
+        }
+
+        $expected = $totals->sumOfLineNetAmounts
+            ->minus($allowances ?? BigDecimal::zero())
+            ->plus($charges ?? BigDecimal::zero());
+
+        return $totals->totalWithoutVat->isEqualTo(self::xpathRound2($expected));
+    }
+
+    /**
+     * BR-CO-14, UBL artefact: BT-110 = round(sum(BT-117) * 100) div 100, or there is no BG-23.
+     * An absent BT-110 next to a VAT breakdown fails, as xs:decimal() of nothing equals nothing.
+     */
+    private static function brCo14(DocumentTotals $totals, bool $hasBreakdown, BigDecimal $taxSum): bool
+    {
+        if (! $hasBreakdown) {
+            return true;
+        }
+
+        return $totals->totalVat !== null && $totals->totalVat->isEqualTo(self::xpathRound2($taxSum));
+    }
+
+    /**
+     * BR-CO-15, UBL artefact: exactly one BT-110 in the invoice currency, and
+     * BT-112 = round((BT-109 + BT-110) * 100) div 100.
+     *
+     * The CII artefact additionally accepts BT-112 = BT-109 whatever BT-110 is; this mirrors UBL.
+     */
+    private static function brCo15(DocumentTotals $totals): bool
+    {
+        if ($totals->totalVat === null) {
+            return false;
+        }
+
+        return $totals->totalWithVat->isEqualTo(self::xpathRound2($totals->totalWithoutVat->plus($totals->totalVat)));
+    }
+
+    /**
+     * BR-CO-16, UBL artefact, by presence of BT-113 (paid) and BT-114 (rounding):
+     * neither: BT-115 = BT-112 exactly; paid only: BT-115 = round(BT-112 - BT-113);
+     * rounding only: round(BT-115 - BT-114) = BT-112; both: round(BT-115 - BT-114) = round(BT-112 - BT-113),
+     * each round() to two decimals.
+     */
+    private static function brCo16(DocumentTotals $totals): bool
+    {
+        $paid = $totals->paidAmount;
+        $rounding = $totals->roundingAmount;
+        $due = $totals->amountDue;
+        $withVat = $totals->totalWithVat;
+
+        $left = $rounding === null ? $due : self::xpathRound2($due->minus($rounding));
+        if ($paid === null) {
+            return $left->isEqualTo($withVat);
+        }
+
+        return $left->isEqualTo(self::xpathRound2($withVat->minus($paid)));
+    }
+
+    /**
+     * BR-CO-17, UBL artefact, which is looser than the rule text:
+     * - rate absent, or round(BT-119) = 0: round(BT-117) = 0, i.e. -0.50 <= BT-117 < 0.50;
+     * - otherwise: | |BT-117| - round(|BT-116| x BT-119 / 100 * 100) div 100 | < 1, with signs ignored.
+     *
+     * The CII artefact accepts a difference of exactly 1 (<= instead of <); this mirrors UBL.
+     */
+    private static function brCo17(VatBreakdown $entry): bool
+    {
+        $rate = $entry->rate;
+        if ($rate === null || $rate->toScale(0, RoundingMode::HALF_CEILING)->isZero()) {
+            return $entry->taxAmount->toScale(0, RoundingMode::HALF_CEILING)->isZero();
+        }
+
+        $product = $entry->taxableAmount->abs()->multipliedBy($rate);
+        $expected = self::xpathRound2($product->dividedBy(100, $product->getScale() + 2));
+        $tax = $entry->taxAmount->abs();
+
+        return $tax->minus(1)->isLessThan($expected) && $tax->plus(1)->isGreaterThan($expected);
+    }
+
+    /**
+     * XPath round($x * 10 * 10) div 100: two decimals, half towards positive infinity.
+     */
+    private static function xpathRound2(BigDecimal $value): BigDecimal
+    {
+        return $value->toScale(Rounding::SCALE, RoundingMode::HALF_CEILING);
     }
 
     /**
@@ -335,18 +430,6 @@ final class TotalsCalculator
         }
 
         return $sum;
-    }
-
-    /**
-     * A given BT-107/BT-108 must equal the rounded sum; when nothing is summed it may be absent or zero.
-     */
-    private static function matchesSum(?BigDecimal $given, ?BigDecimal $sum): bool
-    {
-        if ($sum === null) {
-            return $given === null || $given->isZero();
-        }
-
-        return $given !== null && $given->isEqualTo(Rounding::amount($sum));
     }
 
     private static function groupKey(VatCategory $category, ?BigDecimal $rate): string
