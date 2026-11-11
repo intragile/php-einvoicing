@@ -260,7 +260,7 @@ final class UblReaderTest extends TestCase
         $xml = str_replace('unitCode="H87">2.5000', 'unitCode="BOGUS">2.5000', self::contents(self::FIXTURES.'/all-terms-invoice.xml'));
 
         $this->expectException(UnsupportedDocument::class);
-        $this->expectExceptionMessage('BT-130');
+        $this->expectExceptionMessage("Invalid code 'BOGUS' for required BT-130 at /Invoice/cac:InvoiceLine/cbc:InvoicedQuantity/@unitCode.");
 
         (new UblReader)->read($xml);
     }
@@ -296,6 +296,28 @@ final class UblReaderTest extends TestCase
         self::assertContains('/Invoice/cac:PaymentMeans[3]', $result->ignored);
     }
 
+    public function test_reads_large_invoice_in_linear_time(): void
+    {
+        $reader = new UblReader;
+        $reader->read(self::invoiceWithLines(100));
+
+        $started = hrtime(true);
+        $result = $reader->read(self::invoiceWithLines(5000));
+        $fiveThousand = (hrtime(true) - $started) / 1e9;
+
+        $started = hrtime(true);
+        $reader->read(self::invoiceWithLines(10000));
+        $tenThousand = (hrtime(true) - $started) / 1e9;
+
+        self::assertCount(5000, $result->invoice->lines);
+        self::assertLessThan(2.0, $fiveThousand, sprintf('5,000 lines took %.2f s.', $fiveThousand));
+        self::assertLessThan(3 * $fiveThousand, $tenThousand, sprintf(
+            'Doubling the lines grew the time from %.2f s to %.2f s.',
+            $fiveThousand,
+            $tenThousand,
+        ));
+    }
+
     public function test_unknown_root_is_unsupported(): void
     {
         $this->expectException(UnsupportedDocument::class);
@@ -308,7 +330,7 @@ final class UblReaderTest extends TestCase
         $xml = str_replace('<cbc:ID>INV-2026-001</cbc:ID>', '', self::contents(self::FIXTURES.'/all-terms-invoice.xml'));
 
         $this->expectException(UnsupportedDocument::class);
-        $this->expectExceptionMessage('BT-1');
+        $this->expectExceptionMessage('Missing required BT-1 (cbc:ID) in /Invoice.');
 
         (new UblReader)->read($xml);
     }
@@ -540,6 +562,23 @@ final class UblReaderTest extends TestCase
     private function readOfficial(string $name): ReadResult
     {
         return (new UblReader)->read(self::contents(self::officialPath($name)));
+    }
+
+    /**
+     * guide-example1 with its first line repeated to the given count, built in memory.
+     */
+    private static function invoiceWithLines(int $count): string
+    {
+        $xml = self::contents(self::officialPath('guide-example1.xml'));
+        $start = strpos($xml, '<cac:InvoiceLine>');
+        $end = strpos($xml, '</cac:InvoiceLine>');
+        $last = strrpos($xml, '</cac:InvoiceLine>');
+        self::assertNotFalse($start);
+        self::assertNotFalse($end);
+        self::assertNotFalse($last);
+        $line = substr($xml, $start, $end + strlen('</cac:InvoiceLine>') - $start);
+
+        return substr($xml, 0, $start).str_repeat($line, $count).substr($xml, $last + strlen('</cac:InvoiceLine>'));
     }
 
     private static function officialPath(string $name): string

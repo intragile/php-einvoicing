@@ -45,14 +45,27 @@ final class UblDocument
 
     private readonly DOMXPath $xpath;
 
-    /** @var array<string, true> Node paths of used elements and their ancestors. */
+    /**
+     * Used elements and their ancestors, keyed by object id. Holding the wrappers keeps their
+     * identity stable, because ext-dom hands out the same object for a node while one is alive.
+     *
+     * @var array<int, DOMElement>
+     */
     private array $touched = [];
 
-    /** @var array<string, true> Node paths of elements already reported with a reason. */
+    /** @var array<int, DOMElement> Elements already reported with a reason, keyed by object id. */
     private array $handled = [];
 
-    /** @var list<string> */
+    /** @var list<array{DOMElement, ?string, string}> Element, attribute and reason of each rejection. */
     private array $reasons = [];
+
+    /**
+     * Path segment of each child, per parent, keyed by object id; parents and children are held
+     * so the ids stay unique.
+     *
+     * @var array<int, array{DOMElement, array<int, array{DOMElement, string}>}>
+     */
+    private array $segments = [];
 
     public function __construct(DOMDocument $document)
     {
@@ -101,10 +114,18 @@ final class UblDocument
         return $this->all($expression, $context)[0] ?? null;
     }
 
+    /**
+     * Marks the element and its ancestors as used. The walk stops at the first ancestor already
+     * marked, whose own ancestors are marked too, so marking costs amortised O(1) per element.
+     */
     public function use(DOMElement $element): void
     {
         for ($node = $element; $node instanceof DOMElement; $node = $node->parentNode) {
-            $this->touched[$node->getNodePath() ?? ''] = true;
+            $id = spl_object_id($node);
+            if (isset($this->touched[$id])) {
+                return;
+            }
+            $this->touched[$id] = $node;
         }
     }
 
@@ -277,8 +298,8 @@ final class UblDocument
      */
     public function reject(DOMElement $element, string $reason, ?string $attribute = null): void
     {
-        $this->reasons[] = sprintf('%s%s (%s)', $this->path($element), $attribute === null ? '' : '/@'.$attribute, $reason);
-        $this->handled[$element->getNodePath() ?? ''] = true;
+        $this->reasons[] = [$element, $attribute, $reason];
+        $this->handled[spl_object_id($element)] = $element;
         if ($element->parentNode instanceof DOMElement) {
             $this->use($element->parentNode);
         }
@@ -286,12 +307,14 @@ final class UblDocument
 
     /**
      * XPath-like path with conventional prefixes and a position only where siblings share a name.
+     *
+     * Sibling positions are computed once per parent, so a path costs O(depth) after that.
      */
     public function path(DOMElement $element): string
     {
         $segments = [];
         for ($node = $element; $node instanceof DOMElement; $node = $node->parentNode) {
-            if ($node === $this->root) {
+            if ($node->isSameNode($this->root)) {
                 $segments[] = (string) $node->localName;
                 break;
             }
@@ -308,7 +331,10 @@ final class UblDocument
      */
     public function ignored(): array
     {
-        $ignored = $this->reasons;
+        $ignored = [];
+        foreach ($this->reasons as [$element, $attribute, $reason]) {
+            $ignored[] = sprintf('%s%s (%s)', $this->path($element), $attribute === null ? '' : '/@'.$attribute, $reason);
+        }
         $this->walk($this->root, $ignored);
 
         return $ignored;
@@ -319,15 +345,12 @@ final class UblDocument
      */
     private function walk(DOMElement $element, array &$ignored): void
     {
-        foreach ($element->childNodes as $child) {
-            if (! $child instanceof DOMElement) {
+        for ($child = $element->firstElementChild; $child !== null; $child = $child->nextElementSibling) {
+            $id = spl_object_id($child);
+            if (isset($this->handled[$id])) {
                 continue;
             }
-            $key = $child->getNodePath() ?? '';
-            if (isset($this->handled[$key])) {
-                continue;
-            }
-            if (isset($this->touched[$key])) {
+            if (isset($this->touched[$id])) {
                 $this->walk($child, $ignored);
 
                 continue;
@@ -338,26 +361,49 @@ final class UblDocument
 
     private function segment(DOMElement $element): string
     {
+        $parent = $element->parentNode;
+        if (! $parent instanceof DOMElement) {
+            return $this->name($element);
+        }
+
+        $parentId = spl_object_id($parent);
+        if (! isset($this->segments[$parentId])) {
+            $this->segments[$parentId] = [$parent, $this->childSegments($parent)];
+        }
+
+        return $this->segments[$parentId][1][spl_object_id($element)][1] ?? $this->name($element);
+    }
+
+    /**
+     * Segments of all child elements in one pass over the children, keyed by object id.
+     *
+     * @return array<int, array{DOMElement, string}>
+     */
+    private function childSegments(DOMElement $parent): array
+    {
+        $children = [];
+        $counts = [];
+        for ($child = $parent->firstElementChild; $child !== null; $child = $child->nextElementSibling) {
+            $name = $this->name($child);
+            $counts[$name] = ($counts[$name] ?? 0) + 1;
+            $children[] = [$child, $name, $counts[$name]];
+        }
+
+        $segments = [];
+        foreach ($children as [$child, $name, $position]) {
+            $segments[spl_object_id($child)] = [$child, $counts[$name] > 1 ? "{$name}[{$position}]" : $name];
+        }
+
+        return $segments;
+    }
+
+    private function name(DOMElement $element): string
+    {
         $namespace = (string) $element->namespaceURI;
         $local = (string) $element->localName;
         $prefix = self::PREFIXES[$namespace] ?? ($element->prefix !== '' ? $element->prefix : null);
-        $name = $prefix === null ? $local : $prefix.':'.$local;
 
-        $position = 0;
-        $count = 0;
-        $parent = $element->parentNode;
-        if ($parent !== null) {
-            foreach ($parent->childNodes as $sibling) {
-                if ($sibling instanceof DOMElement && $sibling->localName === $local && $sibling->namespaceURI === $element->namespaceURI) {
-                    $count++;
-                    if ($sibling->isSameNode($element)) {
-                        $position = $count;
-                    }
-                }
-            }
-        }
-
-        return $count > 1 ? "{$name}[{$position}]" : $name;
+        return $prefix === null ? $local : $prefix.':'.$local;
     }
 
     private function missing(string $expression, DOMNode $context, string $term): UnsupportedDocument
