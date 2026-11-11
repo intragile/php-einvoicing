@@ -78,7 +78,10 @@ $ubl = (new UblWriter)->write($invoice); // UBL 2.1 XML string
 $cii = (new CiiWriter)->write($invoice); // UN/CEFACT CII XML string
 ```
 
-`TotalsCalculator::complete()` fills only what you left empty and keeps values you set. VAT
+`TotalsCalculator::complete()` fills line net amounts and VAT breakdown entries you left empty
+and keeps the ones you set. It always recomputes the document totals, so they agree with the
+lines. A prepaid amount (BT-113) and a rounding amount (BT-114) go in as arguments, for example
+`TotalsCalculator::complete($invoice, paidAmount: '500.00')`. VAT
 exemption reasons (BT-120/BT-121) for categories such as E, AE, K or O, and the VAT total in
 accounting currency (BT-111), are yours to supply. `TotalsCalculator::check()` returns the ids
 of the BR-CO calculation rules an invoice violates. Writers refuse an invoice without totals.

@@ -260,14 +260,13 @@ final class TotalsCalculatorTest extends TestCase
         self::assertSame('-0.01', (string) $negative->vatBreakdown[0]->taxAmount);
     }
 
-    public function test_never_overwrites_values_the_caller_set(): void
+    public function test_never_overwrites_line_and_breakdown_values_the_caller_set(): void
     {
         $presetBreakdown = new VatBreakdown(taxableAmount: '999.00', taxAmount: '1.00', category: VatCategory::StandardRate, rate: '27');
-        $presetTotals = new DocumentTotals(sumOfLineNetAmounts: '1', totalWithoutVat: '2', totalWithVat: '3', amountDue: '4');
         $invoice = $this->invoice([
             $this->line('1', '1', '10.00', rate: '27')->withNetAmount('11.11'),
             $this->line('2', '1', '10.00', rate: '5'),
-        ])->withVatBreakdown([$presetBreakdown])->withTotals($presetTotals);
+        ])->withVatBreakdown([$presetBreakdown]);
 
         $completed = TotalsCalculator::complete($invoice);
 
@@ -275,11 +274,71 @@ final class TotalsCalculatorTest extends TestCase
         self::assertSame('10.00', (string) $completed->lines[1]->netAmount);
         self::assertSame($presetBreakdown, $completed->vatBreakdown[0]);
         self::assertSame([['S', '27', '999.00', '1.00'], ['S', '5', '10.00', '0.50']], $this->breakdownRows($completed));
-        self::assertSame('1', (string) $this->totalsOf($completed)->sumOfLineNetAmounts);
-        self::assertSame('2', (string) $this->totalsOf($completed)->totalWithoutVat);
-        self::assertSame('3', (string) $this->totalsOf($completed)->totalWithVat);
-        self::assertSame('4', (string) $this->totalsOf($completed)->amountDue);
         self::assertSame('1.50', (string) $this->totalsOf($completed)->totalVat);
+    }
+
+    public function test_recomputes_derived_totals_and_keeps_only_bt111_bt113_bt114(): void
+    {
+        $invoice = $this->invoice([$this->line('1', '1', '1000.00', rate: '27')])
+            ->withTaxCurrency(CurrencyCode::HUF)
+            ->withTotals(new DocumentTotals('0', '0', '0', '0', '9', '9', '9', '105000.00', '500.00', '0.01'));
+
+        $totals = $this->totalsOf(TotalsCalculator::complete($invoice));
+
+        self::assertSame(
+            ['1000.00', null, null, '1000.00', '270.00', '105000.00', '1270.00', '500.00', '0.01', '770.01'],
+            $this->totalsRow($totals),
+        );
+    }
+
+    public function test_completes_a_prepaid_invoice(): void
+    {
+        $completed = TotalsCalculator::complete($this->invoice([$this->line('1', '1', '1000.00', rate: '27')]), paidAmount: '500.00');
+
+        $totals = $this->totalsOf($completed);
+        self::assertSame('1270.00', (string) $totals->totalWithVat);
+        self::assertSame('500.00', (string) $totals->paidAmount);
+        self::assertSame('770.00', (string) $totals->amountDue);
+        self::assertSame([], TotalsCalculator::check($completed));
+    }
+
+    public function test_completes_an_invoice_with_a_rounding_amount(): void
+    {
+        $completed = TotalsCalculator::complete($this->invoice([$this->line('1', '1', '99.99', rate: '27')]), roundingAmount: '0.01');
+
+        $totals = $this->totalsOf($completed);
+        self::assertSame('126.99', (string) $totals->totalWithVat);
+        self::assertSame('0.01', (string) $totals->roundingAmount);
+        self::assertSame('127.00', (string) $totals->amountDue);
+        self::assertSame([], TotalsCalculator::check($completed));
+    }
+
+    public function test_completes_an_invoice_with_prepaid_and_rounding_amounts(): void
+    {
+        $completed = TotalsCalculator::complete($this->invoice([$this->line('1', '1', '99.99', rate: '27')]), '50.00', '0.01');
+
+        $totals = $this->totalsOf($completed);
+        self::assertSame('77.00', (string) $totals->amountDue);
+        self::assertSame([], TotalsCalculator::check($completed));
+    }
+
+    public function test_paid_and_rounding_arguments_override_the_given_totals(): void
+    {
+        $invoice = TotalsCalculator::complete($this->invoice([$this->line('1', '1', '1000.00', rate: '27')]), paidAmount: '500.00');
+
+        $completed = TotalsCalculator::complete($invoice, paidAmount: '1270.00');
+
+        self::assertSame('0.00', (string) $this->totalsOf($completed)->amountDue);
+        self::assertSame([], TotalsCalculator::check($completed));
+    }
+
+    public function test_paid_amount_must_not_be_a_float(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('BT-113 must be given as a string, int or BigDecimal, float given.');
+
+        $paid = 500.0;
+        TotalsCalculator::complete($this->invoice([$this->line('1', '1', '1000.00', rate: '27')]), $paid);
     }
 
     public function test_completed_invoice_is_left_unchanged_by_a_second_run(): void
@@ -563,6 +622,20 @@ final class TotalsCalculatorTest extends TestCase
             totalVatInAccountingCurrency: $pick('totalVatInAccountingCurrency', $t->totalVatInAccountingCurrency),
             paidAmount: $pick('paidAmount', $t->paidAmount),
             roundingAmount: $pick('roundingAmount', $t->roundingAmount),
+        );
+    }
+
+    /**
+     * BT-106, BT-107, BT-108, BT-109, BT-110, BT-111, BT-112, BT-113, BT-114, BT-115.
+     *
+     * @return list<string|null>
+     */
+    private function totalsRow(DocumentTotals $t): array
+    {
+        return array_map(
+            static fn (?BigDecimal $v): ?string => $v === null ? null : (string) $v,
+            [$t->sumOfLineNetAmounts, $t->sumOfAllowances, $t->sumOfCharges, $t->totalWithoutVat, $t->totalVat,
+                $t->totalVatInAccountingCurrency, $t->totalWithVat, $t->paidAmount, $t->roundingAmount, $t->amountDue],
         );
     }
 

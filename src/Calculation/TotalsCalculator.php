@@ -10,6 +10,7 @@ use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Model\DocumentTotals;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\InvoiceLine;
+use IntrAgile\EInvoicing\Model\Support\Decimal;
 use IntrAgile\EInvoicing\Model\VatBreakdown;
 use InvalidArgumentException;
 
@@ -23,11 +24,19 @@ use InvalidArgumentException;
 final class TotalsCalculator
 {
     /**
-     * Fills what the caller left empty: BT-131 per line, the BG-23 groups, and BG-22.
+     * Fills BT-131 per line and the BG-23 groups the caller left empty, and computes BG-22.
      *
-     * Values already present are kept as given, even when they disagree with the computation:
-     * a line net amount, a VAT breakdown entry with the same category and rate (including its
-     * exemption reason BT-120/BT-121), and any total already set.
+     * Line net amounts and VAT breakdown entries already present are kept as given, even when
+     * they disagree with the computation; a breakdown entry is matched by category and rate and
+     * keeps its exemption reason (BT-120/BT-121).
+     *
+     * The derived totals BT-106 to BT-110, BT-112 and BT-115 are always recomputed from the lines,
+     * document allowances and charges, and the VAT breakdown, so they agree with BR-CO-10 to
+     * BR-CO-16. Only the inputs BT-111, BT-113 and BT-114 are taken over from totals already set.
+     * To keep hand-made totals unchanged, do not call complete(); the writers use BG-22 as given.
+     *
+     * The paid amount (BT-113) and the rounding amount (BT-114) can be passed directly; a value
+     * passed here replaces the one in the invoice's totals. BT-115 = BT-112 - BT-113 + BT-114.
      *
      * Two values are the caller's responsibility and are never computed:
      * - VAT exemption reasons (BT-120/BT-121), which E, AE, K, O and other exempt categories
@@ -36,9 +45,18 @@ final class TotalsCalculator
      * - The VAT total in accounting currency (BT-111), which needs an exchange rate. Leave it null
      *   when BT-6 is absent or equals BT-5: BT-110 then satisfies BR-53, and a second VAT total in
      *   the invoice currency would break BR-CO-15.
+     *
+     * @param  BigDecimal|numeric-string|int|null  $paidAmount  Paid amount (BT-113).
+     * @param  BigDecimal|numeric-string|int|null  $roundingAmount  Rounding amount (BT-114).
      */
-    public static function complete(Invoice $invoice): Invoice
-    {
+    public static function complete(
+        Invoice $invoice,
+        BigDecimal|string|int|float|null $paidAmount = null,
+        BigDecimal|string|int|float|null $roundingAmount = null,
+    ): Invoice {
+        $paid = Decimal::ofNullable($paidAmount, 'BT-113') ?? $invoice->totals?->paidAmount;
+        $rounding = Decimal::ofNullable($roundingAmount, 'BT-114') ?? $invoice->totals?->roundingAmount;
+
         $invoice = $invoice->withLines(array_map(
             static fn (InvoiceLine $line): InvoiceLine => $line->netAmount === null
                 ? $line->withNetAmount(self::lineNetAmount($line))
@@ -48,7 +66,7 @@ final class TotalsCalculator
 
         $invoice = $invoice->withVatBreakdown(self::mergeBreakdown($invoice->vatBreakdown, self::breakdown($invoice)));
 
-        return $invoice->withTotals(self::mergeTotals($invoice->totals, self::totals($invoice)));
+        return $invoice->withTotals(self::totals($invoice, $paid, $rounding));
     }
 
     /**
@@ -336,10 +354,10 @@ final class TotalsCalculator
      *
      * BT-106 = sum of BT-131 (BR-CO-10); BT-107 = sum of BT-92 (BR-CO-11); BT-108 = sum of BT-99
      * (BR-CO-12); BT-109 = BT-106 - BT-107 + BT-108 (BR-CO-13); BT-110 = sum of BT-117 (BR-CO-14);
-     * BT-112 = BT-109 + BT-110 (BR-CO-15); BT-115 = BT-112 - BT-113 + BT-114 (BR-CO-16), using
-     * BT-113 and BT-114 as already given.
+     * BT-112 = BT-109 + BT-110 (BR-CO-15); BT-115 = BT-112 - BT-113 + BT-114 (BR-CO-16).
+     * BT-111 is taken over from the given totals.
      */
-    private static function totals(Invoice $invoice): DocumentTotals
+    private static function totals(Invoice $invoice, ?BigDecimal $paid, ?BigDecimal $rounding): DocumentTotals
     {
         $zero = BigDecimal::zero();
 
@@ -363,8 +381,6 @@ final class TotalsCalculator
         $vat = Rounding::amount($vat);
 
         $withVat = Rounding::amount($withoutVat->plus($vat));
-        $paid = $invoice->totals?->paidAmount;
-        $rounding = $invoice->totals?->roundingAmount;
         $due = Rounding::amount($withVat->minus($paid ?? $zero)->plus($rounding ?? $zero));
 
         return new DocumentTotals(
@@ -378,26 +394,6 @@ final class TotalsCalculator
             totalVatInAccountingCurrency: $invoice->totals?->totalVatInAccountingCurrency,
             paidAmount: $paid,
             roundingAmount: $rounding,
-        );
-    }
-
-    private static function mergeTotals(?DocumentTotals $given, DocumentTotals $computed): DocumentTotals
-    {
-        if ($given === null) {
-            return $computed;
-        }
-
-        return new DocumentTotals(
-            sumOfLineNetAmounts: $given->sumOfLineNetAmounts,
-            totalWithoutVat: $given->totalWithoutVat,
-            totalWithVat: $given->totalWithVat,
-            amountDue: $given->amountDue,
-            sumOfAllowances: $given->sumOfAllowances ?? $computed->sumOfAllowances,
-            sumOfCharges: $given->sumOfCharges ?? $computed->sumOfCharges,
-            totalVat: $given->totalVat ?? $computed->totalVat,
-            totalVatInAccountingCurrency: $given->totalVatInAccountingCurrency,
-            paidAmount: $given->paidAmount,
-            roundingAmount: $given->roundingAmount,
         );
     }
 

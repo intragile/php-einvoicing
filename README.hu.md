@@ -79,8 +79,11 @@ $ubl = (new UblWriter)->write($invoice); // UBL 2.1 XML string
 $cii = (new CiiWriter)->write($invoice); // UN/CEFACT CII XML string
 ```
 
-A `TotalsCalculator::complete()` csak azt tölti ki, amit üresen hagyott, és megtartja a megadott
-értékeket. Az ÁFA-mentességi okot (BT-120/BT-121) az olyan kategóriáknál, mint E, AE, K vagy O,
+A `TotalsCalculator::complete()` kitölti az üresen hagyott tételsori nettó összegeket és
+ÁFA-összesítő sorokat, a megadottakat pedig megtartja. A számla végösszesítőit mindig újraszámolja,
+így azok egyeznek a tételsorokkal. Az előre kifizetett összeget (BT-113) és a kerekítési összeget
+(BT-114) argumentumként kell átadni, például
+`TotalsCalculator::complete($invoice, paidAmount: '500.00')`. Az ÁFA-mentességi okot (BT-120/BT-121) az olyan kategóriáknál, mint E, AE, K vagy O,
 valamint az elszámolási pénznemben megadott ÁFA-összeget (BT-111) Önnek kell megadnia. A
 `TotalsCalculator::check()` visszaadja azokat a BR-CO számítási szabályokat, amelyeket a számla
 megsért. Az írók a végösszesítők nélküli számlát elutasítják.
