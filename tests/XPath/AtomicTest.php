@@ -189,6 +189,37 @@ final class AtomicTest extends TestCase
     }
 
     /**
+     * Saxon-HE 13: scale max(18, scale(a) - scale(b) + 18) with trailing zeros stripped (integers
+     * inside the 32-bit range count as scale 0), rounding HALF_DOWN.
+     *
+     * @return iterable<string, array{AtomicValue, AtomicValue, string}>
+     */
+    public static function decimalDivisions(): iterable
+    {
+        yield 'dividend scale adds digits' => [new DecimalValue(BigDecimal::of('0.000001')), self::int('3'), '0.000000333333333333333333'];
+        yield 'trailing zeros do not count' => [new DecimalValue(BigDecimal::of('1.00000000000000000000')), self::int('3'), '0.333333333333333333'];
+        yield 'integral decimal divisor' => [self::int('1'), new DecimalValue(BigDecimal::of('300.0')), '0.00333333333333333333'];
+        yield '32-bit integer divisor' => [self::int('1'), self::int('300'), '0.003333333333333333'];
+        yield 'integer divisor beyond 32 bits' => [self::int('1'), self::int('3000000000'), '0.000000000333333333333333333'];
+        yield 'half down' => [self::int('3'), self::int('524288'), '0.000005722045898437'];
+    }
+
+    #[DataProvider('decimalDivisions')]
+    public function test_decimal_division_scale_matches_saxon(AtomicValue $left, AtomicValue $right, string $quotient): void
+    {
+        self::assertSame($quotient, Atomic::arithmetic('div', $left, $right)->lexical());
+    }
+
+    public function test_short_integral_text_casts_to_decimal_as_integer(): void
+    {
+        self::assertSame('xs:integer', Atomic::cast(new UntypedAtomic(' 25 '), 'xs:decimal')->type());
+        self::assertSame('xs:integer', Atomic::cast(new StringValue('+777777777777777'), 'xs:decimal')->type());
+        self::assertSame('xs:decimal', Atomic::cast(new StringValue('-777777777777777'), 'xs:decimal')->type());
+        self::assertSame('xs:decimal', Atomic::cast(new StringValue('25.'), 'xs:decimal')->type());
+        self::assertSame('xs:decimal', Atomic::cast(new DecimalValue(BigDecimal::of('25')), 'xs:decimal')->type());
+    }
+
+    /**
      * @return iterable<string, array{float, string}>
      */
     public static function doubleLexicals(): iterable
@@ -206,6 +237,8 @@ final class AtomicTest extends TestCase
         yield 'nan' => [NAN, 'NaN'];
         yield 'infinity' => [INF, 'INF'];
         yield 'negative infinity' => [-INF, '-INF'];
+        yield 'smallest subnormal has two digits' => [4.9E-324, '4.9E-324'];
+        yield 'one digit gets a zero fraction' => [1.0E21, '1.0E21'];
     }
 
     #[DataProvider('doubleLexicals')]

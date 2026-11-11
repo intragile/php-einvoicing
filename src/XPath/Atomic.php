@@ -24,9 +24,18 @@ use LogicException;
 final class Atomic
 {
     /**
-     * Minimum number of fractional digits kept by xs:decimal division.
+     * Number of fractional digits added by xs:decimal division (Saxon's DIVIDE_PRECISION).
      */
     private const DIVIDE_PRECISION = 18;
+
+    /**
+     * Longest integral lexical form (without a leading "+") that Saxon casts to xs:decimal as an xs:integer.
+     */
+    private const SHORT_INTEGRAL_LENGTH = 15;
+
+    private const INT32_MIN = -2147483648;
+
+    private const INT32_MAX = 2147483647;
 
     private const XML_WHITESPACE = " \t\n\r";
 
@@ -50,7 +59,7 @@ final class Atomic
             'xs:untypedAtomic' => $value instanceof UntypedAtomic ? $value : new UntypedAtomic($value->lexical()),
             'xs:string' => $value instanceof StringValue ? $value : new StringValue($value->lexical()),
             'xs:boolean' => self::toBoolean($value),
-            'xs:decimal' => new DecimalValue(self::toBigDecimal($value, 'xs:decimal')),
+            'xs:decimal' => self::toDecimal($value),
             'xs:integer' => self::toInteger($value),
             'xs:double' => new DoubleValue(self::toDouble($value)),
             'xs:date' => self::toDate($value),
@@ -161,7 +170,7 @@ final class Atomic
             if ($r->isZero()) {
                 throw new XPathError('FOAR0001', 'Division by zero.');
             }
-            $scale = max(self::DIVIDE_PRECISION, $l->getScale(), $r->getScale());
+            $scale = max(self::DIVIDE_PRECISION, self::divisionScale($left) - self::divisionScale($right) + self::DIVIDE_PRECISION);
 
             return new DecimalValue($l->dividedBy($r, $scale, RoundingMode::HALF_DOWN));
         }
@@ -175,6 +184,44 @@ final class Atomic
         return $left instanceof IntegerValue && $right instanceof IntegerValue
             ? new IntegerValue($result)
             : new DecimalValue($result);
+    }
+
+    /**
+     * The operand scale Saxon-HE uses in decimal division: decimals and integers outside the 32-bit
+     * range count with trailing zeros stripped (1.50 has scale 1, 3000000000 has scale -9); integers
+     * inside the 32-bit range count as scale 0.
+     */
+    private static function divisionScale(AtomicValue $operand): int
+    {
+        $value = self::toBigDecimal($operand, 'xs:decimal');
+        if ($operand instanceof IntegerValue && $value->isGreaterThanOrEqualTo(self::INT32_MIN) && $value->isLessThanOrEqualTo(self::INT32_MAX)) {
+            return 0;
+        }
+
+        if ($value->isZero()) {
+            return 0;
+        }
+        // BigDecimal never has a negative scale, so count the trailing zeros of the unscaled value.
+        $unscaled = (string) $value->getUnscaledValue();
+
+        return $value->getScale() - (strlen($unscaled) - strlen(rtrim($unscaled, '0')));
+    }
+
+    /**
+     * Casts to xs:decimal. Like Saxon-HE, a textual integral value of at most 15 characters (sign
+     * included, a leading "+" excluded) yields an xs:integer, which is a subtype of xs:decimal.
+     */
+    private static function toDecimal(AtomicValue $value): DecimalValue|IntegerValue
+    {
+        $decimal = self::toBigDecimal($value, 'xs:decimal');
+        if (self::isTextual($value)) {
+            $lexical = ltrim(self::collapse($value), '+');
+            if (! str_contains($lexical, '.') && strlen($lexical) <= self::SHORT_INTEGRAL_LENGTH) {
+                return new IntegerValue($decimal);
+            }
+        }
+
+        return new DecimalValue($decimal);
     }
 
     /**

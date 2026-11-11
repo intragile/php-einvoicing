@@ -18,6 +18,8 @@ class SaxonProcessor
 class Xslt30Processor
 {
     public function compileFromFile(string $fileName): XsltExecutable {}
+
+    public function compileFromString(string $stylesheet, ?string $encoding = null): XsltExecutable {}
 }
 
 class XsltExecutable

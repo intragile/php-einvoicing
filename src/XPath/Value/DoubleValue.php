@@ -54,8 +54,9 @@ final readonly class DoubleValue implements AtomicValue
     }
 
     /**
-     * The shortest significant digits that read back as the same double, and the decimal
-     * exponent of the first digit.
+     * The shortest significant digits, but at least two before trailing zeros are removed (as
+     * Java's Double.toString, so 4.9E-324 and not 5.0E-324), that read back as the same double,
+     * and the decimal exponent of the first digit.
      *
      * @return array{string, int}
      */
@@ -63,7 +64,7 @@ final readonly class DoubleValue implements AtomicValue
     {
         // Seventeen significant digits always round-trip a binary64 value.
         $formatted = sprintf('%.16e', $magnitude);
-        for ($precision = 0; $precision < 16; $precision++) {
+        for ($precision = 1; $precision < 16; $precision++) {
             $candidate = sprintf('%.'.$precision.'e', $magnitude);
             if ((float) $candidate === $magnitude) {
                 $formatted = $candidate;
