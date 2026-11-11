@@ -26,6 +26,8 @@ use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\PostalAddress;
 use IntrAgile\EInvoicing\Model\Price;
 use IntrAgile\EInvoicing\Model\VatBreakdown;
+use IntrAgile\EInvoicing\Syntax\Ubl\UblReader;
+use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -68,6 +70,76 @@ final class TotalsCalculatorTest extends TestCase
 
         self::assertSame([['S', '6', '183.23', '10.99'], ['S', '21', '46.37', '9.74']], $this->breakdownRows($invoice));
         self::assertSame([], TotalsCalculator::check($invoice));
+    }
+
+    /**
+     * Official examples whose own data breaks a BR-CO rule, keyed by file name, with the rule
+     * ids and a one-line reason. None of the CEN UBL examples of validation 1.3.17 does.
+     *
+     * @var array<string, array{rules: list<string>, reason: string}>
+     */
+    private const KNOWN_BAD = [];
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function officialExamplesWithTotals(): array
+    {
+        $cases = [];
+        foreach (Fixtures::official('ubl') as $file) {
+            $contents = (string) file_get_contents($file);
+            if (str_contains($contents, 'LegalMonetaryTotal>')) {
+                $cases[basename($file)] = [$file];
+            }
+        }
+
+        return $cases;
+    }
+
+    /**
+     * Reads each official example, strips BT-106 to BT-115 and BG-23, completes it and compares
+     * the result with the example's own figures. BT-131 stays as read, so guide-example1 line 20
+     * keeps its quantity 6 with net amount -109.98. BT-113 and BT-114 cannot be computed, so
+     * BT-115 is compared as the computed BT-112 - BT-113 + BT-114 of the file.
+     */
+    #[DataProvider('officialExamplesWithTotals')]
+    public function test_matches_official_example_totals(string $file): void
+    {
+        $read = (new UblReader)->read((string) file_get_contents($file))->invoice;
+        $given = $read->totals;
+        self::assertNotNull($given);
+
+        $completed = TotalsCalculator::complete($read->withTotals(null)->withVatBreakdown([]));
+        $computed = $completed->totals;
+        self::assertNotNull($computed);
+
+        $zero = BigDecimal::zero();
+        $comparisons = [
+            'BR-CO-10' => [$given->sumOfLineNetAmounts, $computed->sumOfLineNetAmounts],
+            'BR-CO-11' => [$given->sumOfAllowances ?? $zero, $computed->sumOfAllowances ?? $zero],
+            'BR-CO-12' => [$given->sumOfCharges ?? $zero, $computed->sumOfCharges ?? $zero],
+            'BR-CO-13' => [$given->totalWithoutVat, $computed->totalWithoutVat],
+            'BR-CO-14' => [$given->totalVat ?? $zero, $computed->totalVat ?? $zero],
+            'BR-CO-15' => [$given->totalWithVat, $computed->totalWithVat],
+            'BR-CO-16' => [
+                $given->amountDue,
+                $computed->totalWithVat->minus($given->paidAmount ?? $zero)->plus($given->roundingAmount ?? $zero),
+            ],
+        ];
+
+        $broken = [];
+        foreach ($comparisons as $rule => [$expected, $actual]) {
+            if (! $expected->isEqualTo($actual)) {
+                $broken[] = $rule;
+            }
+        }
+        if ($this->breakdownKey($read->vatBreakdown) !== $this->breakdownKey($completed->vatBreakdown)) {
+            $broken[] = 'BR-CO-17';
+        }
+
+        $known = self::knownRules(self::KNOWN_BAD, basename($file));
+        self::assertSame($known, $broken, 'Computed totals differ from the example.');
+        self::assertSame($known, TotalsCalculator::check($read), 'check() verdict differs from the known list.');
     }
 
     public function test_tenth_plus_two_tenths_is_exactly_thirty_cents(): void
@@ -417,6 +489,37 @@ final class TotalsCalculatorTest extends TestCase
         self::assertSame('-1.01', (string) Rounding::amount(BigDecimal::of('-1.005')));
         self::assertSame('1.00', (string) Rounding::amount(BigDecimal::of('1.00499999')));
         self::assertSame('2.00', (string) Rounding::amount(BigDecimal::of('2')));
+    }
+
+    /**
+     * @param  array<string, array{rules: list<string>, reason: string}>  $knownBad
+     * @return list<string>
+     */
+    private static function knownRules(array $knownBad, string $file): array
+    {
+        return $knownBad[$file]['rules'] ?? [];
+    }
+
+    /**
+     * Canonical text of BG-23 amounts per category and rate, independent of order and scale.
+     *
+     * @param  list<VatBreakdown>  $breakdown
+     */
+    private function breakdownKey(array $breakdown): string
+    {
+        $rows = array_map(
+            static fn (VatBreakdown $entry): string => sprintf(
+                '%s/%s:%s|%s',
+                $entry->category->value,
+                $entry->rate?->stripTrailingZeros() ?? '-',
+                $entry->taxableAmount->toScale(2),
+                $entry->taxAmount->toScale(2),
+            ),
+            $breakdown,
+        );
+        sort($rows);
+
+        return implode(';', $rows);
     }
 
     private function totalsOf(Invoice $invoice): DocumentTotals

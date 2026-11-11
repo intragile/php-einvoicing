@@ -1,0 +1,376 @@
+<?php
+
+declare(strict_types=1);
+
+namespace IntrAgile\EInvoicing\Syntax\Ubl;
+
+use BackedEnum;
+use Brick\Math\BigDecimal;
+use DateTimeImmutable;
+use DOMDocument;
+use DOMElement;
+use DOMNode;
+use DOMXPath;
+use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+
+/**
+ * A loaded UBL document with typed value accessors and bookkeeping of what was mapped.
+ *
+ * Every accessor that maps a value marks the element as used. After mapping, ignored() walks the
+ * tree and reports each element that neither it nor any descendant was used for, so nothing in
+ * an inbound file is dropped silently.
+ *
+ * Free text and identifiers are returned exactly as written; codes, numbers, dates and
+ * attributes are whitespace-trimmed, as the official artefacts normalise them.
+ *
+ * @internal
+ */
+final class UblDocument
+{
+    public const INVOICE = 'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2';
+
+    public const CREDIT_NOTE = 'urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2';
+
+    public const CAC = 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2';
+
+    public const CBC = 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2';
+
+    public const EXT = 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2';
+
+    private const PREFIXES = [self::CAC => 'cac', self::CBC => 'cbc', self::EXT => 'ext'];
+
+    public readonly DOMElement $root;
+
+    public readonly bool $isCreditNote;
+
+    private readonly DOMXPath $xpath;
+
+    /** @var array<string, true> Node paths of used elements and their ancestors. */
+    private array $touched = [];
+
+    /** @var array<string, true> Node paths of elements already reported with a reason. */
+    private array $handled = [];
+
+    /** @var list<string> */
+    private array $reasons = [];
+
+    public function __construct(DOMDocument $document)
+    {
+        $root = $document->documentElement;
+        if ($root === null) {
+            throw new UnsupportedDocument('The document has no root element.');
+        }
+
+        $this->isCreditNote = match (true) {
+            $root->namespaceURI === self::INVOICE && $root->localName === 'Invoice' => false,
+            $root->namespaceURI === self::CREDIT_NOTE && $root->localName === 'CreditNote' => true,
+            default => throw new UnsupportedDocument(sprintf(
+                'Unsupported root element {%s}%s; expected a UBL 2.1 Invoice or CreditNote.',
+                (string) $root->namespaceURI,
+                (string) $root->localName,
+            )),
+        };
+        $this->root = $root;
+
+        $this->xpath = new DOMXPath($document);
+        foreach (self::PREFIXES as $namespace => $prefix) {
+            $this->xpath->registerNamespace($prefix, $namespace);
+        }
+    }
+
+    /**
+     * @return list<DOMElement>
+     */
+    public function all(string $expression, ?DOMNode $context = null): array
+    {
+        $nodes = $this->xpath->query($expression, $context ?? $this->root);
+        $elements = [];
+        if ($nodes !== false) {
+            foreach ($nodes as $node) {
+                if ($node instanceof DOMElement) {
+                    $elements[] = $node;
+                }
+            }
+        }
+
+        return $elements;
+    }
+
+    public function one(string $expression, ?DOMNode $context = null): ?DOMElement
+    {
+        return $this->all($expression, $context)[0] ?? null;
+    }
+
+    public function use(DOMElement $element): void
+    {
+        for ($node = $element; $node instanceof DOMElement; $node = $node->parentNode) {
+            $this->touched[$node->getNodePath() ?? ''] = true;
+        }
+    }
+
+    /**
+     * Raw text of the first match; an empty element counts as absent.
+     */
+    public function text(string $expression, ?DOMNode $context = null): ?string
+    {
+        $element = $this->one($expression, $context);
+        if ($element === null) {
+            return null;
+        }
+        $this->use($element);
+
+        return $element->textContent === '' ? null : $element->textContent;
+    }
+
+    /**
+     * Trimmed text of the first match; an empty element counts as absent.
+     */
+    public function token(string $expression, ?DOMNode $context = null): ?string
+    {
+        $element = $this->one($expression, $context);
+        if ($element === null) {
+            return null;
+        }
+        $this->use($element);
+        $value = trim($element->textContent);
+
+        return $value === '' ? null : $value;
+    }
+
+    public function requiredText(string $expression, DOMNode $context, string $term): string
+    {
+        return $this->text($expression, $context) ?? throw $this->missing($expression, $context, $term);
+    }
+
+    public function attribute(DOMElement $element, string $name): ?string
+    {
+        if (! $element->hasAttribute($name)) {
+            return null;
+        }
+        $value = trim($element->getAttribute($name));
+
+        return $value === '' ? null : $value;
+    }
+
+    public function decimal(string $expression, ?DOMNode $context = null): ?BigDecimal
+    {
+        $element = $this->one($expression, $context);
+
+        return $element === null ? null : $this->decimalOf($element);
+    }
+
+    public function decimalOf(DOMElement $element): ?BigDecimal
+    {
+        $value = trim($element->textContent);
+        if ($value === '') {
+            $this->use($element);
+
+            return null;
+        }
+        if (preg_match('/^[+-]?(\d+(\.\d*)?|\.\d+)$/', $value) !== 1) {
+            $this->reject($element, "invalid number '{$value}'");
+
+            return null;
+        }
+        $this->use($element);
+
+        return BigDecimal::of($value);
+    }
+
+    public function requiredDecimal(string $expression, DOMNode $context, string $term): BigDecimal
+    {
+        $element = $this->one($expression, $context) ?? throw $this->missing($expression, $context, $term);
+        $value = trim($element->textContent);
+        if (preg_match('/^[+-]?(\d+(\.\d*)?|\.\d+)$/', $value) !== 1) {
+            throw new UnsupportedDocument(sprintf("Invalid number '%s' for %s at %s.", $value, $term, $this->path($element)));
+        }
+        $this->use($element);
+
+        return BigDecimal::of($value);
+    }
+
+    public function date(string $expression, ?DOMNode $context = null): ?DateTimeImmutable
+    {
+        $element = $this->one($expression, $context);
+        if ($element === null) {
+            return null;
+        }
+        $date = self::parseDate(trim($element->textContent));
+        if ($date === null) {
+            $this->reject($element, sprintf("invalid date '%s'", trim($element->textContent)));
+
+            return null;
+        }
+        $this->use($element);
+
+        return $date;
+    }
+
+    public function requiredDate(string $expression, DOMNode $context, string $term): DateTimeImmutable
+    {
+        $element = $this->one($expression, $context) ?? throw $this->missing($expression, $context, $term);
+        $value = trim($element->textContent);
+        $date = self::parseDate($value)
+            ?? throw new UnsupportedDocument(sprintf("Invalid date '%s' for %s at %s.", $value, $term, $this->path($element)));
+        $this->use($element);
+
+        return $date;
+    }
+
+    /**
+     * Resolves a code held in the element text or in one of its attributes.
+     *
+     * A value the enum rejects is reported as "<path> (invalid code '<value>')" and yields null.
+     *
+     * @template T of BackedEnum
+     *
+     * @param  class-string<T>  $enum
+     * @return T|null
+     */
+    public function code(string $enum, ?DOMElement $element, ?string $attribute = null): ?BackedEnum
+    {
+        if ($element === null) {
+            return null;
+        }
+        $value = $attribute === null ? trim($element->textContent) : $this->attribute($element, $attribute);
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $case = $enum::tryFrom($value);
+        if ($case === null) {
+            $this->reject($element, "invalid code '{$value}'", $attribute);
+
+            return null;
+        }
+        $this->use($element);
+
+        return $case;
+    }
+
+    /**
+     * Resolves a code the model cannot do without; a missing or invalid value is unsupported.
+     *
+     * @template T of BackedEnum
+     *
+     * @param  class-string<T>  $enum
+     * @return T
+     */
+    public function requiredCode(string $enum, ?DOMElement $element, ?string $attribute, string $term, string $expression, DOMNode $context): BackedEnum
+    {
+        if ($element === null) {
+            throw $this->missing($expression, $context, $term);
+        }
+        $value = $attribute === null ? trim($element->textContent) : $this->attribute($element, $attribute);
+        $where = $this->path($element).($attribute === null ? '' : '/@'.$attribute);
+        if ($value === null || $value === '') {
+            throw new UnsupportedDocument(sprintf('Missing required %s at %s.', $term, $where));
+        }
+        $case = $enum::tryFrom($value)
+            ?? throw new UnsupportedDocument(sprintf("Invalid code '%s' for required %s at %s.", $value, $term, $where));
+        $this->use($element);
+
+        return $case;
+    }
+
+    /**
+     * Reports the element (or one of its attributes) as not mapped, with a reason.
+     */
+    public function reject(DOMElement $element, string $reason, ?string $attribute = null): void
+    {
+        $this->reasons[] = sprintf('%s%s (%s)', $this->path($element), $attribute === null ? '' : '/@'.$attribute, $reason);
+        $this->handled[$element->getNodePath() ?? ''] = true;
+        if ($element->parentNode instanceof DOMElement) {
+            $this->use($element->parentNode);
+        }
+    }
+
+    /**
+     * XPath-like path with conventional prefixes and a position only where siblings share a name.
+     */
+    public function path(DOMElement $element): string
+    {
+        $segments = [];
+        for ($node = $element; $node instanceof DOMElement; $node = $node->parentNode) {
+            if ($node === $this->root) {
+                $segments[] = (string) $node->localName;
+                break;
+            }
+            $segments[] = $this->segment($node);
+        }
+
+        return '/'.implode('/', array_reverse($segments));
+    }
+
+    /**
+     * Paths of everything not mapped, in the order found.
+     *
+     * @return list<string>
+     */
+    public function ignored(): array
+    {
+        $ignored = $this->reasons;
+        $this->walk($this->root, $ignored);
+
+        return $ignored;
+    }
+
+    /**
+     * @param  list<string>  $ignored
+     */
+    private function walk(DOMElement $element, array &$ignored): void
+    {
+        foreach ($element->childNodes as $child) {
+            if (! $child instanceof DOMElement) {
+                continue;
+            }
+            $key = $child->getNodePath() ?? '';
+            if (isset($this->handled[$key])) {
+                continue;
+            }
+            if (isset($this->touched[$key])) {
+                $this->walk($child, $ignored);
+
+                continue;
+            }
+            $ignored[] = $this->path($child);
+        }
+    }
+
+    private function segment(DOMElement $element): string
+    {
+        $namespace = (string) $element->namespaceURI;
+        $local = (string) $element->localName;
+        $prefix = self::PREFIXES[$namespace] ?? ($element->prefix !== '' ? $element->prefix : null);
+        $name = $prefix === null ? $local : $prefix.':'.$local;
+
+        $position = 0;
+        $count = 0;
+        $parent = $element->parentNode;
+        if ($parent !== null) {
+            foreach ($parent->childNodes as $sibling) {
+                if ($sibling instanceof DOMElement && $sibling->localName === $local && $sibling->namespaceURI === $element->namespaceURI) {
+                    $count++;
+                    if ($sibling->isSameNode($element)) {
+                        $position = $count;
+                    }
+                }
+            }
+        }
+
+        return $count > 1 ? "{$name}[{$position}]" : $name;
+    }
+
+    private function missing(string $expression, DOMNode $context, string $term): UnsupportedDocument
+    {
+        $where = $context instanceof DOMElement ? $this->path($context) : '/';
+
+        return new UnsupportedDocument(sprintf('Missing required %s (%s) in %s.', $term, $expression, $where));
+    }
+
+    private static function parseDate(string $value): ?DateTimeImmutable
+    {
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+
+        return $date !== false && $date->format('Y-m-d') === $value ? $date : null;
+    }
+}
