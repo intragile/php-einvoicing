@@ -6,3 +6,5 @@ parameters:
         - bin
     excludePaths:
         - tests/fixtures
+    scanFiles:
+        - tests/Oracle/saxonc.stub

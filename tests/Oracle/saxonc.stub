@@ -1,0 +1,28 @@
+<?php
+
+// Static analysis stub for the subset of the SaxonC-HE 13 PHP extension used by the oracle tests.
+
+namespace Saxon;
+
+class SaxonProcessor
+{
+    public function __construct(bool $license = false, ?string $cwd = null) {}
+
+    public function newXslt30Processor(): Xslt30Processor {}
+
+    public function parseXmlFromString(string $xml): XdmNode {}
+
+    public function version(): string {}
+}
+
+class Xslt30Processor
+{
+    public function compileFromFile(string $fileName): XsltExecutable {}
+}
+
+class XsltExecutable
+{
+    public function transformToString(?XdmNode $context = null): ?string {}
+}
+
+class XdmNode {}
