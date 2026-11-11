@@ -1,0 +1,384 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"
+                          xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100"
+                          xmlns:qdt="urn:un:unece:uncefact:data:standard:QualifiedDataType:100"
+                          xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100">
+    <rsm:ExchangedDocumentContext>
+        <ram:BusinessProcessSpecifiedDocumentContextParameter>
+            <ram:ID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</ram:ID>
+        </ram:BusinessProcessSpecifiedDocumentContextParameter>
+        <ram:GuidelineSpecifiedDocumentContextParameter>
+            <ram:ID>urn:cen.eu:en16931:2017</ram:ID>
+        </ram:GuidelineSpecifiedDocumentContextParameter>
+    </rsm:ExchangedDocumentContext>
+    <rsm:ExchangedDocument>
+        <ram:ID>INV-2026-001</ram:ID>
+        <ram:TypeCode>380</ram:TypeCode>
+        <ram:IssueDateTime>
+            <udt:DateTimeString format="102">20261102</udt:DateTimeString>
+        </ram:IssueDateTime>
+        <ram:IncludedNote>
+            <ram:Content>Árvíztűrő tükörfúrógép &amp; co</ram:Content>
+            <ram:SubjectCode>AAI</ram:SubjectCode>
+        </ram:IncludedNote>
+        <ram:IncludedNote>
+            <ram:Content>  Plain note
+second line  </ram:Content>
+        </ram:IncludedNote>
+    </rsm:ExchangedDocument>
+    <rsm:SupplyChainTradeTransaction>
+        <ram:IncludedSupplyChainTradeLineItem>
+            <ram:AssociatedDocumentLineDocument>
+                <ram:LineID>1</ram:LineID>
+                <ram:IncludedNote>
+                    <ram:Content>Line note</ram:Content>
+                </ram:IncludedNote>
+            </ram:AssociatedDocumentLineDocument>
+            <ram:SpecifiedTradeProduct>
+                <ram:GlobalID schemeID="0160">05901234123457</ram:GlobalID>
+                <ram:SellerAssignedID>SELL-155</ram:SellerAssignedID>
+                <ram:BuyerAssignedID>BUY-156</ram:BuyerAssignedID>
+                <ram:Name>Item name</ram:Name>
+                <ram:Description>Item description</ram:Description>
+                <ram:ApplicableProductCharacteristic>
+                    <ram:Description>Colour</ram:Description>
+                    <ram:Value>Blue</ram:Value>
+                </ram:ApplicableProductCharacteristic>
+                <ram:DesignatedProductClassification>
+                    <ram:ClassCode listID="STI" listVersionID="2.1">65434568</ram:ClassCode>
+                </ram:DesignatedProductClassification>
+                <ram:OriginTradeCountry>
+                    <ram:ID>DE</ram:ID>
+                </ram:OriginTradeCountry>
+            </ram:SpecifiedTradeProduct>
+            <ram:SpecifiedLineTradeAgreement>
+                <ram:BuyerOrderReferencedDocument>
+                    <ram:LineID>OL-132</ram:LineID>
+                </ram:BuyerOrderReferencedDocument>
+                <ram:GrossPriceProductTradePrice>
+                    <ram:ChargeAmount>45.00</ram:ChargeAmount>
+                    <ram:BasisQuantity unitCode="H87">1</ram:BasisQuantity>
+                    <ram:AppliedTradeAllowanceCharge>
+                        <ram:ChargeIndicator>
+                            <udt:Indicator>false</udt:Indicator>
+                        </ram:ChargeIndicator>
+                        <ram:ActualAmount>5.00</ram:ActualAmount>
+                    </ram:AppliedTradeAllowanceCharge>
+                </ram:GrossPriceProductTradePrice>
+                <ram:NetPriceProductTradePrice>
+                    <ram:ChargeAmount>40.00</ram:ChargeAmount>
+                    <ram:BasisQuantity unitCode="H87">1</ram:BasisQuantity>
+                </ram:NetPriceProductTradePrice>
+            </ram:SpecifiedLineTradeAgreement>
+            <ram:SpecifiedLineTradeDelivery>
+                <ram:BilledQuantity unitCode="H87">2.5000</ram:BilledQuantity>
+            </ram:SpecifiedLineTradeDelivery>
+            <ram:SpecifiedLineTradeSettlement>
+                <ram:ApplicableTradeTax>
+                    <ram:TypeCode>VAT</ram:TypeCode>
+                    <ram:CategoryCode>S</ram:CategoryCode>
+                    <ram:RateApplicablePercent>27</ram:RateApplicablePercent>
+                </ram:ApplicableTradeTax>
+                <ram:BillingSpecifiedPeriod>
+                    <ram:StartDateTime>
+                        <udt:DateTimeString format="102">20261002</udt:DateTimeString>
+                    </ram:StartDateTime>
+                    <ram:EndDateTime>
+                        <udt:DateTimeString format="102">20261030</udt:DateTimeString>
+                    </ram:EndDateTime>
+                </ram:BillingSpecifiedPeriod>
+                <ram:SpecifiedTradeAllowanceCharge>
+                    <ram:ChargeIndicator>
+                        <udt:Indicator>false</udt:Indicator>
+                    </ram:ChargeIndicator>
+                    <ram:CalculationPercent>2</ram:CalculationPercent>
+                    <ram:BasisAmount>100.00</ram:BasisAmount>
+                    <ram:ActualAmount>2.00</ram:ActualAmount>
+                    <ram:ReasonCode>95</ram:ReasonCode>
+                    <ram:Reason>Line discount</ram:Reason>
+                </ram:SpecifiedTradeAllowanceCharge>
+                <ram:SpecifiedTradeAllowanceCharge>
+                    <ram:ChargeIndicator>
+                        <udt:Indicator>true</udt:Indicator>
+                    </ram:ChargeIndicator>
+                    <ram:CalculationPercent>2</ram:CalculationPercent>
+                    <ram:BasisAmount>100.00</ram:BasisAmount>
+                    <ram:ActualAmount>2.00</ram:ActualAmount>
+                    <ram:ReasonCode>ABL</ram:ReasonCode>
+                    <ram:Reason>Packaging</ram:Reason>
+                </ram:SpecifiedTradeAllowanceCharge>
+                <ram:SpecifiedTradeSettlementLineMonetarySummation>
+                    <ram:LineTotalAmount>100.00</ram:LineTotalAmount>
+                </ram:SpecifiedTradeSettlementLineMonetarySummation>
+                <ram:AdditionalReferencedDocument>
+                    <ram:IssuerAssignedID>LINE-OBJ-128</ram:IssuerAssignedID>
+                    <ram:TypeCode>130</ram:TypeCode>
+                    <ram:ReferenceTypeCode>ABZ</ram:ReferenceTypeCode>
+                </ram:AdditionalReferencedDocument>
+                <ram:ReceivableSpecifiedTradeAccountingAccount>
+                    <ram:ID>LINE-ACC-133</ram:ID>
+                </ram:ReceivableSpecifiedTradeAccountingAccount>
+            </ram:SpecifiedLineTradeSettlement>
+        </ram:IncludedSupplyChainTradeLineItem>
+        <ram:ApplicableHeaderTradeAgreement>
+            <ram:BuyerReference>BR-10</ram:BuyerReference>
+            <ram:SellerTradeParty>
+                <ram:ID>LOCAL-29</ram:ID>
+                <ram:GlobalID schemeID="0088">5790000435968</ram:GlobalID>
+                <ram:Name>Seller Kft.</ram:Name>
+                <ram:Description>Share capital 3 000 000 HUF</ram:Description>
+                <ram:SpecifiedLegalOrganization>
+                    <ram:ID schemeID="0002">01-09-123456</ram:ID>
+                    <ram:TradingBusinessName>Seller Trading</ram:TradingBusinessName>
+                </ram:SpecifiedLegalOrganization>
+                <ram:DefinedTradeContact>
+                    <ram:PersonName>Seller Contact</ram:PersonName>
+                    <ram:TelephoneUniversalCommunication>
+                        <ram:CompleteNumber>+36 1 234 5678</ram:CompleteNumber>
+                    </ram:TelephoneUniversalCommunication>
+                    <ram:EmailURIUniversalCommunication>
+                        <ram:URIID>seller@example.com</ram:URIID>
+                    </ram:EmailURIUniversalCommunication>
+                </ram:DefinedTradeContact>
+                <ram:PostalTradeAddress>
+                    <ram:PostcodeCode>1011</ram:PostcodeCode>
+                    <ram:LineOne>Main street 1</ram:LineOne>
+                    <ram:LineTwo>Building A</ram:LineTwo>
+                    <ram:LineThree>Floor 3</ram:LineThree>
+                    <ram:CityName>Budapest</ram:CityName>
+                    <ram:CountryID>HU</ram:CountryID>
+                    <ram:CountrySubDivisionName>Pest</ram:CountrySubDivisionName>
+                </ram:PostalTradeAddress>
+                <ram:URIUniversalCommunication>
+                    <ram:URIID schemeID="9920">ESB12345678</ram:URIID>
+                </ram:URIUniversalCommunication>
+                <ram:SpecifiedTaxRegistration>
+                    <ram:ID schemeID="VA">HU12345678</ram:ID>
+                </ram:SpecifiedTaxRegistration>
+                <ram:SpecifiedTaxRegistration>
+                    <ram:ID schemeID="FC">12345678-2-41</ram:ID>
+                </ram:SpecifiedTaxRegistration>
+            </ram:SellerTradeParty>
+            <ram:BuyerTradeParty>
+                <ram:GlobalID schemeID="0088">5790000435999</ram:GlobalID>
+                <ram:Name>Buyer GmbH</ram:Name>
+                <ram:SpecifiedLegalOrganization>
+                    <ram:ID schemeID="0088">FN123456</ram:ID>
+                    <ram:TradingBusinessName>Buyer Trading</ram:TradingBusinessName>
+                </ram:SpecifiedLegalOrganization>
+                <ram:DefinedTradeContact>
+                    <ram:PersonName>Buyer Contact</ram:PersonName>
+                    <ram:TelephoneUniversalCommunication>
+                        <ram:CompleteNumber>+43 1 000</ram:CompleteNumber>
+                    </ram:TelephoneUniversalCommunication>
+                    <ram:EmailURIUniversalCommunication>
+                        <ram:URIID>buyer@example.com</ram:URIID>
+                    </ram:EmailURIUniversalCommunication>
+                </ram:DefinedTradeContact>
+                <ram:PostalTradeAddress>
+                    <ram:PostcodeCode>1010</ram:PostcodeCode>
+                    <ram:LineOne>Buyer street 2</ram:LineOne>
+                    <ram:LineTwo>Unit 5</ram:LineTwo>
+                    <ram:LineThree>Door 7</ram:LineThree>
+                    <ram:CityName>Wien</ram:CityName>
+                    <ram:CountryID>AT</ram:CountryID>
+                    <ram:CountrySubDivisionName>Wien</ram:CountrySubDivisionName>
+                </ram:PostalTradeAddress>
+                <ram:URIUniversalCommunication>
+                    <ram:URIID schemeID="0088">5790000435975</ram:URIID>
+                </ram:URIUniversalCommunication>
+                <ram:SpecifiedTaxRegistration>
+                    <ram:ID schemeID="VA">ATU12345678</ram:ID>
+                </ram:SpecifiedTaxRegistration>
+            </ram:BuyerTradeParty>
+            <ram:SellerTaxRepresentativeTradeParty>
+                <ram:Name>Tax Rep BV</ram:Name>
+                <ram:PostalTradeAddress>
+                    <ram:PostcodeCode>1000 AA</ram:PostcodeCode>
+                    <ram:LineOne>Rep street 3</ram:LineOne>
+                    <ram:LineTwo>Rep building</ram:LineTwo>
+                    <ram:LineThree>Rep line 3</ram:LineThree>
+                    <ram:CityName>Amsterdam</ram:CityName>
+                    <ram:CountryID>NL</ram:CountryID>
+                    <ram:CountrySubDivisionName>Noord-Holland</ram:CountrySubDivisionName>
+                </ram:PostalTradeAddress>
+                <ram:SpecifiedTaxRegistration>
+                    <ram:ID schemeID="VA">NL123456789B01</ram:ID>
+                </ram:SpecifiedTaxRegistration>
+            </ram:SellerTaxRepresentativeTradeParty>
+            <ram:SellerOrderReferencedDocument>
+                <ram:IssuerAssignedID>SO-14</ram:IssuerAssignedID>
+            </ram:SellerOrderReferencedDocument>
+            <ram:BuyerOrderReferencedDocument>
+                <ram:IssuerAssignedID>PO-13</ram:IssuerAssignedID>
+            </ram:BuyerOrderReferencedDocument>
+            <ram:ContractReferencedDocument>
+                <ram:IssuerAssignedID>CON-12</ram:IssuerAssignedID>
+            </ram:ContractReferencedDocument>
+            <ram:AdditionalReferencedDocument>
+                <ram:IssuerAssignedID>OBJ-18</ram:IssuerAssignedID>
+                <ram:TypeCode>130</ram:TypeCode>
+                <ram:ReferenceTypeCode>AAA</ram:ReferenceTypeCode>
+            </ram:AdditionalReferencedDocument>
+            <ram:AdditionalReferencedDocument>
+                <ram:IssuerAssignedID>DOC-122</ram:IssuerAssignedID>
+                <ram:URIID>https://example.com/timesheet.csv</ram:URIID>
+                <ram:TypeCode>916</ram:TypeCode>
+                <ram:Name>Timesheet</ram:Name>
+                <ram:AttachmentBinaryObject mimeCode="text/csv" filename="timesheet.csv">aG91cnMsMTIK</ram:AttachmentBinaryObject>
+            </ram:AdditionalReferencedDocument>
+            <ram:AdditionalReferencedDocument>
+                <ram:IssuerAssignedID>TENDER-17</ram:IssuerAssignedID>
+                <ram:TypeCode>50</ram:TypeCode>
+            </ram:AdditionalReferencedDocument>
+            <ram:SpecifiedProcuringProject>
+                <ram:ID>PRJ-11</ram:ID>
+                <ram:Name>Project reference</ram:Name>
+            </ram:SpecifiedProcuringProject>
+        </ram:ApplicableHeaderTradeAgreement>
+        <ram:ApplicableHeaderTradeDelivery>
+            <ram:ShipToTradeParty>
+                <ram:GlobalID schemeID="0088">5790000435222</ram:GlobalID>
+                <ram:Name>Delivery Party</ram:Name>
+                <ram:PostalTradeAddress>
+                    <ram:PostcodeCode>8010</ram:PostcodeCode>
+                    <ram:LineOne>Delivery street 4</ram:LineOne>
+                    <ram:LineTwo>Dock 2</ram:LineTwo>
+                    <ram:LineThree>Gate B</ram:LineThree>
+                    <ram:CityName>Graz</ram:CityName>
+                    <ram:CountryID>AT</ram:CountryID>
+                    <ram:CountrySubDivisionName>Steiermark</ram:CountrySubDivisionName>
+                </ram:PostalTradeAddress>
+            </ram:ShipToTradeParty>
+            <ram:ActualDeliverySupplyChainEvent>
+                <ram:OccurrenceDateTime>
+                    <udt:DateTimeString format="102">20261015</udt:DateTimeString>
+                </ram:OccurrenceDateTime>
+            </ram:ActualDeliverySupplyChainEvent>
+            <ram:DespatchAdviceReferencedDocument>
+                <ram:IssuerAssignedID>DESP-16</ram:IssuerAssignedID>
+            </ram:DespatchAdviceReferencedDocument>
+            <ram:ReceivingAdviceReferencedDocument>
+                <ram:IssuerAssignedID>REC-15</ram:IssuerAssignedID>
+            </ram:ReceivingAdviceReferencedDocument>
+        </ram:ApplicableHeaderTradeDelivery>
+        <ram:ApplicableHeaderTradeSettlement>
+            <ram:CreditorReferenceID>DE98ZZZ09999999999</ram:CreditorReferenceID>
+            <ram:PaymentReference>REMIT-83</ram:PaymentReference>
+            <ram:TaxCurrencyCode>HUF</ram:TaxCurrencyCode>
+            <ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>
+            <ram:PayeeTradeParty>
+                <ram:GlobalID schemeID="0088">5790000435111</ram:GlobalID>
+                <ram:Name>Payee Ltd</ram:Name>
+                <ram:SpecifiedLegalOrganization>
+                    <ram:ID schemeID="0002">01-09-999999</ram:ID>
+                </ram:SpecifiedLegalOrganization>
+            </ram:PayeeTradeParty>
+            <ram:SpecifiedTradeSettlementPaymentMeans>
+                <ram:TypeCode>59</ram:TypeCode>
+                <ram:Information>SEPA direct debit</ram:Information>
+                <ram:ApplicableTradeSettlementFinancialCard>
+                    <ram:ID>123456</ram:ID>
+                    <ram:CardholderName>Card Holder</ram:CardholderName>
+                </ram:ApplicableTradeSettlementFinancialCard>
+                <ram:PayerPartyDebtorFinancialAccount>
+                    <ram:IBANID>AT611904300234573201</ram:IBANID>
+                </ram:PayerPartyDebtorFinancialAccount>
+                <ram:PayeePartyCreditorFinancialAccount>
+                    <ram:IBANID>HU42117730161111101800000000</ram:IBANID>
+                    <ram:AccountName>Seller account</ram:AccountName>
+                </ram:PayeePartyCreditorFinancialAccount>
+                <ram:PayeeSpecifiedCreditorFinancialInstitution>
+                    <ram:BICID>OTPVHUHB</ram:BICID>
+                </ram:PayeeSpecifiedCreditorFinancialInstitution>
+            </ram:SpecifiedTradeSettlementPaymentMeans>
+            <ram:ApplicableTradeTax>
+                <ram:CalculatedAmount>25.65</ram:CalculatedAmount>
+                <ram:TypeCode>VAT</ram:TypeCode>
+                <ram:BasisAmount>95.00</ram:BasisAmount>
+                <ram:CategoryCode>S</ram:CategoryCode>
+                <ram:TaxPointDate>
+                    <udt:DateString format="102">20261031</udt:DateString>
+                </ram:TaxPointDate>
+                <ram:DueDateTypeCode>29</ram:DueDateTypeCode>
+                <ram:RateApplicablePercent>27</ram:RateApplicablePercent>
+            </ram:ApplicableTradeTax>
+            <ram:ApplicableTradeTax>
+                <ram:CalculatedAmount>0.00</ram:CalculatedAmount>
+                <ram:TypeCode>VAT</ram:TypeCode>
+                <ram:ExemptionReason>Exempt per Article 132</ram:ExemptionReason>
+                <ram:BasisAmount>0.00</ram:BasisAmount>
+                <ram:CategoryCode>E</ram:CategoryCode>
+                <ram:ExemptionReasonCode>VATEX-EU-132</ram:ExemptionReasonCode>
+                <ram:DueDateTypeCode>29</ram:DueDateTypeCode>
+                <ram:RateApplicablePercent>0</ram:RateApplicablePercent>
+            </ram:ApplicableTradeTax>
+            <ram:BillingSpecifiedPeriod>
+                <ram:StartDateTime>
+                    <udt:DateTimeString format="102">20261001</udt:DateTimeString>
+                </ram:StartDateTime>
+                <ram:EndDateTime>
+                    <udt:DateTimeString format="102">20261031</udt:DateTimeString>
+                </ram:EndDateTime>
+            </ram:BillingSpecifiedPeriod>
+            <ram:SpecifiedTradeAllowanceCharge>
+                <ram:ChargeIndicator>
+                    <udt:Indicator>false</udt:Indicator>
+                </ram:ChargeIndicator>
+                <ram:CalculationPercent>10</ram:CalculationPercent>
+                <ram:BasisAmount>100.00</ram:BasisAmount>
+                <ram:ActualAmount>10.00</ram:ActualAmount>
+                <ram:ReasonCode>95</ram:ReasonCode>
+                <ram:Reason>Discount</ram:Reason>
+                <ram:CategoryTradeTax>
+                    <ram:TypeCode>VAT</ram:TypeCode>
+                    <ram:CategoryCode>S</ram:CategoryCode>
+                    <ram:RateApplicablePercent>27</ram:RateApplicablePercent>
+                </ram:CategoryTradeTax>
+            </ram:SpecifiedTradeAllowanceCharge>
+            <ram:SpecifiedTradeAllowanceCharge>
+                <ram:ChargeIndicator>
+                    <udt:Indicator>true</udt:Indicator>
+                </ram:ChargeIndicator>
+                <ram:CalculationPercent>5</ram:CalculationPercent>
+                <ram:BasisAmount>100.00</ram:BasisAmount>
+                <ram:ActualAmount>5.00</ram:ActualAmount>
+                <ram:ReasonCode>FC</ram:ReasonCode>
+                <ram:Reason>Freight</ram:Reason>
+                <ram:CategoryTradeTax>
+                    <ram:TypeCode>VAT</ram:TypeCode>
+                    <ram:CategoryCode>S</ram:CategoryCode>
+                    <ram:RateApplicablePercent>27</ram:RateApplicablePercent>
+                </ram:CategoryTradeTax>
+            </ram:SpecifiedTradeAllowanceCharge>
+            <ram:SpecifiedTradePaymentTerms>
+                <ram:Description>Net 30</ram:Description>
+                <ram:DueDateDateTime>
+                    <udt:DateTimeString format="102">20261202</udt:DateTimeString>
+                </ram:DueDateDateTime>
+                <ram:DirectDebitMandateID>MANDATE-89</ram:DirectDebitMandateID>
+            </ram:SpecifiedTradePaymentTerms>
+            <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
+                <ram:LineTotalAmount>100.00</ram:LineTotalAmount>
+                <ram:ChargeTotalAmount>5.00</ram:ChargeTotalAmount>
+                <ram:AllowanceTotalAmount>10.00</ram:AllowanceTotalAmount>
+                <ram:TaxBasisTotalAmount>95.00</ram:TaxBasisTotalAmount>
+                <ram:TaxTotalAmount currencyID="EUR">25.65</ram:TaxTotalAmount>
+                <ram:TaxTotalAmount currencyID="HUF">10260</ram:TaxTotalAmount>
+                <ram:RoundingAmount>0.35</ram:RoundingAmount>
+                <ram:GrandTotalAmount>120.65</ram:GrandTotalAmount>
+                <ram:TotalPrepaidAmount>20.00</ram:TotalPrepaidAmount>
+                <ram:DuePayableAmount>101.00</ram:DuePayableAmount>
+            </ram:SpecifiedTradeSettlementHeaderMonetarySummation>
+            <ram:InvoiceReferencedDocument>
+                <ram:IssuerAssignedID>INV-2026-000</ram:IssuerAssignedID>
+                <ram:FormattedIssueDateTime>
+                    <qdt:DateTimeString format="102">20260930</qdt:DateTimeString>
+                </ram:FormattedIssueDateTime>
+            </ram:InvoiceReferencedDocument>
+            <ram:ReceivableSpecifiedTradeAccountingAccount>
+                <ram:ID>ACC-19</ram:ID>
+            </ram:ReceivableSpecifiedTradeAccountingAccount>
+        </ram:ApplicableHeaderTradeSettlement>
+    </rsm:SupplyChainTradeTransaction>
+</rsm:CrossIndustryInvoice>

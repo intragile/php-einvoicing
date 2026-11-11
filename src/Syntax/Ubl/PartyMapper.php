@@ -52,7 +52,7 @@ final class PartyMapper
             name: $d->requiredText($nameExpression, $party, $nameTerm),
             tradingName: $isTrader ? $d->text('cac:PartyName/cbc:Name', $party) : null,
             identifiers: $role === self::TAX_REPRESENTATIVE ? [] : $this->identifiers($party, $role),
-            legalRegistration: $hasLegalEntity ? $this->identifier($d->one('cac:PartyLegalEntity/cbc:CompanyID', $party)) : null,
+            legalRegistration: $hasLegalEntity ? $d->identifier($d->one('cac:PartyLegalEntity/cbc:CompanyID', $party)) : null,
             vatIdentifier: $role === self::PAYEE ? null : $this->vatIdentifier($party),
             taxRegistration: $role === self::SELLER ? $this->taxRegistration($party) : null,
             additionalLegalInformation: $role === self::SELLER ? $d->text('cac:PartyLegalEntity/cbc:CompanyLegalForm', $party) : null,
@@ -87,16 +87,6 @@ final class PartyMapper
         );
     }
 
-    public function identifier(?DOMElement $element): ?Identifier
-    {
-        if ($element === null || $element->textContent === '') {
-            return null;
-        }
-        $this->document->use($element);
-
-        return new Identifier(value: $element->textContent, scheme: $this->document->attribute($element, 'schemeID'));
-    }
-
     /**
      * Whether a party identifier is a SEPA creditor identifier, which is BT-90 and not BT-29/BT-60.
      */
@@ -121,7 +111,7 @@ final class PartyMapper
             if ($role !== self::SELLER && $identifiers !== []) {
                 break;
             }
-            $identifier = $this->identifier($id);
+            $identifier = $this->document->identifier($id);
             if ($identifier !== null) {
                 $identifiers[] = $identifier;
             }
@@ -164,7 +154,12 @@ final class PartyMapper
 
     private function electronicAddress(?DOMElement $endpoint): ?ElectronicAddress
     {
-        if ($endpoint === null || $endpoint->textContent === '') {
+        if ($endpoint === null) {
+            return null;
+        }
+        if ($endpoint->textContent === '') {
+            $this->document->use($endpoint);
+
             return null;
         }
         if ($this->document->attribute($endpoint, 'schemeID') === null) {

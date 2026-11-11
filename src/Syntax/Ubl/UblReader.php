@@ -10,14 +10,12 @@ use IntrAgile\EInvoicing\CodeList\AllowanceReasonCode;
 use IntrAgile\EInvoicing\CodeList\ChargeReasonCode;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
 use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
-use IntrAgile\EInvoicing\CodeList\MimeCode;
 use IntrAgile\EInvoicing\CodeList\TextSubjectCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\CodeList\VatExemptionReason;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Model\AdditionalDocument;
-use IntrAgile\EInvoicing\Model\Attachment;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentAllowance;
 use IntrAgile\EInvoicing\Model\DocumentCharge;
@@ -53,7 +51,7 @@ final class UblReader
     {
         $d = new UblDocument(SafeXml::load($xml));
         $parties = new PartyMapper($d);
-        $lines = new LineMapper($d, $parties);
+        $lines = new LineMapper($d);
         $root = $d->root;
 
         $currency = $d->requiredCode(CurrencyCode::class, $d->one('cbc:DocumentCurrencyCode'), null, 'BT-5', 'cbc:DocumentCurrencyCode', $root);
@@ -238,39 +236,8 @@ final class UblReader
             reference: $id,
             description: $d->text('cbc:DocumentDescription', $reference),
             externalLocation: $d->text('cac:Attachment/cac:ExternalReference/cbc:URI', $reference),
-            attachment: $this->attachment($d, $d->one('cac:Attachment/cbc:EmbeddedDocumentBinaryObject', $reference)),
+            attachment: $d->attachment($d->one('cac:Attachment/cbc:EmbeddedDocumentBinaryObject', $reference)),
         );
-    }
-
-    private function attachment(UblDocument $d, ?DOMElement $object): ?Attachment
-    {
-        if ($object === null) {
-            return null;
-        }
-        if ($d->attribute($object, 'mimeCode') === null) {
-            $d->reject($object, 'missing mime code', 'mimeCode');
-
-            return null;
-        }
-        $mimeCode = $d->code(MimeCode::class, $object, 'mimeCode');
-        if ($mimeCode === null) {
-            return null;
-        }
-        $filename = $d->attribute($object, 'filename');
-        if ($filename === null) {
-            $d->reject($object, 'missing filename', 'filename');
-
-            return null;
-        }
-        $content = base64_decode((string) preg_replace('/\s+/', '', $object->textContent), true);
-        if ($content === false) {
-            $d->reject($object, 'invalid Base64 content');
-
-            return null;
-        }
-        $d->use($object);
-
-        return new Attachment(content: $content, mimeCode: $mimeCode, filename: $filename);
     }
 
     /**
@@ -385,7 +352,7 @@ final class UblReader
             category: $category,
             rate: $d->decimal('cac:TaxCategory/cbc:Percent', $subtotal),
             exemptionReason: $d->text('cac:TaxCategory/cbc:TaxExemptionReason', $subtotal),
-            exemptionReasonCode: $d->code(VatExemptionReason::class, $d->one('cac:TaxCategory/cbc:TaxExemptionReasonCode', $subtotal)),
+            exemptionReasonCode: $d->code(VatExemptionReason::class, $d->one('cac:TaxCategory/cbc:TaxExemptionReasonCode', $subtotal), caseInsensitive: true),
         );
     }
 
@@ -435,7 +402,7 @@ final class UblReader
         }
 
         $partyName = $d->text('cac:DeliveryParty/cac:PartyName/cbc:Name', $delivery);
-        $location = $parties->identifier($d->one('cac:DeliveryLocation/cbc:ID', $delivery));
+        $location = $d->identifier($d->one('cac:DeliveryLocation/cbc:ID', $delivery));
         $date = $d->date('cbc:ActualDeliveryDate', $delivery);
         $address = $parties->address($d->one('cac:DeliveryLocation/cac:Address', $delivery));
 

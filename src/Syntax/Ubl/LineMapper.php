@@ -28,10 +28,7 @@ use IntrAgile\EInvoicing\Model\Price;
  */
 final class LineMapper
 {
-    public function __construct(
-        private readonly UblDocument $document,
-        private readonly PartyMapper $parties,
-    ) {}
+    public function __construct(private readonly UblDocument $document) {}
 
     public function line(DOMElement $line): InvoiceLine
     {
@@ -74,16 +71,7 @@ final class LineMapper
      */
     public function chargeIndicator(DOMElement $allowanceCharge): ?bool
     {
-        $indicator = match ($this->document->token('cbc:ChargeIndicator', $allowanceCharge)) {
-            'true', '1' => true,
-            'false', '0' => false,
-            default => null,
-        };
-        if ($indicator === null) {
-            $this->document->reject($allowanceCharge, 'dropped: no valid charge indicator');
-        }
-
-        return $indicator;
+        return $this->document->chargeIndicator('cbc:ChargeIndicator', $allowanceCharge);
     }
 
     /**
@@ -97,7 +85,7 @@ final class LineMapper
             if ($type !== null && trim($type->textContent) !== '130') {
                 continue;
             }
-            $identifier = $this->parties->identifier($this->document->one('cbc:ID', $reference));
+            $identifier = $this->document->identifier($this->document->one('cbc:ID', $reference));
             if ($identifier !== null) {
                 if ($type !== null) {
                     $this->document->use($type);
@@ -234,7 +222,7 @@ final class LineMapper
             description: $d->text('cbc:Description', $item),
             sellersIdentifier: $d->text('cac:SellersItemIdentification/cbc:ID', $item),
             buyersIdentifier: $d->text('cac:BuyersItemIdentification/cbc:ID', $item),
-            standardIdentifier: $this->parties->identifier($d->one('cac:StandardItemIdentification/cbc:ID', $item)),
+            standardIdentifier: $d->identifier($d->one('cac:StandardItemIdentification/cbc:ID', $item)),
             classifications: $classifications,
             originCountry: $d->code(CountryCode::class, $d->one('cac:OriginCountry/cbc:IdentificationCode', $item)),
             attributes: $attributes,

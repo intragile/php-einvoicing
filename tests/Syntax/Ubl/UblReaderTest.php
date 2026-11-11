@@ -240,6 +240,30 @@ final class UblReaderTest extends TestCase
         }
     }
 
+    public function test_exemption_reason_code_is_case_insensitive(): void
+    {
+        $xml = str_replace('VATEX-EU-132', 'vatex-eu-132', self::contents(self::FIXTURES.'/all-terms-invoice.xml'));
+
+        $result = (new UblReader)->read($xml);
+
+        self::assertSame('VATEX-EU-132', $result->invoice->vatBreakdown[1]->exemptionReasonCode?->value);
+        self::assertSame(['/Invoice/cac:PaymentMeans/cac:CardAccount/cbc:NetworkID'], $result->ignored);
+    }
+
+    public function test_empty_identifier_and_endpoint_are_absent_and_not_reported(): void
+    {
+        $xml = strtr(self::contents(self::FIXTURES.'/all-terms-invoice.xml'), [
+            '<cbc:EndpointID schemeID="9920">ESB12345678</cbc:EndpointID>' => '<cbc:EndpointID schemeID="9920"/>',
+            '<cbc:CompanyID schemeID="0088">FN123456</cbc:CompanyID>' => '<cbc:CompanyID/>',
+        ]);
+
+        $result = (new UblReader)->read($xml);
+
+        self::assertNull($result->invoice->seller->electronicAddress);
+        self::assertNull($result->invoice->buyer->legalRegistration);
+        self::assertSame(['/Invoice/cac:PaymentMeans/cac:CardAccount/cbc:NetworkID'], $result->ignored);
+    }
+
     public function test_invalid_country_drops_the_address_and_reports_it(): void
     {
         $xml = str_replace(
