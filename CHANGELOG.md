@@ -32,9 +32,12 @@ All notable changes to this project are documented here. The format follows
   official preprocessed Schematron into PHP rule files.
 - The compiled rules as the EUPL-1.2 package `intragile/einvoicing-rules-en16931`
   (`packages/rules-en16931`).
-- A conformance test group proving the validator's verdicts equal the official CEN XSLT run by
-  SaxonC on the CEN examples, the CEN unit tests and seeded mutations.
-- `docs/VALIDATION.md`: how validation works, the supported XPath, the proof and measured timings.
+- A conformance test group that checks the validator's verdicts equal to the official CEN XSLT
+  run by SaxonC on a corpus of 1,892 documents (the CEN examples, the CEN unit tests, seeded
+  mutations, model invoices and crafted documents); where Saxon aborts with a dynamic error (135
+  mutations), only the XPath error code is compared.
+- `docs/VALIDATION.md`: how validation works, the supported XPath, what the oracle checks,
+  resource use and measured timings.
 
 ### Fixed
 

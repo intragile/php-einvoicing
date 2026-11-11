@@ -21,8 +21,8 @@ Jelenleg tartalmazza:
 - `TotalsCalculator`: sorok nettó összege, ÁFA-bontás és számlaösszesítők pontos tizedesekkel.
 - UBL 2.1 (Invoice, CreditNote) és UN/CEFACT CII (CrossIndustryInvoice) olvasó és író.
 - Tisztán PHP-s validátor, amely a hivatalos CEN EN 16931 Schematron-szabályokat (1.3.17)
-  futtatja UBL-re és CII-re; az eredménye bizonyítottan azonos a hivatalos XSLT-ével
-  ([hogyan működik](docs/VALIDATION.md), angolul).
+  futtatja UBL-re és CII-re; az eredményét 1892 dokumentumból álló korpuszon vetettük össze a
+  hivatalos XSLT-ével, és azonosnak találtuk ([hogyan működik](docs/VALIDATION.md), angolul).
 
 Későbbi kiadásokra tervezett, jelenleg nincs benne: a Peppol BIS 3 szabályai és a Peppol-átvitel,
 az XRechnung és a ZUGFeRD/Factur-X profilok, valamint Laravel csomag.
@@ -136,20 +136,25 @@ A modellel összeállított számlát egy hívás megírja és ellenőrzi:
 
 A validátor a hivatalos CEN EN 16931 szabályokat futtatja (1.3.17-es validációs csomag: UBL-re
 982, CII-re 810 ellenőrzés), amelyeket a hivatalos Schematronból PHP-ra fordítottunk; nincs
-szükség Javára vagy XSLT-feldolgozóra. Az `isValid()` akkor igaz, ha egyetlen fatális szabály sem
+szükség Javára vagy XSLT-feldolgozóra. Az `isValid()` akkor igaz, ha egyetlen fatal szintű szabály sem
 sérült; a figyelmeztetéseket a `warnings()` adja vissza, ezek nem teszik érvénytelenné a számlát.
 Ha egy érték nem értékelhető ki (például összegként `abc` szerepel), az ellenőrzés nem áll le: a
 hiba a `$report->errors` listába kerül az XPath-hibakóddal (`FORG0001`), a többi szabály
 ellenőrzése folytatódik, a számla pedig érvénytelen. Ha a dokumentum nem támogatott szintaxisú
-számla, `UnsupportedDocument`, ha DOCTYPE-ot tartalmaz, `UnsafeXml` kivétel keletkezik; egyiket
-sem minősíti érvényesnek.
+számla (vagy nem is számla), `UnsupportedDocument` kivétel keletkezik, DOCTYPE esetén `UnsafeXml`;
+a validátor egyiket sem minősíti érvényesnek.
 
-Minden eredményt a Saxonnal futtatott hivatalos CEN XSLT-vel vetünk össze: a 34 CEN mintaszámla,
-1169 CEN egységteszt-dokumentum és 680 gépileg módosított (mutált) változat pontosan ugyanazokat a
-szabályazonosítókat és szinteket adja. Egy átlagos számla ellenőrzése 7–50 ms, egy 1000 tételes
-számláé körülbelül 1,7 s (Apple M1, PHP 8.5). A támogatott XPath-részhalmazt, azokat az eseteket,
-ahol a motor a Saxon viselkedését követi, a bizonyítást és a méréseket a
-[docs/VALIDATION.md](docs/VALIDATION.md) írja le (angolul).
+Az eredményeket 1892 dokumentumból álló korpuszon vetettük össze a Saxonnal futtatott hivatalos
+CEN XSLT-vel (34 CEN mintaszámla, 1169 CEN egységteszt-dokumentum, 680 gépileg módosított
+(mutált) változat, 6 modellből írt számla és 3 célzottan összeállított dokumentum): pontosan
+ugyanazokat a szabályazonosítókat és szinteket adják. Azon a 135 mutált változaton, amelyen a
+Saxon dinamikus hibával leáll, csak az XPath-hibakódot hasonlítjuk össze. Egy átlagos számla
+ellenőrzése 7–50 ms, egy 1000 tételes számláé körülbelül 1,7 s (egyszeri mérés a fejlesztői gépen:
+Apple M1, PHP 8.5). Egyes szabályok ismétlődő elemeknél a lineárisnál gyorsabban lassulnak (az
+UBL-SR-47 a fizetési mód kódok számában négyzetes), ezért kívülről érkező, megbízhatatlan
+fájloknál korlátozd a bemenet méretét és az ellenőrzés idejét. A támogatott XPath-részhalmazt,
+azokat az eseteket, ahol a motor a Saxon viselkedését követi, az oracle által ellenőrzötteket, az
+erőforrás-igényt és a méréseket a [docs/VALIDATION.md](docs/VALIDATION.md) írja le (angolul).
 
 A lefordított szabályok a CEN-csomag származékos művei, ezért **EUPL-1.2** licencűek. Külön
 csomagban vannak (`intragile/einvoicing-rules-en16931`, ebben a tárolóban a
@@ -176,7 +181,7 @@ entitás-kibontásos támadás (billion laughs) így nem lehetséges. Sérülék
   dokumentumoknak át kell menniük a hivatalos szabályokon, magát az ellenőrzőt pedig az
   ellenőrzi, hogy szándékosan elrontott végösszegre szabályt vált ki (BR-CO-16), a validátor
   eredményének pedig a megfelelőségi korpusz minden dokumentumán meg kell egyeznie az oracle-éval
-  ([részletek](docs/VALIDATION.md#how-verdict-equality-is-proven), angolul). A
+  ([részletek](docs/VALIDATION.md#how-verdict-equality-is-checked), angolul). A
   `docker/oracle/run.sh 8.5` felépíti a képet és lefuttatja a csoportot; Docker és telepített
   `vendor/` kell hozzá. Ez csak fejlesztői eszköz, nem része a telepített csomagnak.
 - A CI PHPUnitot és PHPStant (max szint) futtat PHP 8.3, 8.4 és 8.5 alatt, továbbá Pintet, az

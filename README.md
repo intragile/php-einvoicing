@@ -21,7 +21,8 @@ Included today:
 - `TotalsCalculator`: line net amounts, VAT breakdown and document totals with exact decimals.
 - Readers and writers for UBL 2.1 (Invoice, CreditNote) and UN/CEFACT CII (CrossIndustryInvoice).
 - A pure-PHP validator that runs the official CEN EN 16931 Schematron rules (1.3.17) for UBL and
-  CII, with verdicts proven equal to the official XSLT ([how it works](docs/VALIDATION.md)).
+  CII, with verdicts checked equal to the official XSLT on a corpus of 1,892 documents
+  ([how it works](docs/VALIDATION.md)).
 
 Not included yet, planned for later releases: the Peppol BIS 3 rules and Peppol transport, the
 XRechnung and ZUGFeRD/Factur-X profiles, and a Laravel package.
@@ -139,11 +140,16 @@ rules are still checked, and the invoice is not valid. A document that is not an
 supported syntax throws `UnsupportedDocument`, and a DOCTYPE throws `UnsafeXml`; neither is ever
 reported as valid.
 
-Every verdict is checked against the official CEN XSLT run by Saxon: the 34 CEN example invoices,
-1,169 CEN unit-test documents and 680 seeded mutations give exactly the same rule ids and flags.
-A typical invoice validates in 7–50 ms, a 1,000-line invoice in about 1.7 s (measured on an
-Apple M1 with PHP 8.5). [docs/VALIDATION.md](docs/VALIDATION.md) describes the supported XPath,
-the cases where the engine mirrors Saxon, the proof and the measurements.
+Verdicts are checked equal to the official CEN XSLT run by Saxon on a corpus of 1,892 documents
+(the 34 CEN example invoices, 1,169 CEN unit-test documents, 680 seeded mutations, 6 model
+invoices and 3 crafted documents): they give exactly the same rule ids and flags. On the 135
+mutations where Saxon aborts with a dynamic error, only the XPath error code is compared. A typical
+invoice validates in 7–50 ms, a 1,000-line invoice in about 1.7 s (single measurement on the
+development machine, an Apple M1 with PHP 8.5). Some rules grow faster than linearly with
+repeated elements (UBL-SR-47 is quadratic in the number of payment means codes), so set input-size
+and time limits for untrusted inbound files. [docs/VALIDATION.md](docs/VALIDATION.md) describes
+the supported XPath, the cases where the engine mirrors Saxon, what the oracle checks, resource use
+and the measurements.
 
 The compiled rules are a derivative of the CEN artefacts and are licensed under the **EUPL-1.2**.
 They are in a separate package, `intragile/einvoicing-rules-en16931` (`packages/rules-en16931`
@@ -167,7 +173,7 @@ possible. To report a vulnerability, see [SECURITY.md](SECURITY.md).
   SaxonC-HE in Docker as an oracle: documents produced by the writers must pass the official
   rules, the oracle itself is checked to fire a rule on a deliberately broken total (BR-CO-16), and
   the validator's verdict must equal the oracle's on every document of the conformance corpus
-  ([details](docs/VALIDATION.md#how-verdict-equality-is-proven)).
+  ([details](docs/VALIDATION.md#how-verdict-equality-is-checked)).
   `docker/oracle/run.sh 8.5` builds the image and runs the group; it needs Docker and `vendor/`
   installed. This is development tooling only and is not part of the installed package.
 - CI runs PHPUnit and PHPStan (level max) on PHP 8.3, 8.4 and 8.5, plus Pint, the oracle and a

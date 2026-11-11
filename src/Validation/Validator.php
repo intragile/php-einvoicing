@@ -83,6 +83,7 @@ final class Validator
      *
      * @throws InvalidArgumentException when the writer refuses the model, for example because its
      *                                  totals are not completed (see TotalsCalculator::complete())
+     * @throws UnsupportedDocument when no rule of the rule set handles the written document element
      */
     public function validateInvoice(Invoice $invoice, Syntax $syntax = Syntax::Ubl): ValidationReport
     {

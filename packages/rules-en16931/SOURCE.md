@@ -24,7 +24,9 @@ The preprocessed Schematron is the official rule set with all includes and abstr
 resolved. The compiler keeps every pattern, rule and assert in document order, with its id, flag,
 original `context` and `test` text and message (whitespace collapsed), and adds the XPath syntax
 tree of each context and test. Phases are dropped: the official XSLT runs all patterns when no phase
-is selected, and so does the engine. Nothing else is added, removed or reworded.
+is selected, and so does the engine. The schema `title` element and the `flag` attributes on 45
+`rule` elements (22 in UBL, 23 in CII) are dropped as well, because the official XSLT never emits
+them in its report; the flag of each assert is kept. Nothing else is added, removed or reworded.
 
 ## Licence
 

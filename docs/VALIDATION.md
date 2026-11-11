@@ -4,7 +4,8 @@ Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
 This page explains how `IntrAgile\EInvoicing\Validation\Validator` checks an invoice against the
 official CEN EN 16931 business rules: what it runs, which XPath it understands, where it follows
-Saxon's behaviour, how its verdicts are proven equal to the official validator, and how fast it is.
+Saxon's behaviour, how its verdicts are checked against the official validator, and how fast it
+is.
 
 ## How it works
 
@@ -111,7 +112,7 @@ So the engine never crashes on such input and never calls it valid. On a documen
 abort, the report carries the same error code as Saxon, plus the findings of the rules that could
 still be evaluated.
 
-## How verdict equality is proven
+## How verdict equality is checked
 
 The test group `oracle` runs the official CEN XSLT through SaxonC-HE in Docker as the judge
 (`docker/oracle/run.sh 8.3|8.4|8.5`). A verdict is the sorted set of distinct `"<rule id> <flag>"`
@@ -126,19 +127,21 @@ The corpus (CEN 1.3.17):
 |---|---|
 | Official CEN example invoices (UBL and CII) | 34 |
 | CEN unit-test documents (`test/` at the release tag, VEFA test sets expanded) | 1,169 |
-| Seeded mutations: 20 per example (remove, duplicate, empty, `abc` amount, amount + 0.01, `ZZZ` code, currency swap, start/end date swap) | 680 |
+| Seeded mutations: 20 per example (remove, duplicate, empty, `abc` amount, amount + 0.01, `ZZZ` code, currency swap, start/end date swap, space and comment before a value) | 680 |
 | Model invoices written by this library in UBL and CII | 6 |
 | Documents whose rule-context predicates fail (recoverable context errors) | 3 |
 
-Of the 680 mutations, Saxon aborts on 154 (119 `FORG0001`, 35 `XPTY0004`), so the error path is
-well exercised. On PHP 8.5 the whole oracle group, including 245 single
-expression probes and the wrapper guard below, is 4,071 tests; any mismatch fails the build.
+That is 1,892 documents on which the verdicts are checked equal; this is a test corpus, not a
+proof for every possible input. Of the 680 mutations, Saxon aborts on 135 (102 `FORG0001`, 32
+`XPTY0004`, 1 `FORG0006`); on those only the XPath error code is compared, not the findings. On
+PHP 8.3, 8.4 and 8.5 the whole oracle group, including 245 single expression probes and the
+wrapper guard below, is 4,071 tests; any mismatch fails the build.
 
 The SaxonC PHP extension gives no error code for a dynamic error and cannot run another
 transformation after one. The oracle therefore wraps the official stylesheet in a test-only XSLT
 3.0 stylesheet that imports it unchanged and catches the error code with `xsl:try` around
-`xsl:apply-imports`. A guard test proves that the wrapped and the plain official stylesheet give
-the same verdict on every document Saxon does not abort on (1,738 documents).
+`xsl:apply-imports`. A guard test checks that the wrapped and the plain official stylesheet give
+the same verdict on every document of the corpus Saxon does not abort on (1,757 documents).
 
 ## Regenerating the rules for a new CEN release
 
@@ -192,10 +195,21 @@ Large invoices (UBL, generated lines, same machine):
 | 1,000 (590 KB, 7 runs) | 1.71 s (1.69–1.73 s) |
 | 10,000 (5.9 MB, 3 runs) | 20.0 s (18.7–20.3 s), process peak memory 130 MB |
 
-Time grows roughly linearly with the number of lines (ten times the lines took 11.7 times as
-long); the test suite asserts that 1,000 lines take less
-than 15 times as long as 100 lines and less than 5 seconds. These are single measurements on one
+For these invoices time grows roughly linearly with the number of lines (ten times the lines took
+11.7 times as long; see [Resource use](#resource-use) for a rule that does not scale this way); the
+test suite asserts that 1,000 lines take less than 15 times as long as 100 lines and less than
+5 seconds. These are single measurements on one
 machine, not a guarantee.
+
+## Resource use
+
+Most rules cost time in proportion to the size of the invoice, but not all. UBL-SR-47,
+`count(//cbc:PaymentMeansCode[not(preceding::cbc:PaymentMeansCode/. = .)])`, compares every payment
+means code with all codes before it, so its time is quadratic in their number: 1,000 codes took
+0.83 s and 4,000 codes 7.7 s (single measurement on the development machine). Saxon evaluates the
+official XSLT with the same shape. An attacker can therefore make a small file expensive. For
+untrusted inbound files, limit the input size before validating (an invoice of a few megabytes is
+large) and run validation with a time limit, for example in a queue worker with a timeout.
 
 ---
 
