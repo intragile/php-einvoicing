@@ -27,9 +27,15 @@ final class TotalsCalculator
      *
      * Values already present are kept as given, even when they disagree with the computation:
      * a line net amount, a VAT breakdown entry with the same category and rate (including its
-     * exemption reason BT-120/BT-121), and any total already set. The calculator never invents
-     * an exemption reason. BT-111 is filled only when the VAT accounting currency (BT-6) equals
-     * the invoice currency (BT-5); otherwise it needs an exchange rate and stays as given.
+     * exemption reason BT-120/BT-121), and any total already set.
+     *
+     * Two values are the caller's responsibility and are never computed:
+     * - VAT exemption reasons (BT-120/BT-121), which E, AE, K, O and other exempt categories
+     *   require (BR-E-10, BR-AE-10, BR-IC-10, BR-O-10, ...): supply them as VatBreakdown entries
+     *   for the category and rate; such entries are kept and computed entries carry no reason.
+     * - The VAT total in accounting currency (BT-111), which needs an exchange rate. Leave it null
+     *   when BT-6 is absent or equals BT-5: BT-110 then satisfies BR-53, and a second VAT total in
+     *   the invoice currency would break BR-CO-15.
      */
     public static function complete(Invoice $invoice): Invoice
     {
@@ -78,7 +84,7 @@ final class TotalsCalculator
                 'BR-CO-12' => self::brCo11And12($totals->sumOfCharges, self::chargeSum($invoice)),
                 'BR-CO-13' => self::brCo13($totals),
                 'BR-CO-14' => self::brCo14($totals, $invoice->vatBreakdown !== [], $taxSum),
-                'BR-CO-15' => self::brCo15($totals),
+                'BR-CO-15' => self::brCo15($invoice, $totals),
                 'BR-CO-16' => self::brCo16($totals),
             ];
             foreach ($rules as $rule => $satisfied) {
@@ -157,11 +163,18 @@ final class TotalsCalculator
      * BR-CO-15, UBL artefact: exactly one BT-110 in the invoice currency, and
      * BT-112 = round((BT-109 + BT-110) * 100) div 100.
      *
+     * BT-111 is written as a second VAT total in the BT-6 currency, so a BT-111 with BT-6 equal to
+     * BT-5 makes two totals in the invoice currency and fails the count.
+     *
      * The CII artefact additionally accepts BT-112 = BT-109 whatever BT-110 is; this mirrors UBL.
      */
-    private static function brCo15(DocumentTotals $totals): bool
+    private static function brCo15(Invoice $invoice, DocumentTotals $totals): bool
     {
         if ($totals->totalVat === null) {
+            return false;
+        }
+
+        if ($totals->totalVatInAccountingCurrency !== null && $invoice->taxCurrency === $invoice->currency) {
             return false;
         }
 
@@ -354,10 +367,6 @@ final class TotalsCalculator
         $rounding = $invoice->totals?->roundingAmount;
         $due = Rounding::amount($withVat->minus($paid ?? $zero)->plus($rounding ?? $zero));
 
-        $vatInAccountingCurrency = $invoice->taxCurrency !== null && $invoice->taxCurrency === $invoice->currency
-            ? $vat
-            : null;
-
         return new DocumentTotals(
             sumOfLineNetAmounts: $lineSum,
             totalWithoutVat: $withoutVat,
@@ -366,7 +375,7 @@ final class TotalsCalculator
             sumOfAllowances: $allowances,
             sumOfCharges: $charges,
             totalVat: $vat,
-            totalVatInAccountingCurrency: $vatInAccountingCurrency,
+            totalVatInAccountingCurrency: $invoice->totals?->totalVatInAccountingCurrency,
             paidAmount: $paid,
             roundingAmount: $rounding,
         );
@@ -386,7 +395,7 @@ final class TotalsCalculator
             sumOfAllowances: $given->sumOfAllowances ?? $computed->sumOfAllowances,
             sumOfCharges: $given->sumOfCharges ?? $computed->sumOfCharges,
             totalVat: $given->totalVat ?? $computed->totalVat,
-            totalVatInAccountingCurrency: $given->totalVatInAccountingCurrency ?? $computed->totalVatInAccountingCurrency,
+            totalVatInAccountingCurrency: $given->totalVatInAccountingCurrency,
             paidAmount: $given->paidAmount,
             roundingAmount: $given->roundingAmount,
         );

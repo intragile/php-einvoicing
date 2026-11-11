@@ -217,16 +217,43 @@ final class TotalsCalculatorTest extends TestCase
         self::assertEquals($once, TotalsCalculator::complete($once));
     }
 
-    public function test_bt111_is_filled_only_when_the_tax_currency_equals_the_invoice_currency(): void
+    public function test_bt111_is_never_computed(): void
     {
         $base = $this->invoice([$this->line('1', '1', '100.00', rate: '27')]);
 
-        self::assertNull(TotalsCalculator::complete($base)->totals?->totalVatInAccountingCurrency);
+        self::assertNull($this->totalsOf(TotalsCalculator::complete($base))->totalVatInAccountingCurrency);
+        self::assertNull($this->totalsOf(TotalsCalculator::complete($base->withTaxCurrency(CurrencyCode::EUR)))->totalVatInAccountingCurrency);
+        self::assertNull($this->totalsOf(TotalsCalculator::complete($base->withTaxCurrency(CurrencyCode::HUF)))->totalVatInAccountingCurrency);
+    }
+
+    public function test_caller_supplied_bt111_is_kept_and_passes_with_a_different_tax_currency(): void
+    {
+        $huf = $this->invoice([$this->line('1', '1', '100.00', rate: '27')])->withTaxCurrency(CurrencyCode::HUF)
+            ->withTotals(new DocumentTotals(
+                sumOfLineNetAmounts: '100.00',
+                totalWithoutVat: '100.00',
+                totalWithVat: '127.00',
+                amountDue: '127.00',
+                totalVat: '27.00',
+                totalVatInAccountingCurrency: '10611.00',
+            ));
+
+        $completed = TotalsCalculator::complete($huf);
+
+        self::assertSame('10611.00', (string) $this->totalsOf($completed)->totalVatInAccountingCurrency);
+        self::assertSame([], TotalsCalculator::check($completed));
+    }
+
+    public function test_check_reports_br_co_15_for_bt111_when_tax_currency_equals_invoice_currency(): void
+    {
+        $invoice = TotalsCalculator::complete($this->invoice([$this->line('1', '1', '100.00', rate: '27')]));
+        $sameCurrency = $invoice->withTaxCurrency(CurrencyCode::EUR);
+
+        self::assertSame([], TotalsCalculator::check($sameCurrency));
         self::assertSame(
-            '27.00',
-            (string) TotalsCalculator::complete($base->withTaxCurrency(CurrencyCode::EUR))->totals?->totalVatInAccountingCurrency,
+            ['BR-CO-15'],
+            TotalsCalculator::check($sameCurrency->withTotals($this->totalsWith($sameCurrency, ['totalVatInAccountingCurrency' => '27.00']))),
         );
-        self::assertNull(TotalsCalculator::complete($base->withTaxCurrency(CurrencyCode::HUF))->totals?->totalVatInAccountingCurrency);
     }
 
     public function test_mixed_vat_invoice_gets_one_breakdown_per_category_and_rate(): void
