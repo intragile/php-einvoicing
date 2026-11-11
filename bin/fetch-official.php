@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 /*
  * Downloads the CEN EN 16931 validation artefacts (release validation-1.3.17) and unpacks the
- * examples and the compiled XSLT into tests/fixtures/official/cen-1.3.17/{ubl,cii}/.
+ * examples, the compiled XSLT and the code-list Schematron into
+ * tests/fixtures/official/cen-1.3.17/{ubl,cii}/.
  *
  * Every download is verified against a pinned SHA-256 sum. Verified archives are cached in
  * .cache/official/, so a second run needs no network and produces the same tree.
@@ -27,8 +28,11 @@ const ARCHIVES = [
 /** The EUPL 1.2 text that must travel with every redistributed copy. */
 const LICENCE = ['LICENSE.txt', 'fc22ec1dcd8bee4636a395fb332e2308cde870fb3fdc71a2e260b919877cdef5'];
 
-/** Archive directories that are unpacked; schematron sources are not needed by the tests. */
-const EXTRACT_PREFIXES = ['examples/', 'xslt/'];
+/**
+ * Archive directories that are unpacked. The code-list Schematron feeds bin/generate-codelists.php;
+ * the other Schematron sources are compiled into the XSLT and not needed.
+ */
+const EXTRACT_PREFIXES = ['examples/', 'xslt/', 'schematron/codelist/'];
 
 $root = dirname(__DIR__);
 $cacheDir = $root.'/.cache/official';

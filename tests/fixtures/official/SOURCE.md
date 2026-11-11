@@ -15,7 +15,10 @@ artefacts. They are third-party material and are **not** covered by this package
 | CII archive | `en16931-cii-1.3.17.zip`, SHA-256 `e5f3235824b6b38454b1d54cf3f14e01efb5b33971fbefc4e64997d0ef619e89` |
 | Licence text | `LICENSE.txt` at the tag, SHA-256 `fc22ec1dcd8bee4636a395fb332e2308cde870fb3fdc71a2e260b919877cdef5` |
 
-Only the `examples/` and `xslt/` directories of each archive are kept. The examples in the
+Only the `examples/`, `xslt/` and `schematron/codelist/` directories of each archive are kept.
+The code-list Schematron (`EN16931-UBL-codes.sch`, `EN16931-CII-codes.sch`) is the input of
+`bin/generate-codelists.php`, which derives the enums in `src/CodeList/` from it (see
+[`src/CodeList/SOURCE.md`](../../../src/CodeList/SOURCE.md)). The examples in the
 archives are byte-identical to `ubl/examples/` and `cii/examples/` in the repository at the same
 tag (their Git blob hashes match).
 
@@ -36,8 +39,10 @@ meets:
 
 - **Attribution:** the files are unmodified, and a copy of the licence travels with them in
   [`cen-1.3.17/LICENSE.txt`](cen-1.3.17/LICENSE.txt).
-- **Copyleft:** the copies are redistributed under EUPL v1.2, not under MIT. Nothing in this
-  package links against or derives from them; they are read as test input only.
+- **Copyleft:** the copies are redistributed under EUPL v1.2, not under MIT. No code in this
+  package links against them. The examples and the XSLT are read as test input only; the only
+  derived output is the set of code values in `src/CodeList/`, documented in
+  [`src/CodeList/SOURCE.md`](../../../src/CodeList/SOURCE.md).
 - **Source code:** the source repository is named above.
 
 The `tests/` directory is excluded from the Composer dist archive (`.gitattributes`
