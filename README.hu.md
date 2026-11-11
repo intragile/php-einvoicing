@@ -4,7 +4,8 @@ Fejlesztő és karbantartó: [IntrAgile Kft.](https://intragile.eu)
 
 **Keretrendszer-független EN 16931 e-számlázási mag PHP-hoz.** Pontos tizedes számításra épülő
 számlamodell, EN 16931 szerinti összesítés, valamint a szabványhoz tartozó két szintaxis
-(UBL 2.1 és UN/CEFACT CII) olvasása és írása. Futásidőben nincs szükség Javára.
+(UBL 2.1 és UN/CEFACT CII) olvasása és írása, valamint ellenőrzés a hivatalos CEN EN 16931
+szabályok szerint. Futásidőben nincs szükség Javára.
 
 [English description → README.md](README.md)
 
@@ -19,11 +20,12 @@ Jelenleg tartalmazza:
 - Kódlisták típusos enumként, a CEN 1.3.17 validációs csomagból generálva.
 - `TotalsCalculator`: sorok nettó összege, ÁFA-bontás és számlaösszesítők pontos tizedesekkel.
 - UBL 2.1 (Invoice, CreditNote) és UN/CEFACT CII (CrossIndustryInvoice) olvasó és író.
+- Tisztán PHP-s validátor, amely a hivatalos CEN EN 16931 Schematron-szabályokat (1.3.17)
+  futtatja UBL-re és CII-re; az eredménye bizonyítottan azonos a hivatalos XSLT-ével
+  ([hogyan működik](docs/VALIDATION.md), angolul).
 
-Későbbi kiadásokra tervezett, jelenleg nincs benne: tisztán PHP-s validátor az EN 16931 üzleti
-szabályaihoz, Peppol-átvitel, az XRechnung és a ZUGFeRD/Factur-X profilok, valamint Laravel
-csomag. Amíg a validátor nincs meg, a könyvtár nem mondja meg, hogy egy számla érvényes-e; mi
-lett ellenőrizve, azt az [Ellenőrzés](#ellenőrzés) szakasz írja le.
+Későbbi kiadásokra tervezett, jelenleg nincs benne: a Peppol BIS 3 szabályai és a Peppol-átvitel,
+az XRechnung és a ZUGFeRD/Factur-X profilok, valamint Laravel csomag.
 
 ## Telepítés
 
@@ -111,6 +113,49 @@ Mindkét olvasó `ReadResult`-ot ad vissza. A modell által nem ismert elemeket 
 felsorolja, nem pedig hibával leáll. Csak az olyan adat hiánya tesz egy dokumentumot nem
 támogatottá, amely nélkül a modell nem létezhet.
 
+## Számla ellenőrzése
+
+```php
+use IntrAgile\EInvoicing\Validation\Validator;
+
+$report = Validator::en16931()->validate($xml); // UBL Invoice, UBL CreditNote vagy CII
+
+if (! $report->isValid()) {
+    foreach ($report->fatal() as $finding) {
+        echo "{$finding->ruleId} itt: {$finding->location}: {$finding->message}\n";
+    }
+    foreach ($report->errors as $error) {   // ki nem értékelhető értékek, például "12,50"
+        echo "{$error->errorCode} a(z) {$error->ruleId} szabályban itt: {$error->location}\n";
+    }
+}
+```
+
+A modellel összeállított számlát egy hívás megírja és ellenőrzi:
+`Validator::en16931()->validateInvoice($invoice)` (UBL) vagy
+`->validateInvoice($invoice, Syntax::Cii)` (`IntrAgile\EInvoicing\Syntax\Syntax`).
+
+A validátor a hivatalos CEN EN 16931 szabályokat futtatja (1.3.17-es validációs csomag: UBL-re
+982, CII-re 810 ellenőrzés), amelyeket a hivatalos Schematronból PHP-ra fordítottunk; nincs
+szükség Javára vagy XSLT-feldolgozóra. Az `isValid()` akkor igaz, ha egyetlen fatális szabály sem
+sérült; a figyelmeztetéseket a `warnings()` adja vissza, ezek nem teszik érvénytelenné a számlát.
+Ha egy érték nem értékelhető ki (például összegként `abc` szerepel), az ellenőrzés nem áll le: a
+hiba a `$report->errors` listába kerül az XPath-hibakóddal (`FORG0001`), a többi szabály
+ellenőrzése folytatódik, a számla pedig érvénytelen. Ha a dokumentum nem támogatott szintaxisú
+számla, `UnsupportedDocument`, ha DOCTYPE-ot tartalmaz, `UnsafeXml` kivétel keletkezik; egyiket
+sem minősíti érvényesnek.
+
+Minden eredményt a Saxonnal futtatott hivatalos CEN XSLT-vel vetünk össze: a 34 CEN mintaszámla,
+1169 CEN egységteszt-dokumentum és 680 gépileg módosított (mutált) változat pontosan ugyanazokat a
+szabályazonosítókat és szinteket adja. Egy átlagos számla ellenőrzése 7–50 ms, egy 1000 tételes
+számláé körülbelül 1,7 s (Apple M1, PHP 8.5). A támogatott XPath-részhalmazt, azokat az eseteket,
+ahol a motor a Saxon viselkedését követi, a bizonyítást és a méréseket a
+[docs/VALIDATION.md](docs/VALIDATION.md) írja le (angolul).
+
+A lefordított szabályok a CEN-csomag származékos művei, ezért **EUPL-1.2** licencűek. Külön
+csomagban vannak (`intragile/einvoicing-rules-en16931`, ebben a tárolóban a
+`packages/rules-en16931` mappa), amelyet ez a csomag függőségként behúz; maga a motor MIT licencű
+marad. Egyik csomag sincs még publikálva.
+
 ## Biztonság: rosszindulatú XML
 
 A beérkező számlák megbízhatatlan bemenetek. Az olvasók az XML-t a `SafeXml`-en keresztül
@@ -129,11 +174,13 @@ entitás-kibontásos támadás (billion laughs) így nem lehetséges. Sérülék
 - Egy opcionális tesztcsoport a hivatalos CEN validációs stíluslapokat (XSLT 2.0) futtatja
   SaxonC-HE-vel Dockerben, referencia-ellenőrzőként (oracle): az írók által előállított
   dokumentumoknak át kell menniük a hivatalos szabályokon, magát az ellenőrzőt pedig az
-  ellenőrzi, hogy szándékosan elrontott végösszegre szabályt vált ki (BR-CO-16). A
+  ellenőrzi, hogy szándékosan elrontott végösszegre szabályt vált ki (BR-CO-16), a validátor
+  eredményének pedig a megfelelőségi korpusz minden dokumentumán meg kell egyeznie az oracle-éval
+  ([részletek](docs/VALIDATION.md#how-verdict-equality-is-proven), angolul). A
   `docker/oracle/run.sh 8.5` felépíti a képet és lefuttatja a csoportot; Docker és telepített
   `vendor/` kell hozzá. Ez csak fejlesztői eszköz, nem része a telepített csomagnak.
-- A CI PHPUnitot és PHPStant (max szint) futtat PHP 8.3, 8.4 és 8.5 alatt, továbbá Pintet és
-  az oracle-csoportot.
+- A CI PHPUnitot és PHPStant (max szint) futtat PHP 8.3, 8.4 és 8.5 alatt, továbbá Pintet, az
+  oracle-csoportot, és ellenőrzi, hogy a lefordított szabályok egyeznek a hivatalos Schematronnal.
 
 ## Fejlesztés
 
@@ -143,6 +190,7 @@ vendor/bin/phpunit
 vendor/bin/phpstan analyse
 vendor/bin/pint --test
 php bin/generate-model-doc.php   # újragenerálja a docs/MODEL.md-t
+composer compile-rules           # újrafordítja a szabályokat a hivatalos Schematronból
 ```
 
 ## Licenc és forrásmegjelölés
@@ -151,7 +199,9 @@ A könyvtár MIT licencű ([LICENSE](LICENSE)). A tesztekben használt CEN valid
 EUPL v1.2 licenc alatt áll, nem része a telepített csomagnak, leírása:
 [tests/fixtures/official/SOURCE.md](https://github.com/intragile/php-einvoicing/blob/main/tests/fixtures/official/SOURCE.md). A `src/CodeList/`
 kódlistaértékei ebből származnak; a forrásmegjelölést lásd:
-[src/CodeList/SOURCE.md](src/CodeList/SOURCE.md).
+[src/CodeList/SOURCE.md](src/CodeList/SOURCE.md). A `packages/rules-en16931` mappában lévő
+lefordított validációs szabályok EUPL-1.2 licencűek; lásd:
+[packages/rules-en16931/SOURCE.md](packages/rules-en16931/SOURCE.md).
 
 ---
 

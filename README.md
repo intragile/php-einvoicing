@@ -4,7 +4,8 @@ Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
 **A framework-agnostic EN 16931 e-invoicing core for PHP.** An invoice model built on exact
 decimals, EN 16931 totals calculation, and reading and writing of the two syntaxes the standard
-binds to: UBL 2.1 and UN/CEFACT CII. No Java is needed at runtime.
+binds to: UBL 2.1 and UN/CEFACT CII, and validation against the official CEN EN 16931 rules.
+No Java is needed at runtime.
 
 [Magyar nyelvű leírás → README.hu.md](README.hu.md)
 
@@ -19,11 +20,11 @@ Included today:
 - Code lists as backed enums, generated from the CEN validation artefacts 1.3.17.
 - `TotalsCalculator`: line net amounts, VAT breakdown and document totals with exact decimals.
 - Readers and writers for UBL 2.1 (Invoice, CreditNote) and UN/CEFACT CII (CrossIndustryInvoice).
+- A pure-PHP validator that runs the official CEN EN 16931 Schematron rules (1.3.17) for UBL and
+  CII, with verdicts proven equal to the official XSLT ([how it works](docs/VALIDATION.md)).
 
-Not included yet, planned for later releases: a pure-PHP validator for the EN 16931 business
-rules, Peppol transport, the XRechnung and ZUGFeRD/Factur-X profiles, and a Laravel package.
-Until the validator exists, the library does not tell you whether an invoice is valid; see
-[Verification](#verification) for what has been checked.
+Not included yet, planned for later releases: the Peppol BIS 3 rules and Peppol transport, the
+XRechnung and ZUGFeRD/Factur-X profiles, and a Laravel package.
 
 ## Install
 
@@ -108,6 +109,47 @@ Both readers return a `ReadResult`. Elements the model does not know, such as ex
 content from a newer syntax version, are skipped and listed in `ReadResult::$ignored` instead
 of failing the read. Only data the model cannot do without makes a document unsupported.
 
+## Validate an invoice
+
+```php
+use IntrAgile\EInvoicing\Validation\Validator;
+
+$report = Validator::en16931()->validate($xml); // UBL Invoice, UBL CreditNote or CII
+
+if (! $report->isValid()) {
+    foreach ($report->fatal() as $finding) {
+        echo "{$finding->ruleId} at {$finding->location}: {$finding->message}\n";
+    }
+    foreach ($report->errors as $error) {   // values the rules could not evaluate, such as "12,50"
+        echo "{$error->errorCode} in {$error->ruleId} at {$error->location}\n";
+    }
+}
+```
+
+An invoice built with the model is written and validated in one call:
+`Validator::en16931()->validateInvoice($invoice)` (UBL) or
+`->validateInvoice($invoice, Syntax::Cii)` (`IntrAgile\EInvoicing\Syntax\Syntax`).
+
+The validator runs the official CEN EN 16931 rules (validation artefacts 1.3.17: 982 asserts for
+UBL, 810 for CII), compiled from the official Schematron into PHP; no Java, no XSLT processor.
+`isValid()` is true when no fatal rule failed; warnings are listed by `warnings()` and do not make
+an invoice invalid. A value the rules cannot evaluate, such as `abc` as an amount, does not stop
+the run: it is reported in `$report->errors` with its XPath error code (`FORG0001`), the other
+rules are still checked, and the invoice is not valid. A document that is not an invoice of a
+supported syntax throws `UnsupportedDocument`, and a DOCTYPE throws `UnsafeXml`; neither is ever
+reported as valid.
+
+Every verdict is checked against the official CEN XSLT run by Saxon: the 34 CEN example invoices,
+1,169 CEN unit-test documents and 680 seeded mutations give exactly the same rule ids and flags.
+A typical invoice validates in 7–50 ms, a 1,000-line invoice in about 1.7 s (measured on an
+Apple M1 with PHP 8.5). [docs/VALIDATION.md](docs/VALIDATION.md) describes the supported XPath,
+the cases where the engine mirrors Saxon, the proof and the measurements.
+
+The compiled rules are a derivative of the CEN artefacts and are licensed under the **EUPL-1.2**.
+They are in a separate package, `intragile/einvoicing-rules-en16931` (`packages/rules-en16931`
+in this repository), which this package requires; the engine itself stays MIT. Neither package is
+published yet.
+
 ## Security: hostile XML
 
 Received invoices are untrusted input. The readers load XML through `SafeXml`: any DOCTYPE
@@ -123,10 +165,13 @@ possible. To report a vulnerability, see [SECURITY.md](SECURITY.md).
   are read, written and round-tripped by the test suite, and read across syntaxes.
 - An optional test group runs the official CEN validation stylesheets (XSLT 2.0) through
   SaxonC-HE in Docker as an oracle: documents produced by the writers must pass the official
-  rules, and the oracle itself is checked to fire a rule on a deliberately broken total (BR-CO-16).
+  rules, the oracle itself is checked to fire a rule on a deliberately broken total (BR-CO-16), and
+  the validator's verdict must equal the oracle's on every document of the conformance corpus
+  ([details](docs/VALIDATION.md#how-verdict-equality-is-proven)).
   `docker/oracle/run.sh 8.5` builds the image and runs the group; it needs Docker and `vendor/`
   installed. This is development tooling only and is not part of the installed package.
-- CI runs PHPUnit and PHPStan (level max) on PHP 8.3, 8.4 and 8.5, plus Pint and the oracle.
+- CI runs PHPUnit and PHPStan (level max) on PHP 8.3, 8.4 and 8.5, plus Pint, the oracle and a
+  check that the compiled rules match the official Schematron.
 
 ## Developing
 
@@ -136,6 +181,7 @@ vendor/bin/phpunit
 vendor/bin/phpstan analyse
 vendor/bin/pint --test
 php bin/generate-model-doc.php   # regenerates docs/MODEL.md
+composer compile-rules           # recompiles the rules from the official Schematron
 ```
 
 ## Licensing and attribution
@@ -144,7 +190,9 @@ The library is MIT licensed ([LICENSE](LICENSE)). The CEN validation artefacts u
 are licensed under the EUPL v1.2, are not part of the installed package, and are described in
 [tests/fixtures/official/SOURCE.md](https://github.com/intragile/php-einvoicing/blob/main/tests/fixtures/official/SOURCE.md). The code-list values in
 `src/CodeList/` are derived from those artefacts; see
-[src/CodeList/SOURCE.md](src/CodeList/SOURCE.md) for the attribution.
+[src/CodeList/SOURCE.md](src/CodeList/SOURCE.md) for the attribution. The compiled validation
+rules in `packages/rules-en16931` are licensed under the EUPL-1.2; see
+[packages/rules-en16931/SOURCE.md](packages/rules-en16931/SOURCE.md).
 
 ---
 
