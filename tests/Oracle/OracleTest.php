@@ -27,6 +27,9 @@ use RuntimeException;
 #[Group('oracle')]
 final class OracleTest extends TestCase
 {
+    /** Official examples shipped with the CEN artefacts 1.3.17, per syntax. */
+    private const OFFICIAL_EXAMPLES = ['ubl' => 19, 'cii' => 15];
+
     private const PAYABLE_AMOUNT = [
         'ubl' => ['ns' => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2', 'path' => '//p:PayableAmount'],
         'cii' => ['ns' => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100', 'path' => '//p:SpecifiedTradeSettlementHeaderMonetarySummation/p:DuePayableAmount'],
@@ -75,8 +78,12 @@ final class OracleTest extends TestCase
     public static function writtenDocuments(): array
     {
         $cases = [];
-        foreach (['ubl', 'cii'] as $syntax) {
-            foreach (Fixtures::official($syntax) as $file) {
+        foreach (self::OFFICIAL_EXAMPLES as $syntax => $minimum) {
+            $files = Fixtures::official($syntax);
+            if (count($files) < $minimum) {
+                throw new RuntimeException(sprintf('Expected at least %d official %s examples, found %d.', $minimum, $syntax, count($files)));
+            }
+            foreach ($files as $file) {
                 $original = self::contents($file);
                 $cases["{$syntax} ".basename($file)] = [$syntax, self::write($syntax, self::read($syntax, $original)), $original];
             }

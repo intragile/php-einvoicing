@@ -54,7 +54,19 @@ jobs:
           extensions: dom, libxml, mbstring
           coverage: none
       - run: composer update --prefer-dist --no-interaction --no-progress
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: docker/oracle
+          build-args: PHP_VERSION=${{ matrix.php }}
+          tags: php-einvoicing-oracle:php${{ matrix.php }}
+          load: true
+          push: false
+          cache-from: type=gha,scope=oracle-php${{ matrix.php }}
+          cache-to: type=gha,mode=max,scope=oracle-php${{ matrix.php }}
       - run: docker/oracle/run.sh ${{ matrix.php }}
+        env:
+          ORACLE_SKIP_BUILD: '1'
 
   next-versions:
     # Early warning against the next PHP release, installed with minimum-stability dev.

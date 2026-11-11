@@ -36,7 +36,8 @@ final class OfficialRules
     }
 
     /**
-     * Failed assertions of the stylesheet at $xsltPath on the document $xml, in report order.
+     * Failed assertions and successful reports of the stylesheet at $xsltPath on the document $xml,
+     * in report order.
      *
      * @return list<FiredRule>
      */
@@ -54,7 +55,7 @@ final class OfficialRules
             throw new RuntimeException("The stylesheet {$xsltPath} produced no SVRL report.");
         }
 
-        return self::failedAssertions($report);
+        return self::firedRules($report, self::rootElement($xml));
     }
 
     /**
@@ -89,11 +90,42 @@ final class OfficialRules
         return $processor->newXslt30Processor()->compileFromFile($xsltPath);
     }
 
-    private static function rootRuleFired(DOMXPath $xpath): bool
+    /**
+     * Namespace URI and local name of the document element.
+     *
+     * @return array{string, string}
+     */
+    private static function rootElement(string $xml): array
     {
+        $document = new DOMDocument;
+        if (! $document->loadXML($xml, LIBXML_NONET) || ! $document->documentElement instanceof DOMElement) {
+            throw new RuntimeException('The document is not well-formed XML.');
+        }
+
+        return [$document->documentElement->namespaceURI ?? '', $document->documentElement->localName ?? $document->documentElement->nodeName];
+    }
+
+    /**
+     * Whether a fired rule has a context that selects exactly the document element, such as
+     * "/ubl:Invoice" in "/ubl:Invoice | /cn:CreditNote", with the prefix resolved through the
+     * namespace declarations the stylesheet writes into the report.
+     *
+     * @param  array{string, string}  $root
+     */
+    private static function rootRuleFired(DOMXPath $xpath, array $root): bool
+    {
+        $namespaces = [];
+        foreach ($xpath->query('//svrl:ns-prefix-in-attribute-values') ?: [] as $declaration) {
+            if ($declaration instanceof DOMElement) {
+                $namespaces[$declaration->getAttribute('prefix')] = $declaration->getAttribute('uri');
+            }
+        }
+
         foreach ($xpath->query('//svrl:fired-rule/@context') ?: [] as $context) {
             foreach (explode('|', $context->nodeValue ?? '') as $alternative) {
-                if (preg_match('~^/[A-Za-z][\w.-]*:[\w.-]+$~', trim($alternative)) === 1) {
+                if (preg_match('~^/([A-Za-z][\w.-]*):([\w.-]+)$~', trim($alternative), $match) === 1
+                    && ($namespaces[$match[1]] ?? null) === $root[0]
+                    && $match[2] === $root[1]) {
                     return true;
                 }
             }
@@ -103,9 +135,12 @@ final class OfficialRules
     }
 
     /**
+     * Failed assertions and successful reports of an SVRL report.
+     *
+     * @param  array{string, string}  $root  Namespace URI and local name of the validated document element.
      * @return list<FiredRule>
      */
-    private static function failedAssertions(string $report): array
+    private static function firedRules(string $report, array $root): array
     {
         $document = new DOMDocument;
         if (! $document->loadXML($report, LIBXML_NONET)) {
@@ -117,14 +152,17 @@ final class OfficialRules
         // A document of another syntax or namespace still matches generic contexts (such as every
         // element named *Amount) and would pass with few or no failed assertions, so the rule on the
         // document element itself (for example "/ubl:Invoice | /cn:CreditNote") must have fired.
-        if (! self::rootRuleFired($xpath)) {
+        if (! self::rootRuleFired($xpath, $root)) {
             throw new RuntimeException('No rule context of the stylesheet matched the document element; is it the right syntax?');
         }
 
         $rules = [];
-        foreach ($xpath->query('//svrl:failed-assert') ?: [] as $assert) {
+        foreach ($xpath->query('//svrl:failed-assert | //svrl:successful-report') ?: [] as $assert) {
             if (! $assert instanceof DOMElement) {
                 continue;
+            }
+            if ($assert->getAttribute('id') === '') {
+                throw new RuntimeException('The SVRL report contains a '.$assert->localName.' without a rule id.');
             }
             $text = $xpath->evaluate('normalize-space(svrl:text)', $assert);
             $rules[] = new FiredRule(

@@ -16,3 +16,10 @@ updates:
     groups:
       composer-dependencies:
         patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /docker/oracle
+    schedule:
+      interval: monthly
+    groups:
+      oracle-base-images:
+        patterns: ["*"]

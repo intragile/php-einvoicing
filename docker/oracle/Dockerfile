@@ -3,12 +3,19 @@
 #
 #   docker build --build-arg PHP_VERSION=8.4 -t php-einvoicing-oracle:php8.4 docker/oracle
 #
-# The SaxonC-HE download is pinned by SHA-256 per architecture. Build dependencies are
-# installed and purged in the same layer to keep the image small.
+# The base images are pinned to exact patch tags (one stage per PHP version, so Dependabot
+# can bump each FROM line) and the SaxonC-HE download is pinned by SHA-256 per architecture.
+# Build dependencies are installed and purged in the same layer to keep the image small.
 
 ARG PHP_VERSION=8.5
 
-FROM php:${PHP_VERSION}-cli-trixie
+FROM php:8.3.36-cli-trixie AS php-8.3
+FROM php:8.4.27-cli-trixie AS php-8.4
+FROM php:8.5.12-cli-trixie AS php-8.5
+
+# BuildKit only builds and pulls the stage selected here.
+# hadolint ignore=DL3006
+FROM php-${PHP_VERSION}
 
 ARG TARGETARCH
 ARG SAXONC_VERSION=13-1-1

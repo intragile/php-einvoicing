@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds the SaxonC oracle image for one PHP version and runs the oracle test group in it
 # against the working tree (vendor/ must be installed: composer install).
+# A skipped test fails the run: inside the image the extension must be present.
 #
 #   docker/oracle/run.sh [8.3|8.4|8.5] [extra PHPUnit arguments]
 #
@@ -26,4 +27,4 @@ fi
 
 timeout "${ORACLE_RUN_TIMEOUT:-600}" \
     docker run --rm --user "$(id -u):$(id -g)" --volume "$root:/app" --workdir /app "$image" \
-    vendor/bin/phpunit --group oracle "$@"
+    vendor/bin/phpunit --group oracle --fail-on-skipped "$@"

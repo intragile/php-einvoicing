@@ -320,26 +320,44 @@ final class UblReaderTest extends TestCase
         self::assertContains('/Invoice/cac:PaymentMeans[3]', $result->ignored);
     }
 
+    /**
+     * Reading ten times the lines must take roughly ten times as long. The ratio bound of 30 leaves
+     * room for noisy shared runners while still catching quadratic bookkeeping (about 100 times).
+     */
     public function test_reads_large_invoice_in_linear_time(): void
     {
         $reader = new UblReader;
-        $reader->read(self::invoiceWithLines(100));
+        $small = self::invoiceWithLines(400);
+        $large = self::invoiceWithLines(4000);
+        $reader->read($small);
 
-        $started = hrtime(true);
-        $result = $reader->read(self::invoiceWithLines(5000));
-        $fiveThousand = (hrtime(true) - $started) / 1e9;
+        [$smallTime] = self::bestReadTime($reader, $small);
+        [$largeTime, $result] = self::bestReadTime($reader, $large);
 
-        $started = hrtime(true);
-        $reader->read(self::invoiceWithLines(10000));
-        $tenThousand = (hrtime(true) - $started) / 1e9;
-
-        self::assertCount(5000, $result->invoice->lines);
-        self::assertLessThan(2.0, $fiveThousand, sprintf('5,000 lines took %.2f s.', $fiveThousand));
-        self::assertLessThan(3 * $fiveThousand, $tenThousand, sprintf(
-            'Doubling the lines grew the time from %.2f s to %.2f s.',
-            $fiveThousand,
-            $tenThousand,
+        self::assertCount(4000, $result->invoice->lines);
+        self::assertLessThan(30 * $smallTime, $largeTime, sprintf(
+            'Ten times the lines grew the time from %.3f s to %.3f s.',
+            $smallTime,
+            $largeTime,
         ));
+    }
+
+    /**
+     * Fastest of three reads, in seconds, with the result of the last read.
+     *
+     * @return array{float, ReadResult}
+     */
+    private static function bestReadTime(UblReader $reader, string $xml): array
+    {
+        $best = INF;
+        $result = null;
+        for ($run = 0; $run < 3; $run++) {
+            $started = hrtime(true);
+            $result = $reader->read($xml);
+            $best = min($best, (hrtime(true) - $started) / 1e9);
+        }
+
+        return [$best, $result];
     }
 
     public function test_unknown_root_is_unsupported(): void
