@@ -45,6 +45,9 @@ abstract class XmlDocument
      */
     private array $touched = [];
 
+    /** Invoice currency code (BT-5) that amounts are expected in, once known. */
+    private ?string $invoiceCurrency = null;
+
     /** @var array<int, DOMElement> Elements already reported with a reason, keyed by object id. */
     private array $handled = [];
 
@@ -195,7 +198,19 @@ abstract class XmlDocument
         return $element === null ? null : $this->decimalOf($element);
     }
 
-    public function decimalOf(DOMElement $element): ?BigDecimal
+    /**
+     * Sets the invoice currency (BT-5). From then on, a decimal whose currencyID attribute names
+     * another currency is still read, but reported.
+     */
+    public function expectCurrency(string $invoiceCurrency): void
+    {
+        $this->invoiceCurrency = $invoiceCurrency;
+    }
+
+    /**
+     * @param  ?string  $currency  currency the amount is expected in, when it is not BT-5 (BT-111)
+     */
+    public function decimalOf(DOMElement $element, ?string $currency = null): ?BigDecimal
     {
         $value = trim($element->textContent);
         if ($value === '') {
@@ -209,6 +224,7 @@ abstract class XmlDocument
             return null;
         }
         $this->use($element);
+        $this->checkCurrency($element, $currency);
 
         return BigDecimal::of($value);
     }
@@ -231,6 +247,7 @@ abstract class XmlDocument
             throw new UnsupportedDocument(sprintf("Invalid number '%s' for %s at %s.", $value, $term, $this->path($element)));
         }
         $this->use($element);
+        $this->checkCurrency($element, null);
 
         return BigDecimal::of($value);
     }
@@ -419,6 +436,21 @@ abstract class XmlDocument
         $this->walk($this->root, $ignored);
 
         return $ignored;
+    }
+
+    private function checkCurrency(DOMElement $element, ?string $expected): void
+    {
+        $expected ??= $this->invoiceCurrency;
+        $actual = $this->attribute($element, 'currencyID');
+        if ($expected === null || $actual === null || $actual === $expected) {
+            return;
+        }
+        $this->reject($element, sprintf(
+            "currency '%s' differs from the invoice currency %s (BT-5); amount read as %s",
+            $actual,
+            $expected,
+            $expected,
+        ), 'currencyID');
     }
 
     protected function missing(string $expression, DOMNode $context, string $term): UnsupportedDocument

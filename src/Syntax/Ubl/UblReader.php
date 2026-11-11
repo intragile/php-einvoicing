@@ -55,6 +55,7 @@ final class UblReader
         $root = $d->root;
 
         $currency = $d->requiredCode(CurrencyCode::class, $d->one('cbc:DocumentCurrencyCode'), null, 'BT-5', 'cbc:DocumentCurrencyCode', $root);
+        $d->expectCurrency($currency->value);
         $taxCurrency = $d->code(CurrencyCode::class, $d->one('cbc:TaxCurrencyCode'));
         $typeExpression = $d->isCreditNote ? 'cbc:CreditNoteTypeCode' : 'cbc:InvoiceTypeCode';
         [$projectReference, $invoicedObject, $additionalDocuments] = $this->documentReferences($d);
@@ -332,7 +333,7 @@ final class UblReader
             }
             if (! $seenAccounting && $amount !== null && $taxCurrency !== null && $taxCurrency !== $currency && $amountCurrency === $taxCurrency->value) {
                 $seenAccounting = true;
-                $totalVatInAccountingCurrency = $d->decimalOf($amount);
+                $totalVatInAccountingCurrency = $d->decimalOf($amount, $taxCurrency->value);
             }
         }
 

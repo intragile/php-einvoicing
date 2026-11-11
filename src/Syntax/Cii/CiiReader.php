@@ -72,6 +72,7 @@ final class CiiReader
         $terms = $d->one('ram:SpecifiedTradePaymentTerms', $settlement);
 
         $currency = $d->requiredCode(CurrencyCode::class, $d->one('ram:InvoiceCurrencyCode', $settlement), null, 'BT-5', 'ram:InvoiceCurrencyCode', $settlement);
+        $d->expectCurrency($currency->value);
         $taxCurrency = $d->code(CurrencyCode::class, $d->one('ram:TaxCurrencyCode', $settlement));
         [$tenderOrLot, $invoicedObject, $additionalDocuments] = $this->documentReferences($d, $agreement);
         [$allowances, $charges] = $this->allowancesAndCharges($d, $settlement);
@@ -452,7 +453,7 @@ final class CiiReader
             }
             if (! $seenAccounting && $taxCurrency !== null && $taxCurrency !== $currency && $amountCurrency === $taxCurrency->value) {
                 $seenAccounting = true;
-                $totalVatInAccountingCurrency = $d->decimalOf($amount);
+                $totalVatInAccountingCurrency = $d->decimalOf($amount, $taxCurrency->value);
             }
         }
 
