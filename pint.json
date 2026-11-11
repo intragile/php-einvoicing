@@ -1,1 +1,6 @@
-{ "preset": "laravel" }
+{
+    "preset": "laravel",
+    "exclude": [
+        "packages/rules-en16931/rules"
+    ]
+}

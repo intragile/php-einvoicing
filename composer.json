@@ -31,7 +31,8 @@
         "ext-dom": "*",
         "ext-libxml": "*",
         "ext-mbstring": "*",
-        "brick/math": "^0.12|^0.13"
+        "brick/math": "^0.12|^0.13",
+        "intragile/einvoicing-rules-en16931": "@dev"
     },
     "require-dev": {
         "ext-zip": "*",
@@ -39,6 +40,12 @@
         "phpstan/phpstan": "^2.0",
         "phpunit/phpunit": "^11.5"
     },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "packages/rules-en16931"
+        }
+    ],
     "autoload": {
         "psr-4": {
             "IntrAgile\\EInvoicing\\": "src/"
@@ -58,7 +65,8 @@
         "test": "phpunit",
         "analyse": "phpstan analyse --memory-limit=1G",
         "format": "pint",
-        "fetch-official": "@php bin/fetch-official.php"
+        "fetch-official": "@php bin/fetch-official.php",
+        "compile-rules": "@php bin/compile-schematron.php"
     },
     "config": {
         "sort-packages": true

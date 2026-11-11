@@ -24,6 +24,7 @@ jobs:
           coverage: none
       - run: composer update --prefer-dist --no-interaction --no-progress
       - run: vendor/bin/phpunit
+      - run: php bin/compile-schematron.php --check
       - run: vendor/bin/phpstan analyse --memory-limit=1G
 
   pint:

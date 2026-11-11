@@ -1,0 +1,36 @@
+{
+    "name": "intragile/einvoicing-rules-en16931",
+    "description": "The official CEN EN 16931 validation rules (UBL and CII, artefacts 1.3.17) compiled to PHP arrays for intragile/php-einvoicing.",
+    "keywords": [
+        "en16931",
+        "e-invoicing",
+        "schematron",
+        "validation",
+        "ubl",
+        "cii"
+    ],
+    "type": "library",
+    "license": "EUPL-1.2",
+    "homepage": "https://intragile.eu",
+    "authors": [
+        {
+            "name": "IntrAgile Kft.",
+            "email": "info@intragile.eu",
+            "homepage": "https://intragile.eu"
+        }
+    ],
+    "require": {
+        "php": "^8.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "IntrAgile\\EInvoicing\\Rules\\En16931\\": "src/"
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.0.x-dev"
+        }
+    },
+    "minimum-stability": "stable"
+}

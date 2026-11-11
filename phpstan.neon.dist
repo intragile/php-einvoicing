@@ -4,7 +4,9 @@ parameters:
         - src
         - tests
         - bin
+        - packages
     excludePaths:
         - tests/fixtures
+        - packages/*/rules
     scanFiles:
         - tests/Oracle/saxonc.stub
