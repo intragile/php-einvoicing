@@ -399,7 +399,7 @@ final class TotalsCalculatorTest extends TestCase
     }
 
     /**
-     * @param  array<string, string|null>  $override
+     * @param  array<string, numeric-string|null>  $override
      * @param  list<string>  $expected
      */
     #[DataProvider('brokenTotals')]
@@ -411,7 +411,7 @@ final class TotalsCalculatorTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{array<string, string|null>, list<string>}>
+     * @return iterable<string, array{array<string, numeric-string|null>, list<string>}>
      */
     public static function brokenTotals(): iterable
     {
@@ -442,6 +442,8 @@ final class TotalsCalculatorTest extends TestCase
      * The CEN 1.3.17 UBL artefact accepts |BT-117| within less than 1.00 of
      * round(|BT-116| x BT-119 / 100); 900.00 at 27 % gives 243.00.
      *
+     * @param  numeric-string  $taxAmount
+     * @param  numeric-string|null  $rate
      * @param  list<string>  $expected
      */
     #[DataProvider('br17Tolerance')]
@@ -540,15 +542,15 @@ final class TotalsCalculatorTest extends TestCase
     }
 
     /**
-     * @param  array<string, string|null>  $override
+     * @param  array<string, numeric-string|null>  $override
      */
     private function totalsWith(Invoice $invoice, array $override): DocumentTotals
     {
         $t = $invoice->totals;
         self::assertNotNull($t);
-        $pick = static fn (string $key, ?BigDecimal $current): ?string => array_key_exists($key, $override)
+        $pick = static fn (string $key, ?BigDecimal $current): BigDecimal|string|null => array_key_exists($key, $override)
             ? $override[$key]
-            : ($current === null ? null : (string) $current);
+            : $current;
 
         return new DocumentTotals(
             sumOfLineNetAmounts: $pick('sumOfLineNetAmounts', $t->sumOfLineNetAmounts) ?? '0',
@@ -593,6 +595,12 @@ final class TotalsCalculatorTest extends TestCase
         );
     }
 
+    /**
+     * @param  numeric-string  $quantity
+     * @param  numeric-string  $price
+     * @param  numeric-string|null  $rate
+     * @param  numeric-string|null  $baseQuantity
+     */
     private function line(
         string $id,
         string $quantity,

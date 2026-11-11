@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\Model;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
+use IntrAgile\EInvoicing\Model\Support\Decimal;
 use InvalidArgumentException;
 
 /**
@@ -16,9 +17,12 @@ final readonly class Money
 {
     public BigDecimal $amount;
 
-    public function __construct(BigDecimal|string|int $amount, public CurrencyCode $currency)
+    /**
+     * @param  BigDecimal|numeric-string|int  $amount
+     */
+    public function __construct(BigDecimal|string|int|float $amount, public CurrencyCode $currency)
     {
-        $this->amount = BigDecimal::of($amount);
+        $this->amount = Decimal::of($amount, 'Amount');
     }
 
     public function plus(self $other): self

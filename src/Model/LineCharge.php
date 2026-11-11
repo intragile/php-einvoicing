@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Model;
 
 use Brick\Math\BigDecimal;
 use IntrAgile\EInvoicing\CodeList\ChargeReasonCode;
+use IntrAgile\EInvoicing\Model\Support\Decimal;
 
 /**
  * Invoice line charge (BG-28).
@@ -27,16 +28,21 @@ final readonly class LineCharge
     /** Invoice line charge reason code (BT-145). */
     public ?ChargeReasonCode $reasonCode;
 
+    /**
+     * @param  BigDecimal|numeric-string|int  $amount
+     * @param  BigDecimal|numeric-string|int|null  $baseAmount
+     * @param  BigDecimal|numeric-string|int|null  $percentage
+     */
     public function __construct(
-        BigDecimal|string|int $amount,
-        BigDecimal|string|int|null $baseAmount = null,
-        BigDecimal|string|int|null $percentage = null,
+        BigDecimal|string|int|float $amount,
+        BigDecimal|string|int|float|null $baseAmount = null,
+        BigDecimal|string|int|float|null $percentage = null,
         ?string $reason = null,
         ?ChargeReasonCode $reasonCode = null,
     ) {
-        $this->amount = BigDecimal::of($amount);
-        $this->baseAmount = $baseAmount === null ? null : BigDecimal::of($baseAmount);
-        $this->percentage = $percentage === null ? null : BigDecimal::of($percentage);
+        $this->amount = Decimal::of($amount, 'BT-141');
+        $this->baseAmount = Decimal::ofNullable($baseAmount, 'BT-142');
+        $this->percentage = Decimal::ofNullable($percentage, 'BT-143');
         $this->reason = $reason;
         $this->reasonCode = $reasonCode;
     }

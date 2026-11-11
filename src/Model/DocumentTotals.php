@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Model;
 
 use Brick\Math\BigDecimal;
+use IntrAgile\EInvoicing\Model\Support\Decimal;
 
 /**
  * Document totals (BG-22).
@@ -44,27 +45,39 @@ final readonly class DocumentTotals
     /** Rounding amount (BT-114). */
     public ?BigDecimal $roundingAmount;
 
+    /**
+     * @param  BigDecimal|numeric-string|int  $sumOfLineNetAmounts
+     * @param  BigDecimal|numeric-string|int  $totalWithoutVat
+     * @param  BigDecimal|numeric-string|int  $totalWithVat
+     * @param  BigDecimal|numeric-string|int  $amountDue
+     * @param  BigDecimal|numeric-string|int|null  $sumOfAllowances
+     * @param  BigDecimal|numeric-string|int|null  $sumOfCharges
+     * @param  BigDecimal|numeric-string|int|null  $totalVat
+     * @param  BigDecimal|numeric-string|int|null  $totalVatInAccountingCurrency
+     * @param  BigDecimal|numeric-string|int|null  $paidAmount
+     * @param  BigDecimal|numeric-string|int|null  $roundingAmount
+     */
     public function __construct(
-        BigDecimal|string|int $sumOfLineNetAmounts,
-        BigDecimal|string|int $totalWithoutVat,
-        BigDecimal|string|int $totalWithVat,
-        BigDecimal|string|int $amountDue,
-        BigDecimal|string|int|null $sumOfAllowances = null,
-        BigDecimal|string|int|null $sumOfCharges = null,
-        BigDecimal|string|int|null $totalVat = null,
-        BigDecimal|string|int|null $totalVatInAccountingCurrency = null,
-        BigDecimal|string|int|null $paidAmount = null,
-        BigDecimal|string|int|null $roundingAmount = null,
+        BigDecimal|string|int|float $sumOfLineNetAmounts,
+        BigDecimal|string|int|float $totalWithoutVat,
+        BigDecimal|string|int|float $totalWithVat,
+        BigDecimal|string|int|float $amountDue,
+        BigDecimal|string|int|float|null $sumOfAllowances = null,
+        BigDecimal|string|int|float|null $sumOfCharges = null,
+        BigDecimal|string|int|float|null $totalVat = null,
+        BigDecimal|string|int|float|null $totalVatInAccountingCurrency = null,
+        BigDecimal|string|int|float|null $paidAmount = null,
+        BigDecimal|string|int|float|null $roundingAmount = null,
     ) {
-        $this->sumOfLineNetAmounts = BigDecimal::of($sumOfLineNetAmounts);
-        $this->totalWithoutVat = BigDecimal::of($totalWithoutVat);
-        $this->totalWithVat = BigDecimal::of($totalWithVat);
-        $this->amountDue = BigDecimal::of($amountDue);
-        $this->sumOfAllowances = $sumOfAllowances === null ? null : BigDecimal::of($sumOfAllowances);
-        $this->sumOfCharges = $sumOfCharges === null ? null : BigDecimal::of($sumOfCharges);
-        $this->totalVat = $totalVat === null ? null : BigDecimal::of($totalVat);
-        $this->totalVatInAccountingCurrency = $totalVatInAccountingCurrency === null ? null : BigDecimal::of($totalVatInAccountingCurrency);
-        $this->paidAmount = $paidAmount === null ? null : BigDecimal::of($paidAmount);
-        $this->roundingAmount = $roundingAmount === null ? null : BigDecimal::of($roundingAmount);
+        $this->sumOfLineNetAmounts = Decimal::of($sumOfLineNetAmounts, 'BT-106');
+        $this->totalWithoutVat = Decimal::of($totalWithoutVat, 'BT-109');
+        $this->totalWithVat = Decimal::of($totalWithVat, 'BT-112');
+        $this->amountDue = Decimal::of($amountDue, 'BT-115');
+        $this->sumOfAllowances = Decimal::ofNullable($sumOfAllowances, 'BT-107');
+        $this->sumOfCharges = Decimal::ofNullable($sumOfCharges, 'BT-108');
+        $this->totalVat = Decimal::ofNullable($totalVat, 'BT-110');
+        $this->totalVatInAccountingCurrency = Decimal::ofNullable($totalVatInAccountingCurrency, 'BT-111');
+        $this->paidAmount = Decimal::ofNullable($paidAmount, 'BT-113');
+        $this->roundingAmount = Decimal::ofNullable($roundingAmount, 'BT-114');
     }
 }

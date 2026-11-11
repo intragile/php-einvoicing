@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Model;
 
 use Brick\Math\BigDecimal;
 use IntrAgile\EInvoicing\CodeList\UnitCode;
+use IntrAgile\EInvoicing\Model\Support\Decimal;
 
 /**
  * Invoice line (BG-25).
@@ -19,13 +20,15 @@ final readonly class InvoiceLine
     public ?BigDecimal $netAmount;
 
     /**
+     * @param  BigDecimal|numeric-string|int  $quantity
+     * @param  BigDecimal|numeric-string|int|null  $netAmount
      * @param  list<LineAllowance>  $allowances  Invoice line allowances (BG-27).
      * @param  list<LineCharge>  $charges  Invoice line charges (BG-28).
      */
     public function __construct(
         /** Invoice line identifier (BT-126). */
         public string $id,
-        BigDecimal|string|int $quantity,
+        BigDecimal|string|int|float $quantity,
         /** Invoiced quantity unit of measure code (BT-130). */
         public UnitCode $unit,
         /** Price details (BG-29). */
@@ -34,7 +37,7 @@ final readonly class InvoiceLine
         public Item $item,
         /** Line VAT information (BG-30). */
         public LineVat $vat,
-        BigDecimal|string|int|null $netAmount = null,
+        BigDecimal|string|int|float|null $netAmount = null,
         /** Invoice line note (BT-127). */
         public ?string $note = null,
         /** Invoice line object identifier (BT-128) with scheme (BT-128-1). */
@@ -48,18 +51,24 @@ final readonly class InvoiceLine
         public array $allowances = [],
         public array $charges = [],
     ) {
-        $this->quantity = BigDecimal::of($quantity);
-        $this->netAmount = $netAmount === null ? null : BigDecimal::of($netAmount);
+        $this->quantity = Decimal::of($quantity, 'BT-129');
+        $this->netAmount = Decimal::ofNullable($netAmount, 'BT-131');
     }
 
-    public function withNetAmount(BigDecimal|string|int|null $netAmount): self
+    /**
+     * @param  BigDecimal|numeric-string|int|null  $netAmount
+     */
+    public function withNetAmount(BigDecimal|string|int|float|null $netAmount): self
     {
-        return $this->copy(['netAmount' => $netAmount]);
+        return $this->copy(['netAmount' => Decimal::ofNullable($netAmount, 'BT-131')]);
     }
 
-    public function withQuantity(BigDecimal|string|int $quantity): self
+    /**
+     * @param  BigDecimal|numeric-string|int  $quantity
+     */
+    public function withQuantity(BigDecimal|string|int|float $quantity): self
     {
-        return $this->copy(['quantity' => $quantity]);
+        return $this->copy(['quantity' => Decimal::of($quantity, 'BT-129')]);
     }
 
     public function withPrice(Price $price): self
@@ -93,7 +102,7 @@ final readonly class InvoiceLine
     }
 
     /**
-     * @param  array{quantity?: BigDecimal|string|int, price?: Price, vat?: LineVat, netAmount?: BigDecimal|string|int|null, note?: string|null, period?: Period|null, allowances?: list<LineAllowance>, charges?: list<LineCharge>}  $changes
+     * @param  array{quantity?: BigDecimal, price?: Price, vat?: LineVat, netAmount?: BigDecimal|null, note?: string|null, period?: Period|null, allowances?: list<LineAllowance>, charges?: list<LineCharge>}  $changes
      */
     private function copy(array $changes): self
     {

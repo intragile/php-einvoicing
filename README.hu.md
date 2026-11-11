@@ -38,9 +38,12 @@ composer require intragile/php-einvoicing
 ## Számla létrehozása
 
 A gyakori eset rövid. Az összegeket, mennyiségeket, árakat és kulcsokat szövegként vagy
-egész számként kell megadni, és `Brick\Math\BigDecimal` formában tárolódnak. Mindig kapcsolja be a
-`declare(strict_types=1)`-et: azzal a `float` átadása `TypeError`; nélküle a PHP csendben
-átalakítja az értéket.
+egész számként kell megadni, és `Brick\Math\BigDecimal` formában tárolódnak. A `float` értéket a
+könyvtár futásidőben elutasítja egy `InvalidArgumentException` kivétellel, amely megnevezi az
+üzleti fogalmat (BT). Ez a `declare(strict_types=1)` meglététől függetlenül így működik, mert a
+float a 0,1-et sem tudja pontosan tárolni. Ismert korlát: `strict_types` nélküli fájlban a PHP a
+`bool` értéket még a könyvtár előtt egész számmá alakítja (`true`-ból 1 lesz). A `bool`
+argumentumot a PHPStan a PHPDoc típusok alapján jelzi.
 
 ```php
 <?php

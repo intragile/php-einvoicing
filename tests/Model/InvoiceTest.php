@@ -55,7 +55,6 @@ use ReflectionIntersectionType;
 use ReflectionNamedType;
 use ReflectionUnionType;
 use stdClass;
-use TypeError;
 
 final class InvoiceTest extends TestCase
 {
@@ -108,13 +107,13 @@ final class InvoiceTest extends TestCase
         self::assertInstanceOf(ReflectionUnionType::class, $type);
         $names = array_map(static fn (ReflectionNamedType|ReflectionIntersectionType $t): string => (string) $t, $type->getTypes());
         sort($names);
-        self::assertSame([BigDecimal::class, 'int', 'string'], $names);
+        self::assertSame([BigDecimal::class, 'float', 'int', 'string'], $names);
 
         self::assertTrue((new Price('0.1'))->netPrice->isEqualTo(BigDecimal::of('0.1')));
 
-        $this->expectException(TypeError::class);
+        $this->expectException(InvalidArgumentException::class);
         $float = 0.1;
-        new Price($float); // @phpstan-ignore argument.type
+        new Price($float);
     }
 
     public function test_requires_a_non_empty_number(): void

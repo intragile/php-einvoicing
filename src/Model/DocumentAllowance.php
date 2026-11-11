@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\Model;
 use Brick\Math\BigDecimal;
 use IntrAgile\EInvoicing\CodeList\AllowanceReasonCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
+use IntrAgile\EInvoicing\Model\Support\Decimal;
 
 /**
  * Document level allowance (BG-20).
@@ -34,20 +35,26 @@ final readonly class DocumentAllowance
     /** Document level allowance reason code (BT-98). */
     public ?AllowanceReasonCode $reasonCode;
 
+    /**
+     * @param  BigDecimal|numeric-string|int  $amount
+     * @param  BigDecimal|numeric-string|int|null  $vatRate
+     * @param  BigDecimal|numeric-string|int|null  $baseAmount
+     * @param  BigDecimal|numeric-string|int|null  $percentage
+     */
     public function __construct(
-        BigDecimal|string|int $amount,
+        BigDecimal|string|int|float $amount,
         VatCategory $vatCategory,
-        BigDecimal|string|int|null $vatRate = null,
-        BigDecimal|string|int|null $baseAmount = null,
-        BigDecimal|string|int|null $percentage = null,
+        BigDecimal|string|int|float|null $vatRate = null,
+        BigDecimal|string|int|float|null $baseAmount = null,
+        BigDecimal|string|int|float|null $percentage = null,
         ?string $reason = null,
         ?AllowanceReasonCode $reasonCode = null,
     ) {
-        $this->amount = BigDecimal::of($amount);
+        $this->amount = Decimal::of($amount, 'BT-92');
         $this->vatCategory = $vatCategory;
-        $this->vatRate = $vatRate === null ? null : BigDecimal::of($vatRate);
-        $this->baseAmount = $baseAmount === null ? null : BigDecimal::of($baseAmount);
-        $this->percentage = $percentage === null ? null : BigDecimal::of($percentage);
+        $this->vatRate = Decimal::ofNullable($vatRate, 'BT-96');
+        $this->baseAmount = Decimal::ofNullable($baseAmount, 'BT-93');
+        $this->percentage = Decimal::ofNullable($percentage, 'BT-94');
         $this->reason = $reason;
         $this->reasonCode = $reasonCode;
     }

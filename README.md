@@ -38,8 +38,11 @@ composer require intragile/php-einvoicing
 ## Create an invoice
 
 The common case is short. Amounts, quantities, prices and rates are given as strings or
-integers and held as `Brick\Math\BigDecimal`. Always enable `declare(strict_types=1)`: with it,
-passing a `float` is a `TypeError`; without it PHP coerces the value silently.
+integers and held as `Brick\Math\BigDecimal`. A `float` is rejected at runtime with an
+`InvalidArgumentException` that names the business term, with or without
+`declare(strict_types=1)` in your file, because a float cannot hold 0.1 exactly. One known limit:
+in a file without `strict_types`, PHP still turns a `bool` into an integer (`true` becomes 1)
+before the library sees it. PHPStan reports a `bool` argument from the PHPDoc types.
 
 ```php
 <?php

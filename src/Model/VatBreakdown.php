@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\Model;
 use Brick\Math\BigDecimal;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\CodeList\VatExemptionReason;
+use IntrAgile\EInvoicing\Model\Support\Decimal;
 
 /**
  * VAT breakdown (BG-23), one per VAT category and rate.
@@ -31,18 +32,23 @@ final readonly class VatBreakdown
     /** VAT exemption reason code (BT-121). */
     public ?VatExemptionReason $exemptionReasonCode;
 
+    /**
+     * @param  BigDecimal|numeric-string|int  $taxableAmount
+     * @param  BigDecimal|numeric-string|int  $taxAmount
+     * @param  BigDecimal|numeric-string|int|null  $rate
+     */
     public function __construct(
-        BigDecimal|string|int $taxableAmount,
-        BigDecimal|string|int $taxAmount,
+        BigDecimal|string|int|float $taxableAmount,
+        BigDecimal|string|int|float $taxAmount,
         VatCategory $category,
-        BigDecimal|string|int|null $rate = null,
+        BigDecimal|string|int|float|null $rate = null,
         ?string $exemptionReason = null,
         ?VatExemptionReason $exemptionReasonCode = null,
     ) {
-        $this->taxableAmount = BigDecimal::of($taxableAmount);
-        $this->taxAmount = BigDecimal::of($taxAmount);
+        $this->taxableAmount = Decimal::of($taxableAmount, 'BT-116');
+        $this->taxAmount = Decimal::of($taxAmount, 'BT-117');
         $this->category = $category;
-        $this->rate = $rate === null ? null : BigDecimal::of($rate);
+        $this->rate = Decimal::ofNullable($rate, 'BT-119');
         $this->exemptionReason = $exemptionReason;
         $this->exemptionReasonCode = $exemptionReasonCode;
     }

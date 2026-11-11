@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Model;
 
 use Brick\Math\BigDecimal;
 use IntrAgile\EInvoicing\CodeList\UnitCode;
+use IntrAgile\EInvoicing\Model\Support\Decimal;
 
 /**
  * Price details (BG-29).
@@ -27,17 +28,23 @@ final readonly class Price
     /** Item price base quantity unit of measure code (BT-150). */
     public ?UnitCode $baseQuantityUnit;
 
+    /**
+     * @param  BigDecimal|numeric-string|int  $netPrice
+     * @param  BigDecimal|numeric-string|int|null  $discount
+     * @param  BigDecimal|numeric-string|int|null  $grossPrice
+     * @param  BigDecimal|numeric-string|int|null  $baseQuantity
+     */
     public function __construct(
-        BigDecimal|string|int $netPrice,
-        BigDecimal|string|int|null $discount = null,
-        BigDecimal|string|int|null $grossPrice = null,
-        BigDecimal|string|int|null $baseQuantity = null,
+        BigDecimal|string|int|float $netPrice,
+        BigDecimal|string|int|float|null $discount = null,
+        BigDecimal|string|int|float|null $grossPrice = null,
+        BigDecimal|string|int|float|null $baseQuantity = null,
         ?UnitCode $baseQuantityUnit = null,
     ) {
-        $this->netPrice = BigDecimal::of($netPrice);
-        $this->discount = $discount === null ? null : BigDecimal::of($discount);
-        $this->grossPrice = $grossPrice === null ? null : BigDecimal::of($grossPrice);
-        $this->baseQuantity = $baseQuantity === null ? null : BigDecimal::of($baseQuantity);
+        $this->netPrice = Decimal::of($netPrice, 'BT-146');
+        $this->discount = Decimal::ofNullable($discount, 'BT-147');
+        $this->grossPrice = Decimal::ofNullable($grossPrice, 'BT-148');
+        $this->baseQuantity = Decimal::ofNullable($baseQuantity, 'BT-149');
         $this->baseQuantityUnit = $baseQuantityUnit;
     }
 }
