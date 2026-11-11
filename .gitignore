@@ -1,0 +1,7 @@
+.DS_Store
+/.cache/
+/.phpunit.cache/
+/composer.lock
+/phpstan.neon
+/phpunit.xml
+/vendor

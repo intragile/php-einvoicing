@@ -1,0 +1,67 @@
+{
+    "name": "intragile/php-einvoicing",
+    "description": "Framework-agnostic EN 16931 e-invoicing core for PHP: invoice model, exact decimal totals, UBL and CII reading and writing.",
+    "keywords": [
+        "en16931",
+        "e-invoicing",
+        "einvoice",
+        "ubl",
+        "cii",
+        "peppol",
+        "invoice",
+        "xml"
+    ],
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://intragile.eu",
+    "support": {
+        "issues": "https://github.com/intragile/php-einvoicing/issues",
+        "source": "https://github.com/intragile/php-einvoicing",
+        "security": "https://github.com/intragile/php-einvoicing/security/policy"
+    },
+    "authors": [
+        {
+            "name": "IntrAgile Kft.",
+            "email": "info@intragile.eu",
+            "homepage": "https://intragile.eu"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "ext-dom": "*",
+        "ext-libxml": "*",
+        "ext-mbstring": "*",
+        "brick/math": "^0.12|^0.13"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.0",
+        "phpstan/phpstan": "^2.0",
+        "phpunit/phpunit": "^11.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "IntrAgile\\EInvoicing\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "IntrAgile\\EInvoicing\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.0.x-dev"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "analyse": "phpstan analyse --memory-limit=1G",
+        "format": "pint",
+        "fetch-official": "@php bin/fetch-official.php"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

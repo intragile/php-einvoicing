@@ -1,0 +1,71 @@
+name: tests
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "47 6 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4', '8.5']
+    name: PHP ${{ matrix.php }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, libxml, mbstring
+          coverage: none
+      - run: composer update --prefer-dist --no-interaction --no-progress
+      - run: vendor/bin/phpunit
+      - run: vendor/bin/phpstan analyse --memory-limit=1G
+
+  pint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - run: composer update --prefer-dist --no-interaction --no-progress
+      - run: vendor/bin/pint --test
+
+  next-versions:
+    # Early warning against the next PHP release, installed with minimum-stability dev.
+    # Static analysis and style are left to the jobs above. A failure here does not fail
+    # the run, so check this job's result.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { php: '8.6' }
+    name: Next / PHP ${{ matrix.php }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, libxml, mbstring
+          coverage: none
+      - name: Retarget composer.json at the upcoming versions
+        run: |
+          php -r '
+            $c = json_decode(file_get_contents("composer.json"), true);
+            foreach (["phpstan/phpstan", "laravel/pint"] as $tool) {
+                unset($c["require-dev"][$tool]);
+            }
+            $c["minimum-stability"] = "dev";
+            $c["prefer-stable"] = true;
+            file_put_contents("composer.json", json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+          '
+      - run: composer update --prefer-dist --no-interaction --no-progress --ignore-platform-req=php+
+      - run: vendor/bin/phpunit

@@ -1,0 +1,16 @@
+* text=auto eol=lf
+*.zip binary
+# Official CEN artefacts are kept byte-for-byte as published.
+/tests/fixtures/official/cen-1.3.17/** -text -eol
+
+# Development files are left out of the Composer dist archive.
+/.github            export-ignore
+/bin                export-ignore
+/docker             export-ignore
+/tests              export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+/phpstan.neon.dist  export-ignore
+/phpunit.xml.dist   export-ignore
+/pint.json          export-ignore
+/CHANGELOG.md       export-ignore
