@@ -49,7 +49,9 @@ final class UblWriter
      *                                  VAT total (BT-110) of a VAT breakdown are missing, when
      *                                  BT-111 has no VAT accounting currency (BT-6) other than
      *                                  BT-5, when a buyer or payee has more than one identifier,
-     *                                  or when text cannot be written as XML 1.0
+     *                                  when text cannot be written as XML 1.0, or when the purchase
+     *                                  order reference (BT-13) is the order placeholder beside a
+     *                                  sales order reference (BT-14)
      */
     public function write(Invoice $invoice): string
     {
@@ -57,6 +59,13 @@ final class UblWriter
             throw new InvalidArgumentException('The invoice has no document totals (BG-22); complete it with TotalsCalculator::complete() first.');
         }
         WriterGuard::accountingCurrencyVat($invoice);
+        WriterGuard::xmlText($invoice);
+        if ($invoice->purchaseOrderReference === Placeholder::ORDER_ID && $invoice->salesOrderReference !== null) {
+            throw new InvalidArgumentException(sprintf(
+                "The purchase order reference (BT-13) '%s' beside a sales order reference (BT-14) is the placeholder UBL writes when only BT-14 exists; it would be read back as absent.",
+                Placeholder::ORDER_ID,
+            ));
+        }
         $creditNote = $invoice->type->isCreditNote();
         $out = new UblOutput($creditNote);
         $root = $out->root;

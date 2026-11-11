@@ -28,7 +28,7 @@ final class AmountCurrencyTest extends TestCase
 
         self::assertSame('120.00', (string) $read->invoice->lines[0]->price->netPrice);
         self::assertSame(
-            ["/Invoice/cac:InvoiceLine[1]/cac:Price/cbc:PriceAmount/@currencyID (currency 'USD' differs from the invoice currency EUR (BT-5); amount read as EUR)"],
+            ["/Invoice/cac:InvoiceLine[1]/cac:Price/cbc:PriceAmount/@currencyID (currency 'USD' of BT-146 differs from the invoice currency EUR (BT-5); amount read as EUR)"],
             $read->ignored,
         );
     }
@@ -44,7 +44,7 @@ final class AmountCurrencyTest extends TestCase
         self::assertSame('1100.00', (string) $read->invoice->lines[0]->netAmount);
         self::assertCount(1, $read->ignored);
         self::assertStringEndsWith(
-            "/ram:LineTotalAmount/@currencyID (currency 'USD' differs from the invoice currency EUR (BT-5); amount read as EUR)",
+            "/ram:LineTotalAmount/@currencyID (currency 'USD' of BT-131 differs from the invoice currency EUR (BT-5); amount read as EUR)",
             $read->ignored[0],
         );
     }

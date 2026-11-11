@@ -139,7 +139,7 @@ final class PaymentMapper
         }
 
         $network = $d->one('cbc:NetworkID', $card);
-        if ($network !== null && $network->textContent === Placeholder::CARD_NETWORK) {
+        if ($network !== null && trim($network->textContent) === Placeholder::CARD_NETWORK) {
             $d->use($network);
         }
 

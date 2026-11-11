@@ -22,7 +22,7 @@ final readonly class Party
         public array $identifiers = [],
         /** Legal registration identifier (BT-30 / BT-47 / BT-61) with scheme (BT-30-1 / BT-47-1 / BT-61-1). */
         public ?Identifier $legalRegistration = null,
-        /** VAT identifier (BT-31 / BT-48 / BT-63), with country prefix. */
+        /** VAT identifier (BT-31 / BT-48 / none / BT-63), with country prefix. */
         public ?string $vatIdentifier = null,
         /** Seller tax registration identifier (BT-32). */
         public ?TaxRegistration $taxRegistration = null,

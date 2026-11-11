@@ -291,7 +291,7 @@ final class CiiReader
             if ($isCharge === null) {
                 continue;
             }
-            $amount = $d->decimal('ram:ActualAmount', $allowanceCharge);
+            $amount = $d->decimal('ram:ActualAmount', $allowanceCharge, $isCharge ? 'BT-99' : 'BT-92');
             $category = $d->code(VatCategory::class, $d->one('ram:CategoryTradeTax/ram:CategoryCode', $allowanceCharge));
             if ($amount === null || $category === null) {
                 $d->reject($allowanceCharge, 'dropped: no valid amount or VAT category code');
@@ -300,7 +300,7 @@ final class CiiReader
             }
             $d->token('ram:CategoryTradeTax/ram:TypeCode', $allowanceCharge);
             $vatRate = $d->decimal('ram:CategoryTradeTax/ram:RateApplicablePercent', $allowanceCharge);
-            $baseAmount = $d->decimal('ram:BasisAmount', $allowanceCharge);
+            $baseAmount = $d->decimal('ram:BasisAmount', $allowanceCharge, $isCharge ? 'BT-100' : 'BT-93');
             $percentage = $d->decimal('ram:CalculationPercent', $allowanceCharge);
             $reason = $d->text('ram:Reason', $allowanceCharge);
             $codeElement = $d->one('ram:ReasonCode', $allowanceCharge);
@@ -371,8 +371,8 @@ final class CiiReader
     {
         $breakdown = [];
         foreach ($d->all('ram:ApplicableTradeTax', $settlement) as $tax) {
-            $taxable = $d->decimal('ram:BasisAmount', $tax);
-            $amount = $d->decimal('ram:CalculatedAmount', $tax);
+            $taxable = $d->decimal('ram:BasisAmount', $tax, 'BT-116');
+            $amount = $d->decimal('ram:CalculatedAmount', $tax, 'BT-117');
             $category = $d->code(VatCategory::class, $d->one('ram:CategoryCode', $tax));
             if ($taxable === null || $amount === null || $category === null) {
                 $d->reject($tax, 'dropped: no valid basis amount, calculated amount or VAT category code');
@@ -406,9 +406,9 @@ final class CiiReader
         }
 
         $required = [];
-        foreach (['LineTotalAmount', 'TaxBasisTotalAmount', 'GrandTotalAmount', 'DuePayableAmount'] as $name) {
+        foreach (['LineTotalAmount' => 'BT-106', 'TaxBasisTotalAmount' => 'BT-109', 'GrandTotalAmount' => 'BT-112', 'DuePayableAmount' => 'BT-115'] as $name => $term) {
             $element = $d->one('ram:'.$name, $summation);
-            $value = $element === null ? null : $d->decimalOf($element);
+            $value = $element === null ? null : $d->decimalOf($element, $term);
             if ($value === null) {
                 $d->reject($summation, "dropped: no valid ram:{$name}");
 
@@ -424,12 +424,12 @@ final class CiiReader
             totalWithoutVat: $required['TaxBasisTotalAmount'],
             totalWithVat: $required['GrandTotalAmount'],
             amountDue: $required['DuePayableAmount'],
-            sumOfAllowances: $d->decimal('ram:AllowanceTotalAmount', $summation),
-            sumOfCharges: $d->decimal('ram:ChargeTotalAmount', $summation),
+            sumOfAllowances: $d->decimal('ram:AllowanceTotalAmount', $summation, 'BT-107'),
+            sumOfCharges: $d->decimal('ram:ChargeTotalAmount', $summation, 'BT-108'),
             totalVat: $totalVat,
             totalVatInAccountingCurrency: $totalVatInAccountingCurrency,
-            paidAmount: $d->decimal('ram:TotalPrepaidAmount', $summation),
-            roundingAmount: $d->decimal('ram:RoundingAmount', $summation),
+            paidAmount: $d->decimal('ram:TotalPrepaidAmount', $summation, 'BT-113'),
+            roundingAmount: $d->decimal('ram:RoundingAmount', $summation, 'BT-114'),
         );
     }
 
@@ -447,13 +447,13 @@ final class CiiReader
             $amountCurrency = $d->attribute($amount, 'currencyID');
             if (! $seenMain && ($amountCurrency === null || $amountCurrency === $currency->value)) {
                 $seenMain = true;
-                $totalVat = $d->decimalOf($amount);
+                $totalVat = $d->decimalOf($amount, 'BT-110');
 
                 continue;
             }
             if (! $seenAccounting && $taxCurrency !== null && $taxCurrency !== $currency && $amountCurrency === $taxCurrency->value) {
                 $seenAccounting = true;
-                $totalVatInAccountingCurrency = $d->decimalOf($amount, $taxCurrency->value);
+                $totalVatInAccountingCurrency = $d->decimalOf($amount, 'BT-111', $taxCurrency->value);
             }
         }
 

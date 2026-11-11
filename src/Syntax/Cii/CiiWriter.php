@@ -76,6 +76,7 @@ final class CiiWriter
         $totals = $invoice->totals
             ?? throw new InvalidArgumentException('The invoice has no document totals (BG-22); complete it with TotalsCalculator::complete() first.');
         WriterGuard::accountingCurrencyVat($invoice);
+        WriterGuard::xmlText($invoice);
         if (count($invoice->precedingInvoices) > 1) {
             throw new InvalidArgumentException(sprintf(
                 'CII D16B carries one preceding invoice reference (BG-3); the invoice has %d.',

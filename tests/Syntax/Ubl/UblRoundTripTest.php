@@ -11,6 +11,7 @@ use IntrAgile\EInvoicing\CodeList\TextSubjectCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Model\CreditTransfer;
 use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\PaymentCard;
 use IntrAgile\EInvoicing\Model\PaymentInstructions;
 use IntrAgile\EInvoicing\Model\VatBreakdown;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblReader;
@@ -124,6 +125,33 @@ final class UblRoundTripTest extends TestCase
 
         self::assertStringContainsString('<cbc:NetworkID>NA</cbc:NetworkID>', $xml);
         self::assertSame([], (new UblReader)->read($xml)->ignored);
+    }
+
+    public function test_a_card_network_placeholder_with_surrounding_whitespace_is_recognised(): void
+    {
+        $invoice = TotalsCalculator::complete(InvoiceFactory::mixedVat())->withPayment(new PaymentInstructions(
+            meansCode: PaymentMeansCode::C_54,
+            card: new PaymentCard(primaryAccountNumber: '1234', holderName: 'Card Holder'),
+        ));
+        $xml = str_replace('<cbc:NetworkID>NA</cbc:NetworkID>', "<cbc:NetworkID> NA\n</cbc:NetworkID>", (new UblWriter)->write($invoice), $count);
+        self::assertSame(1, $count);
+
+        $read = (new UblReader)->read($xml);
+
+        self::assertEquals($invoice, $read->invoice);
+        self::assertSame([], $read->ignored);
+    }
+
+    public function test_a_purchase_order_equal_to_the_order_placeholder_is_refused_beside_a_sales_order(): void
+    {
+        $invoice = TotalsCalculator::complete(InvoiceFactory::mixedVat())
+            ->withPurchaseOrderReference('NA')
+            ->withSalesOrderReference('SO-77');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/BT-13.*BT-14/');
+
+        (new UblWriter)->write($invoice);
     }
 
     #[DataProvider('writtenDocuments')]

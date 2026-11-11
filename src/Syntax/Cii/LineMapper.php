@@ -48,7 +48,7 @@ final class LineMapper
             price: $this->price($line),
             item: $this->item($line),
             vat: $this->vat($line),
-            netAmount: $d->decimal(self::SETTLEMENT.'ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount', $line),
+            netAmount: $d->decimal(self::SETTLEMENT.'ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount', $line, 'BT-131'),
             note: $d->text('ram:AssociatedDocumentLineDocument/ram:IncludedNote/ram:Content', $line),
             objectIdentifier: $this->objectIdentifier($line),
             orderLineReference: $d->text(self::AGREEMENT.'ram:BuyerOrderReferencedDocument/ram:LineID', $line),
@@ -111,13 +111,13 @@ final class LineMapper
             if ($isCharge === null) {
                 continue;
             }
-            $amount = $d->decimal('ram:ActualAmount', $allowanceCharge);
+            $amount = $d->decimal('ram:ActualAmount', $allowanceCharge, $isCharge ? 'BT-141' : 'BT-136');
             if ($amount === null) {
                 $d->reject($allowanceCharge, 'dropped: no valid amount');
 
                 continue;
             }
-            $baseAmount = $d->decimal('ram:BasisAmount', $allowanceCharge);
+            $baseAmount = $d->decimal('ram:BasisAmount', $allowanceCharge, $isCharge ? 'BT-142' : 'BT-137');
             $percentage = $d->decimal('ram:CalculationPercent', $allowanceCharge);
             $reason = $d->text('ram:Reason', $allowanceCharge);
             $codeElement = $d->one('ram:ReasonCode', $allowanceCharge);
@@ -159,13 +159,13 @@ final class LineMapper
         $grossBase = null;
 
         if ($gross !== null) {
-            $grossPrice = $d->decimal('ram:ChargeAmount', $gross);
+            $grossPrice = $d->decimal('ram:ChargeAmount', $gross, 'BT-148');
             $grossBase = $d->one('ram:BasisQuantity', $gross);
             $priceAllowance = $d->one('ram:AppliedTradeAllowanceCharge', $gross);
             $indicator = $priceAllowance === null ? null : $d->one('ram:ChargeIndicator/udt:Indicator', $priceAllowance);
             if ($priceAllowance !== null && $indicator !== null && in_array(trim($indicator->textContent), ['false', '0'], true)) {
                 $d->use($indicator);
-                $discount = $d->decimal('ram:ActualAmount', $priceAllowance);
+                $discount = $d->decimal('ram:ActualAmount', $priceAllowance, 'BT-147');
             }
         }
 

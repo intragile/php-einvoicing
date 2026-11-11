@@ -15,12 +15,13 @@ final class Placeholder
     /**
      * cac:OrderReference/cbc:ID when only a sales order reference (BT-14) exists: UBL makes the
      * order identifier mandatory. Read as "no BT-13" only next to a cbc:SalesOrderID, as Peppol
-     * BIS does.
+     * BIS does; the writer therefore refuses a BT-13 of exactly this value beside a BT-14.
      */
     public const ORDER_ID = 'NA';
 
     /**
      * cac:CardAccount/cbc:NetworkID, which UBL makes mandatory but EN 16931 does not model.
+     * Recognised with surrounding whitespace trimmed.
      */
     public const CARD_NETWORK = 'NA';
 

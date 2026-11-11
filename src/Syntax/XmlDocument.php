@@ -191,11 +191,14 @@ abstract class XmlDocument
         return new Identifier(value: $element->textContent, scheme: $this->attribute($element, 'schemeID'));
     }
 
-    public function decimal(string $expression, ?DOMNode $context = null): ?BigDecimal
+    /**
+     * @param  ?string  $term  the business term of an amount, named when its currency is reported
+     */
+    public function decimal(string $expression, ?DOMNode $context = null, ?string $term = null): ?BigDecimal
     {
         $element = $this->one($expression, $context);
 
-        return $element === null ? null : $this->decimalOf($element);
+        return $element === null ? null : $this->decimalOf($element, $term);
     }
 
     /**
@@ -208,9 +211,11 @@ abstract class XmlDocument
     }
 
     /**
-     * @param  ?string  $currency  currency the amount is expected in, when it is not BT-5 (BT-111)
+     * @param  ?string  $term  the business term of an amount, named when its currency is reported
+     * @param  ?string  $accountingCurrency  the VAT accounting currency (BT-6) the amount is
+     *                                       expected in instead of BT-5 (BT-111)
      */
-    public function decimalOf(DOMElement $element, ?string $currency = null): ?BigDecimal
+    public function decimalOf(DOMElement $element, ?string $term = null, ?string $accountingCurrency = null): ?BigDecimal
     {
         $value = trim($element->textContent);
         if ($value === '') {
@@ -224,7 +229,7 @@ abstract class XmlDocument
             return null;
         }
         $this->use($element);
-        $this->checkCurrency($element, $currency);
+        $this->checkCurrency($element, $term, $accountingCurrency);
 
         return BigDecimal::of($value);
     }
@@ -247,7 +252,7 @@ abstract class XmlDocument
             throw new UnsupportedDocument(sprintf("Invalid number '%s' for %s at %s.", $value, $term, $this->path($element)));
         }
         $this->use($element);
-        $this->checkCurrency($element, null);
+        $this->checkCurrency($element, $term, null);
 
         return BigDecimal::of($value);
     }
@@ -438,17 +443,20 @@ abstract class XmlDocument
         return $ignored;
     }
 
-    private function checkCurrency(DOMElement $element, ?string $expected): void
+    private function checkCurrency(DOMElement $element, ?string $term, ?string $accountingCurrency): void
     {
-        $expected ??= $this->invoiceCurrency;
+        $expected = $accountingCurrency ?? $this->invoiceCurrency;
         $actual = $this->attribute($element, 'currencyID');
         if ($expected === null || $actual === null || $actual === $expected) {
             return;
         }
         $this->reject($element, sprintf(
-            "currency '%s' differs from the invoice currency %s (BT-5); amount read as %s",
+            "currency '%s'%s differs from the %s %s (%s); amount read as %s",
             $actual,
+            $term === null ? '' : ' of '.$term,
+            $accountingCurrency === null ? 'invoice currency' : 'VAT accounting currency',
             $expected,
+            $accountingCurrency === null ? 'BT-5' : 'BT-6',
             $expected,
         ), 'currencyID');
     }

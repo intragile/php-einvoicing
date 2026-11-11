@@ -44,7 +44,7 @@ final class LineMapper
             price: $this->price($line),
             item: $this->item($line),
             vat: $this->vat($line),
-            netAmount: $d->decimal('cbc:LineExtensionAmount', $line),
+            netAmount: $d->decimal('cbc:LineExtensionAmount', $line, 'BT-131'),
             note: $d->text('cbc:Note', $line),
             objectIdentifier: $this->objectIdentifier($line),
             orderLineReference: $d->text('cac:OrderLineReference/cbc:LineID', $line),
@@ -112,13 +112,13 @@ final class LineMapper
             if ($isCharge === null) {
                 continue;
             }
-            $amount = $d->decimal('cbc:Amount', $allowanceCharge);
+            $amount = $d->decimal('cbc:Amount', $allowanceCharge, $isCharge ? 'BT-141' : 'BT-136');
             if ($amount === null) {
                 $d->reject($allowanceCharge, 'dropped: no valid amount');
 
                 continue;
             }
-            $baseAmount = $d->decimal('cbc:BaseAmount', $allowanceCharge);
+            $baseAmount = $d->decimal('cbc:BaseAmount', $allowanceCharge, $isCharge ? 'BT-142' : 'BT-137');
             $percentage = $d->decimal('cbc:MultiplierFactorNumeric', $allowanceCharge);
             $reason = $d->text('cbc:AllowanceChargeReason', $allowanceCharge);
             $codeElement = $d->one('cbc:AllowanceChargeReasonCode', $allowanceCharge);
@@ -154,8 +154,8 @@ final class LineMapper
         $priceAllowance = $d->one('cac:Price/cac:AllowanceCharge', $line);
         if ($priceAllowance !== null && in_array(trim((string) $d->one('cbc:ChargeIndicator', $priceAllowance)?->textContent), ['false', '0'], true)) {
             $d->token('cbc:ChargeIndicator', $priceAllowance);
-            $discount = $d->decimal('cbc:Amount', $priceAllowance);
-            $grossPrice = $d->decimal('cbc:BaseAmount', $priceAllowance);
+            $discount = $d->decimal('cbc:Amount', $priceAllowance, 'BT-147');
+            $grossPrice = $d->decimal('cbc:BaseAmount', $priceAllowance, 'BT-148');
         }
 
         $baseQuantity = $d->one('cac:Price/cbc:BaseQuantity', $line);

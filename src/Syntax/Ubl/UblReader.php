@@ -261,7 +261,7 @@ final class UblReader
             if ($isCharge === null) {
                 continue;
             }
-            $amount = $d->decimal('cbc:Amount', $allowanceCharge);
+            $amount = $d->decimal('cbc:Amount', $allowanceCharge, $isCharge ? 'BT-99' : 'BT-92');
             $category = $d->code(VatCategory::class, $d->one('cac:TaxCategory/cbc:ID', $allowanceCharge));
             if ($amount === null || $category === null) {
                 $d->reject($allowanceCharge, 'dropped: no valid amount or VAT category code');
@@ -270,7 +270,7 @@ final class UblReader
             }
             $d->token('cac:TaxCategory/cac:TaxScheme/cbc:ID', $allowanceCharge);
             $vatRate = $d->decimal('cac:TaxCategory/cbc:Percent', $allowanceCharge);
-            $baseAmount = $d->decimal('cbc:BaseAmount', $allowanceCharge);
+            $baseAmount = $d->decimal('cbc:BaseAmount', $allowanceCharge, $isCharge ? 'BT-100' : 'BT-93');
             $percentage = $d->decimal('cbc:MultiplierFactorNumeric', $allowanceCharge);
             $reason = $d->text('cbc:AllowanceChargeReason', $allowanceCharge);
             $codeElement = $d->one('cbc:AllowanceChargeReasonCode', $allowanceCharge);
@@ -321,7 +321,7 @@ final class UblReader
 
             if (! $seenMain && ($amountCurrency === null || $amountCurrency === $currency->value)) {
                 $seenMain = true;
-                $totalVat = $amount === null ? null : $d->decimalOf($amount);
+                $totalVat = $amount === null ? null : $d->decimalOf($amount, 'BT-110');
                 foreach ($d->all('cac:TaxSubtotal', $taxTotal) as $subtotal) {
                     $entry = $this->vatBreakdown($d, $subtotal);
                     if ($entry !== null) {
@@ -333,7 +333,7 @@ final class UblReader
             }
             if (! $seenAccounting && $amount !== null && $taxCurrency !== null && $taxCurrency !== $currency && $amountCurrency === $taxCurrency->value) {
                 $seenAccounting = true;
-                $totalVatInAccountingCurrency = $d->decimalOf($amount, $taxCurrency->value);
+                $totalVatInAccountingCurrency = $d->decimalOf($amount, 'BT-111', $taxCurrency->value);
             }
         }
 
@@ -342,8 +342,8 @@ final class UblReader
 
     private function vatBreakdown(UblDocument $d, DOMElement $subtotal): ?VatBreakdown
     {
-        $taxable = $d->decimal('cbc:TaxableAmount', $subtotal);
-        $tax = $d->decimal('cbc:TaxAmount', $subtotal);
+        $taxable = $d->decimal('cbc:TaxableAmount', $subtotal, 'BT-116');
+        $tax = $d->decimal('cbc:TaxAmount', $subtotal, 'BT-117');
         $category = $d->code(VatCategory::class, $d->one('cac:TaxCategory/cbc:ID', $subtotal));
         if ($taxable === null || $tax === null || $category === null) {
             $d->reject($subtotal, 'dropped: no valid taxable amount, tax amount or VAT category code');
@@ -370,9 +370,9 @@ final class UblReader
         }
 
         $required = [];
-        foreach (['LineExtensionAmount', 'TaxExclusiveAmount', 'TaxInclusiveAmount', 'PayableAmount'] as $name) {
+        foreach (['LineExtensionAmount' => 'BT-106', 'TaxExclusiveAmount' => 'BT-109', 'TaxInclusiveAmount' => 'BT-112', 'PayableAmount' => 'BT-115'] as $name => $term) {
             $element = $d->one('cbc:'.$name, $monetaryTotal);
-            $value = $element === null ? null : $d->decimalOf($element);
+            $value = $element === null ? null : $d->decimalOf($element, $term);
             if ($value === null) {
                 $d->reject($monetaryTotal, "dropped: no valid cbc:{$name}");
 
@@ -386,12 +386,12 @@ final class UblReader
             totalWithoutVat: $required['TaxExclusiveAmount'],
             totalWithVat: $required['TaxInclusiveAmount'],
             amountDue: $required['PayableAmount'],
-            sumOfAllowances: $d->decimal('cbc:AllowanceTotalAmount', $monetaryTotal),
-            sumOfCharges: $d->decimal('cbc:ChargeTotalAmount', $monetaryTotal),
+            sumOfAllowances: $d->decimal('cbc:AllowanceTotalAmount', $monetaryTotal, 'BT-107'),
+            sumOfCharges: $d->decimal('cbc:ChargeTotalAmount', $monetaryTotal, 'BT-108'),
             totalVat: $totalVat,
             totalVatInAccountingCurrency: $totalVatInAccountingCurrency,
-            paidAmount: $d->decimal('cbc:PrepaidAmount', $monetaryTotal),
-            roundingAmount: $d->decimal('cbc:PayableRoundingAmount', $monetaryTotal),
+            paidAmount: $d->decimal('cbc:PrepaidAmount', $monetaryTotal, 'BT-113'),
+            roundingAmount: $d->decimal('cbc:PayableRoundingAmount', $monetaryTotal, 'BT-114'),
         );
     }
 

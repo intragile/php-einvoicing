@@ -112,7 +112,7 @@ seller, buyer and payee names), it appears once per id.
 | BT-30 | `Party` | `$legalRegistration` | `?Identifier` | Legal registration identifier (BT-30 / BT-47 / BT-61) with scheme (BT-30-1 / BT-47-1 / BT-61-1). |
 | BT-30-1 | `Identifier` | `$scheme` | `?string` | Scheme identifier (BT-18-1, BT-29-1, BT-30-1, BT-46-1, BT-47-1, BT-60-1, BT-61-1, BT-71-1, BT-128-1, BT-157-1). |
 | BT-30-1 | `Party` | `$legalRegistration` | `?Identifier` | Legal registration identifier (BT-30 / BT-47 / BT-61) with scheme (BT-30-1 / BT-47-1 / BT-61-1). |
-| BT-31 | `Party` | `$vatIdentifier` | `?string` | VAT identifier (BT-31 / BT-48 / BT-63), with country prefix. |
+| BT-31 | `Party` | `$vatIdentifier` | `?string` | VAT identifier (BT-31 / BT-48 / none / BT-63), with country prefix. |
 | BT-32 | `Party` | `$taxRegistration` | `?TaxRegistration` | Seller tax registration identifier (BT-32). |
 | BT-32 | `TaxRegistration` |  |  | Seller tax registration identifier (BT-32): a local tax number that is not the VAT identifier, e.g. the Hungarian "adószám". |
 | BT-32 | `TaxRegistration` | `$identifier` | `string` | Seller tax registration identifier (BT-32). |
@@ -140,7 +140,7 @@ seller, buyer and payee names), it appears once per id.
 | BT-47 | `Party` | `$legalRegistration` | `?Identifier` | Legal registration identifier (BT-30 / BT-47 / BT-61) with scheme (BT-30-1 / BT-47-1 / BT-61-1). |
 | BT-47-1 | `Identifier` | `$scheme` | `?string` | Scheme identifier (BT-18-1, BT-29-1, BT-30-1, BT-46-1, BT-47-1, BT-60-1, BT-61-1, BT-71-1, BT-128-1, BT-157-1). |
 | BT-47-1 | `Party` | `$legalRegistration` | `?Identifier` | Legal registration identifier (BT-30 / BT-47 / BT-61) with scheme (BT-30-1 / BT-47-1 / BT-61-1). |
-| BT-48 | `Party` | `$vatIdentifier` | `?string` | VAT identifier (BT-31 / BT-48 / BT-63), with country prefix. |
+| BT-48 | `Party` | `$vatIdentifier` | `?string` | VAT identifier (BT-31 / BT-48 / none / BT-63), with country prefix. |
 | BT-49 | `ElectronicAddress` |  |  | Electronic address of a party (BT-34 seller, BT-49 buyer). |
 | BT-49 | `ElectronicAddress` | `$value` | `string` | Electronic address (BT-34 / BT-49). |
 | BT-49 | `Party` | `$electronicAddress` | `?ElectronicAddress` | Electronic address (BT-34 / BT-49) with scheme (BT-34-1 / BT-49-1). |
@@ -163,7 +163,7 @@ seller, buyer and payee names), it appears once per id.
 | BT-61-1 | `Identifier` | `$scheme` | `?string` | Scheme identifier (BT-18-1, BT-29-1, BT-30-1, BT-46-1, BT-47-1, BT-60-1, BT-61-1, BT-71-1, BT-128-1, BT-157-1). |
 | BT-61-1 | `Party` | `$legalRegistration` | `?Identifier` | Legal registration identifier (BT-30 / BT-47 / BT-61) with scheme (BT-30-1 / BT-47-1 / BT-61-1). |
 | BT-62 | `Party` | `$name` | `string` | Party name (BT-27 / BT-44 / BT-59 / BT-62). |
-| BT-63 | `Party` | `$vatIdentifier` | `?string` | VAT identifier (BT-31 / BT-48 / BT-63), with country prefix. |
+| BT-63 | `Party` | `$vatIdentifier` | `?string` | VAT identifier (BT-31 / BT-48 / none / BT-63), with country prefix. |
 | BT-64 | `PostalAddress` | `$line1` | `?string` | Address line 1 (BT-35 / BT-50 / BT-64 / BT-75). |
 | BT-65 | `PostalAddress` | `$line2` | `?string` | Address line 2 (BT-36 / BT-51 / BT-65 / BT-76). |
 | BT-66 | `PostalAddress` | `$city` | `?string` | City (BT-37 / BT-52 / BT-66 / BT-77). |

@@ -16,7 +16,9 @@ use RuntimeException;
  *
  * Text goes through DOM text nodes and attribute setters, so markup characters are escaped and
  * UTF-8 is kept as is. Text that is not valid UTF-8 or holds a character XML 1.0 forbids is
- * refused rather than stripped, since no receiver could parse the document. Decimals are written in their own plain notation with their scale.
+ * refused rather than stripped, since no receiver could parse the document (the writers check
+ * the model first, see WriterGuard::xmlText(), so this is a backstop). Decimals are written in
+ * their own plain notation with their scale.
  *
  * @internal
  */
@@ -116,20 +118,26 @@ abstract class XmlOutput
     }
 
     /**
-     * XML 1.0 Char: #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF].
+     * Why the text cannot be written as XML 1.0 character data, or null when it can. XML 1.0 Char:
+     * #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF].
      */
-    private static function assertXmlText(string $value, string $what, string $element): void
+    public static function textProblem(string $value): ?string
     {
         if (! mb_check_encoding($value, 'UTF-8')) {
-            throw new InvalidArgumentException(sprintf('%s is not valid UTF-8 in element %s.', $what, $element));
+            return 'is not valid UTF-8';
         }
         if (preg_match('/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}\x{10000}-\x{10FFFF}]/u', $value, $match) === 1) {
-            throw new InvalidArgumentException(sprintf(
-                '%s contains U+%04X, which is not allowed in XML 1.0, in element %s.',
-                $what,
-                mb_ord($match[0], 'UTF-8'),
-                $element,
-            ));
+            return sprintf('contains U+%04X, which is not allowed in XML 1.0', mb_ord($match[0], 'UTF-8'));
+        }
+
+        return null;
+    }
+
+    private static function assertXmlText(string $value, string $what, string $element): void
+    {
+        $problem = self::textProblem($value);
+        if ($problem !== null) {
+            throw new InvalidArgumentException(sprintf('%s in element %s %s.', $what, $element, $problem));
         }
     }
 }
