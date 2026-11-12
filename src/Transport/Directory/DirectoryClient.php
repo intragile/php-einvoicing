@@ -41,7 +41,7 @@ final class DirectoryClient
     private ?float $lastRequestAt = null;
 
     /**
-     * @param  (Closure(): float)|null  $clock  current time in seconds; defaults to microtime(true)
+     * @param  (Closure(): float)|null  $clock  current time in seconds from a monotonic source; defaults to hrtime()
      * @param  (Closure(int): void)|null  $sleep  waits the given microseconds; defaults to usleep()
      */
     public function __construct(
@@ -50,7 +50,7 @@ final class DirectoryClient
         ?Closure $clock = null,
         ?Closure $sleep = null,
     ) {
-        $this->clock = $clock ?? static fn (): float => microtime(true);
+        $this->clock = $clock ?? static fn (): float => hrtime(true) / 1e9;
         $this->sleep = $sleep ?? static function (int $microseconds): void {
             usleep($microseconds);
         };
@@ -108,7 +108,11 @@ final class DirectoryClient
     {
         $now = ($this->clock)();
         if ($this->lastRequestAt !== null) {
-            $wait = self::MIN_INTERVAL_MICROSECONDS - (int) floor(($now - $this->lastRequestAt) * 1_000_000);
+            // Bounded, so that a clock stepping backwards never stalls the client beyond one interval.
+            $wait = min(
+                self::MIN_INTERVAL_MICROSECONDS,
+                self::MIN_INTERVAL_MICROSECONDS - (int) floor(($now - $this->lastRequestAt) * 1_000_000),
+            );
             if ($wait > 0) {
                 ($this->sleep)($wait);
                 $now += $wait / 1_000_000;

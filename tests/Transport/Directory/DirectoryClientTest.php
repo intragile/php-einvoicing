@@ -136,6 +136,28 @@ final class DirectoryClientTest extends TestCase
         self::assertCount(2, $recorder->requests());
     }
 
+    public function test_a_clock_stepping_back_never_waits_longer_than_the_interval(): void
+    {
+        $recorder = new RecordingHttpClient(new Response(200, [], self::EMPTY), new Response(200, [], self::EMPTY));
+        $times = [5000.0, 1400.0];
+        $sleeps = new SleepRecorder;
+        $client = new DirectoryClient(
+            self::http($recorder),
+            clock: static function () use (&$times): float {
+                return array_shift($times) ?? 1400.0;
+            },
+            sleep: static function (int $microseconds) use ($sleeps): void {
+                $sleeps->record($microseconds);
+            },
+        );
+
+        $client->search(new DirectoryQuery(q: 'first'));
+        $client->search(new DirectoryQuery(q: 'second'));
+
+        self::assertCount(1, $sleeps->delays());
+        self::assertLessThanOrEqual(DirectoryClient::MIN_INTERVAL_MICROSECONDS, $sleeps->delays()[0]);
+    }
+
     public function test_requests_further_apart_than_the_interval_are_not_delayed(): void
     {
         $recorder = new RecordingHttpClient(new Response(200, [], self::EMPTY), new Response(200, [], self::EMPTY));
