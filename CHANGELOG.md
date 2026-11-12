@@ -61,9 +61,44 @@ All notable changes to this project are documented here. The format follows
 - `docs/PEPPOL.md`: what Peppol validation checks, why the rules are compiled locally, install
   and deployment, verification and timings, and what is not covered yet (SBDH envelope rules,
   Peppol transport).
+- Peppol transport contracts in `IntrAgile\EInvoicing\Transport`: `Transport` (send, status),
+  `InboundSource` (pending, fetch, acknowledge), `OutboundDocument` (routing metadata read from a
+  UBL Invoice or CreditNote, or written from a model invoice), `SendResult`, `DeliveryStatus`,
+  `InboundDocument`, `ValidatingTransport` (refuses a document that fails validation before it
+  is sent) and `FakeTransport` for tests. Peppol identifiers `ParticipantId`, `DocumentTypeId`
+  and `ProcessId`, and the BIS Billing 3.0 identifiers in `PeppolBis3`.
+- `HttpClient` over any PSR-18 client and PSR-17 factories (new dependencies `psr/http-client`,
+  `psr/http-factory`, `psr/http-message`), with a response size cap and credential redaction.
+  Transport exceptions under `Transport\Exception` with `isRetryable()`; a state-changing
+  request that got no answer throws `OutcomeUnknown` instead of inviting a duplicate resend.
+- Participant lookup: `SmlLocator` (U-NAPTR in the production or test SML), `SmpClient` (SMP 1.x
+  ServiceGroup and ServiceMetadata, one redirect, 2 MB cap, parsed with `SafeXml`) and
+  `ParticipantLookup`, which reports `Registered`, `NotRegistered` or `Unknown` (never
+  `NotRegistered` on a DNS or SMP failure). The resolver is pluggable through `NaptrResolver`.
+- `DirectoryClient`: Peppol Directory search and lookup by participant, throttled to the
+  Directory's two requests per second per instance.
+- `RecommandTransport`: sending, delivery status, inbox polling, fetching (SBDH unwrapped) and
+  acknowledging through the Recommand access point API; `RecommandWebhook` verifies the
+  HMAC-SHA256 signature of webhook notifications and exposes the idempotency key. Tested offline
+  against fixtures written from the published API description; live transmission is not verified
+  yet (test group `recommand-live`).
+- `EnvelopeWriter` and `EnvelopeReader`: the Peppol Business Message Envelope (SBDH), written in
+  schema order with the participant ids exactly as in the invoice, and read by namespace.
+- `Validator::peppolEnvelope($dir)`: the official Peppol envelope rules (`BR-SBDH-1` to
+  `BR-SBDH-4`) on a whole Standard Business Document, compiled from
+  `PeppolBIS-Envelope-Rules.sch`, with verdicts checked equal to SaxonC on 24 envelopes.
+- `docs/TRANSPORT.md`: sending, HTTP client setup, errors, lookup, Directory, receiving and
+  webhooks, the SBDH envelope, what is verified and the known limitations.
 
 ### Changed
 
+- `einvoicing-rules install peppol` downloads and compiles five official files instead of four,
+  adding the envelope rules (`peppol-envelope-3.0.22.php`). `check` exits 1 on a folder written
+  by an earlier version until `install` is run again; `Validator::peppol()` keeps working with it.
+- `install` restores the previously installed rules when moving the new files into place fails;
+  `PartialInstall` is thrown only when that restore fails as well.
+- The rule `Downloader` opens HTTPS streams through an injectable `StreamOpener` (default
+  `PhpStreamOpener`), so its redirect, size and time limits are tested offline.
 - The validation result types are `IntrAgile\EInvoicing\Validation\{Finding, DynamicError,
   Severity}` (moved from `Schematron`). `ValidationReport` renames `errors` to `dynamicErrors`,
   adds `information()`, and replaces `ruleSet` and `version` with `ruleSets`, the list of rule

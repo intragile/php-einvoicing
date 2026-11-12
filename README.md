@@ -4,8 +4,9 @@ Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
 **A framework-agnostic EN 16931 e-invoicing core for PHP.** An invoice model built on exact
 decimals, EN 16931 totals calculation, reading and writing of the two syntaxes the standard binds
-to (UBL 2.1 and UN/CEFACT CII), and validation against the official CEN EN 16931 rules and the
-Peppol BIS Billing 3 rules. No Java is needed at runtime.
+to (UBL 2.1 and UN/CEFACT CII), validation against the official CEN EN 16931 rules and the
+Peppol BIS Billing 3 rules, and sending and receiving over Peppol through an access point. No Java
+is needed at runtime.
 
 [Magyar nyelvű leírás → README.hu.md](README.hu.md)
 
@@ -25,11 +26,15 @@ Included today:
   ([how it works](docs/VALIDATION.md)).
 - Validation against the Peppol BIS Billing 3.0.22 rules, compiled on your machine from the
   official OpenPeppol files, with verdicts checked equal to Saxon on a corpus of 1,611 documents
-  ([Peppol BIS 3](docs/PEPPOL.md)).
+  ([Peppol BIS 3](docs/PEPPOL.md)). The Peppol envelope (SBDH) rules are compiled and checked
+  the same way.
+- Peppol transport: sending and receiving through an access point (Recommand driver), SML and
+  SMP participant lookup, Peppol Directory search, webhook verification, and an SBDH envelope
+  writer and reader ([Peppol transport](docs/TRANSPORT.md)). Live transmission through Recommand
+  is not verified yet.
 
-Not included yet, planned for later releases: Peppol transport (access point, SMP and Directory
-lookup) and the Peppol envelope (SBDH) rules, the XRechnung and ZUGFeRD/Factur-X profiles, and a
-Laravel package.
+Not included yet, planned for later releases: other access point drivers, CII and self-billing
+over Peppol, the XRechnung and ZUGFeRD/Factur-X profiles, and a Laravel package.
 
 ## Install
 
@@ -181,9 +186,30 @@ $report = Validator::peppol(__DIR__.'/var/peppol-rules')->validate($xml);
 
 Verdicts are checked equal to the OpenPeppol Schematron run by Saxon on a corpus of 1,611
 documents, with no mismatch; where Saxon aborts (101 documents), only the error code is compared.
-The invoice format is verified offline; Peppol transport and the envelope (SBDH) rules are not
-covered yet. Install, deployment, verification details and timings:
+`Validator::peppolEnvelope($dir)` checks the envelope (SBDH) of a Standard Business Document
+against the official envelope rules. Install, deployment, verification details and timings:
 [docs/PEPPOL.md](docs/PEPPOL.md).
+
+## Sending over Peppol
+
+```php
+$transport = new ValidatingTransport(
+    new RecommandTransport(new RecommandConfig($apiKeyId, $secret, $companyId), $http),
+    Validator::peppol(__DIR__.'/var/peppol-rules'),
+);
+
+$result = $transport->send(OutboundDocument::fromXml($ublXml));
+```
+
+`$http` wraps any PSR-18 client (Guzzle, Symfony) and PSR-17 factories; the package itself
+depends only on the PSR interfaces. The sender, receiver, document type and process are read from
+the invoice. Always wrap the driver in `ValidatingTransport`: it refuses an invalid document
+before it leaves. Every error says through `isRetryable()` whether retrying is safe; an
+`OutcomeUnknown` means the access point may have accepted the document, so check before
+resending. Participant lookup (SML and SMP), the Peppol Directory, receiving by polling or
+webhooks, the SBDH envelope, what is verified and the known limitations:
+[docs/TRANSPORT.md](docs/TRANSPORT.md). Live transmission through Recommand is not verified yet;
+the driver is tested against fixtures written from Recommand's published API description.
 
 ## Security: hostile XML
 

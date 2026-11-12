@@ -88,6 +88,9 @@ $report = Validator::peppolEnvelope(__DIR__.'/var/peppol-rules')->validate($sbdX
 - The rules check only these identifiers: not `COUNTRY_C1`, the `DOCUMENTID` and `PROCESSID`
   scopes or the header structure, and not the invoice itself. Run `Validator::peppol()` on the
   invoice for that.
+- **The rules address UBL paths only.** An enveloped CII invoice is never checked by them: no
+  official rule matches its elements, so it passes without a finding. Validate the identifiers
+  of an enveloped CII invoice yourself (the Peppol transport of this package sends UBL only).
 - A document whose element is not an SBDH `StandardBusinessDocument` (for example a bare
   invoice), or that envelopes no invoice, throws `UnsupportedDocument`. `$report->syntax` is the
   syntax of the enveloped invoice.
@@ -95,6 +98,8 @@ $report = Validator::peppolEnvelope(__DIR__.'/var/peppol-rules')->validate($sbdX
   files: `Validator::peppol()` still works with it, `Validator::peppolEnvelope()` throws
   `RulesNotInstalled` naming the `install` command, and `check` exits 1 until `install` is run
   again.
+
+Writing the envelope and sending it is described in [TRANSPORT.md](TRANSPORT.md#the-sbdh-envelope).
 
 ## Why the rules are compiled on your machine
 
@@ -137,7 +142,8 @@ vendor/bin/einvoicing-rules check peppol --dir=DIR
   `RuleSourceMismatch`, names the file and both hashes, and leaves `DIR` unchanged. It writes five
   files, `peppol-cen-ubl-3.0.22.php`, `peppol-ubl-3.0.22.php`, `peppol-cen-cii-3.0.22.php`,
   `peppol-cii-3.0.22.php` and `peppol-envelope-3.0.22.php`, and replaces them only after all five
-  have compiled.
+  have compiled. If moving the new files into place fails, the previous files are restored and
+  the error is reported; `PartialInstall` is thrown only when that restore itself fails.
 - The download uses PHP streams only (no HTTP client dependency): HTTPS with certificate
   verification, at most three HTTPS redirects, a time limit and a size limit.
 - For `--from`, get the five files from the
@@ -218,10 +224,11 @@ input in [Resource use](VALIDATION.md#resource-use) apply here too.
 
 ## Not covered yet
 
-- **Peppol transport**: sending and receiving through an access point, SMP and Peppol Directory
-  lookup. Both are planned for a later release.
-- **Live network**: the format is verified offline against the official rules; transmission
-  through the Peppol network is not verified yet.
+- **Live network transmission through Recommand** is not verified yet. Sending, receiving and
+  participant lookup are described in [TRANSPORT.md](TRANSPORT.md), with what is verified and
+  how; the lookups (SML, SMP) have been checked against the live network.
+- **CII and self-billing over Peppol**: the envelope rules check UBL paths only, and the
+  transport sends BIS Billing 3.0 UBL invoices and credit notes only.
 - Other Peppol BIS documents (orders, despatch advice and the like) are refused, not validated.
 
 ---

@@ -4,8 +4,9 @@ Fejlesztő és karbantartó: [IntrAgile Kft.](https://intragile.eu)
 
 **Keretrendszer-független EN 16931 e-számlázási mag PHP-hoz.** Pontos tizedes számításra épülő
 számlamodell, EN 16931 szerinti összesítés, a szabványhoz tartozó két szintaxis (UBL 2.1 és
-UN/CEFACT CII) olvasása és írása, valamint ellenőrzés a hivatalos CEN EN 16931 és a Peppol BIS
-Billing 3 szabályok szerint. Futásidőben nincs szükség Javára.
+UN/CEFACT CII) olvasása és írása, ellenőrzés a hivatalos CEN EN 16931 és a Peppol BIS Billing 3
+szabályok szerint, valamint küldés és fogadás Peppolon egy hozzáférési ponton keresztül.
+Futásidőben nincs szükség Javára.
 
 [English description → README.md](README.md)
 
@@ -25,11 +26,16 @@ Jelenleg tartalmazza:
   álló korpuszon ellenőriztük ([hogyan működik](docs/VALIDATION.md), angolul).
 - Ellenőrzés a Peppol BIS Billing 3.0.22 szabályai szerint, amelyeket a hivatalos OpenPeppol
   fájlokból a saját gépeden fordít le a csomag; az eredmény egyezését a Saxonéval 1611
-  dokumentumból álló korpuszon ellenőriztük ([Peppol BIS 3](docs/PEPPOL.md), angolul).
+  dokumentumból álló korpuszon ellenőriztük ([Peppol BIS 3](docs/PEPPOL.md), angolul). A
+  Peppol-boríték (SBDH) szabályait ugyanígy lefordítja és ellenőrzi.
+- Peppol-átvitel: küldés és fogadás hozzáférési ponton keresztül (Recommand-meghajtó), résztvevő
+  keresése az SML-ben és az SMP-ben, keresés a Peppol Directoryban, webhookok ellenőrzése, valamint
+  SBDH-boríték írása és olvasása ([Peppol-átvitel](docs/TRANSPORT.md), angolul). Az éles küldést a
+  Recommandon keresztül még nem ellenőriztük.
 
-Későbbi kiadásokra tervezett, jelenleg nincs benne: a Peppol-átvitel (hozzáférési pont, SMP- és
-Directory-lekérdezés) és a Peppol-boríték (SBDH) szabályai, az XRechnung és a ZUGFeRD/Factur-X
-profilok, valamint Laravel csomag.
+Későbbi kiadásokra tervezett, jelenleg nincs benne: további hozzáférésipont-meghajtók, CII- és
+önszámlázó (self-billing) számlák küldése Peppolon, az XRechnung és a ZUGFeRD/Factur-X profilok,
+valamint Laravel csomag.
 
 ## Telepítés
 
@@ -191,9 +197,31 @@ $report = Validator::peppol(__DIR__.'/var/peppol-rules')->validate($xml);
 
 Az eredmények egyezését a Saxonnal futtatott OpenPeppol Schematronnal 1611 dokumentumból álló
 korpuszon ellenőriztük, eltérés nélkül; ahol a Saxon leáll (101 dokumentum), ott csak a
-hibakódot hasonlítjuk össze. A számla formátumát hálózat nélkül ellenőriztük; a Peppol-átvitelt
-és a boríték (SBDH) szabályait a csomag még nem fedi le. Telepítés, üzemeltetés, az ellenőrzés
+hibakódot hasonlítjuk össze. A `Validator::peppolEnvelope($dir)` egy Standard Business
+Document borítékát (SBDH) ellenőrzi a hivatalos borítékszabályok szerint. Telepítés, üzemeltetés, az ellenőrzés
 részletei és mérések: [docs/PEPPOL.md](docs/PEPPOL.md) (angolul).
+
+## Küldés Peppolon
+
+```php
+$transport = new ValidatingTransport(
+    new RecommandTransport(new RecommandConfig($apiKeyId, $secret, $companyId), $http),
+    Validator::peppol(__DIR__.'/var/peppol-rules'),
+);
+
+$result = $transport->send(OutboundDocument::fromXml($ublXml));
+```
+
+A `$http` bármilyen PSR-18 klienst (Guzzle, Symfony) és PSR-17 gyárakat csomagol be; maga a csomag
+csak a PSR-interfészektől függ. A küldőt, a címzettet, a dokumentumtípust és a folyamatot a
+számlából olvassa ki. A meghajtót mindig csomagold `ValidatingTransport`-ba: az érvénytelen
+dokumentumot még elküldés előtt visszautasítja. Minden hiba `isRetryable()` metódusa megmondja,
+biztonságos-e az újrapróbálás; az `OutcomeUnknown` azt jelenti, hogy a hozzáférési pont
+befogadhatta a dokumentumot, ezért újraküldés előtt ellenőrizd. Résztvevő keresése (SML és SMP),
+a Peppol Directory, fogadás lekérdezéssel vagy webhookkal, az SBDH-boríték, mit és hogyan
+ellenőriztünk, és az ismert korlátok: [docs/TRANSPORT.md](docs/TRANSPORT.md) (angolul). Az éles
+küldést a Recommandon keresztül még nem ellenőriztük; a meghajtót a Recommand közzétett
+API-leírásából kézzel írt mintaválaszokkal teszteljük.
 
 ## Biztonság: rosszindulatú XML
 
