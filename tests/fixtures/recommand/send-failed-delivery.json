@@ -1,0 +1,36 @@
+{
+  "success": true,
+  "id": "doc_01failed",
+  "teamId": "team_01example",
+  "companyId": "c_01example",
+  "sentOverPeppol": false,
+  "sentOverEmail": true,
+  "emailRecipients": ["accounts@buyer.example"],
+  "peppolMessageId": null,
+  "envelopeId": null,
+  "deliveryStatus": "failed",
+  "deliveries": [
+    {
+      "id": "dlv_01email",
+      "channel": "email",
+      "address": "accounts@buyer.example",
+      "status": "delivered",
+      "statusChangedAt": "2026-11-12T09:16:02.000Z",
+      "failure": null,
+      "references": {"messageId": "<m1@recommand.eu>"}
+    },
+    {
+      "id": "dlv_01peppol",
+      "channel": "peppol",
+      "address": "0208:0123456789AbC",
+      "status": "failed",
+      "statusChangedAt": "2026-11-12T09:16:00.000Z",
+      "failure": {
+        "category": "transport",
+        "message": "The receiving access point did not answer.",
+        "providerCode": "AS4_TIMEOUT"
+      },
+      "references": {}
+    }
+  ]
+}

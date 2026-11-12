@@ -1,0 +1,40 @@
+{
+  "success": true,
+  "document": {
+    "id": "doc_01failed",
+    "teamId": "team_01example",
+    "companyId": "c_01example",
+    "direction": "outgoing",
+    "senderId": "0208:0987654321",
+    "receiverId": "0208:0123456789AbC",
+    "docTypeId": "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice##urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0::2.1",
+    "processId": "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0",
+    "countryC1": "BE",
+    "type": "invoice",
+    "readAt": null,
+    "createdAt": "2026-11-12T09:15:00.000Z",
+    "updatedAt": "2026-11-12T09:16:00.000Z",
+    "xml": "<Invoice/>",
+    "parsed": null,
+    "validation": {"result": "valid"},
+    "peppolMessageId": null,
+    "peppolConversationId": null,
+    "envelopeId": null,
+    "deliveryStatus": "failed",
+    "deliveries": [
+      {
+        "id": "dlv_01peppol",
+        "channel": "peppol",
+        "address": "0208:0123456789AbC",
+        "status": "failed",
+        "statusChangedAt": "2026-11-12T09:16:00.000Z",
+        "failure": {
+          "category": "recipient_rejected",
+          "message": "Rejected by the receiver.",
+          "providerCode": null
+        },
+        "references": {}
+      }
+    ]
+  }
+}

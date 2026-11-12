@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "id": "doc_01pending",
+  "teamId": "team_01example",
+  "companyId": "c_01example",
+  "sentOverPeppol": true,
+  "sentOverEmail": false,
+  "emailRecipients": [],
+  "peppolMessageId": null,
+  "envelopeId": null,
+  "deliveryStatus": null,
+  "deliveries": [],
+  "someFutureField": {"nested": [1, 2, 3]},
+  "anotherNewFlag": true
+}

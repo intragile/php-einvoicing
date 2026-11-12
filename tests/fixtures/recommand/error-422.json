@@ -1,0 +1,10 @@
+{
+  "success": false,
+  "errors": {
+    "recipient": ["The recipient is not registered on the Peppol network."]
+  },
+  "deliveryFailure": {
+    "channel": "peppol",
+    "category": "recipient_not_found"
+  }
+}

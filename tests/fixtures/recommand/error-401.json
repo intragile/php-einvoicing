@@ -1,0 +1,6 @@
+{
+  "success": false,
+  "errors": {
+    "auth": ["Invalid API key or secret."]
+  }
+}

@@ -1,0 +1,429 @@
+<?php
+
+declare(strict_types=1);
+
+namespace IntrAgile\EInvoicing\Tests\Transport\Recommand;
+
+use DateTimeImmutable;
+use IntrAgile\EInvoicing\Tests\Support\RecordingHttpClient;
+use IntrAgile\EInvoicing\Transport\DeliveryState;
+use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
+use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
+use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
+use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
+use IntrAgile\EInvoicing\Transport\Exception\RecipientUnreachable;
+use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
+use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
+use IntrAgile\EInvoicing\Transport\FailureCategory;
+use IntrAgile\EInvoicing\Transport\Http\HttpClient;
+use IntrAgile\EInvoicing\Transport\OutboundDocument;
+use IntrAgile\EInvoicing\Transport\Peppol\DocumentTypeId;
+use IntrAgile\EInvoicing\Transport\Peppol\ParticipantId;
+use IntrAgile\EInvoicing\Transport\Peppol\PeppolBis3;
+use IntrAgile\EInvoicing\Transport\Peppol\ProcessId;
+use IntrAgile\EInvoicing\Transport\Recommand\RecommandConfig;
+use IntrAgile\EInvoicing\Transport\Recommand\RecommandTransport;
+use InvalidArgumentException;
+use Nyholm\Psr7\Factory\Psr17Factory;
+use Nyholm\Psr7\Request;
+use Nyholm\Psr7\Response;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\TestCase;
+use Psr\Http\Client\NetworkExceptionInterface;
+use Psr\Http\Client\RequestExceptionInterface;
+use Psr\Http\Message\RequestInterface;
+use RuntimeException;
+use Throwable;
+
+final class RecommandSendTest extends TestCase
+{
+    private const KEY_ID = 'key_01testkey';
+
+    private const SECRET = 'secret_01topsecretvalue';
+
+    private const XML = '<?xml version="1.0" encoding="UTF-8"?><Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"/>';
+
+    public function test_send_request_has_exact_method_url_headers_and_body(): void
+    {
+        $recorder = new RecordingHttpClient(self::fixture(200, 'send-delivered.json'));
+
+        self::transport($recorder, companyId: 'c_01/ex ample')->send(self::document());
+
+        self::assertCount(1, $recorder->requests());
+        $request = $recorder->requests()[0];
+        self::assertSame('POST', $request->getMethod());
+        self::assertSame('https://app.recommand.eu/api/v1/c_01%2Fex%20ample/send', (string) $request->getUri());
+        self::assertSame('Basic '.base64_encode(self::KEY_ID.':'.self::SECRET), $request->getHeaderLine('Authorization'));
+        self::assertSame('application/json', $request->getHeaderLine('Content-Type'));
+        self::assertSame([
+            'documentType' => 'xml',
+            'document' => self::XML,
+            'recipient' => '0208:0123456789AbC',
+            'doctypeId' => PeppolBis3::INVOICE,
+            'processId' => PeppolBis3::PROCESS,
+        ], json_decode((string) $request->getBody(), true, 512, JSON_THROW_ON_ERROR));
+    }
+
+    public function test_custom_base_url_is_used_without_trailing_slash(): void
+    {
+        $recorder = new RecordingHttpClient(self::fixture(200, 'send-delivered.json'));
+
+        self::transport($recorder, baseUrl: 'https://ap.example/')->send(self::document());
+
+        self::assertSame('https://ap.example/api/v1/c_01example/send', (string) $recorder->requests()[0]->getUri());
+    }
+
+    public function test_delivered_send_maps_to_send_result(): void
+    {
+        $result = self::transport(new RecordingHttpClient(self::fixture(200, 'send-delivered.json')))->send(self::document());
+
+        self::assertSame('doc_01delivered', $result->documentId);
+        self::assertSame(DeliveryState::Delivered, $result->state);
+        self::assertSame('a1b2c3d4-0000-4000-8000-000000000001@recommand.eu', $result->peppolMessageId);
+        self::assertSame('5f0c8f3e-2d0a-4c55-9a43-6a2f1d0b7e11', $result->envelopeId);
+        self::assertNull($result->failure);
+    }
+
+    public function test_null_delivery_status_is_pending_and_unknown_fields_are_ignored(): void
+    {
+        $result = self::transport(new RecordingHttpClient(self::fixture(200, 'send-pending.json')))->send(self::document());
+
+        self::assertSame('doc_01pending', $result->documentId);
+        self::assertSame(DeliveryState::Pending, $result->state);
+        self::assertNull($result->peppolMessageId);
+        self::assertNull($result->envelopeId);
+        self::assertNull($result->failure);
+    }
+
+    public function test_failed_peppol_delivery_carries_its_failure(): void
+    {
+        $result = self::transport(new RecordingHttpClient(self::fixture(200, 'send-failed-delivery.json')))->send(self::document());
+
+        self::assertSame(DeliveryState::Failed, $result->state);
+        self::assertNotNull($result->failure);
+        self::assertSame(FailureCategory::Transport, $result->failure->category);
+        self::assertSame('The receiving access point did not answer.', $result->failure->message);
+        self::assertSame('AS4_TIMEOUT', $result->failure->providerCode);
+    }
+
+    public function test_unknown_failure_category_is_other(): void
+    {
+        $body = str_replace('"category": "transport"', '"category": "something_new"', self::read('send-failed-delivery.json'));
+        self::assertStringContainsString('something_new', $body);
+
+        $result = self::transport(new RecordingHttpClient(new Response(200, [], $body)))->send(self::document());
+
+        self::assertSame(FailureCategory::Other, $result->failure?->category);
+    }
+
+    public function test_unknown_delivery_status_is_unknown_state(): void
+    {
+        $data = self::json('send-pending.json');
+        $data['deliveryStatus'] = 'teleported';
+
+        $result = self::transport(new RecordingHttpClient(new Response(200, [], json_encode($data, JSON_THROW_ON_ERROR))))->send(self::document());
+
+        self::assertSame(DeliveryState::Unknown, $result->state);
+    }
+
+    public function test_400_is_document_rejected_with_errors(): void
+    {
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(self::fixture(400, 'error-400.json')))->send(self::document()));
+
+        self::assertInstanceOf(DocumentRejected::class, $exception);
+        self::assertFalse($exception->isRetryable());
+        self::assertSame(self::json('error-400.json')['errors'], $exception->errors['errors']);
+        self::assertSame(self::json('error-400.json')['invalidInputDetails'], $exception->errors['invalidInputDetails']);
+        self::assertStringContainsString('The receiver EndpointID does not match the recipient.', $exception->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function authenticationStatuses(): iterable
+    {
+        yield '401' => [401];
+        yield '403' => [403];
+    }
+
+    #[DataProvider('authenticationStatuses')]
+    public function test_401_and_403_are_authentication_failed(int $status): void
+    {
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(self::fixture($status, 'error-401.json')))->send(self::document()));
+
+        self::assertInstanceOf(AuthenticationFailed::class, $exception);
+        self::assertStringContainsString((string) $status, $exception->getMessage());
+    }
+
+    public function test_422_is_recipient_unreachable_with_category(): void
+    {
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(self::fixture(422, 'error-422.json')))->send(self::document()));
+
+        self::assertInstanceOf(RecipientUnreachable::class, $exception);
+        self::assertSame(FailureCategory::RecipientNotFound, $exception->category);
+        self::assertStringContainsString('0208:0123456789AbC', $exception->getMessage());
+    }
+
+    public function test_429_is_rate_limited_with_retry_after(): void
+    {
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response(429, ['Retry-After' => '17'], '{"success":false,"errors":{}}')))->send(self::document()));
+
+        self::assertInstanceOf(RateLimited::class, $exception);
+        self::assertSame(17, $exception->retryAfterSeconds);
+        self::assertTrue($exception->isRetryable());
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function serverErrors(): iterable
+    {
+        yield '500' => [500];
+        yield '502' => [502];
+        yield '503' => [503];
+    }
+
+    #[DataProvider('serverErrors')]
+    public function test_5xx_is_transport_unavailable(int $status): void
+    {
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response($status, [], '{"success":false,"errors":{}}')))->send(self::document()));
+
+        self::assertInstanceOf(TransportUnavailable::class, $exception);
+        self::assertTrue($exception->isRetryable());
+    }
+
+    public function test_gateway_timeout_on_send_is_outcome_unknown(): void
+    {
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response(504, [], 'Gateway Timeout')))->send(self::document()));
+
+        self::assertInstanceOf(OutcomeUnknown::class, $exception);
+        self::assertFalse($exception->isRetryable());
+        self::assertStringContainsString('0208:0123456789AbC', $exception->getMessage());
+        self::assertStringContainsString('check', strtolower($exception->getMessage()));
+    }
+
+    /**
+     * @return iterable<string, array{Response}>
+     */
+    public static function unexpectedResponses(): iterable
+    {
+        yield 'other status' => [new Response(418, [], '{"success":false}')];
+        yield '200 without success' => [new Response(200, [], '{"id":"doc_1"}')];
+        yield '200 with success false' => [new Response(200, [], '{"success":false,"id":"doc_1"}')];
+        yield '200 without id' => [new Response(200, [], '{"success":true}')];
+        yield '200 not json' => [new Response(200, [], '<html>maintenance</html>')];
+    }
+
+    #[DataProvider('unexpectedResponses')]
+    public function test_other_responses_are_unexpected(Response $response): void
+    {
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient($response))->send(self::document()));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertSame($response->getStatusCode(), $exception->status);
+    }
+
+    public function test_timeout_after_send_is_outcome_unknown(): void
+    {
+        $failure = self::requestException('Operation timed out after 30001 milliseconds');
+
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient($failure))->send(self::document()));
+
+        self::assertInstanceOf(OutcomeUnknown::class, $exception);
+        self::assertFalse($exception->isRetryable());
+        self::assertStringContainsString('check', strtolower($exception->getMessage()));
+        self::assertStringContainsString('0208:0123456789AbC', $exception->getMessage());
+        self::assertStringNotContainsString(self::SECRET, $exception->getMessage());
+        self::assertInstanceOf(OutcomeUnknown::class, $exception->getPrevious());
+        self::assertSame($failure, $exception->getPrevious()->getPrevious());
+    }
+
+    public function test_status_network_failure_is_retryable(): void
+    {
+        $status = self::capture(fn () => self::transport(new RecordingHttpClient(self::networkException('Could not resolve host')))->status('doc_1'));
+        $send = self::capture(fn () => self::transport(new RecordingHttpClient(self::networkException('Could not resolve host')))->send(self::document()));
+
+        self::assertInstanceOf(TransportUnavailable::class, $status);
+        self::assertTrue($status->isRetryable());
+        self::assertInstanceOf(OutcomeUnknown::class, $send);
+        self::assertFalse($send->isRetryable());
+    }
+
+    public function test_status_request_and_mapping(): void
+    {
+        $recorder = new RecordingHttpClient(self::fixture(200, 'document.json'));
+
+        $status = self::transport($recorder)->status('doc_01/failed');
+
+        $request = $recorder->requests()[0];
+        self::assertSame('GET', $request->getMethod());
+        self::assertSame('https://app.recommand.eu/api/v1/documents/doc_01%2Ffailed', (string) $request->getUri());
+        self::assertSame('Basic '.base64_encode(self::KEY_ID.':'.self::SECRET), $request->getHeaderLine('Authorization'));
+        self::assertSame('doc_01/failed', $status->documentId);
+        self::assertSame(DeliveryState::Failed, $status->state);
+        self::assertSame(FailureCategory::RecipientRejected, $status->failure?->category);
+        self::assertSame('Rejected by the receiver.', $status->failure->message);
+        self::assertNull($status->failure->providerCode);
+        self::assertEquals(new DateTimeImmutable('2026-11-12T09:16:00.000Z'), $status->changedAt);
+    }
+
+    public function test_status_404_names_the_document_id(): void
+    {
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response(404, [], '{"success":false,"errors":{"document":["Not found"]}}')))->status('doc_missing'));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertSame(404, $exception->status);
+        self::assertStringContainsString('doc_missing', $exception->getMessage());
+    }
+
+    public function test_status_of_empty_id_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        self::transport(new RecordingHttpClient)->status('');
+    }
+
+    public function test_secret_never_leaks(): void
+    {
+        $config = self::config();
+        self::assertStringNotContainsString('secret_', var_export($config, true));
+        self::assertStringNotContainsString('secret_', print_r($config, true));
+        self::assertStringNotContainsString('key_01', var_export($config, true));
+        self::assertStringNotContainsString('key_01', print_r($config, true));
+        self::assertStringNotContainsString('secret_', var_export(self::transport(new RecordingHttpClient), true));
+
+        $echo = json_encode([
+            'authorization' => 'Basic '.base64_encode(self::KEY_ID.':'.self::SECRET),
+            'decoded' => self::KEY_ID.':'.self::SECRET,
+        ], JSON_THROW_ON_ERROR);
+        $scenarios = [
+            fn () => self::transport(new RecordingHttpClient(new Response(418, [], $echo)))->send(self::document()),
+            fn () => self::transport(new RecordingHttpClient(new Response(200, [], $echo)))->send(self::document()),
+            fn () => self::transport(new RecordingHttpClient(new Response(200, [], 'not json '.$echo)))->send(self::document()),
+            fn () => self::transport(new RecordingHttpClient(new Response(400, [], '{"success":false,"errors":{"echo":'.$echo.'}}')))->send(self::document()),
+            fn () => self::transport(new RecordingHttpClient(new Response(404, [], $echo)))->status('doc_1'),
+            fn () => self::transport(new RecordingHttpClient(self::fixture(401, 'error-401.json')))->send(self::document()),
+            fn () => self::transport(new RecordingHttpClient(self::fixture(422, 'error-422.json')))->send(self::document()),
+            fn () => self::transport(new RecordingHttpClient(new Response(429)))->send(self::document()),
+            fn () => self::transport(new RecordingHttpClient(new Response(503, [], $echo)))->send(self::document()),
+            fn () => self::transport(new RecordingHttpClient(new Response(504, [], $echo)))->send(self::document()),
+            fn () => self::transport(new RecordingHttpClient(self::requestException('failed: '.self::SECRET)))->send(self::document()),
+            fn () => self::transport(new RecordingHttpClient(self::networkException('failed: '.self::SECRET)))->status('doc_1'),
+        ];
+
+        foreach ($scenarios as $index => $scenario) {
+            // Only exceptions raised by the driver are checked: a chained client exception
+            // carries whatever message the PSR-18 client produced.
+            $exception = self::capture($scenario);
+            self::assertStringNotContainsString('secret_', $exception->getMessage(), "scenario $index: ".$exception::class);
+            if ($exception instanceof UnexpectedResponse) {
+                self::assertStringNotContainsString('secret_', $exception->bodyExcerpt, "scenario $index excerpt");
+                self::assertStringNotContainsString(base64_encode(self::KEY_ID.':'.self::SECRET), $exception->bodyExcerpt, "scenario $index excerpt");
+            }
+            if ($exception instanceof DocumentRejected) {
+                self::assertStringNotContainsString('secret_', var_export($exception->errors, true), "scenario $index errors");
+            }
+        }
+    }
+
+    public function test_http_base_url_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new RecommandConfig(self::KEY_ID, self::SECRET, 'c_01example', 'http://app.recommand.eu');
+    }
+
+    public function test_empty_credentials_are_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new RecommandConfig('', self::SECRET, 'c_01example');
+    }
+
+    private static function config(string $companyId = 'c_01example', string $baseUrl = 'https://app.recommand.eu'): RecommandConfig
+    {
+        return new RecommandConfig(self::KEY_ID, self::SECRET, $companyId, $baseUrl);
+    }
+
+    private static function transport(RecordingHttpClient $recorder, string $companyId = 'c_01example', string $baseUrl = 'https://app.recommand.eu'): RecommandTransport
+    {
+        $factory = new Psr17Factory;
+
+        return new RecommandTransport(self::config($companyId, $baseUrl), new HttpClient($recorder, $factory, $factory));
+    }
+
+    private static function document(): OutboundDocument
+    {
+        return new OutboundDocument(
+            self::XML,
+            new ParticipantId('0208', '0987654321'),
+            new ParticipantId('0208', '0123456789AbC'),
+            new DocumentTypeId(PeppolBis3::INVOICE),
+            new ProcessId(PeppolBis3::PROCESS),
+        );
+    }
+
+    private static function fixture(int $status, string $name): Response
+    {
+        return new Response($status, ['Content-Type' => 'application/json'], self::read($name));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function json(string $name): array
+    {
+        /** @var array<string, mixed> */
+        return json_decode(self::read($name), true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    private static function read(string $name): string
+    {
+        $contents = file_get_contents(__DIR__.'/../../fixtures/recommand/'.$name);
+        self::assertIsString($contents);
+
+        return $contents;
+    }
+
+    private static function capture(callable $action): Throwable
+    {
+        try {
+            $action();
+        } catch (Throwable $exception) {
+            return $exception;
+        }
+        self::fail('No exception was thrown.');
+    }
+
+    private static function networkException(string $message): NetworkExceptionInterface
+    {
+        return new class(new Request('GET', 'https://app.recommand.eu'), $message) extends RuntimeException implements NetworkExceptionInterface
+        {
+            public function __construct(private readonly RequestInterface $request, string $message)
+            {
+                parent::__construct($message);
+            }
+
+            public function getRequest(): RequestInterface
+            {
+                return $this->request;
+            }
+        };
+    }
+
+    private static function requestException(string $message): RequestExceptionInterface
+    {
+        return new class(new Request('POST', 'https://app.recommand.eu'), $message) extends RuntimeException implements RequestExceptionInterface
+        {
+            public function __construct(private readonly RequestInterface $request, string $message)
+            {
+                parent::__construct($message);
+            }
+
+            public function getRequest(): RequestInterface
+            {
+                return $this->request;
+            }
+        };
+    }
+}

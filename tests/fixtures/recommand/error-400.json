@@ -1,0 +1,9 @@
+{
+  "success": false,
+  "errors": {
+    "document": ["The receiver EndpointID does not match the recipient."]
+  },
+  "invalidInputDetails": [
+    {"path": ["recipient"], "message": "Invalid Peppol address"}
+  ]
+}

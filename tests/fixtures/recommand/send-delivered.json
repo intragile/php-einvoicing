@@ -1,0 +1,26 @@
+{
+  "success": true,
+  "id": "doc_01delivered",
+  "teamId": "team_01example",
+  "companyId": "c_01example",
+  "sentOverPeppol": true,
+  "sentOverEmail": false,
+  "emailRecipients": [],
+  "peppolMessageId": "a1b2c3d4-0000-4000-8000-000000000001@recommand.eu",
+  "envelopeId": "5f0c8f3e-2d0a-4c55-9a43-6a2f1d0b7e11",
+  "deliveryStatus": "delivered",
+  "deliveries": [
+    {
+      "id": "dlv_01peppol",
+      "channel": "peppol",
+      "address": "0208:0123456789AbC",
+      "status": "delivered",
+      "statusChangedAt": "2026-11-12T09:15:30.000Z",
+      "failure": null,
+      "references": {
+        "peppolMessageId": "a1b2c3d4-0000-4000-8000-000000000001@recommand.eu",
+        "envelopeId": "5f0c8f3e-2d0a-4c55-9a43-6a2f1d0b7e11"
+      }
+    }
+  ]
+}
