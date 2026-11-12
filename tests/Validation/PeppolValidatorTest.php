@@ -15,6 +15,56 @@ use PHPUnit\Framework\TestCase;
 
 final class PeppolValidatorTest extends TestCase
 {
+    /**
+     * Every invoice and credit note among the Peppol examples (rules/examples and rules/snippets)
+     * for which Saxon, running OpenPeppol's Schematron compiled by the ISO skeleton, reports no
+     * fatal finding (PeppolConformanceTest, oracle group). Hard-coded so that this test runs
+     * without the oracle; the conformance run proves the list.
+     */
+    private const VALID_EXAMPLES = [
+        'examples/Allowance-example.xml',
+        'examples/Vat-category-S.xml',
+        'examples/base-creditnote-correction.xml',
+        'examples/base-example.xml',
+        'examples/base-example_profile02.xml',
+        'examples/base-negative-inv-correction.xml',
+        'examples/sales-order-example.xml',
+        'examples/vat-category-E.xml',
+        'examples/vat-category-O.xml',
+        'examples/vat-category-Z.xml',
+        'snippets/Calc.xml',
+        'snippets/CreditNote-snippets.xml',
+        'snippets/Snippet-cn.xml',
+        'snippets/Snippet-full-profile-02.xml',
+        'snippets/Snippet-full.xml',
+        'snippets/Snippet-refs.xml',
+        'snippets/base-creditnote-correction.xml',
+        'snippets/base-example.xml',
+        'snippets/base-negative-inv-correction.xml',
+        'snippets/direct-debit.xml',
+        'snippets/giro.xml',
+        'snippets/item.xml',
+        'snippets/payment-credit.xml',
+        'snippets/payment1.xml',
+        'snippets/price.xml',
+        'snippets/vat-calc.xml',
+    ];
+
+    public function test_examples_without_a_fatal_finding_are_valid(): void
+    {
+        $validator = self::validator();
+        $valid = [];
+        foreach (Fixtures::peppolExamples() as $name => $xml) {
+            $report = $validator->validate($xml);
+            self::assertSame([], $report->dynamicErrors, $name);
+            if ($report->isValid()) {
+                $valid[] = $name;
+            }
+        }
+
+        self::assertSame(self::VALID_EXAMPLES, $valid);
+    }
+
     public function test_official_base_example_is_valid(): void
     {
         $report = self::validator()->validate(self::example('examples/base-example.xml'));
@@ -55,7 +105,8 @@ final class PeppolValidatorTest extends TestCase
         $validator->validate($xml);
         $endpoint = '<cbc:EndpointID schemeID="0088">9482348239847239874</cbc:EndpointID>';
         self::assertStringContainsString($endpoint, $xml);
-        $huge = str_replace($endpoint, '<cbc:EndpointID schemeID="0088">'.str_repeat('7', 50_000).'</cbc:EndpointID>', $xml);
+        // A 50,000-digit GLN whose check digit is wrong: the GLN rule walks every digit.
+        $huge = str_replace($endpoint, '<cbc:EndpointID schemeID="0088">'.str_repeat('1', 49_999).'7</cbc:EndpointID>', $xml);
 
         $start = hrtime(true);
         $report = $validator->validate($huge);
@@ -63,6 +114,8 @@ final class PeppolValidatorTest extends TestCase
 
         self::assertLessThan(2.0, $seconds);
         self::assertSame(['peppol-cen-ubl 3.0.22', 'peppol-ubl 3.0.22'], $report->ruleSets);
+        self::assertSame([], $report->dynamicErrors);
+        self::assertContains('PEPPOL-COMMON-R040 fatal', $report->verdict());
     }
 
     public function test_order_documents_are_not_validated(): void

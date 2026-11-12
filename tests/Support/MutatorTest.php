@@ -101,6 +101,96 @@ final class MutatorTest extends TestCase
         }
     }
 
+    public function test_peppol_kinds_are_opt_in(): void
+    {
+        $xml = self::example('ubl', 'guide-example2.xml');
+
+        self::assertSame(Mutator::mutations($xml, 5, 50), Mutator::mutations($xml, 5, 50, Mutator::KINDS));
+        $kinds = array_map(static fn (string $label): string => explode(' ', $label)[0], Mutator::labels($xml, 5, 200));
+        self::assertNotContains('check-digit', $kinds);
+        self::assertNotContains('profile-id', $kinds);
+    }
+
+    public function test_check_digit_changes_the_last_digit_of_a_gln(): void
+    {
+        $xml = self::example('ubl', 'guide-example2.xml');
+        $mutations = self::ofKind(Mutator::mutations($xml, 11, 200, Mutator::PEPPOL_KINDS), 'check-digit');
+
+        self::assertNotEmpty($mutations);
+        foreach ($mutations as [$label, $mutated]) {
+            $before = self::glns($xml);
+            $after = self::glns($mutated);
+            $removed = array_values(array_diff($before, $after));
+            $added = array_values(array_diff($after, $before));
+            self::assertCount(1, $removed, $label);
+            self::assertSame([substr($removed[0], 0, -1).(((int) substr($removed[0], -1)) + 1) % 10], $added, $label);
+        }
+    }
+
+    public function test_check_digit_wraps_nine_to_zero_in_cii(): void
+    {
+        $xml = str_replace('>1234567890128<', '>1234567890129<', self::example('cii', 'CII_example2.xml'));
+        $mutations = self::ofKind(Mutator::mutations($xml, 3, 300, ['check-digit']), 'check-digit');
+
+        self::assertNotEmpty($mutations);
+        $wrapped = array_filter($mutations, static fn (array $mutation): bool => str_contains($mutation[1], '>1234567890120<'));
+        self::assertCount(1, $wrapped);
+    }
+
+    public function test_profile_id_is_replaced(): void
+    {
+        $xml = self::example('ubl', 'guide-example2.xml');
+        $mutations = self::ofKind(Mutator::mutations($xml, 1, 50, ['profile-id']), 'profile-id');
+
+        self::assertCount(1, $mutations);
+        self::assertSame('profile-id /Invoice[1]/cbc:ProfileID[1]', $mutations[0][0]);
+        self::assertStringContainsString('<cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>', $mutations[0][1]);
+
+        $peppol = Mutator::mutations($mutations[0][1], 1, 50, ['profile-id']);
+        self::assertStringContainsString('<cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:selfbilling:01:1.0</cbc:ProfileID>', $peppol[0][1]);
+    }
+
+    public function test_profile_id_in_cii_is_the_business_process_id(): void
+    {
+        $xml = '<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100">'
+            .'<rsm:ExchangedDocumentContext><ram:BusinessProcessSpecifiedDocumentContextParameter><ram:ID>A1</ram:ID></ram:BusinessProcessSpecifiedDocumentContextParameter>'
+            .'<ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>urn:cen.eu:en16931:2017</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter></rsm:ExchangedDocumentContext></rsm:CrossIndustryInvoice>';
+
+        $mutations = Mutator::mutations($xml, 1, 10, ['profile-id']);
+
+        self::assertCount(1, $mutations);
+        self::assertStringContainsString('<ram:ID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</ram:ID></ram:BusinessProcess', $mutations[0][1]);
+        self::assertStringContainsString('<ram:ID>urn:cen.eu:en16931:2017</ram:ID>', $mutations[0][1]);
+    }
+
+    public function test_unknown_kinds_are_rejected(): void
+    {
+        $this->expectException(RuntimeException::class);
+
+        Mutator::labels(self::example('ubl', 'guide-example1.xml'), 1, 5, ['explode']);
+    }
+
+    /**
+     * The GLN identifiers (scheme 0088) of a document, in document order.
+     *
+     * @return list<string>
+     */
+    private static function glns(string $xml): array
+    {
+        preg_match_all('~schemeID="0088">(\d+)<~', $xml, $matches);
+
+        return $matches[1];
+    }
+
+    /**
+     * @param  list<array{string, string}>  $mutations
+     * @return list<array{string, string}>
+     */
+    private static function ofKind(array $mutations, string $kind): array
+    {
+        return array_values(array_filter($mutations, static fn (array $mutation): bool => str_starts_with($mutation[0], $kind.' ')));
+    }
+
     /**
      * @param  list<array{string, string}>  $mutations
      * @return list<string>

@@ -16,10 +16,27 @@ use RuntimeException;
  * files tend to be broken: missing or repeated elements, empty values, non-numeric or shifted
  * amounts, unknown codes, another currency, reversed periods and a space plus a comment in front of
  * a value (" <!--x-->O"), whose whitespace text node belongs to the string value.
+ *
+ * PEPPOL_KINDS adds two Peppol-specific breakages: a wrong check digit in an identifier whose
+ * scheme carries one (GLN, Italian and Swedish schemes) and another business process (ProfileID).
+ * They are opt-in, so the seeded mutations of the default kinds stay unchanged.
  */
 final class Mutator
 {
     public const KINDS = ['remove', 'duplicate', 'empty', 'amount-abc', 'amount-shift', 'code-zzz', 'currency', 'swap-dates', 'comment-space'];
+
+    public const PEPPOL_KINDS = [...self::KINDS, 'check-digit', 'profile-id'];
+
+    /** Identifier schemes with a check digit: GLN, Italian (0201, 0210, 0211, 9907) and Swedish (0007). */
+    private const CHECK_DIGIT_SCHEMES = ['0088', '0201', '0210', '0211', '9907', '0007'];
+
+    private const IDENTIFIERS = ['EndpointID', 'CompanyID', 'ID', 'URIID', 'GlobalID'];
+
+    private const PROFILE = 'urn:fdc:peppol.eu:2017:poacc:billing:01:1.0';
+
+    private const OTHER_PROFILE = 'urn:fdc:peppol.eu:2017:poacc:selfbilling:01:1.0';
+
+    private const CII_PROCESS = 'BusinessProcessSpecifiedDocumentContextParameter';
 
     private const START = ['StartDate' => 'EndDate', 'StartDateTime' => 'EndDateTime'];
 
@@ -28,34 +45,38 @@ final class Mutator
      * "<kind> <location path>", such as "amount-abc /Invoice[1]/cbc:Note[1]" or
      * "currency /Invoice[1]/cac:TaxTotal[1]/cbc:TaxAmount[1]/@currencyID".
      *
+     * @param  list<string>  $kinds  a subset of PEPPOL_KINDS
      * @return list<array{string, string}> label and mutated document
      */
-    public static function mutations(string $xml, int $seed, int $count): array
+    public static function mutations(string $xml, int $seed, int $count, array $kinds = self::KINDS): array
     {
         return array_map(
             static fn (array $step): array => [$step[0], self::mutate($xml, $step[1], $step[2])],
-            self::plan($xml, $seed, $count),
+            self::plan($xml, $seed, $count, $kinds),
         );
     }
 
     /**
      * The labels mutations() returns for the same arguments, without building the documents.
      *
+     * @param  list<string>  $kinds  a subset of PEPPOL_KINDS
      * @return list<string>
      */
-    public static function labels(string $xml, int $seed, int $count): array
+    public static function labels(string $xml, int $seed, int $count, array $kinds = self::KINDS): array
     {
-        return array_column(self::plan($xml, $seed, $count), 0);
+        return array_column(self::plan($xml, $seed, $count, $kinds), 0);
     }
 
     /**
      * The document mutations() returns under $label for the same arguments.
      *
+     * @param  list<string>  $kinds  a subset of PEPPOL_KINDS
+     *
      * @throws RuntimeException when the arguments yield no mutation with that label
      */
-    public static function mutation(string $xml, int $seed, int $count, string $label): string
+    public static function mutation(string $xml, int $seed, int $count, string $label, array $kinds = self::KINDS): string
     {
-        foreach (self::plan($xml, $seed, $count) as [$planned, $kind, $target]) {
+        foreach (self::plan($xml, $seed, $count, $kinds) as [$planned, $kind, $target]) {
             if ($planned === $label) {
                 return self::mutate($xml, $kind, $target);
             }
@@ -65,14 +86,19 @@ final class Mutator
     }
 
     /**
+     * @param  list<string>  $kinds
      * @return list<array{string, string, int}> label, kind and element index of each mutation
      */
-    private static function plan(string $xml, int $seed, int $count): array
+    private static function plan(string $xml, int $seed, int $count, array $kinds): array
     {
+        $unknown = array_diff($kinds, self::PEPPOL_KINDS);
+        if ($unknown !== []) {
+            throw new RuntimeException('Unknown mutation kinds: '.implode(', ', $unknown).'.');
+        }
         $document = self::load($xml);
         $elements = $document->getElementsByTagName('*');
         $candidates = self::candidates($document);
-        $kinds = array_values(array_filter(self::KINDS, static fn (string $kind): bool => $candidates[$kind] !== []));
+        $kinds = array_values(array_filter(array_values(array_unique($kinds)), static fn (string $kind): bool => $candidates[$kind] !== []));
         if ($kinds === []) {
             return [];
         }
@@ -109,7 +135,7 @@ final class Mutator
      */
     private static function candidates(DOMDocument $document): array
     {
-        $candidates = array_fill_keys(self::KINDS, []);
+        $candidates = array_fill_keys(self::PEPPOL_KINDS, []);
         foreach ($document->getElementsByTagName('*') as $index => $element) {
             $name = (string) $element->localName;
             $leaf = self::isLeaf($element);
@@ -138,6 +164,14 @@ final class Mutator
             if (self::period($element) !== null) {
                 $candidates['swap-dates'][] = $index;
             }
+            if ($leaf && in_array($name, self::IDENTIFIERS, true)
+                && in_array($element->getAttribute('schemeID'), self::CHECK_DIGIT_SCHEMES, true)
+                && preg_match('/\d$/', $text) === 1) {
+                $candidates['check-digit'][] = $index;
+            }
+            if ($leaf && self::isProfile($element)) {
+                $candidates['profile-id'][] = $index;
+            }
         }
 
         return $candidates;
@@ -156,6 +190,8 @@ final class Mutator
             'currency' => $element->setAttribute('currencyID', $element->getAttribute('currencyID') === 'EUR' ? 'USD' : 'EUR'),
             'comment-space' => self::prependCommentAndSpace($element),
             'swap-dates' => self::swap(...(self::period($element) ?? throw new RuntimeException('No period.'))),
+            'check-digit' => $element->textContent = self::otherLastDigit(trim($element->textContent)),
+            'profile-id' => $element->textContent = trim($element->textContent) === self::PROFILE ? self::OTHER_PROFILE : self::PROFILE,
             default => throw new RuntimeException("Unknown mutation kind {$kind}."),
         };
     }
@@ -182,6 +218,26 @@ final class Mutator
         }
 
         return null;
+    }
+
+    /**
+     * Whether an element holds the business process: cbc:ProfileID in UBL, the ID of the business
+     * process context parameter in CII.
+     */
+    private static function isProfile(DOMElement $element): bool
+    {
+        $parent = $element->parentNode;
+
+        return $element->localName === 'ProfileID'
+            || ($element->localName === 'ID' && $parent instanceof DOMElement && $parent->localName === self::CII_PROCESS);
+    }
+
+    /**
+     * The identifier with its last digit replaced by the next digit (9 becomes 0).
+     */
+    private static function otherLastDigit(string $identifier): string
+    {
+        return substr($identifier, 0, -1).(((int) substr($identifier, -1)) + 1) % 10;
     }
 
     /**

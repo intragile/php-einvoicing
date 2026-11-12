@@ -50,11 +50,14 @@ final class OfficialRules
      * Failed assertions and successful reports of the stylesheet at $xsltPath on the document $xml,
      * in report order.
      *
+     * @param  bool  $requireRootRule  whether a rule on the document element must have fired; false
+     *                                 for a second rule layer, such as the Peppol rules, whose
+     *                                 relative contexts never match the document element itself
      * @return list<FiredRule>
      *
      * @throws OracleDynamicError when Saxon stops the stylesheet with a dynamic error
      */
-    public static function run(string $xsltPath, string $xml): array
+    public static function run(string $xsltPath, string $xml, bool $requireRootRule = true): array
     {
         $processor = self::processor();
         $executable = self::$executables[$xsltPath] ??= $processor->newXslt30Processor()->compileFromString(self::wrapper($xsltPath));
@@ -62,7 +65,7 @@ final class OfficialRules
         $report = self::transform($processor, $executable, $xsltPath, $xml);
         self::throwDynamicError($report);
 
-        return self::firedRules($report, self::rootElement($xml));
+        return self::firedRules($report, $requireRootRule ? self::rootElement($xml) : null);
     }
 
     /**
@@ -223,10 +226,11 @@ final class OfficialRules
     /**
      * Failed assertions and successful reports of an SVRL report.
      *
-     * @param  array{string, string}  $root  Namespace URI and local name of the validated document element.
+     * @param  array{string, string}|null  $root  Namespace URI and local name of the validated document
+     *                                            element, or null when no rule on it needs to fire.
      * @return list<FiredRule>
      */
-    private static function firedRules(string $report, array $root): array
+    private static function firedRules(string $report, ?array $root): array
     {
         $document = new DOMDocument;
         if (! $document->loadXML($report, LIBXML_NONET)) {
@@ -238,7 +242,7 @@ final class OfficialRules
         // A document of another syntax or namespace still matches generic contexts (such as every
         // element named *Amount) and would pass with few or no failed assertions, so the rule on the
         // document element itself (for example "/ubl:Invoice | /cn:CreditNote") must have fired.
-        if (! self::rootRuleFired($xpath, $root)) {
+        if ($root !== null && ! self::rootRuleFired($xpath, $root)) {
             throw new RuntimeException('No rule context of the stylesheet matched the document element; is it the right syntax?');
         }
 
