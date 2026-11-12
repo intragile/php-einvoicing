@@ -83,6 +83,14 @@ final readonly class OutboundDocument
         $xpath->registerNamespace('cbc', self::CBC);
         $xpath->registerNamespace('cac', self::CAC);
 
+        $customization = self::text($xpath, $root, 'cbc:CustomizationID') ?? '';
+        if (str_contains($customization, 'selfbilling')) {
+            throw new UnsupportedDocument(sprintf(
+                'The document is a self-billing invoice (%s); self-billing is not sent over Peppol by this version.',
+                $customization,
+            ));
+        }
+
         $sender = self::endpoint($xpath, $root, 'cac:AccountingSupplierParty', 'seller', 'BT-34');
         $receiver = self::endpoint($xpath, $root, 'cac:AccountingCustomerParty', 'buyer', 'BT-49');
         $profile = self::text($xpath, $root, 'cbc:ProfileID');
@@ -113,7 +121,15 @@ final readonly class OutboundDocument
     {
         $endpoint = self::first($xpath, $root, $party.'/cac:Party/cbc:EndpointID');
         $value = $endpoint === null ? '' : trim($endpoint->textContent);
-        $scheme = $endpoint === null ? '' : trim($endpoint->getAttribute('schemeID'));
+        $scheme = $endpoint === null ? '' : $endpoint->getAttribute('schemeID');
+        if ($scheme !== trim($scheme)) {
+            throw new UnsupportedDocument(sprintf(
+                'The %s electronic address scheme (%s-1) "%s" has surrounding whitespace; the envelope must repeat it unchanged, so correct it in the document.',
+                $role,
+                $term,
+                $scheme,
+            ));
+        }
         if ($value === '' || $scheme === '') {
             throw new UnsupportedDocument(sprintf(
                 'The %s electronic address (%s) with its scheme (%s-1) is required to send the document over Peppol.',

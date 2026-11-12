@@ -96,6 +96,46 @@ final class OutboundDocumentTest extends TestCase
         OutboundDocument::fromInvoice(self::invoice(), "HU\n");
     }
 
+    public function test_self_billing_is_not_sent(): void
+    {
+        $invoice = self::invoice()->withProcessControl(new ProcessControl(
+            'urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:selfbilling:3.0',
+            'urn:fdc:peppol.eu:2017:poacc:selfbilling:01:1.0',
+        ));
+
+        $this->expectException(UnsupportedDocument::class);
+        $this->expectExceptionMessage('self-billing is not sent over Peppol by this version');
+
+        OutboundDocument::fromInvoice($invoice);
+    }
+
+    public function test_padded_buyer_scheme_id_names_bt_49_1(): void
+    {
+        $xml = str_replace('schemeID="9930"', 'schemeID=" 9930"', (new UblWriter)->write(self::invoice()));
+
+        $this->expectException(UnsupportedDocument::class);
+        $this->expectExceptionMessage('BT-49-1');
+
+        OutboundDocument::fromXml($xml);
+    }
+
+    public function test_padded_seller_scheme_id_names_bt_34_1(): void
+    {
+        $xml = str_replace('schemeID="0208"', 'schemeID="0208 "', (new UblWriter)->write(self::invoice()));
+
+        $this->expectException(UnsupportedDocument::class);
+        $this->expectExceptionMessage('BT-34-1');
+
+        OutboundDocument::fromXml($xml);
+    }
+
+    public function test_padded_endpoint_value_is_trimmed(): void
+    {
+        $xml = str_replace('>DE123456789</cbc:EndpointID>', '> DE123456789 </cbc:EndpointID>', (new UblWriter)->write(self::invoice()));
+
+        self::assertSame('9930:DE123456789', OutboundDocument::fromXml($xml)->receiver->toString());
+    }
+
     public function test_cii_is_not_sent(): void
     {
         $this->expectException(UnsupportedDocument::class);
