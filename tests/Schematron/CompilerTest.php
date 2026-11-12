@@ -342,7 +342,25 @@ final class CompilerTest extends TestCase
         yield 'param after a variable' => [$function('<xsl:variable name="x" select="1"/><xsl:param name="w"/><xsl:sequence select="true()"/>'), 'param'];
         yield 'duplicate param' => [str_replace('<xsl:param name="v"/>', '<xsl:param name="v"/><xsl:param name="v"/>', $function('<xsl:sequence select="true()"/>')), 'parameter "v" is declared twice'];
         yield 'unprefixed function name' => [$function('<xsl:sequence select="true()"/>', 'name="f"'), 'prefixed'];
+        yield 'function using the context item' => [$function('<xsl:sequence select="string(.) = \'x\'"/>'), 'uses the focus'];
+        yield 'function using a relative path' => [$function('<xsl:sequence select="exists(cbc:ID)"/>'), 'uses the focus'];
+        yield 'function using the root' => [$function('<xsl:sequence select="exists(/)"/>'), 'uses the focus'];
+        yield 'function using string-length()' => [$function('<xsl:sequence select="string-length() = 1"/>'), 'uses the focus'];
+        yield 'variable using name()' => [$function('<xsl:variable name="x" select="name()"/><xsl:sequence select="$x = \'a\'"/>'), 'uses the focus'];
+        yield 'when test using the context item' => [$function('<xsl:choose><xsl:when test="."><xsl:sequence select="true()"/></xsl:when><xsl:otherwise><xsl:sequence select="false()"/></xsl:otherwise></xsl:choose>'), 'uses the focus'];
         yield 'xsl element in a pattern' => ['<pattern id="p"><xsl:variable name="x" select="1"/></pattern>', '{http://www.w3.org/1999/XSL/Transform}variable'];
+    }
+
+    public function test_function_body_may_use_the_focus_of_its_own_paths_and_predicates(): void
+    {
+        $path = self::writeSchematronDocument(<<<'XML'
+            <xsl:function name="u:f" as="xs:boolean"><xsl:param name="v"/>
+              <xsl:sequence select="exists($v/cbc:ID[string-length() = 1]) or ($v)[. = 'x'] or (for $i in $v return $i/name(.)) = 'a' or $v/last() = 1"/>
+            </xsl:function>
+            <pattern id="p"><rule context="cbc:ID"><assert id="R-1" flag="fatal" test="u:f(.)">x</assert></rule></pattern>
+            XML);
+
+        self::assertArrayHasKey('{utils}f#1', Compiler::compile($path, 'tiny', '0.1')['functions']);
     }
 
     #[DataProvider('invalidDeclarations')]

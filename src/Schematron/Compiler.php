@@ -39,7 +39,8 @@ use InvalidArgumentException;
  * never a pattern or rule let. Functions may call each other, and themselves, in any order.
  *
  * A function body is a list of local variables followed by exactly one result: an xsl:sequence or
- * an xsl:choose whose every branch (an xsl:otherwise is required) is again such a body.
+ * an xsl:choose whose every branch (an xsl:otherwise is required) is again such a body. Its
+ * expressions may not use the focus, which XSLT leaves absent in a function body.
  *
  * @internal
  *
@@ -62,6 +63,9 @@ final class Compiler
 
     /** The sequence types accepted in the "as" attribute of XSLT functions, parameters and variables. */
     private const SEQUENCE_TYPES = ['xs:boolean', 'xs:integer', 'xs:decimal', 'xs:string', 'xs:string?'];
+
+    /** Functions that read the context item when called without argument. */
+    private const FOCUS_FUNCTIONS = ['fn:local-name', 'fn:name', 'fn:normalize-space', 'fn:number', 'fn:string', 'fn:string-length'];
 
     /** Namespaces a stylesheet function may not be declared in (XSLT 2.0 XTSE0740). */
     private const RESERVED_NAMESPACES = [
@@ -130,8 +134,18 @@ final class Compiler
             throw new UnsupportedSchematron("Cannot read the Schematron schema \"{$schPath}\".");
         }
 
-        $source = basename($schPath);
+        return self::compileString($xml, basename($schPath), $id, $version);
+    }
 
+    /**
+     * Compiles a schema given as a string; $source names it in the compiled array and in errors.
+     *
+     * @return CompiledRuleSet
+     *
+     * @throws UnsupportedSchematron
+     */
+    public static function compileString(string $xml, string $source, string $id, string $version): array
+    {
         return [
             'format' => RuleSet::FORMAT,
             'id' => $id,
@@ -362,7 +376,7 @@ final class Compiler
                 throw new UnsupportedSchematron(ucfirst($what)." ({$this->line($variable)}) has both a select attribute and content.");
             }
 
-            return ['variable', $name, $as, $this->expression($variable->getAttribute('select'), $scope, $what, $variable)];
+            return ['variable', $name, $as, $this->bodyExpression($variable->getAttribute('select'), $scope, $what, $variable)];
         }
         if ($content === []) {
             // A stylesheet drops whitespace-only text nodes, so such a variable holds an empty string.
@@ -394,7 +408,7 @@ final class Compiler
             throw new UnsupportedSchematron("The xsl:sequence of {$owner} ({$this->line($sequence)}) must have a select attribute and no content.");
         }
 
-        return $this->expression($sequence->getAttribute('select'), $scope, $owner, $sequence);
+        return $this->bodyExpression($sequence->getAttribute('select'), $scope, $owner, $sequence);
     }
 
     /**
@@ -423,7 +437,7 @@ final class Compiler
                 throw new UnsupportedSchematron("An xsl:when of {$owner} ({$this->line($child)}) has no test.");
             }
             $branches[] = [
-                $this->expression($child->getAttribute('test'), $scope, $owner, $child),
+                $this->bodyExpression($child->getAttribute('test'), $scope, $owner, $child),
                 $this->instructions($body, $scope, $owner, $child),
             ];
         }
@@ -496,6 +510,74 @@ final class Compiler
         $value = $let->getAttribute('value');
 
         return ['name' => $name, 'value' => $value, 'ast' => $this->expression($value, $scope, "the let \"{$name}\"", $let)];
+    }
+
+    /**
+     * Parses an expression of a function body, which must not depend on the focus: XSLT leaves the
+     * context item, position and size absent in a stylesheet function (XPDY0002).
+     *
+     * @param  list<string>  $scope
+     * @return array<mixed>
+     */
+    private function bodyExpression(string $expression, array $scope, string $owner, DOMElement $element): array
+    {
+        $ast = $this->expression($expression, $scope, $owner, $element);
+        if (self::usesFocus($ast)) {
+            throw new UnsupportedSchematron("The expression \"{$expression}\" of {$owner} ({$this->line($element)}) uses the focus (the context item, \".\", \"/\", a relative path, last() or a function such as string() without argument), which is absent in a stylesheet function.");
+        }
+
+        return $ast;
+    }
+
+    /**
+     * Whether an expression reads the focus it is evaluated with. The right operand of "/" and
+     * predicates get their own focus, so only their left operand or filtered expression counts.
+     *
+     * @param  array<mixed>  $ast
+     */
+    private static function usesFocus(array $ast): bool
+    {
+        switch ($ast[0] ?? null) {
+            case Op::CONTEXT:
+            case Op::ROOT:
+            case Op::STEP:
+                return true;
+            case Op::PATH:
+            case Op::FILTER:
+                return is_array($ast[1] ?? null) && self::usesFocus($ast[1]);
+            case Op::CALL:
+                if ($ast[1] === 'fn:last' || ($ast[2] === [] && in_array($ast[1], self::FOCUS_FUNCTIONS, true))) {
+                    return true;
+                }
+                break;
+        }
+        foreach ($ast as $operand) {
+            if (is_array($operand) && self::containsFocus($operand)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a list of operands (expressions, or bindings and argument lists that contain them)
+     * reads the focus.
+     *
+     * @param  array<mixed>  $operand
+     */
+    private static function containsFocus(array $operand): bool
+    {
+        if (is_string($operand[0] ?? null)) {
+            return self::usesFocus($operand);
+        }
+        foreach ($operand as $item) {
+            if (is_array($item) && self::containsFocus($item)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

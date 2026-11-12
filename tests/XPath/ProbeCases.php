@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\XPath;
 
+use DOMDocument;
+use IntrAgile\EInvoicing\Schematron\Compiler;
+use IntrAgile\EInvoicing\Tests\Fixtures;
+use RuntimeException;
+
 /**
  * The shared truth table for XPath evaluation: ProbeTest checks the PHP evaluator against each
  * expected canonical result, ProbeOracleTest checks Saxon-HE against the same value. Every
@@ -19,6 +24,9 @@ final class ProbeCases
         'ram' => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
         'udt' => 'urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100',
     ];
+
+    /** The bindings of functions(): NAMESPACES plus the Peppol function namespace and one for test functions. */
+    public const FUNCTION_NAMESPACES = self::NAMESPACES + ['u' => 'utils', 'f' => 'urn:intragile:probe-functions'];
 
     private const UBL = '<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"'
         .' xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"'
@@ -605,5 +613,141 @@ final class ProbeCases
             'gln valid' => ["(10 - (sum(for \$i in (0 to 11) return reverse(for \$c in string-to-codepoints(substring('5790000435975', 0, 13)) return \$c - 48)[\$i + 1] * (1 + (((\$i + 1) mod 2) * 2))) mod 10)) mod 10 = number(substring('5790000435975', 13, 1))", $u, '(xs:boolean:true)'],
             'gln invalid' => ["(10 - (sum(for \$i in (0 to 11) return reverse(for \$c in string-to-codepoints(substring('5790000435976', 0, 13)) return \$c - 48)[\$i + 1] * (1 + (((\$i + 1) mod 2) * 2))) mod 10)) mod 10 = number(substring('5790000435976', 13, 1))", $u, '(xs:boolean:false)'],
         ];
+    }
+
+    /**
+     * Calls of XSLT functions declared in a prelude of xsl:function elements. A prelude may name a
+     * Peppol function as {peppol:u:name}; prelude() replaces it with the declaration read from the
+     * downloaded Peppol rules at run time, because OpenPeppol content is never committed.
+     *
+     * @return array<string, array{string, string, string, string}> name => [expression, xml, expected canonical result, prelude]
+     */
+    public static function functions(): array
+    {
+        $u = self::UBL;
+        $p = self::PLAIN;
+        $dec = '<xsl:function name="f:dec"><xsl:param name="v" as="xs:decimal"/><xsl:sequence select="$v + 1"/></xsl:function>';
+        $same = '<xsl:function name="f:same"><xsl:param name="v" as="xs:decimal"/><xsl:sequence select="$v"/></xsl:function>';
+        $int = '<xsl:function name="f:int"><xsl:param name="v" as="xs:integer"/><xsl:sequence select="$v"/></xsl:function>';
+        $opt = '<xsl:function name="f:opt" as="xs:string"><xsl:param name="v" as="xs:string?"/><xsl:sequence select="concat(\'[\', $v, \']\')"/></xsl:function>';
+        $len = '<xsl:function name="f:len" as="xs:integer"><xsl:param name="s" as="xs:string"/>'
+            .'<xsl:sequence select="if ($s = \'\') then 0 else 1 + f:len(substring($s, 2))"/></xsl:function>';
+        $sign = '<xsl:function name="f:sign" as="xs:string"><xsl:param name="n" as="xs:integer"/><xsl:choose>'
+            .'<xsl:when test="$n lt 0"><xsl:sequence select="\'negative\'"/></xsl:when>'
+            .'<xsl:when test="$n eq 0"><xsl:variable name="z" select="\'zero\'"/><xsl:sequence select="$z"/></xsl:when>'
+            .'<xsl:otherwise><xsl:sequence select="\'positive\'"/></xsl:otherwise></xsl:choose></xsl:function>';
+        $slack = '{peppol:u:slack}';
+        $piva = '{peppol:u:checkPIVAseIT}{peppol:u:checkPIVA}{peppol:u:addPIVA}';
+
+        return [
+            // parameter conversion: untyped values are cast, other types must match. Saxon (13) also
+            // converts an xs:double to an xs:decimal parameter, as the XPath 4.0 coercion rules do;
+            // NaN cannot be converted. The items are converted one by one, so a failing cast of
+            // the first or second item comes before the cardinality error.
+            'slack decimals' => ["u:slack(1, xs:decimal('1.00'), 0.01)", $u, '(xs:boolean:true)', $slack],
+            'slack string argument' => ["u:slack(1, '1.00', 0.01)", $u, 'error:XPTY0004', $slack],
+            'slack untyped argument' => ['u:slack(/r/b[1], 1.005, 0.01)', $p, '(xs:boolean:true)', $slack],
+            'slack outside the tolerance' => ['u:slack(1, 1.02, 0.01)', $u, '(xs:boolean:false)', $slack],
+            'decimal parameter untyped abc' => ['f:dec(/r/a[1])', $p, 'error:FORG0001', $dec],
+            'decimal parameter keeps an integer' => ['f:dec(1)', $p, '(xs:integer:2)', $dec],
+            'decimal parameter untyped number' => ['f:dec(/r/d)', $p, '(xs:decimal:1.1)', $dec],
+            'decimal parameter two nodes' => ['f:dec(/r/b)', $p, 'error:FORG0001', $dec],
+            'decimal parameter two nodes, first not a number' => ['f:dec(/r/a)', $p, 'error:FORG0001', $dec],
+            'decimal parameter empty' => ['f:dec(())', $p, 'error:XPTY0004', $dec],
+            'decimal parameter double' => ['f:dec(number(1))', $p, '(xs:decimal:2)', $dec],
+            'decimal parameter double NaN' => ["f:dec(number('x'))", $p, 'error:XPTY0004', $dec],
+            'decimal parameter double from a node' => ['f:dec(number(/r/d))', $p, '(xs:decimal:1.1)', $dec],
+            'decimal parameter double digits' => ['f:same(3.3e0)', $p, '(xs:decimal:3.3)', $same],
+            'decimal parameter small double' => ['f:same(1.5e-7)', $p, '(xs:decimal:0.00000015)', $same],
+            'decimal parameter large double' => ['f:same(1e20)', $p, '(xs:decimal:100000000000000000000)', $same],
+            'decimal parameter double of a third' => ['f:same(1 div 3e0)', $p, '(xs:decimal:0.3333333333333333)', $same],
+            'decimal parameter two numbers' => ['f:dec((/r/n9, /r/n10))', $p, 'error:XPTY0004', $dec],
+            'decimal parameter three items, last not a number' => ['f:dec((/r/b[1], /r/a[2], /r/a[1]))', $p, 'error:XPTY0004', $dec],
+            'integer parameter integral decimal' => ['f:int(1.0)', $p, 'error:XPTY0004', $int],
+            'integer parameter fractional decimal' => ['f:int(1.5)', $p, 'error:XPTY0004', $int],
+            'integer parameter double' => ['f:int(number(2))', $p, 'error:XPTY0004', $int],
+            'integer parameter string' => ["f:int('2')", $p, 'error:XPTY0004', $int],
+            'boolean parameter integer' => ['f:bool(1)', $p, 'error:XPTY0004', '<xsl:function name="f:bool"><xsl:param name="v" as="xs:boolean"/><xsl:sequence select="$v"/></xsl:function>'],
+            'boolean parameter untyped' => ['f:bool(/r/t)', $p, '(xs:boolean:true)', '<xsl:function name="f:bool"><xsl:param name="v" as="xs:boolean"/><xsl:sequence select="$v"/></xsl:function>'],
+            'optional string parameter empty' => ['f:opt(())', $p, '(xs:string:[])', $opt],
+            'optional string parameter node' => ['f:opt(/r/t)', $p, '(xs:string:[true])', $opt],
+            'optional string parameter integer' => ['f:opt(1)', $p, 'error:XPTY0004', $opt],
+
+            // result conversion: a type error is XTTE0780 (XTTE0570 for a variable), a failing cast FORG0001
+            'boolean result from an integer' => ['f:one()', $p, 'error:XTTE0780', '<xsl:function name="f:one" as="xs:boolean"><xsl:sequence select="1"/></xsl:function>'],
+            'integer result from an untyped node' => ['f:id(/r/n9)', $p, '(xs:integer:9)', '<xsl:function name="f:id" as="xs:integer"><xsl:param name="n"/><xsl:sequence select="$n"/></xsl:function>'],
+            'integer result from an untyped decimal' => ['f:id(/r/d)', $p, 'error:FORG0001', '<xsl:function name="f:id" as="xs:integer"><xsl:param name="n"/><xsl:sequence select="$n"/></xsl:function>'],
+            'string result empty' => ['f:none()', $p, 'error:XTTE0780', '<xsl:function name="f:none" as="xs:string"><xsl:sequence select="()"/></xsl:function>'],
+            'untyped result without as' => ['f:any(/r/n9)', $p, '(node:/r[1]/n9[1])', '<xsl:function name="f:any"><xsl:param name="n"/><xsl:sequence select="$n"/></xsl:function>'],
+
+            // local variables: Saxon evaluates them lazily, so one that is never read raises no error
+            'variable with as' => ['f:next(/r/n9)', $p, '(xs:integer:10)', '<xsl:function name="f:next"><xsl:param name="v"/><xsl:variable name="n" as="xs:integer" select="$v"/><xsl:sequence select="$n + 1"/></xsl:function>'],
+            'variable with as, wrong type' => ["f:next('9')", $p, 'error:XTTE0570', '<xsl:function name="f:next"><xsl:param name="v"/><xsl:variable name="n" as="xs:integer" select="$v"/><xsl:sequence select="$n + 1"/></xsl:function>'],
+            'variable with as, empty' => ['f:next(())', $p, 'error:XTTE0570', '<xsl:function name="f:next"><xsl:param name="v"/><xsl:variable name="n" as="xs:integer" select="$v"/><xsl:sequence select="$n + 1"/></xsl:function>'],
+            'variable with as, untyped not a number' => ['f:next(/r/a[1])', $p, 'error:FORG0001', '<xsl:function name="f:next"><xsl:param name="v"/><xsl:variable name="n" as="xs:integer" select="$v"/><xsl:sequence select="$n + 1"/></xsl:function>'],
+            'variable with text content and as' => ['f:t()', $p, '(xs:integer:13)', '<xsl:function name="f:t"><xsl:variable name="n" as="xs:integer">12</xsl:variable><xsl:sequence select="$n + 1"/></xsl:function>'],
+            'variable with sequence content' => ['f:next(/r/n9)', $p, '(xs:integer:10)', '<xsl:function name="f:next"><xsl:param name="v"/><xsl:variable name="n" as="xs:integer"><xsl:sequence select="$v"/></xsl:variable><xsl:sequence select="$n + 1"/></xsl:function>'],
+            'variable with text content' => ["f:strip('cabd')", $p, '(xs:string:d)', '<xsl:function name="f:strip" as="xs:string"><xsl:param name="v"/><xsl:variable name="chars">abc</xsl:variable><xsl:sequence select="translate($v, $chars, \'\')"/></xsl:function>'],
+            'unused failing variable' => ['f:unused(/r/a[1])', $p, '(xs:boolean:true)', '<xsl:function name="f:unused" as="xs:boolean"><xsl:param name="v"/><xsl:variable name="d" select="xs:decimal($v)"/><xsl:sequence select="true()"/></xsl:function>'],
+            'failing variable in an untaken branch' => ['f:guarded(/r/a[1])', $p, '(xs:boolean:false)', '<xsl:function name="f:guarded" as="xs:boolean"><xsl:param name="v"/><xsl:variable name="d" select="xs:decimal($v)"/><xsl:sequence select="if ($v castable as xs:decimal) then $d gt 0 else false()"/></xsl:function>'],
+            'failing variable in a taken branch' => ['f:guarded(/r/a[1])', $p, 'error:FORG0001', '<xsl:function name="f:guarded" as="xs:boolean"><xsl:param name="v"/><xsl:variable name="d" select="xs:decimal($v)"/><xsl:sequence select="if (true()) then $d gt 0 else false()"/></xsl:function>'],
+
+            // Arguments are evaluated before the call. Saxon agrees for a function it does not inline,
+            // such as a recursive one; a small function it inlines may skip an unused failing argument.
+            'ignored failing argument of a recursive function' => ['f:rec(2, xs:decimal(/r/a[1]))', $p, 'error:FORG0001', '<xsl:function name="f:rec" as="xs:boolean"><xsl:param name="n"/><xsl:param name="v"/><xsl:sequence select="if ($n = 0) then true() else f:rec($n - 1, $v)"/></xsl:function>'],
+            'unused failing variable of a recursive function' => ['f:rec(2, /r/a[1])', $p, '(xs:boolean:true)', '<xsl:function name="f:rec" as="xs:boolean"><xsl:param name="n"/><xsl:param name="v"/><xsl:variable name="d" select="xs:decimal($v)"/><xsl:sequence select="if ($n = 0) then true() else f:rec($n - 1, $v)"/></xsl:function>'],
+            'failing argument of a recursive function used at the end' => ['f:rec(2, xs:decimal(/r/a[1]))', $p, 'error:FORG0001', '<xsl:function name="f:rec" as="xs:boolean"><xsl:param name="n"/><xsl:param name="v"/><xsl:sequence select="if ($n = 0) then $v gt 0 else f:rec($n - 1, $v)"/></xsl:function>'],
+
+            // recursion and xsl:choose
+            'recursion' => ["f:len('abcde')", $p, '(xs:integer:5)', $len],
+            'choose first branch' => ['f:sign(-3)', $p, '(xs:string:negative)', $sign],
+            'choose second branch' => ['f:sign(0)', $p, '(xs:string:zero)', $sign],
+            'choose otherwise' => ['f:sign(/r/n9)', $p, '(xs:string:positive)', $sign],
+
+            // Peppol functions, read from the downloaded rules
+            'peppol gln valid' => ["u:gln('5790000435975')", $u, '(xs:boolean:true)', '{peppol:u:gln}'],
+            'peppol gln invalid' => ["u:gln('5790000435976')", $u, '(xs:boolean:false)', '{peppol:u:gln}'],
+            'peppol gln letters' => ["u:gln('57900004359AB')", $u, '(xs:boolean:false)', '{peppol:u:gln}'],
+            'peppol mod11 valid' => ["u:mod11('923609016')", $u, '(xs:boolean:true)', '{peppol:u:mod11}'],
+            'peppol mod11 invalid' => ["u:mod11('123456789')", $u, '(xs:boolean:false)', '{peppol:u:mod11}'],
+            'peppol mod11 letters' => ["u:mod11('ABC')", $u, '(xs:boolean:false)', '{peppol:u:mod11}'],
+            'peppol mod97 valid' => ["u:mod97-0208('0123456749')", $u, '(xs:boolean:true)', '{peppol:u:mod97-0208}'],
+            'peppol mod97 invalid' => ["u:mod97-0208('0123456750')", $u, '(xs:boolean:false)', '{peppol:u:mod97-0208}'],
+            'peppol mod97 letters' => ["u:mod97-0208('ABCDEFGH12')", $u, 'error:FORG0001', '{peppol:u:mod97-0208}'],
+            'peppol abn valid' => ["u:abn('51824753556')", $u, '(xs:boolean:true)', '{peppol:u:abn}'],
+            'peppol abn invalid' => ["u:abn('51824753557')", $u, '(xs:boolean:false)', '{peppol:u:abn}'],
+            'peppol abn short' => ["u:abn('5182')", $u, '(xs:boolean:false)', '{peppol:u:abn}'],
+            'peppol piva valid' => ["u:checkPIVAseIT('IT00743110157')", $u, '(xs:boolean:true)', $piva],
+            'peppol piva invalid' => ["u:checkPIVAseIT('IT00743110158')", $u, '(xs:boolean:false)', $piva],
+            'peppol piva letters' => ["u:checkPIVAseIT('IT0074311015X')", $u, '(xs:boolean:false)', $piva],
+            'peppol piva other country' => ["u:checkPIVAseIT('DE123')", $u, '(xs:boolean:true)', $piva],
+            'peppol piva node' => ['u:checkPIVAseIT(/*/cbc:ID)', $u, '(xs:boolean:true)', $piva],
+            'peppol seorgnr valid' => ["u:checkSEOrgnr('5560360793')", $u, '(xs:boolean:true)', '{peppol:u:checkSEOrgnr}'],
+            'peppol seorgnr invalid' => ["u:checkSEOrgnr('5560360794')", $u, '(xs:boolean:false)', '{peppol:u:checkSEOrgnr}'],
+            'peppol seorgnr letters' => ["u:checkSEOrgnr('55603607X3')", $u, '(xs:boolean:false)', '{peppol:u:checkSEOrgnr}'],
+        ];
+    }
+
+    /**
+     * The prelude of a functions() case with every {peppol:u:name} placeholder replaced by the
+     * xsl:function of that name from the downloaded Peppol UBL rules (the test is skipped when they
+     * have not been downloaded).
+     */
+    public static function prelude(string $prelude): string
+    {
+        return (string) preg_replace_callback('/\{peppol:u:([\w.-]+)\}/', static function (array $match): string {
+            $document = new DOMDocument;
+            if (! $document->load(Fixtures::peppolSchematron('peppol-ubl'))) {
+                throw new RuntimeException('Cannot load the Peppol UBL rules.');
+            }
+            foreach ($document->getElementsByTagNameNS(Compiler::XSLT_NAMESPACE, 'function') as $function) {
+                if ($function->getAttribute('name') === "u:{$match[1]}") {
+                    // The element declares the XSLT namespace itself; the caller binds the prefix u.
+                    return (string) $document->saveXML($function);
+                }
+            }
+
+            throw new RuntimeException("The Peppol rules declare no function u:{$match[1]}.");
+        }, $prelude);
     }
 }

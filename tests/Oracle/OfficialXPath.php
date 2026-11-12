@@ -20,8 +20,9 @@ final class OfficialXPath
 
     /**
      * @param  array<string, string>  $namespaces  prefix => URI bound in the expression
+     * @param  string  $prelude  top-level XSLT declarations (such as xsl:function) the expression may use
      */
-    public static function probe(string $expression, string $xml, array $namespaces): string
+    public static function probe(string $expression, string $xml, array $namespaces, string $prelude = ''): string
     {
         if (! OfficialRules::available()) {
             Assert::markTestSkipped('The SaxonC-HE PHP extension ("'.OfficialRules::EXTENSION.'") is not loaded; run docker/oracle/run.sh.');
@@ -30,7 +31,7 @@ final class OfficialXPath
         $processor = self::$processor ??= new SaxonProcessor;
 
         try {
-            $executable = $processor->newXslt30Processor()->compileFromString(self::stylesheet($expression, $namespaces));
+            $executable = $processor->newXslt30Processor()->compileFromString(self::stylesheet($expression, $namespaces, $prelude));
         } catch (Throwable $exception) {
             return 'error:'.self::errorCode($exception->getMessage());
         }
@@ -46,7 +47,7 @@ final class OfficialXPath
     /**
      * @param  array<string, string>  $namespaces
      */
-    private static function stylesheet(string $expression, array $namespaces): string
+    private static function stylesheet(string $expression, array $namespaces, string $prelude): string
     {
         $declarations = '';
         foreach ($namespaces as $prefix => $uri) {
@@ -78,6 +79,7 @@ final class OfficialXPath
                         else if (\$i instance of xs:date) then 'xs:date'
                         else 'unknown', ':', string(\$i))"/>
               </xsl:function>
+              {$prelude}
               <xsl:template match="/">
                 <xsl:try>
                   <xsl:value-of select="{$select}"/>

@@ -29,4 +29,18 @@ final class ProbeOracleTest extends TestCase
     {
         self::assertSame($expected, OfficialXPath::probe($expression, $xml, ProbeCases::NAMESPACES), $expression);
     }
+
+    /**
+     * @return array<string, array{string, string, string, string}>
+     */
+    public static function functionCases(): array
+    {
+        return ProbeCases::functions();
+    }
+
+    #[DataProvider('functionCases')]
+    public function test_saxon_matches_expected_function_result(string $expression, string $xml, string $expected, string $prelude): void
+    {
+        self::assertSame($expected, OfficialXPath::probe($expression, $xml, ProbeCases::FUNCTION_NAMESPACES, ProbeCases::prelude($prelude)), $expression);
+    }
 }

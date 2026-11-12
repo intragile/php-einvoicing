@@ -8,6 +8,7 @@ use DOMAttr;
 use DOMDocument;
 use DOMElement;
 use IntrAgile\EInvoicing\Rules\En16931\RuleFiles;
+use IntrAgile\EInvoicing\Schematron\Compiler;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
 use IntrAgile\EInvoicing\Schematron\LocationPath;
 use IntrAgile\EInvoicing\Schematron\RuleSet;
@@ -124,6 +125,130 @@ final class RunnerTest extends TestCase
         self::assertSame(['UNION /t:Root[1]/t:Item[1]'], self::summary($result));
     }
 
+    public function test_unused_failing_let_reports_nothing(): void
+    {
+        $result = self::runSchematron(<<<'SCH'
+            <pattern id="p">
+              <rule context="t:Amount">
+                <let name="amount" value="xs:decimal(.)"/>
+                <assert id="UNUSED" test="true()" flag="fatal">unused</assert>
+              </rule>
+            </pattern>
+            SCH);
+
+        self::assertSame([], $result->dynamicErrors);
+        self::assertSame([], $result->findings);
+    }
+
+    public function test_failing_let_reported_at_each_referencing_assert(): void
+    {
+        $result = self::runSchematron(<<<'SCH'
+            <pattern id="p">
+              <rule context="t:Amount">
+                <let name="amount" value="xs:decimal(.)"/>
+                <assert id="POSITIVE" test="$amount &gt; 0" flag="fatal">positive</assert>
+                <assert id="OTHER" test="string-length(.) &lt; 3" flag="warning">short</assert>
+                <assert id="SMALL" test="$amount &lt; 100" flag="fatal">small</assert>
+              </rule>
+            </pattern>
+            SCH);
+
+        self::assertSame(
+            ['POSITIVE FORG0001 /t:Root[1]/t:Item[2]/t:Amount[1]', 'SMALL FORG0001 /t:Root[1]/t:Item[2]/t:Amount[1]'],
+            array_map(static fn (DynamicError $error): string => "{$error->ruleId} {$error->errorCode} {$error->location}", $result->dynamicErrors),
+        );
+        self::assertSame(['OTHER /t:Root[1]/t:Item[2]/t:Amount[1]'], self::summary($result));
+    }
+
+    public function test_schema_and_pattern_lets_are_evaluated_from_the_document_node(): void
+    {
+        // From the document node t:Root is a child; from a t:Item it would not be.
+        $result = self::runSchematron(<<<'SCH'
+            <let name="roots" value="count(t:Root)"/>
+            <pattern id="p">
+              <let name="items" value="count(t:Root/t:Item) + $roots"/>
+              <rule context="t:Item[$items = 3]">
+                <let name="kind" value="string(@kind)"/>
+                <assert id="GLOBALS" test="$roots = 1 and $items = 3 and $kind = 'x'" flag="fatal">globals</assert>
+              </rule>
+            </pattern>
+            SCH);
+
+        self::assertSame([], $result->dynamicErrors);
+        self::assertSame(['GLOBALS /t:Root[1]/t:Item[2]'], self::summary($result));
+    }
+
+    public function test_recursive_user_function(): void
+    {
+        $result = self::runSchematron(<<<'SCH'
+            <xsl:function name="u:factorial" as="xs:integer">
+              <xsl:param name="n" as="xs:integer"/>
+              <xsl:sequence select="if ($n le 1) then 1 else $n * u:factorial($n - 1)"/>
+            </xsl:function>
+            <pattern id="p">
+              <rule context="t:Amount">
+                <assert id="FACTORIAL" test="u:factorial(string-length(.)) = 6" flag="fatal">3!</assert>
+              </rule>
+            </pattern>
+            SCH);
+
+        self::assertSame([], $result->dynamicErrors);
+        self::assertSame(['FACTORIAL /t:Root[1]/t:Item[1]/t:Amount[1]'], self::summary($result));
+    }
+
+    public function test_deep_recursion_is_a_dynamic_error_not_a_crash(): void
+    {
+        $functions = <<<'SCH'
+            <xsl:function name="u:count" as="xs:integer">
+              <xsl:param name="s" as="xs:string"/>
+              <xsl:param name="i" as="xs:integer"/>
+              <xsl:sequence select="if ($i gt string-length($s)) then 0 else 1 + u:count($s, $i + 1)"/>
+            </xsl:function>
+            SCH;
+        $xml = '<t:Root xmlns:t="urn:test:runner"><t:Big>'.str_repeat('7', 50_000).'</t:Big><t:Small>777</t:Small></t:Root>';
+
+        $result = self::runSchematron($functions.<<<'SCH'
+            <pattern id="p">
+              <rule context="t:Big | t:Small">
+                <assert id="COUNT" test="u:count(., 1) &gt; 3" flag="fatal">long</assert>
+                <assert id="NEXT" test="false()" flag="warning">next</assert>
+              </rule>
+            </pattern>
+            SCH, $xml);
+
+        self::assertCount(1, $result->dynamicErrors);
+        self::assertSame('COUNT', $result->dynamicErrors[0]->ruleId);
+        self::assertSame('INTRAGILE_RECURSION', $result->dynamicErrors[0]->errorCode);
+        self::assertSame('/t:Root[1]/t:Big[1]', $result->dynamicErrors[0]->location);
+        self::assertSame(['NEXT /t:Root[1]/t:Big[1]', 'COUNT /t:Root[1]/t:Small[1]', 'NEXT /t:Root[1]/t:Small[1]'], self::summary($result));
+    }
+
+    public function test_deep_recursion_in_a_rule_context_is_one_rule_level_error(): void
+    {
+        $xml = '<t:Root xmlns:t="urn:test:runner"><t:Big>'.str_repeat('7', 10_000).'</t:Big></t:Root>';
+
+        $result = self::runSchematron(<<<'SCH'
+            <xsl:function name="u:depth" as="xs:integer">
+              <xsl:param name="n" as="xs:integer"/>
+              <xsl:sequence select="if ($n le 0) then 0 else 1 + u:depth($n - 1)"/>
+            </xsl:function>
+            <pattern id="p">
+              <rule context="t:Big[u:depth(string-length(.)) &gt; 0]">
+                <assert id="BIG" test="false()" flag="fatal">big</assert>
+              </rule>
+              <rule context="t:Root">
+                <assert id="ROOT" test="false()" flag="fatal">root</assert>
+              </rule>
+            </pattern>
+            SCH, $xml);
+
+        self::assertCount(1, $result->dynamicErrors);
+        self::assertNull($result->dynamicErrors[0]->ruleId);
+        self::assertSame('INTRAGILE_RECURSION', $result->dynamicErrors[0]->errorCode);
+        self::assertSame('/', $result->dynamicErrors[0]->location);
+        self::assertSame(['ROOT /t:Root[1]'], self::summary($result));
+    }
+
     public function test_reports_whether_the_root_rule_fired(): void
     {
         self::assertTrue(self::runMini(['root' => [['/t:Root | /t:Other', [['R', 'fatal', 'true()']]]]])->rootRuleFired);
@@ -149,6 +274,26 @@ final class RunnerTest extends TestCase
         self::assertSame('en16931-ubl', $rules->id());
         self::assertSame('1.3.17', $rules->version());
         self::assertTrue($result->rootRuleFired);
+        self::assertSame([], $result->dynamicErrors);
+        self::assertSame([], array_values(array_filter($result->findings, static fn (Finding $finding): bool => $finding->severity === Severity::Fatal)));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function peppolLayers(): iterable
+    {
+        yield 'Peppol layer' => ['peppol-ubl'];
+        yield 'OpenPeppol CEN copy' => ['cen-ubl'];
+    }
+
+    #[DataProvider('peppolLayers')]
+    public function test_peppol_base_example_has_no_fatal(string $key): void
+    {
+        $rules = RuleSet::fromArray(Compiler::compile(Fixtures::peppolSchematron($key), $key, '3.0.22'));
+        $xml = Fixtures::peppolExamples()['examples/base-example.xml'] ?? self::fail('base-example.xml not found.');
+        $result = (new Runner)->run($rules, SafeXml::load($xml));
+
         self::assertSame([], $result->dynamicErrors);
         self::assertSame([], array_values(array_filter($result->findings, static fn (Finding $finding): bool => $finding->severity === Severity::Fatal)));
     }
@@ -181,6 +326,11 @@ final class RunnerTest extends TestCase
         yield 'let without ast' => [['lets' => [['name' => 'a', 'value' => '1']]] + $base, 'The value of the let "a"'];
         yield 'function without "as"' => [['functions' => ['{u}f#1' => array_diff_key($function, ['as' => true])]] + $base, '"as" must be a string or null'];
         yield 'unknown instruction' => [['functions' => ['{u}f#1' => ['body' => [['for-each', []]]] + $function]] + $base, 'unknown or incomplete instruction'];
+        yield 'empty function body' => [['functions' => ['{u}f#1' => ['body' => []] + $function]] + $base, 'The body of {u}f#1 is malformed: it must end with one sequence or choose'];
+        yield 'body without a result' => [['functions' => ['{u}f#1' => ['body' => [['variable', 'w', null, ['var', 'v']]]] + $function]] + $base, 'it must end with one sequence or choose'];
+        yield 'instruction after the result' => [['functions' => ['{u}f#1' => ['body' => [['sequence', ['var', 'v']], ['variable', 'w', null, ['var', 'v']]]] + $function]] + $base, 'it must end with one sequence or choose'];
+        yield 'choose without branches' => [['functions' => ['{u}f#1' => ['body' => [['choose', [], [['sequence', ['var', 'v']]]]]] + $function]] + $base, 'unknown or incomplete instruction'];
+        yield 'branch with an empty body' => [['functions' => ['{u}f#1' => ['body' => [['choose', [[['var', 'v'], []]], null]]] + $function]] + $base, 'it must end with one sequence or choose'];
         yield 'choose with a bad branch' => [['functions' => ['{u}f#1' => ['body' => [['choose', [[['var', 'v']]], null]]] + $function]] + $base, 'unknown or incomplete instruction'];
     }
 
@@ -258,6 +408,20 @@ final class RunnerTest extends TestCase
         self::assertSame('/p:Root[1]/Q{urn:b}X[2]/@Q{urn:b}id', LocationPath::of($namespaced, ['p' => 'urn:a']));
         self::assertSame('/p:Root[1]/q:X[2]/@plain', LocationPath::of($plain, ['p' => 'urn:a', 'q' => 'urn:b']));
         self::assertSame('/p:Root[1]/Local[1]', LocationPath::of($root->lastChild, ['p' => 'urn:a']));
+    }
+
+    /**
+     * Compiles a Schematron schema body (lets, XSLT functions, patterns) with the prefixes t (the
+     * test document), u (functions) and xs bound, and runs it.
+     */
+    private static function runSchematron(string $body, string $xml = self::DOCUMENT): RunResult
+    {
+        $schema = '<schema xmlns="'.Compiler::SCHEMATRON_NAMESPACE.'" xmlns:xsl="'.Compiler::XSLT_NAMESPACE.'"'
+            .' xmlns:xs="'.StaticContext::XS.'" xmlns:u="urn:test:functions" queryBinding="xslt2">'
+            .'<ns prefix="t" uri="'.self::NS.'"/><ns prefix="u" uri="urn:test:functions"/>'
+            .$body.'</schema>';
+
+        return (new Runner)->run(RuleSet::fromArray(Compiler::compileString($schema, 'runner-test.sch', 'mini', '0')), SafeXml::load($xml));
     }
 
     /**

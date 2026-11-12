@@ -61,19 +61,61 @@ rule set that needs more cannot be compiled into silently wrong rules.
 | Operators | `or`, `and`, general comparisons `= != < <= > >=`, value comparisons `eq ne lt le gt ge`, `+ - * div idiv mod`, unary `-`, `\|` / `union`, `every … in … satisfies`, `some … in … satisfies`, `for … in … return` (several bindings nest left to right), `if (…) then … else …`, ranges `a to b`, `cast as` and `castable as` with `xs:boolean` / `xs:date` / `xs:decimal` / `xs:integer` / `xs:string` (with optional `?`) |
 | Paths | axes `child`, `self`, `attribute`, `parent`, `ancestor`, `ancestor-or-self`, `descendant`, `descendant-or-self`, `preceding`, `following-sibling`, `preceding-sibling`; abbreviations `@`, `..`, `.`, `//`, `*`, `prefix:*`; kind tests `node()` and `text()`; expressions as path steps (`…/xs:decimal(cbc:Amount)`, `…/normalize-space(cbc:ID)`) |
 | Predicates | boolean and numeric (positional) predicates on steps and on parenthesised expressions, applied in axis order (`ancestor::*[1]` is the nearest ancestor, `preceding-sibling::*[1]` the nearest preceding sibling); `last()` is the number of items the predicate filters |
-| Variables and user functions | `$name` only when declared by the caller or bound by an enclosing `for`, `some` or `every` (otherwise `UnsupportedXPath` naming `XPST0008` at parse time); calls to functions in a namespace other than `fn` and `xs` only when declared with their arity (the engine does not yet evaluate them: such a call raises `UnsupportedXPath` until `xsl:function` is supported) |
+| Variables and user functions | `$name` only when declared by the caller, by a `let` in scope or by an enclosing `for`, `some` or `every` (otherwise `UnsupportedXPath` naming `XPST0008` at parse time); calls to functions in a namespace other than `fn` and `xs` only when declared as an `xsl:function` of the schema with that arity (see [Lets and XSLT functions](#lets-and-xslt-functions)) |
 | Rule contexts | XSLT match patterns: `N`, `N/N`, `//N`, `/N/N/N`, `N[@attr]`, predicates with function calls, unions; a parenthesised union with predicates, `(/A \| /B)[$v and …]`, selects the nodes of the union for which the predicates hold (a numeric-literal predicate is rejected) |
 | Regular expressions | XML Schema syntax with anchors, back-references and reluctant quantifiers; flags `i s m x` (the XPath 3.0 flag `q` is reported as unsupported); `\w`, `\s`, `\d` and categories with XML Schema meaning |
 
-Rejected with `UnsupportedXPath` (in the compiler: `UnsupportedSchematron`): `let`,
-`typeswitch`, `instance of`, `treat as`, `intersect`, `except`, `is`, `<<`, `>>`, unary `+`,
+Rejected with `UnsupportedXPath` (in the compiler: `UnsupportedSchematron`): the XPath 3.0 `let`
+expression, `typeswitch`, `instance of`, `treat as`, `intersect`, `except`, `is`, `<<`, `>>`, unary `+`,
 casts to other types, other axes, `*:local`, other kind tests, unknown functions or arities, unknown
 prefixes, and in regular expressions `\i`, `\c`, `\I`, `\C`, `\p{IsBlock}` and character class
-subtraction. Schematron `report`, `let`, `value-of`, processing instructions, abstract rules and
+subtraction. Schematron `report`, `value-of`, processing instructions, abstract rules and
 abstract patterns are rejected by the compiler as well, and so is any attribute the CEN and Peppol
 schemas do not use (such as `pattern/@documents`, `rule/@role` or `assert/@diagnostics`): the error
-names the element, the attribute and the line. Peppol BIS 3 needs `let` and `xsl:function`; the engine will be
-extended for it.
+names the element, the attribute and the line.
+
+## Lets and XSLT functions
+
+The Peppol BIS Billing 3 schemas declare Schematron `let` variables and XSLT 2.0 functions
+(`xsl:function`). The engine runs them as the ISO Schematron XSLT skeleton turns them into XSLT,
+with the behaviour Saxon shows on probe cases (`ProbeCases::functions()`):
+
+- **Lets are lazy.** A let is computed the first time an assert, a rule context or another let
+  reads it, and then kept. A let no assert reads is never evaluated, so a value that cannot be
+  converted (`xs:decimal('abc')`) in an unused let reports nothing. A let that fails is reported as
+  a `DynamicError` by every assert that reads it, each with its own rule id.
+- **Scope and context.** Schema-level and pattern-level lets are global variables: they are
+  evaluated with the document node as context, at most once per document, and rule contexts may
+  read them. Rule-level lets are evaluated with the node the rule handles as context. A variable
+  that depends on itself is the error `XTDE0640`.
+- **Function calls.** Arguments are evaluated before the call (Saxon does the same for a function
+  it does not inline, such as a recursive one; a small function it inlines may skip an argument it
+  never reads). Local `xsl:variable`s are lazy, like lets: one that is never read, or read only in
+  a branch not taken, raises no error, as in Saxon. `xsl:choose` runs the first `xsl:when` whose
+  test is true, else `xsl:otherwise`. A function body may not use the focus (`.`, `/`, a relative
+  path, `last()`, `string()` without argument): XSLT leaves it absent there, and the compiler
+  rejects such a body.
+- **Conversion rules.** The `as` types `xs:boolean`, `xs:integer`, `xs:decimal`, `xs:string` and
+  `xs:string?` convert a parameter, a variable and a function result: the value is atomised and an
+  untyped value (text from the document) is cast to the type, so untyped `abc` for an `xs:decimal`
+  is `FORG0001`. An `xs:integer` is accepted for an `xs:decimal` and stays an integer; a string is
+  never converted (`'1.00'` for an `xs:decimal` is a type error). Saxon 13 follows the XPath 4.0
+  coercion rules here and converts an `xs:double` for an `xs:decimal` to the shortest decimal that
+  reads back as the same double (`0.1e0` becomes `0.1`; NaN cannot be converted); the engine does
+  the same. An empty sequence without `?` and more than one item are type errors; the items are
+  converted one at a time, so a failing cast of the first or second item is reported before the
+  cardinality error. Type errors are `XPTY0004` for a parameter, `XTTE0570` for a variable and
+  `XTTE0780` for a function result. A variable whose content is text and has no `as` is a
+  temporary tree in XSLT; the engine holds its text as an untyped value, which is what every use in
+  an expression sees.
+- **Recursion limit.** More than 5,000 nested function calls raise the engine error
+  `INTRAGILE_RECURSION` instead of exhausting memory or the PHP stack. The error is not
+  recoverable: in an assert it is a `DynamicError` of that assert; in a rule context it is one
+  `DynamicError` for the rule (no rule id, location `/`) and the rule handles no node. The Peppol
+  functions recurse at most a dozen levels (`u:addPIVA` over an 11-digit VAT number). 5,000 nested
+  calls take about 25 MB of memory with opcache and about 45 MB without it (PHP reserves more
+  per call frame without the opcode optimizer); a function that keeps a long string per level
+  needs more.
 
 ## Where the engine follows Saxon
 
@@ -104,8 +146,10 @@ probe expressions evaluated by both (`tests/XPath/ProbeCases.php`):
 - **Errors while matching a rule context** are recoverable, as in XSLT 2.0: when a rule-context
   predicate raises an error for a node, that node does not match the rule (a later rule of the same
   pattern may take it), other nodes are unaffected, and no error is reported. This applies only to
-  data-driven errors (`FORG0001`, `XPTY0004`, `FOAR0001`, `XPTY0019`, … — `XPathError::RECOVERABLE`); an unbound
-  variable, an engine guard or an unsupported construct still propagates.
+  data-driven errors (`FORG0001`, `XPTY0004`, `FOAR0001`, `XPTY0019`, `XTTE0780`, … —
+  `XPathError::RECOVERABLE`); an unbound variable, a circular variable (`XTDE0640`), an engine
+  guard (`INTRAGILE_RANGE`, `INTRAGILE_RECURSION`) or an unsupported construct still propagates,
+  and is reported once for the rule.
 - **`idiv` and `mod`.** `idiv` truncates towards zero and returns an `xs:integer` (`-7 idiv 2` =
   `-3`); `mod` keeps the sign of the dividend (`-7 mod 2` = `-1`), is exact on decimals and uses
   IEEE `fmod` on doubles. A zero integer or decimal divisor is `FOAR0001`, as is `idiv` by a double

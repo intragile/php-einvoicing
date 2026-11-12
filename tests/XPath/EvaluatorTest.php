@@ -8,6 +8,7 @@ use DOMDocument;
 use DOMElement;
 use DOMNode;
 use DOMXPath;
+use IntrAgile\EInvoicing\Schematron\Compiler;
 use IntrAgile\EInvoicing\XPath\Canonical;
 use IntrAgile\EInvoicing\XPath\DocumentIndex;
 use IntrAgile\EInvoicing\XPath\Evaluator;
@@ -15,6 +16,8 @@ use IntrAgile\EInvoicing\XPath\Exception\UnsupportedXPath;
 use IntrAgile\EInvoicing\XPath\Parser;
 use IntrAgile\EInvoicing\XPath\Regex;
 use IntrAgile\EInvoicing\XPath\StaticContext;
+use IntrAgile\EInvoicing\XPath\Thunk;
+use IntrAgile\EInvoicing\XPath\UserFunction;
 use IntrAgile\EInvoicing\XPath\Value\AtomicValue;
 use IntrAgile\EInvoicing\XPath\Value\BooleanValue;
 use IntrAgile\EInvoicing\XPath\XPathError;
@@ -192,8 +195,9 @@ final class EvaluatorTest extends TestCase
         self::assertFalse((new XPathError('XPST0008', 'x'))->isRecoverable());
         self::assertFalse((new XPathError('INTRAGILE_RECURSION', 'x'))->isRecoverable());
         self::assertFalse((new XPathError('INTRAGILE_RANGE', 'x'))->isRecoverable());
+        self::assertFalse((new XPathError('XTDE0640', 'x'))->isRecoverable());
         self::assertSame(
-            ['FORG0001', 'XPTY0004', 'FORG0006', 'FOAR0001', 'FOAR0002', 'FOCA0002', 'FOCH0001', 'FOCH0002', 'FORX0002', 'FORX0003', 'FORX0004', 'FODT0001', 'FOCA0001', 'FOCA0003', 'XPTY0018', 'XPTY0019', 'XPTY0020', 'XPDY0050'],
+            ['FORG0001', 'XPTY0004', 'FORG0006', 'FOAR0001', 'FOAR0002', 'FOCA0002', 'FOCH0001', 'FOCH0002', 'FORX0002', 'FORX0003', 'FORX0004', 'FODT0001', 'FOCA0001', 'FOCA0003', 'XPTY0018', 'XPTY0019', 'XPTY0020', 'XPDY0050', 'XTTE0570', 'XTTE0780'],
             XPathError::RECOVERABLE,
         );
     }
@@ -263,6 +267,89 @@ final class EvaluatorTest extends TestCase
         $this->expectException(UnsupportedXPath::class);
         $this->expectExceptionMessage('user function {utils}gln#1 is not available');
         $this->evaluator->evaluate($ast, $this->document);
+    }
+
+    public function test_unknown_user_function_with_a_function_table(): void
+    {
+        $functions = self::functions('<xsl:function name="u:other"><xsl:param name="v"/><xsl:sequence select="$v"/></xsl:function>');
+        $ast = (new Parser)->parse('u:gln(.)', new StaticContext(['u' => 'utils'], [], ['{utils}gln#1' => true]));
+
+        $this->expectException(UnsupportedXPath::class);
+        $this->expectExceptionMessage('user function {utils}gln#1 is not available');
+        $this->evaluator->withFunctions($functions)->evaluate($ast, $this->document);
+    }
+
+    public function test_parameter_and_result_conversion(): void
+    {
+        $functions = self::functions(
+            '<xsl:function name="u:dec"><xsl:param name="v" as="xs:decimal"/><xsl:sequence select="$v * 2"/></xsl:function>'
+            .'<xsl:function name="u:bool" as="xs:boolean"><xsl:param name="v"/><xsl:sequence select="$v"/></xsl:function>'
+            .'<xsl:function name="u:opt" as="xs:string?"><xsl:param name="v" as="xs:string?"/><xsl:sequence select="$v"/></xsl:function>',
+        );
+
+        self::assertSame('(xs:decimal:200)', $this->call('u:dec((//cbc:LineExtensionAmount)[1])', $functions));
+        self::assertSame('(xs:integer:4)', $this->call('u:dec(2)', $functions));
+        self::assertSame('error:FORG0001', $this->call('u:dec(/*/cbc:ID)', $functions));
+        self::assertSame('error:XPTY0004', $this->call('u:dec(//cbc:LineExtensionAmount)', $functions));
+        self::assertSame('error:XPTY0004', $this->call('u:dec(())', $functions));
+        self::assertSame('error:XPTY0004', $this->call("u:dec('2')", $functions));
+        self::assertSame('error:XTTE0780', $this->call('u:bool(1)', $functions));
+        self::assertSame('(xs:boolean:true)', $this->call('u:bool(true())', $functions));
+        self::assertSame('()', $this->call('u:opt(())', $functions));
+        self::assertSame('(xs:string:INV-1)', $this->call('u:opt(/*/cbc:ID)', $functions));
+    }
+
+    public function test_local_variables_are_lazy_and_typed(): void
+    {
+        $functions = self::functions(
+            '<xsl:function name="u:guarded" as="xs:boolean"><xsl:param name="v"/>'
+            .'<xsl:variable name="d" select="xs:decimal($v)"/><xsl:variable name="chars">0123456789</xsl:variable>'
+            .'<xsl:choose><xsl:when test="translate($v, $chars, \'\') = \'\'"><xsl:sequence select="$d gt 0"/></xsl:when>'
+            .'<xsl:otherwise><xsl:sequence select="false()"/></xsl:otherwise></xsl:choose></xsl:function>'
+            .'<xsl:function name="u:typed"><xsl:param name="v"/><xsl:variable name="n" as="xs:integer" select="$v"/><xsl:sequence select="$n"/></xsl:function>',
+        );
+
+        self::assertSame('(xs:boolean:true)', $this->call('u:guarded(//cac:InvoiceLine[1]/cbc:ID)', $functions));
+        self::assertSame('(xs:boolean:false)', $this->call('u:guarded(/*/cbc:ID)', $functions));
+        self::assertSame('(xs:integer:58)', $this->call('u:typed(//cbc:PaymentMeansCode[. = 58])', $functions));
+        self::assertSame('error:XTTE0570', $this->call("u:typed('58')", $functions));
+    }
+
+    public function test_recursion_deeper_than_the_limit_is_a_non_recoverable_error(): void
+    {
+        $functions = self::functions('<xsl:function name="u:depth" as="xs:integer"><xsl:param name="n" as="xs:integer"/>'
+            .'<xsl:sequence select="if ($n le 0) then 0 else 1 + u:depth($n - 1)"/></xsl:function>');
+
+        // 5,000 nested calls: u:depth(4999) down to u:depth(0).
+        self::assertSame('(xs:integer:4999)', $this->call('u:depth(4999)', $functions));
+        self::assertSame('error:INTRAGILE_RECURSION', $this->call('u:depth(5000)', $functions));
+        // The depth is back to zero after the error.
+        self::assertSame('(xs:integer:4999)', $this->call('u:depth(4999)', $functions));
+
+        $evaluator = $this->evaluator->withFunctions($functions);
+        $context = new StaticContext(ProbeCases::NAMESPACES + ['u' => 'utils'], [], array_fill_keys(array_keys($functions), true));
+        self::assertCount(2, $evaluator->matchPattern((new Parser)->parsePattern('cac:InvoiceLine[u:depth(3) = 3]', $context), $this->document));
+        try {
+            $evaluator->matchPattern((new Parser)->parsePattern('cac:InvoiceLine[u:depth(9999) = 3]', $context), $this->document);
+            self::fail('Expected INTRAGILE_RECURSION.');
+        } catch (XPathError $error) {
+            self::assertSame('INTRAGILE_RECURSION', $error->errorCode);
+            self::assertFalse($error->isRecoverable());
+        }
+    }
+
+    public function test_variables_may_be_thunks(): void
+    {
+        $count = 0;
+        $thunk = new Thunk(function () use (&$count): array {
+            $count++;
+
+            return $this->evaluator->evaluate($this->parse('3'), $this->document);
+        });
+
+        self::assertSame('(xs:integer:6)', Canonical::of($this->evaluator->evaluate($this->parse('$t + $t', ['t']), $this->document, ['t' => $thunk])));
+        self::assertSame('(xs:integer:9)', Canonical::of($this->evaluator->evaluate($this->parse('$t * 3', ['t']), $this->document, ['t' => $thunk])));
+        self::assertSame(1, $count);
     }
 
     public function test_sibling_axes_skip_attributes_and_keep_axis_order(): void
@@ -440,6 +527,37 @@ final class EvaluatorTest extends TestCase
     private function canonical(string $expression, ?DOMNode $context = null): string
     {
         return Canonical::of($this->evaluator->evaluate($this->parse($expression), $context ?? $this->document), ProbeCases::NAMESPACES);
+    }
+
+    /**
+     * @return array<string, UserFunction>
+     */
+    private static function functions(string $declarations): array
+    {
+        $compiled = Compiler::compileString(
+            '<schema xmlns="'.Compiler::SCHEMATRON_NAMESPACE.'" xmlns:xsl="'.Compiler::XSLT_NAMESPACE.'" xmlns:xs="'.StaticContext::XS.'"'
+            .' xmlns:u="utils" queryBinding="xslt2"><ns prefix="u" uri="utils"/>'.$declarations.'</schema>',
+            'functions.sch',
+            'functions',
+            '0',
+        );
+
+        return array_map(static fn (array $function): UserFunction => new UserFunction($function), $compiled['functions']);
+    }
+
+    /**
+     * The canonical result of an expression calling the given functions, or "error:" and the code.
+     *
+     * @param  array<string, UserFunction>  $functions
+     */
+    private function call(string $expression, array $functions): string
+    {
+        $ast = (new Parser)->parse($expression, new StaticContext(ProbeCases::NAMESPACES + ['u' => 'utils'], [], array_fill_keys(array_keys($functions), true)));
+        try {
+            return Canonical::of($this->evaluator->withFunctions($functions)->evaluate($ast, $this->document), ProbeCases::NAMESPACES);
+        } catch (XPathError $error) {
+            return Canonical::error($error);
+        }
     }
 
     private function node(string $path): DOMNode

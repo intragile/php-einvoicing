@@ -18,7 +18,7 @@ use IntrAgile\EInvoicing\Validation\Severity;
  *
  * @phpstan-type Let array{name: string, value: string, ast: array<mixed>}
  * @phpstan-type Instruction list<mixed>
- * @phpstan-type UserFunction array{name: string, as: ?string, params: list<array{name: string, as: ?string}>, body: list<Instruction>}
+ * @phpstan-type CompiledFunction array{name: string, as: ?string, params: list<array{name: string, as: ?string}>, body: list<Instruction>}
  * @phpstan-type RuleAssert array{id: string, severity: Severity, test: string, ast: array<mixed>, message: string}
  * @phpstan-type Rule array{context: string, match: array<mixed>, lets: list<Let>, asserts: list<RuleAssert>, roots: list<array{string, string}>}
  * @phpstan-type Pattern array{id: string, lets: list<Let>, rules: list<Rule>}
@@ -37,7 +37,7 @@ final class RuleSet
     /**
      * @param  array<string, string>  $namespaces  prefix => namespace URI
      * @param  list<Let>  $lets
-     * @param  array<string, UserFunction>  $functions
+     * @param  array<string, CompiledFunction>  $functions
      * @param  list<Pattern>  $patterns
      */
     private function __construct(
@@ -147,7 +147,7 @@ final class RuleSet
     /**
      * The XSLT functions, keyed by "{namespace URI}local-name#arity".
      *
-     * @return array<string, UserFunction>
+     * @return array<string, CompiledFunction>
      */
     public function functions(): array
     {
@@ -217,7 +217,7 @@ final class RuleSet
 
     /**
      * @param  array<mixed>  $function
-     * @return UserFunction
+     * @return CompiledFunction
      */
     private static function userFunction(array $function, string $key): array
     {
@@ -237,16 +237,21 @@ final class RuleSet
     }
 
     /**
-     * Checks a function body: ['variable', name, as, ast], ['variable-text', name, as, text],
-     * ['sequence', ast] or ['choose', list of [test ast, body], otherwise body or null].
+     * Checks a function body: local variables, ['variable', name, as, ast] or ['variable-text',
+     * name, as, text], followed by exactly one result, ['sequence', ast] or ['choose', list of
+     * [test ast, body], otherwise body or null], where every body is again such a body.
      *
      * @return list<Instruction>
      */
     private static function instructions(mixed $body, string $what): array
     {
         $instructions = [];
+        $result = false;
         foreach (self::list($body, $what) as $instruction) {
             $instruction = self::list($instruction, "An instruction of {$what}");
+            if ($result) {
+                throw self::noResult($what);
+            }
             $valid = match ($instruction[0] ?? null) {
                 'variable' => count($instruction) === 4 && is_string($instruction[1]) && self::isOptionalString($instruction[2]) && is_array($instruction[3]),
                 'variable-text' => count($instruction) === 4 && is_string($instruction[1]) && self::isOptionalString($instruction[2]) && is_string($instruction[3]),
@@ -257,22 +262,35 @@ final class RuleSet
             if (! $valid) {
                 throw new UnsupportedSchematron("{$what} is malformed: an unknown or incomplete instruction.");
             }
+            $result = $instruction[0] === 'sequence' || $instruction[0] === 'choose';
             $instructions[] = $instruction;
+        }
+        if (! $result) {
+            throw self::noResult($what);
         }
 
         return $instructions;
     }
 
+    private static function noResult(string $what): UnsupportedSchematron
+    {
+        return new UnsupportedSchematron("{$what} is malformed: it must end with one sequence or choose, after its variables.");
+    }
+
+    /**
+     * Checks the branches of a choose: at least one [test ast, body].
+     */
     private static function validBranches(mixed $branches, string $what): bool
     {
-        foreach (self::list($branches, "The branches of {$what}") as $branch) {
+        $branches = self::list($branches, "The branches of {$what}");
+        foreach ($branches as $branch) {
             if (! is_array($branch) || ! array_is_list($branch) || count($branch) !== 2 || ! is_array($branch[0])) {
                 return false;
             }
             self::instructions($branch[1], $what);
         }
 
-        return true;
+        return $branches !== [];
     }
 
     private static function isOptionalString(mixed $value): bool
