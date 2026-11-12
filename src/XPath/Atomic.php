@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\XPath;
 use Brick\Math\BigDecimal;
 use Brick\Math\BigInteger;
 use Brick\Math\RoundingMode;
+use IntrAgile\EInvoicing\XPath\Exception\UnsupportedXPath;
 use IntrAgile\EInvoicing\XPath\Value\AtomicValue;
 use IntrAgile\EInvoicing\XPath\Value\BooleanValue;
 use IntrAgile\EInvoicing\XPath\Value\DateValue;
@@ -52,6 +53,7 @@ final class Atomic
      *
      * @throws XPathError FORG0001 for an invalid lexical form, FOCA0002 for a non-finite double to a decimal
      *                    or integer, XPTY0004 when the cast is not allowed between the two types
+     * @throws UnsupportedXPath when the target type is outside the supported subset
      */
     public static function cast(AtomicValue $value, string $type): AtomicValue
     {
@@ -63,7 +65,7 @@ final class Atomic
             'xs:integer' => self::toInteger($value),
             'xs:double' => new DoubleValue(self::toDouble($value)),
             'xs:date' => self::toDate($value),
-            default => throw new XPathError('XPTY0004', "Casting to {$type} is not supported."),
+            default => throw new UnsupportedXPath("cast to {$type}", $type, 0),
         };
     }
 
@@ -134,13 +136,16 @@ final class Atomic
     }
 
     /**
-     * Arithmetic (+, -, *, div) on two single atomic values; untyped operands are cast to xs:double.
+     * Arithmetic (+, -, *, div, idiv, mod) on two single atomic values; untyped operands are cast
+     * to xs:double.
      *
-     * @throws XPathError XPTY0004 for non-numeric operands, FOAR0001 for decimal division by zero
+     * @throws XPathError XPTY0004 for non-numeric operands, FOAR0001 for an integer or decimal
+     *                    division by zero and for idiv by zero, FOAR0002 for idiv of NaN or an
+     *                    infinite dividend
      */
     public static function arithmetic(string $op, AtomicValue $left, AtomicValue $right): AtomicValue
     {
-        if (! in_array($op, ['+', '-', '*', 'div'], true)) {
+        if (! in_array($op, ['+', '-', '*', 'div', 'idiv', 'mod'], true)) {
             throw new LogicException("Unknown arithmetic operator {$op}.");
         }
 
@@ -154,22 +159,32 @@ final class Atomic
         if ($left instanceof DoubleValue || $right instanceof DoubleValue) {
             $l = self::toDouble($left);
             $r = self::toDouble($right);
+            if ($op === 'idiv') {
+                return self::doubleIntegerDivision($l, $r);
+            }
 
             return new DoubleValue(match ($op) {
                 '+' => $l + $r,
                 '-' => $l - $r,
                 '*' => $l * $r,
                 'div' => fdiv($l, $r),
+                // IEEE remainder of truncating division: the sign of the dividend, NaN for a zero divisor.
+                'mod' => fmod($l, $r),
             });
         }
 
         $l = self::toBigDecimal($left, 'xs:decimal');
         $r = self::toBigDecimal($right, 'xs:decimal');
 
+        if (in_array($op, ['div', 'idiv', 'mod'], true) && $r->isZero()) {
+            throw new XPathError('FOAR0001', 'Division by zero.');
+        }
+
+        if ($op === 'idiv') {
+            return new IntegerValue($l->dividedBy($r, 0, RoundingMode::DOWN));
+        }
+
         if ($op === 'div') {
-            if ($r->isZero()) {
-                throw new XPathError('FOAR0001', 'Division by zero.');
-            }
             $scale = max(self::DIVIDE_PRECISION, self::divisionScale($left) - self::divisionScale($right) + self::DIVIDE_PRECISION);
 
             return new DecimalValue($l->dividedBy($r, $scale, RoundingMode::HALF_DOWN));
@@ -179,11 +194,32 @@ final class Atomic
             '+' => $l->plus($r),
             '-' => $l->minus($r),
             '*' => $l->multipliedBy($r),
+            // BigDecimal::remainder() keeps the sign of the dividend, as op:numeric-mod requires.
+            'mod' => $l->remainder($r),
         };
 
         return $left instanceof IntegerValue && $right instanceof IntegerValue
             ? new IntegerValue($result)
             : new DecimalValue($result);
+    }
+
+    /**
+     * op:numeric-integer-divide on doubles: the quotient truncated towards zero.
+     *
+     * @throws XPathError FOAR0001 for a zero divisor, FOAR0002 for a NaN operand, an infinite
+     *                    dividend or a quotient outside the finite range
+     */
+    private static function doubleIntegerDivision(float $left, float $right): IntegerValue
+    {
+        if ($right === 0.0) {
+            throw new XPathError('FOAR0001', 'Integer division by zero.');
+        }
+        $quotient = $left / $right;
+        if (is_nan($left) || is_nan($right) || is_infinite($left) || ! is_finite($quotient)) {
+            throw new XPathError('FOAR0002', 'Integer division of NaN or an infinite value.');
+        }
+
+        return new IntegerValue(self::exactDecimal($quotient, 'xs:integer')->toScale(0, RoundingMode::DOWN));
     }
 
     /**

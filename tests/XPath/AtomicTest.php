@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Tests\XPath;
 
 use Brick\Math\BigDecimal;
 use IntrAgile\EInvoicing\XPath\Atomic;
+use IntrAgile\EInvoicing\XPath\Exception\UnsupportedXPath;
 use IntrAgile\EInvoicing\XPath\Value\AtomicValue;
 use IntrAgile\EInvoicing\XPath\Value\BooleanValue;
 use IntrAgile\EInvoicing\XPath\Value\DateValue;
@@ -315,6 +316,62 @@ final class AtomicTest extends TestCase
     {
         self::assertXPathError('XPTY0004', static fn () => Atomic::cast(new BooleanValue(true), 'xs:date'));
         self::assertXPathError('XPTY0004', static fn () => Atomic::cast(new DateValue(2026, 1, 1, null), 'xs:decimal'));
+    }
+
+    public function test_cast_to_an_unsupported_type_is_an_engine_limitation(): void
+    {
+        $this->expectException(UnsupportedXPath::class);
+
+        Atomic::cast(new StringValue('1'), 'xs:float');
+    }
+
+    public function test_idiv_truncates_towards_zero(): void
+    {
+        $three = Atomic::arithmetic('idiv', self::int('7'), self::int('2'));
+
+        self::assertInstanceOf(IntegerValue::class, $three);
+        self::assertSame('3', $three->lexical());
+        self::assertSame('-3', Atomic::arithmetic('idiv', self::int('-7'), self::int('2'))->lexical());
+        self::assertSame('-3', Atomic::arithmetic('idiv', self::int('7'), self::int('-2'))->lexical());
+        self::assertInstanceOf(IntegerValue::class, Atomic::arithmetic('idiv', new DecimalValue(BigDecimal::of('7.5')), self::int('2')));
+        self::assertSame('3', Atomic::arithmetic('idiv', new DecimalValue(BigDecimal::of('7.5')), self::int('2'))->lexical());
+        $double = Atomic::arithmetic('idiv', new DoubleValue(-7.5), self::int('2'));
+        self::assertInstanceOf(IntegerValue::class, $double);
+        self::assertSame('-3', $double->lexical());
+        self::assertSame('0', Atomic::arithmetic('idiv', new DoubleValue(5.0), new DoubleValue(INF))->lexical());
+        self::assertSame('3', Atomic::arithmetic('idiv', new UntypedAtomic('10'), self::int('3'))->lexical());
+    }
+
+    public function test_idiv_errors(): void
+    {
+        self::assertXPathError('FOAR0001', static fn () => Atomic::arithmetic('idiv', self::int('1'), self::int('0')));
+        self::assertXPathError('FOAR0001', static fn () => Atomic::arithmetic('idiv', self::int('1'), new DoubleValue(0.0)));
+        self::assertXPathError('FOAR0002', static fn () => Atomic::arithmetic('idiv', new DoubleValue(NAN), self::int('2')));
+        self::assertXPathError('FOAR0002', static fn () => Atomic::arithmetic('idiv', new DoubleValue(INF), self::int('2')));
+        self::assertXPathError('XPTY0004', static fn () => Atomic::arithmetic('idiv', new StringValue('10'), self::int('3')));
+    }
+
+    public function test_mod_keeps_the_sign_of_the_dividend(): void
+    {
+        $minusOne = Atomic::arithmetic('mod', self::int('-7'), self::int('2'));
+
+        self::assertInstanceOf(IntegerValue::class, $minusOne);
+        self::assertSame('-1', $minusOne->lexical());
+        self::assertSame('1', Atomic::arithmetic('mod', self::int('7'), self::int('-2'))->lexical());
+        $decimal = Atomic::arithmetic('mod', new DecimalValue(BigDecimal::of('7.5')), self::int('2'));
+        self::assertInstanceOf(DecimalValue::class, $decimal);
+        self::assertSame('1.5', $decimal->lexical());
+        self::assertSame('-1.5', Atomic::arithmetic('mod', new DoubleValue(-7.5), self::int('2'))->lexical());
+        $untyped = Atomic::arithmetic('mod', new UntypedAtomic('10'), self::int('3'));
+        self::assertInstanceOf(DoubleValue::class, $untyped);
+        self::assertSame('1', $untyped->lexical());
+    }
+
+    public function test_mod_by_zero(): void
+    {
+        self::assertXPathError('FOAR0001', static fn () => Atomic::arithmetic('mod', self::int('5'), self::int('0')));
+        self::assertXPathError('FOAR0001', static fn () => Atomic::arithmetic('mod', new DecimalValue(BigDecimal::of('5.5')), new DecimalValue(BigDecimal::of('0.0'))));
+        self::assertSame('NaN', Atomic::arithmetic('mod', new DoubleValue(5.0), self::int('0'))->lexical());
     }
 
     public function test_date_rejects_impossible_calendar_dates(): void

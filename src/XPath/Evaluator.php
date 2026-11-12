@@ -56,18 +56,21 @@ final class Evaluator
      * document node. As in XSLT 2.0 pattern matching, where a dynamic error is recoverable, a node
      * for which a predicate of one of the pattern's own steps raises a dynamic error is not
      * selected, and the other nodes still are. An error inside a nested predicate makes the
-     * enclosing step predicate fail as a whole.
+     * enclosing step predicate fail as a whole. Only the data-driven errors listed in
+     * XPathError::RECOVERABLE are handled this way.
      *
      * @param  array<mixed>  $ast
+     * @param  array<string, list<DOMNode|AtomicValue>>  $variables
      * @return list<DOMNode|AtomicValue>
      *
-     * @throws XPathError when the pattern fails outside its step predicates
+     * @throws XPathError when the pattern fails outside its step predicates, or with a
+     *                    non-recoverable error inside one
      */
-    public function matchPattern(array $ast, DOMNode $context): array
+    public function matchPattern(array $ast, DOMNode $context, array $variables = []): array
     {
         $this->matchingPattern = true;
         try {
-            return $this->eval($ast, $context, []);
+            return $this->eval($ast, $context, $variables);
         } finally {
             $this->matchingPattern = false;
         }
@@ -471,7 +474,8 @@ final class Evaluator
     /**
      * Whether a predicate keeps an item: a numeric value compares with the position (null for a
      * predicate known to be position-free), anything else by its effective boolean value. Within
-     * a match pattern a dynamic error drops the item instead of propagating.
+     * a match pattern a recoverable dynamic error (see XPathError::RECOVERABLE) drops the item
+     * instead of propagating; any other error, and an engine limitation, always propagates.
      *
      * @param  array<mixed>  $predicate
      * @param  array<string, list<DOMNode|AtomicValue>>  $variables
@@ -485,7 +489,11 @@ final class Evaluator
         $this->matchingPattern = false;
         try {
             return $this->predicateHolds($predicate, $item, $position, $variables);
-        } catch (XPathError) {
+        } catch (XPathError $error) {
+            if (! $error->isRecoverable()) {
+                throw $error;
+            }
+
             return false;
         } finally {
             $this->matchingPattern = true;

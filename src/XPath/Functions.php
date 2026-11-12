@@ -424,7 +424,12 @@ final class Functions
 
         try {
             return Atomic::valueCompare('eq', $left, $right);
-        } catch (XPathError) {
+        } catch (XPathError $error) {
+            // Values of incomparable types are distinct; any other error propagates.
+            if ($error->errorCode !== 'XPTY0004') {
+                throw $error;
+            }
+
             return false;
         }
     }

@@ -52,7 +52,7 @@ rule set that needs more cannot be compiled into silently wrong rules.
 | Area | Supported |
 |---|---|
 | Functions | `not`, `normalize-space`, `exists`, `empty`, `xs:decimal`, `xs:date`, `upper-case`, `count`, `sum`, `true`, `false`, `boolean`, `string`, `contains`, `string-length`, `substring`, `substring-after`, `substring-before`, `ends-with`, `round`, `concat`, `abs`, `name`, `local-name`, `distinct-values`, `matches` (XPath 2.0 arities, no collation arguments) |
-| Operators | `or`, `and`, general comparisons `= != < <= > >=`, value comparisons `eq ne lt le gt ge`, `+ - * div`, unary `-`, `\|` / `union`, `every … in … satisfies`, `some … in … satisfies`, `cast as xs:decimal` / `xs:date` / `xs:boolean` (with optional `?`) |
+| Operators | `or`, `and`, general comparisons `= != < <= > >=`, value comparisons `eq ne lt le gt ge`, `+ - * div idiv mod`, unary `-`, `\|` / `union`, `every … in … satisfies`, `some … in … satisfies`, `cast as xs:decimal` / `xs:date` / `xs:boolean` (with optional `?`) |
 | Paths | axes `child`, `self`, `attribute`, `parent`, `ancestor`, `ancestor-or-self`, `descendant`, `descendant-or-self`, `preceding`; abbreviations `@`, `..`, `.`, `//`, `*`, `prefix:*`; kind tests `node()` and `text()`; expressions as path steps (`…/xs:decimal(cbc:Amount)`, `…/normalize-space(cbc:ID)`) |
 | Predicates | boolean and numeric (positional) predicates on steps and on parenthesised expressions, applied in axis order (`ancestor::*[1]` is the nearest ancestor) |
 | Rule contexts | XSLT match patterns: `N`, `N/N`, `//N`, `/N/N/N`, `N[@attr]`, predicates with function calls, unions |
@@ -94,7 +94,13 @@ probe expressions evaluated by both (`tests/XPath/ProbeCases.php`):
   When both operands fail, the right operand's error wins. The engine does the same.
 - **Errors while matching a rule context** are recoverable, as in XSLT 2.0: when a rule-context
   predicate raises an error for a node, that node does not match the rule (a later rule of the same
-  pattern may take it), other nodes are unaffected, and no error is reported.
+  pattern may take it), other nodes are unaffected, and no error is reported. This applies only to
+  data-driven errors (`FORG0001`, `XPTY0004`, `FOAR0001`, … — `XPathError::RECOVERABLE`); an unbound
+  variable, an engine guard or an unsupported construct still propagates.
+- **`idiv` and `mod`.** `idiv` truncates towards zero and returns an `xs:integer` (`-7 idiv 2` =
+  `-3`); `mod` keeps the sign of the dividend (`-7 mod 2` = `-1`), is exact on decimals and uses
+  IEEE `fmod` on doubles. A zero integer or decimal divisor is `FOAR0001`, as is `idiv` by a double
+  zero; `5e0 mod 0` is `NaN`.
 - **Dates.** A date without timezone is compared as UTC (the implicit timezone of the oracle).
 
 ## Dynamic errors

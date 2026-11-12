@@ -15,6 +15,7 @@ use IntrAgile\EInvoicing\XPath\Exception\UnsupportedXPath;
 use IntrAgile\EInvoicing\XPath\Parser;
 use IntrAgile\EInvoicing\XPath\Regex;
 use IntrAgile\EInvoicing\XPath\StaticContext;
+use IntrAgile\EInvoicing\XPath\Value\AtomicValue;
 use IntrAgile\EInvoicing\XPath\XPathError;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -147,6 +148,54 @@ final class EvaluatorTest extends TestCase
         $this->evaluator->effectiveBoolean($this->parse("xs:decimal('x') = 1 or false()"), $this->document);
     }
 
+    public function test_pattern_predicate_does_not_swallow_engine_errors(): void
+    {
+        // A data-driven dynamic error only drops the node.
+        self::assertSame([], $this->matchPattern('cbc:LineExtensionAmount[xs:decimal(@currencyID) > 0]'));
+        self::assertCount(1, $this->matchPattern("cac:InvoiceLine[xs:decimal(cbc:LineExtensionAmount) > 0 and cbc:LineExtensionAmount/@currencyID = 'HUF']"));
+
+        // An engine limitation propagates.
+        try {
+            $this->matchPattern("cbc:ID[matches(., concat('\\p{IsBasic', 'Latin}'))]");
+            self::fail('Expected UnsupportedXPath.');
+        } catch (UnsupportedXPath $error) {
+            self::assertStringContainsString('Unicode block escape', $error->getMessage());
+        }
+
+        // A non-recoverable dynamic error propagates.
+        $failing = new class implements AtomicValue
+        {
+            public function type(): string
+            {
+                return 'xs:string';
+            }
+
+            public function lexical(): string
+            {
+                throw new XPathError('INTRAGILE_RECURSION', 'Recursion too deep.');
+            }
+        };
+        try {
+            $this->matchPattern("cac:InvoiceLine[string(\$v) = 'x']", ['v' => [$failing]]);
+            self::fail('Expected INTRAGILE_RECURSION.');
+        } catch (XPathError $error) {
+            self::assertSame('INTRAGILE_RECURSION', $error->errorCode);
+            self::assertFalse($error->isRecoverable());
+        }
+    }
+
+    public function test_recoverable_error_codes(): void
+    {
+        self::assertTrue((new XPathError('FORG0001', 'x'))->isRecoverable());
+        self::assertTrue((new XPathError('XPTY0004', 'x'))->isRecoverable());
+        self::assertFalse((new XPathError('XPST0008', 'x'))->isRecoverable());
+        self::assertFalse((new XPathError('INTRAGILE_RECURSION', 'x'))->isRecoverable());
+        self::assertSame(
+            ['FORG0001', 'XPTY0004', 'FORG0006', 'FOAR0001', 'FOAR0002', 'FOCA0002', 'FOCH0002', 'FORX0002', 'FORX0003', 'FORX0004', 'FODT0001', 'FOCA0001', 'FOCA0003'],
+            XPathError::RECOVERABLE,
+        );
+    }
+
     public function test_index_orders_attributes_after_their_element_and_before_children(): void
     {
         $amount = $this->node('//cac:InvoiceLine[1]/cbc:LineExtensionAmount');
@@ -213,6 +262,17 @@ final class EvaluatorTest extends TestCase
     private function parse(string $expression, array $variables = []): array
     {
         return (new Parser)->parse($expression, new StaticContext(ProbeCases::NAMESPACES, $variables));
+    }
+
+    /**
+     * @param  array<string, list<DOMNode|AtomicValue>>  $variables
+     * @return list<DOMNode|AtomicValue>
+     */
+    private function matchPattern(string $pattern, array $variables = []): array
+    {
+        $ast = (new Parser)->parsePattern($pattern, new StaticContext(ProbeCases::NAMESPACES, array_keys($variables)));
+
+        return $this->evaluator->matchPattern($ast, $this->document, $variables);
     }
 
     private function canonical(string $expression, ?DOMNode $context = null): string
