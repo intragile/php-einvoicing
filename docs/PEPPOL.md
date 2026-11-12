@@ -126,27 +126,27 @@ vendor/bin/einvoicing-rules check peppol --dir=DIR
 
 ## How the verdicts are verified
 
-No compiled XSLT for the Peppol layer is published, and OpenPeppol builds its own validator by
-compiling the Schematron with the ISO Schematron XSLT skeleton in Saxon. The oracle test group
-does the same: it compiles the four `.sch` files with the ISO skeleton in SaxonC-HE (Docker),
-runs the resulting stylesheets, and compares the verdict of every document with ours (the sorted
-set of distinct `"<rule id> <flag>"` strings over both layers; locations and messages are not
-compared). If Saxon aborts with a dynamic error, our report must carry a dynamic error with the
-same code.
+No compiled XSLT for the Peppol layer is published; as far as we could find, OpenPeppol builds its
+own validator by compiling the Schematron with the ISO Schematron XSLT skeleton in Saxon. The oracle
+test group does the same: it compiles the four `.sch` files with the ISO skeleton in SaxonC-HE
+(Docker), runs the resulting stylesheets, and compares the verdict of every document with ours (the
+sorted set of distinct `"<rule id> <flag>"` strings over both layers; locations and messages are not
+compared). If Saxon aborts with a dynamic error, our report must carry a dynamic error with the same
+code.
 
 | Documents | Count |
 |---|---|
 | CEN 1.3.17 example invoices (UBL and CII) | 34 |
 | Peppol examples and snippets (Invoice and CreditNote documents) | 26 |
-| Peppol unit-test documents (all `rules/unit-*` folders except SBDH, VEFA test sets expanded) | 1,025 |
+| Peppol unit-test documents (Invoice and CreditNote documents only; all `rules/unit-*` folders except SBDH, VEFA test sets expanded) | 1,025 |
 | Seeded mutations: 20 per Peppol example (the CEN mutation kinds plus a changed check digit and a changed profile id) | 520 |
 | Model invoices written by this library in UBL and CII with the Peppol profile | 6 |
 
-On these 1,611 documents there was no verdict mismatch. Saxon aborts on 99 of the mutations and
-on 2 unit-test documents; on those only the error code is compared, not the findings. The
-4 UBL Order documents among the unit tests are not invoices: the validator throws
-`UnsupportedDocument` for them, and a test asserts it. This is a test corpus, not a proof for
-every possible input.
+On these 1,611 documents there was no verdict mismatch. Saxon aborts on 99 of the mutations and on 2
+unit-test documents; on those only the error code is compared, not the findings. The 4 UBL Order
+documents among the unit tests are not counted above; they are not invoices: the validator throws
+`UnsupportedDocument` for them, and a test asserts it. This is a test corpus, not a proof for every
+possible input.
 
 The skeleton pipeline is itself guarded: the CEN 1.3.17 Schematron compiled with the ISO
 skeleton gives the same verdicts as the official CEN 1.3.17 XSLT on the 34 CEN examples and 200

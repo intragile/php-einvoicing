@@ -141,7 +141,7 @@ A modellel összeállított számlát egy hívás megírja és ellenőrzi:
 
 A validátor a hivatalos CEN EN 16931 szabályokat futtatja (1.3.17-es validációs csomag: UBL-re
 982, CII-re 810 ellenőrzés), amelyeket a hivatalos Schematronból PHP-ra fordítottunk; nincs
-szükség Javára vagy XSLT-feldolgozóra. Az `isValid()` akkor igaz, ha egyetlen fatális hibát jelző
+szükség Javára vagy XSLT-feldolgozóra. Az `isValid()` akkor igaz, ha egyetlen `fatal` súlyosságú
 szabály sem sérült; a figyelmeztetések (`warnings()`) és a tájékoztató megállapítások
 (`information()`) nem teszik érvénytelenné a számlát, a `$report->ruleSets` pedig a lefutott
 szabálykészleteket nevezi meg (`en16931-ubl 1.3.17`). Ha egy érték nem értékelhető ki (például

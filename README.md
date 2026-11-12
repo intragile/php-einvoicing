@@ -85,12 +85,12 @@ $cii = (new CiiWriter)->write($invoice); // UN/CEFACT CII XML string
 ```
 
 `TotalsCalculator::complete()` fills line net amounts and VAT breakdown entries you left empty
-and keeps the ones you set. It always recomputes the document totals, so they agree with the
-lines. A prepaid amount (BT-113) and a rounding amount (BT-114) go in as arguments, for example
-`TotalsCalculator::complete($invoice, paidAmount: '500.00')`. VAT exemption reasons
-(BT-120/BT-121) for categories such as E, AE, K or O, and the VAT total in accounting currency
-(BT-111), are yours to supply. `TotalsCalculator::check()` returns the ids
-of the BR-CO calculation rules an invoice violates. Writers refuse an invoice without totals.
+and keeps the ones you set. It always recomputes the document totals, so they agree with the lines.
+A prepaid amount (BT-113) and a rounding amount (BT-114) go in as arguments, for example
+`TotalsCalculator::complete($invoice, paidAmount: '500.00')`. VAT exemption reasons (BT-120/BT-121)
+for categories such as E, AE, K or O, and the VAT total in accounting currency (BT-111), are yours
+to supply. `TotalsCalculator::check()` returns the ids of the BR-CO calculation rules an invoice
+violates. Writers refuse an invoice without totals.
 
 ## Read a received invoice
 
@@ -203,8 +203,8 @@ possible. To report a vulnerability, see [SECURITY.md](SECURITY.md).
   rules, the oracle itself is checked to fire a rule on a deliberately broken total (BR-CO-16), and
   the validator's verdict must equal the oracle's on every document of the conformance corpus
   ([details](docs/VALIDATION.md#how-verdict-equality-is-checked)).
-  The same group compiles the OpenPeppol Schematron with the ISO Schematron skeleton in Saxon
-  and checks the Peppol verdicts ([details](docs/PEPPOL.md#how-the-verdicts-are-verified)).
+  The same group compiles the OpenPeppol Schematron with the ISO Schematron skeleton in Saxon and
+  checks the Peppol verdicts ([details](docs/PEPPOL.md#how-the-verdicts-are-verified)).
   `docker/oracle/run.sh 8.5` builds the image and runs the group; it needs Docker and `vendor/`
   installed. This is development tooling only and is not part of the installed package.
 - CI runs PHPUnit and PHPStan (level max) on PHP 8.3, 8.4 and 8.5, plus Pint, the oracle and a
