@@ -115,9 +115,9 @@ the same call later may succeed **and cannot cause a duplicate**.
 | `RecipientUnreachable` | false | The receiver is not registered or does not accept this document type (Recommand HTTP 422) | `$e->category` is a `FailureCategory`; use another channel or ask the receiver |
 | `AuthenticationFailed` | false | Wrong credentials or missing permission (HTTP 401/403); a webhook with a bad signature | Fix the configuration; for a webhook, refuse the request |
 | `RateLimited` | true | Too many requests (HTTP 429) | Wait `$e->retryAfterSeconds` (when given), then retry |
-| `TransportUnavailable` | true | A GET got no answer (or its body stalled), the provider answered 503, or a GET answered 500 or 502 | Retry later with backoff |
-| `OutcomeUnknown` | false | A send (or another state-changing request) got no answer or a body that stalled; a send answered 500, 502 or 504; a send answered 200 with a body that cannot be read | **Do not resend blindly**; see below |
-| `UnexpectedResponse` | false | An unexpected status, a malformed or oversized body (on a send, only when the status is not 200) | Log `$e->status` and `$e->bodyExcerpt`; investigate |
+| `TransportUnavailable` | true | A GET got no answer (or its body stalled), the provider answered 503, or a GET answered another 5xx | Retry later with backoff |
+| `OutcomeUnknown` | false | A send (or another state-changing request) got no answer or a body that stalled; a send answered any 5xx except 503; a send answered 200 with a body that is not JSON, does not report success or has no document id | **Do not resend blindly**; see below |
+| `UnexpectedResponse` | false | An unexpected status, or a malformed or oversized body. On a send, a malformed 200 is `OutcomeUnknown`, but a body over the size cap is this exception whatever the status | Log `$e->status` and `$e->bodyExcerpt`; investigate. On a send over the size cap, also handle it like `OutcomeUnknown` |
 
 `fetch()` can also throw `UnsafeXml` and `UnsupportedDocument` (the library's own exceptions)
 for a received document with a DOCTYPE or broken XML; `InvalidArgumentException` signals an
@@ -134,12 +134,15 @@ the invoice. Resending at once risks delivering it twice. Instead:
    dashboard or the API) for a document to the same receiver with the same invoice number.
 3. Resend only when it is not there.
 
-`send()` treats these answers the same way: HTTP 500 (the error may have come after the document
-was stored), 502 (the connection to the application usually broke after the request reached it),
-504 (the gateway gave up waiting), and a 200 whose body is not JSON, does not report success or
-has no document id (the original `UnexpectedResponse` is chained as `getPrevious()`). Only 503 and
-429 on `send()` are retryable. `acknowledge()` also throws `OutcomeUnknown` when it gets no
-answer, but marking as read is idempotent, so calling it again with the same id is safe.
+`send()` treats these answers the same way: every 5xx status except 503 (a server error may come
+after the document was stored, and a proxy error such as 502 or 524 usually means the request
+reached the application before the connection broke), and a 200 whose body is not JSON, does not
+report success or has no document id (the original `UnexpectedResponse` is chained as
+`getPrevious()`). Only 503 and 429 on `send()` are retryable. A response to `send()` over the size
+cap is an `UnexpectedResponse` whatever its status; it is not retryable either, and the document
+may have been accepted, so handle it like `OutcomeUnknown`. `acknowledge()` also throws
+`OutcomeUnknown` when it gets no answer, but marking as read is idempotent, so calling it again
+with the same id is safe.
 
 ## Participant lookup (SML and SMP)
 

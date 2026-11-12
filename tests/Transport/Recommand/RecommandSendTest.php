@@ -188,7 +188,11 @@ final class RecommandSendTest extends TestCase
     {
         yield '500' => [500, '{"success":false,"errors":{}}'];
         yield '502' => [502, 'Bad Gateway'];
+        yield '501' => [501, 'Not Implemented'];
         yield '504' => [504, 'Gateway Timeout'];
+        yield '507' => [507, 'Insufficient Storage'];
+        yield '524' => [524, 'A timeout occurred'];
+        yield '599' => [599, ''];
     }
 
     #[DataProvider('possiblyAcceptedStatuses')]

@@ -41,8 +41,8 @@ final class ResponseMapper
     /**
      * The result of a send, or the exception its response stands for.
      *
-     * @throws OutcomeUnknown when Recommand answered HTTP 500, 502 or 504, or a 200 answer cannot be
-     *                        read; the document may have been accepted
+     * @throws OutcomeUnknown when Recommand answered any 5xx status except 503, or a 200 answer
+     *                        cannot be read; the document may have been accepted
      * @throws TransportException when the response is not a successful send
      */
     public function sendResult(ResponseInterface $response, ParticipantId $receiver): SendResult
@@ -277,9 +277,10 @@ final class ResponseMapper
                 $receiver->toString(),
             ));
         }
-        if ($status === 500 || $status === 502) {
-            // A 500 can follow storing the document, and a 502 usually means the connection to
-            // the application broke after the request reached it. Only 503 says it was refused.
+        if ($status >= 500 && $status <= 599 && $status !== 503) {
+            // A server error can follow storing the document, and a proxy error (502, 524) usually
+            // means the request reached the application before the connection broke. Only 503
+            // says the request was refused before processing.
             return new OutcomeUnknown(sprintf(
                 'Sending the document to %s failed with a Recommand server error (HTTP %d), which can come after the document was accepted, so Recommand may or may not have accepted it. Check the document list before resending to avoid a duplicate.',
                 $receiver->toString(),
