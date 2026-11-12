@@ -35,13 +35,21 @@
         "ext-libxml": "*",
         "ext-mbstring": "*",
         "brick/math": "^0.12|^0.13",
-        "intragile/einvoicing-rules-en16931": "@dev"
+        "intragile/einvoicing-rules-en16931": "@dev",
+        "psr/http-client": "^1.0",
+        "psr/http-factory": "^1.0",
+        "psr/http-message": "^1.1|^2.0"
     },
     "require-dev": {
         "ext-zip": "*",
         "laravel/pint": "^1.0",
+        "nyholm/psr7": "^1.8",
         "phpstan/phpstan": "^2.0",
         "phpunit/phpunit": "^11.5"
+    },
+    "suggest": {
+        "guzzlehttp/guzzle": "A PSR-18 HTTP client and PSR-17 factories for the Peppol transports",
+        "symfony/http-client": "A PSR-18 HTTP client (with nyholm/psr7 for the PSR-17 factories) for the Peppol transports"
     },
     "repositories": [
         {

@@ -9,11 +9,11 @@
     <testsuites>
         <testsuite name="EInvoicing"><directory>tests</directory></testsuite>
     </testsuites>
-    <!-- The oracle group needs SaxonC, the network group downloads from GitHub and the performance
-         group asserts wall-clock bounds that can flake on a loaded machine; run them explicitly
-         with the group option of PHPUnit. -->
+    <!-- The oracle group needs SaxonC, the network group reaches the internet, the recommand-live
+         group needs Recommand API credentials and the performance group asserts wall-clock bounds
+         that can flake on a loaded machine; run them explicitly with the group option of PHPUnit. -->
     <groups>
-        <exclude><group>oracle</group><group>network</group><group>performance</group></exclude>
+        <exclude><group>oracle</group><group>network</group><group>recommand-live</group><group>performance</group></exclude>
     </groups>
     <source>
         <include><directory>src</directory></include>
