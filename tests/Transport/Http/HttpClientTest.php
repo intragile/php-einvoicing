@@ -141,6 +141,47 @@ final class HttpClientTest extends TestCase
         self::assertInstanceOf(UnexpectedResponse::class, $exception);
     }
 
+    /**
+     * @return iterable<string, array{string, class-string<TransportException>, bool}>
+     */
+    public static function readFailures(): iterable
+    {
+        yield 'POST' => ['POST', OutcomeUnknown::class, false];
+        yield 'GET' => ['GET', TransportUnavailable::class, true];
+    }
+
+    /**
+     * @param  class-string<TransportException>  $expected
+     */
+    #[DataProvider('readFailures')]
+    public function test_body_read_failure_is_mapped_by_method(string $method, string $expected, bool $retryable): void
+    {
+        $url = 'https://user:pw@ap.example/api/send?token=t0ps3cret';
+        $failure = new RuntimeException('Connection reset while reading; Authorization: '.self::AUTHORIZATION.' at '.$url);
+        $response = (new Response(200))->withBody(self::brokenStream($failure));
+
+        $exception = self::capture(fn () => self::client(new RecordingHttpClient($response))
+            ->send($method, $url, ['Authorization' => self::AUTHORIZATION]));
+
+        self::assertInstanceOf($expected, $exception);
+        self::assertSame($retryable, $exception->isRetryable());
+        self::assertSame($failure, $exception->getPrevious());
+        self::assertStringContainsString($method, $exception->getMessage());
+        self::assertStringContainsString('HTTP 200', $exception->getMessage());
+        self::assertStringNotContainsString('a2V5LWlkOnRvcC1zZWNyZXQ=', $exception->getMessage());
+        self::assertStringNotContainsString('pw@', $exception->getMessage());
+        self::assertStringNotContainsString('t0ps3cret', $exception->getMessage());
+    }
+
+    public function test_stream_that_stalls_without_eof_ends_the_read(): void
+    {
+        $response = (new Response(200))->withBody(self::brokenStream(null));
+
+        $result = self::client(new RecordingHttpClient($response))->send('GET', 'https://ap.example/api');
+
+        self::assertSame('', (string) $result->getBody());
+    }
+
     public function test_declared_length_over_the_cap_is_rejected_before_reading(): void
     {
         $response = new Response(200, ['Content-Length' => '99999999'], 'short');
@@ -204,6 +245,94 @@ final class HttpClientTest extends TestCase
     /**
      * A body of the given size that php://temp keeps on disk, so the test itself stays small.
      */
+    /**
+     * A non-seekable stream that never reaches end of file: read() throws $failure, or returns
+     * an empty string when $failure is null.
+     */
+    private static function brokenStream(?RuntimeException $failure): StreamInterface
+    {
+        return new class($failure) implements StreamInterface
+        {
+            public function __construct(private readonly ?RuntimeException $failure) {}
+
+            public function __toString(): string
+            {
+                return '';
+            }
+
+            public function close(): void {}
+
+            public function detach()
+            {
+                return null;
+            }
+
+            public function getSize(): ?int
+            {
+                return null;
+            }
+
+            public function tell(): int
+            {
+                return 0;
+            }
+
+            public function eof(): bool
+            {
+                return false;
+            }
+
+            public function isSeekable(): bool
+            {
+                return false;
+            }
+
+            public function seek(int $offset, int $whence = SEEK_SET): void
+            {
+                throw new RuntimeException('Not seekable.');
+            }
+
+            public function rewind(): void
+            {
+                throw new RuntimeException('Not seekable.');
+            }
+
+            public function isWritable(): bool
+            {
+                return false;
+            }
+
+            public function write(string $string): int
+            {
+                throw new RuntimeException('Not writable.');
+            }
+
+            public function isReadable(): bool
+            {
+                return true;
+            }
+
+            public function read(int $length): string
+            {
+                if ($this->failure !== null) {
+                    throw $this->failure;
+                }
+
+                return '';
+            }
+
+            public function getContents(): string
+            {
+                return $this->read(1);
+            }
+
+            public function getMetadata(?string $key = null): mixed
+            {
+                return $key === null ? [] : null;
+            }
+        };
+    }
+
     private static function largeBody(int $bytes): StreamInterface
     {
         $resource = fopen('php://temp/maxmemory:1048576', 'w+b');

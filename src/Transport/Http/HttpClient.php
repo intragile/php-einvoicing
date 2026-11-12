@@ -14,6 +14,9 @@ use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamFactoryInterface;
+use RuntimeException;
+use SensitiveParameter;
+use Throwable;
 
 /**
  * Sends HTTP requests through any PSR-18 client and turns client failures into transport
@@ -22,6 +25,8 @@ use Psr\Http\Message\StreamFactoryInterface;
  * PSR-18 cannot tell a request that never left from one that was sent but not answered (a
  * timeout is a network exception either way), so a failed request that changes state is reported
  * as OutcomeUnknown and only a failed safe request (GET, HEAD, OPTIONS) as TransportUnavailable.
+ * A body that cannot be read to the end is mapped the same way: the status line arrived, so the
+ * server most likely processed the request.
  * Response bodies are read into memory up to a size cap. Credentials in headers, user info and
  * query strings are kept out of exception messages.
  */
@@ -51,11 +56,13 @@ final class HttpClient
      *
      * @param  array<string, string|list<string>>  $headers
      *
-     * @throws OutcomeUnknown when a request other than GET, HEAD or OPTIONS failed without a response
+     * @throws OutcomeUnknown when a request other than GET, HEAD or OPTIONS failed without a
+     *                        response or its response body could not be read
      * @throws TransportUnavailable when a GET, HEAD or OPTIONS request failed without a response
+     *                              or its response body could not be read
      * @throws UnexpectedResponse when the response body exceeds the size cap
      */
-    public function send(string $method, string $url, array $headers = [], ?string $body = null): ResponseInterface
+    public function send(string $method, string $url, #[SensitiveParameter] array $headers = [], ?string $body = null): ResponseInterface
     {
         $request = $this->requests->createRequest($method, $url);
         foreach ($headers as $name => $value) {
@@ -68,13 +75,28 @@ final class HttpClient
         try {
             $response = $this->client->sendRequest($request);
         } catch (ClientExceptionInterface $exception) {
-            throw $this->failure($request, $exception);
+            throw $this->failure($request, $exception, 'failed without a response');
         }
 
-        return $response->withBody($this->streams->createStream($this->read($response)));
+        try {
+            $contents = $this->read($response);
+        } catch (UnexpectedResponse $exception) {
+            throw $exception;
+        } catch (RuntimeException $exception) {
+            throw $this->failure(
+                $request,
+                $exception,
+                sprintf('was answered with HTTP %d but its body could not be read', $response->getStatusCode()),
+            );
+        }
+
+        return $response->withBody($this->streams->createStream($contents));
     }
 
-    private function failure(RequestInterface $request, ClientExceptionInterface $exception): OutcomeUnknown|TransportUnavailable
+    /**
+     * @param  string  $what  what went wrong, phrased to follow "The <method> request to <url>"
+     */
+    private function failure(RequestInterface $request, Throwable $exception, string $what): OutcomeUnknown|TransportUnavailable
     {
         $method = strtoupper($request->getMethod());
         $target = (string) $request->getUri()->withUserInfo('')->withQuery('')->withFragment('');
@@ -82,16 +104,17 @@ final class HttpClient
 
         if (in_array($method, self::SAFE_METHODS, true)) {
             return new TransportUnavailable(
-                sprintf('The %s request to %s failed without a response: %s', $method, $target, $reason),
+                sprintf('The %s request to %s %s: %s', $method, $target, $what, $reason),
                 $exception,
             );
         }
 
         return new OutcomeUnknown(
             sprintf(
-                'The %s request to %s failed without a response, so the server may or may not have processed it: %s. Check the document list before resending to avoid a duplicate.',
+                'The %s request to %s %s, so the server may or may not have processed it: %s. Check the document list before resending to avoid a duplicate.',
                 $method,
                 $target,
+                $what,
                 rtrim($reason, '.'),
             ),
             $exception,
@@ -124,6 +147,7 @@ final class HttpClient
 
     /**
      * @throws UnexpectedResponse when the body exceeds the size cap
+     * @throws RuntimeException when the stream fails while the body is read
      */
     private function read(ResponseInterface $response): string
     {
@@ -139,7 +163,12 @@ final class HttpClient
 
         $body = '';
         while (! $stream->eof()) {
-            $body .= $stream->read(self::CHUNK_BYTES);
+            $chunk = $stream->read(self::CHUNK_BYTES);
+            if ($chunk === '') {
+                // A stream that returns nothing without reaching end of file would loop forever.
+                break;
+            }
+            $body .= $chunk;
             if (strlen($body) > $this->maxResponseBytes) {
                 throw $this->tooLarge($response, $body);
             }
