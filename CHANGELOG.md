@@ -68,7 +68,8 @@ All notable changes to this project are documented here. The format follows
   Severity}` (moved from `Schematron`). `ValidationReport` renames `errors` to `dynamicErrors`,
   adds `information()`, and replaces `ruleSet` and `version` with `ruleSets`, the list of rule
   sets that ran as `"<id> <version>"`. The classes under `IntrAgile\EInvoicing\Schematron` and
-  `IntrAgile\EInvoicing\XPath` are marked `@internal`, apart from their exceptions.
+  `IntrAgile\EInvoicing\XPath` are marked `@internal`, apart from their exceptions and
+  `RuleSet`, which is public.
 - Compiled rule files carry a `format` key (format 2); a rule file of another format is refused
   with `UnsupportedSchematron` asking to recompile it. `CompiledRuleSetWriter` takes the origin
   named in the file header.

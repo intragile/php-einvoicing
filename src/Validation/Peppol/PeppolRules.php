@@ -32,7 +32,8 @@ final class PeppolRules
      *
      * @throws RulesNotInstalled when a compiled rule file is missing from the folder
      * @throws UnsupportedSchematron when a file was compiled by an engine of another format
-     *                               (the message asks to recompile it)
+     *                               (the message asks to recompile it), is corrupt, or is not the
+     *                               pinned rule set (the message asks to reinstall)
      */
     public static function load(string $dir): array
     {
@@ -47,7 +48,25 @@ final class PeppolRules
             }
         }
 
-        $load = static fn (string $key): RuleSet => RuleSet::fromFile(self::path($dir, $sources[$key]['id']));
+        $load = static function (string $key) use ($dir, $sources): RuleSet {
+            $source = $sources[$key];
+            $path = self::path($dir, $source['id']);
+            $ruleSet = RuleSet::fromFile($path);
+            if ($ruleSet->id() !== $source['id']
+                || $ruleSet->version() !== PeppolSources::VERSION
+                || ($ruleSet->sourceSha256() !== null && $ruleSet->sourceSha256() !== $source['sha256'])) {
+                throw new UnsupportedSchematron(sprintf(
+                    '"%s" holds the rule set "%s %s", not "%s %s" compiled from the pinned source; reinstall the rules.',
+                    $path,
+                    $ruleSet->id(),
+                    $ruleSet->version(),
+                    $source['id'],
+                    PeppolSources::VERSION,
+                ));
+            }
+
+            return $ruleSet;
+        };
 
         return [
             'ubl' => array_map($load, self::LAYERS['ubl']),

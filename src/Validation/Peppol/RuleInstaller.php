@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\Validation\Peppol;
 use IntrAgile\EInvoicing\Schematron\CompiledRuleSetWriter;
 use IntrAgile\EInvoicing\Schematron\Compiler;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
+use IntrAgile\EInvoicing\Validation\Exception\PartialInstall;
 use IntrAgile\EInvoicing\Validation\Exception\RuleSourceMismatch;
 use InvalidArgumentException;
 use RuntimeException;
@@ -38,6 +39,7 @@ final class RuleInstaller
      *
      * @throws RuleSourceMismatch when a source file does not have its pinned checksum
      * @throws UnsupportedSchematron when a source file cannot be compiled
+     * @throws PartialInstall when a file could not be moved into place after others already were
      * @throws InvalidArgumentException|RuntimeException when a source cannot be read or downloaded,
      *                                                   or the target folder cannot be written
      */
@@ -92,7 +94,9 @@ final class RuleInstaller
             foreach (PeppolSources::all() as $key => $source) {
                 $target = PeppolRules::path($targetDir, $source['id']);
                 if (! @rename($temporary[$key], $target)) {
-                    throw new RuntimeException("Cannot move the compiled rule set to \"{$target}\".");
+                    $message = "Cannot move the compiled rule set to \"{$target}\".";
+
+                    throw $written === [] ? new RuntimeException($message) : new PartialInstall($message, $written);
                 }
                 $written[] = $target;
             }

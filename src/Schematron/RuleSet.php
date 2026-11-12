@@ -44,6 +44,7 @@ final class RuleSet
     private function __construct(
         private readonly string $id,
         private readonly string $version,
+        private readonly ?string $sha256,
         private readonly array $namespaces,
         private readonly array $lets,
         private readonly array $functions,
@@ -65,7 +66,13 @@ final class RuleSet
             throw new UnsupportedSchematron("The compiled rule set \"{$path}\" does not exist.");
         }
 
-        return self::$loaded[$path] = self::fromArray(require $path);
+        try {
+            $compiled = require $path;
+        } catch (\Error $error) {
+            throw new UnsupportedSchematron("The compiled rule set \"{$path}\" is corrupt; reinstall it.", 0, $error);
+        }
+
+        return self::$loaded[$path] = self::fromArray($compiled);
     }
 
     /**
@@ -111,6 +118,7 @@ final class RuleSet
         return new self(
             $id,
             self::string($compiled, 'version', "The rule set \"{$id}\""),
+            isset($compiled['sha256']) && is_string($compiled['sha256']) ? $compiled['sha256'] : null,
             $namespaces,
             self::checkLets($compiled['lets'] ?? null, "The lets of \"{$id}\""),
             $functions,
@@ -126,6 +134,14 @@ final class RuleSet
     public function version(): string
     {
         return $this->version;
+    }
+
+    /**
+     * The SHA-256 of the Schematron source the rule set was compiled from, when the file records it.
+     */
+    public function sourceSha256(): ?string
+    {
+        return $this->sha256;
     }
 
     /**

@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Tests\Validation\Peppol;
 
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
 use IntrAgile\EInvoicing\Schematron\RuleSet;
+use IntrAgile\EInvoicing\Validation\Exception\PartialInstall;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\Exception\RuleSourceMismatch;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolRules;
@@ -107,6 +108,37 @@ final class RuleInstallerTest extends TestCase
         $this->expectExceptionMessage('Recompile');
 
         PeppolRules::load($this->dir);
+    }
+
+    public function test_renamed_rule_file_is_refused(): void
+    {
+        (new RuleInstaller)->install($this->dir, self::sourceDir());
+        // CEN CII content under the CEN UBL name; the first file PeppolRules::load() reads.
+        copy($this->dir.'/peppol-cen-cii-3.0.22.php', $this->dir.'/peppol-cen-ubl-3.0.22.php');
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('reinstall');
+
+        PeppolRules::load($this->dir);
+    }
+
+    public function test_failed_move_after_some_files_reports_the_written_paths(): void
+    {
+        $target = $this->dir.'/rules';
+        // A non-empty folder under the third file's name makes its rename fail after two succeeded.
+        mkdir($target.'/peppol-ubl-3.0.22.php/blocker', 0775, true);
+
+        try {
+            (new RuleInstaller)->install($target, self::sourceDir());
+            self::fail('The blocked rename must fail.');
+        } catch (PartialInstall $exception) {
+            self::assertSame(
+                ["{$target}/peppol-cen-ubl-3.0.22.php", "{$target}/peppol-cen-cii-3.0.22.php"],
+                $exception->writtenPaths,
+            );
+            self::assertStringContainsString('peppol-ubl-3.0.22.php', $exception->getMessage());
+        }
+        self::assertSame([], glob($target.'/*.tmp*') ?: [], 'No temporary file may be left behind.');
     }
 
     private static function sourceDir(): string

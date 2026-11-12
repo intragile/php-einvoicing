@@ -11,6 +11,7 @@ use IntrAgile\EInvoicing\Tests\Validation\Peppol\InstalledRules;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\Finding;
 use IntrAgile\EInvoicing\Validation\Validator;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 final class PeppolValidatorTest extends TestCase
@@ -98,6 +99,7 @@ final class PeppolValidatorTest extends TestCase
         self::assertNotSame([], self::peppolIds($report->fatal()), implode("\n", $report->verdict()));
     }
 
+    #[Group('performance')]
     public function test_huge_identifier_validates_quickly(): void
     {
         $validator = self::validator();

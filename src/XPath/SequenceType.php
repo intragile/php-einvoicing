@@ -23,10 +23,10 @@ use LogicException;
  * The value is atomised; an untyped item is cast to the type (a failing cast is FORG0001); an
  * xs:integer is accepted where an xs:decimal is expected and stays an xs:integer; an xs:double
  * given for an xs:decimal becomes the shortest decimal that reads back as that double, as Saxon 13
- * does after the XPath 4.0 coercion rules (NaN and the infinities cannot be converted). Any other type, an empty sequence without "?" and more
- * than one item are type errors. As in Saxon, the items are converted one at a time and the
- * cardinality error is raised on the second converted item, so a failing cast of the first or the
- * second item comes first.
+ * does after the XPath 4.0 coercion rules (NaN and the infinities cannot be converted). Any other
+ * type, an empty sequence without "?" and more than one item are type errors. As in Saxon, the
+ * items are converted one at a time and the cardinality error is raised on the second converted
+ * item, so a failing cast of the first or the second item comes first.
  *
  * @internal
  */
