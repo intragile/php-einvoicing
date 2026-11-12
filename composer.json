@@ -1,6 +1,6 @@
 {
     "name": "intragile/php-einvoicing",
-    "description": "Framework-agnostic EN 16931 e-invoicing core for PHP: invoice model, exact decimal totals, UBL and CII reading and writing, and pure-PHP validation against the official CEN Schematron rules.",
+    "description": "Framework-agnostic EN 16931 e-invoicing core for PHP: invoice model, exact decimal totals, UBL and CII reading and writing, and pure-PHP validation against the official CEN EN 16931 and Peppol BIS 3 Schematron rules.",
     "keywords": [
         "en16931",
         "e-invoicing",

@@ -3,9 +3,9 @@
 Fejlesztő és karbantartó: [IntrAgile Kft.](https://intragile.eu)
 
 **Keretrendszer-független EN 16931 e-számlázási mag PHP-hoz.** Pontos tizedes számításra épülő
-számlamodell, EN 16931 szerinti összesítés, valamint a szabványhoz tartozó két szintaxis
-(UBL 2.1 és UN/CEFACT CII) olvasása és írása, valamint ellenőrzés a hivatalos CEN EN 16931
-szabályok szerint. Futásidőben nincs szükség Javára.
+számlamodell, EN 16931 szerinti összesítés, a szabványhoz tartozó két szintaxis (UBL 2.1 és
+UN/CEFACT CII) olvasása és írása, valamint ellenőrzés a hivatalos CEN EN 16931 és a Peppol BIS
+Billing 3 szabályok szerint. Futásidőben nincs szükség Javára.
 
 [English description → README.md](README.md)
 
@@ -21,11 +21,15 @@ Jelenleg tartalmazza:
 - `TotalsCalculator`: sorok nettó összege, ÁFA-bontás és számlaösszesítők pontos tizedesekkel.
 - UBL 2.1 (Invoice, CreditNote) és UN/CEFACT CII (CrossIndustryInvoice) olvasó és író.
 - Tisztán PHP-s validátor, amely a hivatalos CEN EN 16931 Schematron-szabályokat (1.3.17)
-  futtatja UBL-re és CII-re; az eredményét 1892 dokumentumból álló korpuszon vetettük össze a
-  hivatalos XSLT-ével, és azonosnak találtuk ([hogyan működik](docs/VALIDATION.md), angolul).
+  futtatja UBL-re és CII-re; az eredményének egyezését a hivatalos XSLT-ével 1892 dokumentumból
+  álló korpuszon ellenőriztük ([hogyan működik](docs/VALIDATION.md), angolul).
+- Ellenőrzés a Peppol BIS Billing 3.0.22 szabályai szerint, amelyeket a hivatalos OpenPeppol
+  fájlokból a saját gépeden fordít le a csomag; az eredmény egyezését a Saxonéval 1611
+  dokumentumból álló korpuszon ellenőriztük ([Peppol BIS 3](docs/PEPPOL.md), angolul).
 
-Későbbi kiadásokra tervezett, jelenleg nincs benne: a Peppol BIS 3 szabályai és a Peppol-átvitel,
-az XRechnung és a ZUGFeRD/Factur-X profilok, valamint Laravel csomag.
+Későbbi kiadásokra tervezett, jelenleg nincs benne: a Peppol-átvitel (hozzáférési pont, SMP- és
+Directory-lekérdezés) és a Peppol-boríték (SBDH) szabályai, az XRechnung és a ZUGFeRD/Factur-X
+profilok, valamint Laravel csomag.
 
 ## Telepítés
 
@@ -85,10 +89,11 @@ A `TotalsCalculator::complete()` kitölti az üresen hagyott tételsori nettó �
 ÁFA-összesítő sorokat, a megadottakat pedig megtartja. A számla végösszesítőit mindig újraszámolja,
 így azok egyeznek a tételsorokkal. Az előre kifizetett összeget (BT-113) és a kerekítési összeget
 (BT-114) argumentumként kell átadni, például
-`TotalsCalculator::complete($invoice, paidAmount: '500.00')`. Az ÁFA-mentességi okot (BT-120/BT-121) az olyan kategóriáknál, mint E, AE, K vagy O,
-valamint az elszámolási pénznemben megadott ÁFA-összeget (BT-111) Önnek kell megadnia. A
-`TotalsCalculator::check()` visszaadja azokat a BR-CO számítási szabályokat, amelyeket a számla
-megsért. Az írók a végösszesítők nélküli számlát elutasítják.
+`TotalsCalculator::complete($invoice, paidAmount: '500.00')`. Az ÁFA-mentességi okot
+(BT-120/BT-121) az olyan kategóriáknál, mint E, AE, K vagy O, valamint az elszámolási pénznemben
+megadott ÁFA-összeget (BT-111) neked kell megadnod. A `TotalsCalculator::check()` visszaadja
+azokat a BR-CO számítási szabályokat, amelyeket a számla megsért. Az írók a végösszesítők nélküli
+számlát elutasítják.
 
 ## Beérkezett számla olvasása
 
@@ -136,33 +141,59 @@ A modellel összeállított számlát egy hívás megírja és ellenőrzi:
 
 A validátor a hivatalos CEN EN 16931 szabályokat futtatja (1.3.17-es validációs csomag: UBL-re
 982, CII-re 810 ellenőrzés), amelyeket a hivatalos Schematronból PHP-ra fordítottunk; nincs
-szükség Javára vagy XSLT-feldolgozóra. Az `isValid()` akkor igaz, ha egyetlen fatal szintű szabály sem
-sérült; a figyelmeztetések (`warnings()`) és a tájékoztató megállapítások (`information()`) nem
-teszik érvénytelenné a számlát, a `$report->ruleSets` pedig a lefutott szabálykészleteket nevezi
-meg (`en16931-ubl 1.3.17`). Ha egy érték nem értékelhető ki (például összegként `abc` szerepel), az
-ellenőrzés nem áll le: a hiba a `$report->dynamicErrors` listába kerül az XPath-hibakóddal
-(`FORG0001`), a többi szabály
-ellenőrzése folytatódik, a számla pedig érvénytelen. Ha a dokumentum nem támogatott szintaxisú
-számla (vagy nem is számla), `UnsupportedDocument` kivétel keletkezik, DOCTYPE esetén `UnsafeXml`;
-a validátor egyiket sem minősíti érvényesnek.
+szükség Javára vagy XSLT-feldolgozóra. Az `isValid()` akkor igaz, ha egyetlen fatális hibát jelző
+szabály sem sérült; a figyelmeztetések (`warnings()`) és a tájékoztató megállapítások
+(`information()`) nem teszik érvénytelenné a számlát, a `$report->ruleSets` pedig a lefutott
+szabálykészleteket nevezi meg (`en16931-ubl 1.3.17`). Ha egy érték nem értékelhető ki (például
+összegként `abc` szerepel), az ellenőrzés nem áll le: a hiba a `$report->dynamicErrors` listába
+kerül az XPath-hibakóddal (`FORG0001`), a többi szabály ellenőrzése folytatódik, a számla pedig
+érvénytelen. Ha a dokumentum nem támogatott szintaxisú számla (vagy nem is számla),
+`UnsupportedDocument` kivétel keletkezik, DOCTYPE esetén `UnsafeXml`; a validátor egyiket sem
+minősíti érvényesnek.
 
-Az eredményeket 1892 dokumentumból álló korpuszon vetettük össze a Saxonnal futtatott hivatalos
-CEN XSLT-vel (34 CEN mintaszámla, 1169 CEN egységteszt-dokumentum, 680 gépileg módosított
-(mutált) változat, 6 modellből írt számla és 3 célzottan összeállított dokumentum). Az 1757
-dokumentumon, amelyről a Saxon eredményt ad, pontosan ugyanazok a szabályazonosítók és szintek
-jönnek ki; azon a 135 mutált változaton, amelyen a Saxon dinamikus hibával leáll, csak az
-XPath-hibakódot hasonlítjuk össze. Egy átlagos számla
-ellenőrzése 7–50 ms, egy 1000 tételes számláé körülbelül 1,7 s (egyszeri mérés a fejlesztői gépen:
-Apple M1, PHP 8.5). Egyes szabályok ismétlődő elemeknél a lineárisnál gyorsabban lassulnak (az
-UBL-SR-47 a fizetési mód kódok számában négyzetes), ezért kívülről érkező, megbízhatatlan
-fájloknál korlátozd a bemenet méretét és az ellenőrzés idejét. A támogatott XPath-részhalmazt,
-azokat az eseteket, ahol a motor a Saxon viselkedését követi, az oracle által ellenőrzötteket, az
-erőforrás-igényt és a méréseket a [docs/VALIDATION.md](docs/VALIDATION.md) írja le (angolul).
+Az eredmények egyezését a Saxonnal futtatott hivatalos CEN XSLT-vel 1892 dokumentumból álló
+korpuszon ellenőriztük (34 CEN mintaszámla, 1169 CEN egységteszt-dokumentum, 680 gépileg
+módosított (mutált) változat, 6 modellből írt számla és 3 célzottan összeállított dokumentum).
+Ez tesztkorpusz, nem bizonyítás minden lehetséges bemenetre. Az 1757 dokumentumon, amelyről a
+Saxon eredményt ad, ugyanazok a szabályazonosítók és súlyossági szintek jönnek ki; azon a 135
+mutált változaton, amelyen a Saxon dinamikus hibával leáll, csak az XPath-hibakódot hasonlítjuk
+össze, a megállapításokat nem.
+
+Egy átlagos számla ellenőrzése 7–50 ms, egy 1000 tételes számláé körülbelül 1,7 s (egyszeri mérés
+a fejlesztői gépen: Apple M1, PHP 8.5). Egyes szabályok ismétlődő elemeknél a lineárisnál
+gyorsabban lassulnak (az UBL-SR-47 a fizetési mód kódok számában négyzetes), ezért kívülről
+érkező, megbízhatatlan fájloknál korlátozd a bemenet méretét és az ellenőrzés idejét. A
+támogatott XPath-részhalmazt, azokat az eseteket, ahol a motor a Saxon viselkedését követi, az
+oracle által ellenőrzötteket, az erőforrás-igényt és a méréseket a
+[docs/VALIDATION.md](docs/VALIDATION.md) írja le (angolul).
 
 A lefordított szabályok a CEN-csomag származékos művei, ezért **EUPL-1.2** licencűek. Külön
 csomagban vannak (`intragile/einvoicing-rules-en16931`, ebben a tárolóban a
 `packages/rules-en16931` mappa), amelyet ez a csomag függőségként behúz; maga a motor MIT licencű
 marad. Egyik csomag sincs még publikálva.
+
+## Peppol BIS 3
+
+A `Validator::peppol($dir)` a Peppol BIS Billing 3.0.22 szabályai szerint ellenőriz: az
+OpenPeppol saját CEN-szabálymásolata (CEN 1.3.16) és a Peppol-szabályok futnak le, UBL-re és
+CII-re. Az OpenPeppol licenc nélkül teszi közzé a szabályfájljait, ezért ez a csomag semmilyen
+Peppolból származó fájlt nem terjeszt. Egyetlen parancs letölti a hivatalos fájlokat egy rögzített
+kiadásból, ellenőrzi az SHA-256 ellenőrzőösszegüket, és a saját gépeden lefordítja őket;
+hálózat nélküli szerveren a `--from=DIR` egy helyi másolatból fordít.
+
+```bash
+vendor/bin/einvoicing-rules install peppol --dir=var/peppol-rules
+```
+
+```php
+$report = Validator::peppol(__DIR__.'/var/peppol-rules')->validate($xml);
+```
+
+Az eredmények egyezését a Saxonnal futtatott OpenPeppol Schematronnal 1611 dokumentumból álló
+korpuszon ellenőriztük, eltérés nélkül; ahol a Saxon leáll (101 dokumentum), ott csak a
+hibakódot hasonlítjuk össze. A számla formátumát hálózat nélkül ellenőriztük; a Peppol-átvitelt
+és a boríték (SBDH) szabályait a csomag még nem fedi le. Telepítés, üzemeltetés, az ellenőrzés
+részletei és mérések: [docs/PEPPOL.md](docs/PEPPOL.md) (angolul).
 
 ## Biztonság: rosszindulatú XML
 
@@ -184,9 +215,11 @@ entitás-kibontásos támadás (billion laughs) így nem lehetséges. Sérülék
   dokumentumoknak át kell menniük a hivatalos szabályokon, magát az ellenőrzőt pedig az
   ellenőrzi, hogy szándékosan elrontott végösszegre szabályt vált ki (BR-CO-16), a validátor
   eredményének pedig a megfelelőségi korpusz minden dokumentumán meg kell egyeznie az oracle-éval
-  ([részletek](docs/VALIDATION.md#how-verdict-equality-is-checked), angolul). A
-  `docker/oracle/run.sh 8.5` felépíti a képet és lefuttatja a csoportot; Docker és telepített
-  `vendor/` kell hozzá. Ez csak fejlesztői eszköz, nem része a telepített csomagnak.
+  ([részletek](docs/VALIDATION.md#how-verdict-equality-is-checked), angolul). Ugyanez a
+  csoport az OpenPeppol Schematront az ISO Schematron-vázzal (skeleton) a Saxonban lefordítja, és
+  ellenőrzi a Peppol-eredményeket ([részletek](docs/PEPPOL.md#how-the-verdicts-are-verified),
+  angolul). A `docker/oracle/run.sh 8.5` felépíti a képet és lefuttatja a csoportot; Docker és
+  telepített `vendor/` kell hozzá. Ez csak fejlesztői eszköz, nem része a telepített csomagnak.
 - A CI PHPUnitot és PHPStant (max szint) futtat PHP 8.3, 8.4 és 8.5 alatt, továbbá Pintet, az
   oracle-csoportot, és ellenőrzi, hogy a lefordított szabályok egyeznek a hivatalos Schematronnal.
 
@@ -205,11 +238,13 @@ composer compile-rules           # újrafordítja a szabályokat a hivatalos Sch
 
 A könyvtár MIT licencű ([LICENSE](LICENSE)). A tesztekben használt CEN validációs csomag
 EUPL v1.2 licenc alatt áll, nem része a telepített csomagnak, leírása:
-[tests/fixtures/official/SOURCE.md](https://github.com/intragile/php-einvoicing/blob/main/tests/fixtures/official/SOURCE.md). A `src/CodeList/`
-kódlistaértékei ebből származnak; a forrásmegjelölést lásd:
+[tests/fixtures/official/SOURCE.md](https://github.com/intragile/php-einvoicing/blob/main/tests/fixtures/official/SOURCE.md).
+A `src/CodeList/` kódlistaértékei ebből származnak; a forrásmegjelölést lásd:
 [src/CodeList/SOURCE.md](src/CodeList/SOURCE.md). A `packages/rules-en16931` mappában lévő
 lefordított validációs szabályok EUPL-1.2 licencűek; lásd:
-[packages/rules-en16931/SOURCE.md](packages/rules-en16931/SOURCE.md).
+[packages/rules-en16931/SOURCE.md](packages/rules-en16931/SOURCE.md). A Peppol BIS szabályait a
+csomag nem terjeszti: szerzői joguk az OpenPeppol AISBL-é, ezért a saját gépeden töltődnek le és
+fordulnak le ([miért](docs/PEPPOL.md#why-the-rules-are-compiled-on-your-machine), angolul).
 
 ---
 

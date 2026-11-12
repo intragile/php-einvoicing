@@ -3,9 +3,9 @@
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
 **A framework-agnostic EN 16931 e-invoicing core for PHP.** An invoice model built on exact
-decimals, EN 16931 totals calculation, and reading and writing of the two syntaxes the standard
-binds to: UBL 2.1 and UN/CEFACT CII, and validation against the official CEN EN 16931 rules.
-No Java is needed at runtime.
+decimals, EN 16931 totals calculation, reading and writing of the two syntaxes the standard binds
+to (UBL 2.1 and UN/CEFACT CII), and validation against the official CEN EN 16931 rules and the
+Peppol BIS Billing 3 rules. No Java is needed at runtime.
 
 [Magyar nyelvű leírás → README.hu.md](README.hu.md)
 
@@ -23,9 +23,13 @@ Included today:
 - A pure-PHP validator that runs the official CEN EN 16931 Schematron rules (1.3.17) for UBL and
   CII, with verdicts checked equal to the official XSLT on a corpus of 1,892 documents
   ([how it works](docs/VALIDATION.md)).
+- Validation against the Peppol BIS Billing 3.0.22 rules, compiled on your machine from the
+  official OpenPeppol files, with verdicts checked equal to Saxon on a corpus of 1,611 documents
+  ([Peppol BIS 3](docs/PEPPOL.md)).
 
-Not included yet, planned for later releases: the Peppol BIS 3 rules and Peppol transport, the
-XRechnung and ZUGFeRD/Factur-X profiles, and a Laravel package.
+Not included yet, planned for later releases: Peppol transport (access point, SMP and Directory
+lookup) and the Peppol envelope (SBDH) rules, the XRechnung and ZUGFeRD/Factur-X profiles, and a
+Laravel package.
 
 ## Install
 
@@ -83,9 +87,9 @@ $cii = (new CiiWriter)->write($invoice); // UN/CEFACT CII XML string
 `TotalsCalculator::complete()` fills line net amounts and VAT breakdown entries you left empty
 and keeps the ones you set. It always recomputes the document totals, so they agree with the
 lines. A prepaid amount (BT-113) and a rounding amount (BT-114) go in as arguments, for example
-`TotalsCalculator::complete($invoice, paidAmount: '500.00')`. VAT
-exemption reasons (BT-120/BT-121) for categories such as E, AE, K or O, and the VAT total in
-accounting currency (BT-111), are yours to supply. `TotalsCalculator::check()` returns the ids
+`TotalsCalculator::complete($invoice, paidAmount: '500.00')`. VAT exemption reasons
+(BT-120/BT-121) for categories such as E, AE, K or O, and the VAT total in accounting currency
+(BT-111), are yours to supply. `TotalsCalculator::check()` returns the ids
 of the BR-CO calculation rules an invoice violates. Writers refuse an invoice without totals.
 
 ## Read a received invoice
@@ -134,29 +138,52 @@ An invoice built with the model is written and validated in one call:
 The validator runs the official CEN EN 16931 rules (validation artefacts 1.3.17: 982 asserts for
 UBL, 810 for CII), compiled from the official Schematron into PHP; no Java, no XSLT processor.
 `isValid()` is true when no fatal rule failed; warnings (`warnings()`) and information findings
-(`information()`) do not make an invoice invalid, and `$report->ruleSets` names the rule sets that
-ran (`en16931-ubl 1.3.17`). A value the rules cannot evaluate, such as `abc` as an amount, does not
-stop the run: it is reported in `$report->dynamicErrors` with its XPath error code (`FORG0001`), the other
-rules are still checked, and the invoice is not valid. A document that is not an invoice of a
-supported syntax throws `UnsupportedDocument`, and a DOCTYPE throws `UnsafeXml`; neither is ever
-reported as valid.
+(`information()`) do not make an invoice invalid, and `$report->ruleSets` names the rule sets
+that ran (`en16931-ubl 1.3.17`). A value the rules cannot evaluate, such as `abc` as an amount,
+does not stop the run: it is reported in `$report->dynamicErrors` with its XPath error code
+(`FORG0001`), the other rules are still checked, and the invoice is not valid. A document that is
+not an invoice of a supported syntax throws `UnsupportedDocument`, and a DOCTYPE throws
+`UnsafeXml`; neither is ever reported as valid.
 
 Verdicts are checked equal to the official CEN XSLT run by Saxon on a corpus of 1,892 documents
 (the 34 CEN example invoices, 1,169 CEN unit-test documents, 680 seeded mutations, 6 model
-invoices and 3 crafted documents). On the 1,757 documents Saxon reports on, the rule ids and flags
-are exactly the same; on the 135 mutations where Saxon aborts with a dynamic error, only the XPath
-error code is compared. A typical
-invoice validates in 7–50 ms, a 1,000-line invoice in about 1.7 s (single measurement on the
-development machine, an Apple M1 with PHP 8.5). Some rules grow faster than linearly with
-repeated elements (UBL-SR-47 is quadratic in the number of payment means codes), so set input-size
-and time limits for untrusted inbound files. [docs/VALIDATION.md](docs/VALIDATION.md) describes
-the supported XPath, the cases where the engine mirrors Saxon, what the oracle checks, resource use
-and the measurements.
+invoices and 3 crafted documents). This is a test corpus, not a proof for every input. On the
+1,757 documents Saxon reports on, the rule ids and flags are the same; on the 135 mutations where
+Saxon aborts with a dynamic error, only the XPath error code is compared, not the findings.
+
+A typical invoice validates in 7–50 ms and a 1,000-line invoice in about 1.7 s (single dev-box
+measurement: Apple M1, PHP 8.5). Some rules grow faster than linearly with repeated elements
+(UBL-SR-47 is quadratic in the number of payment means codes), so set input-size and time limits
+for untrusted inbound files. [docs/VALIDATION.md](docs/VALIDATION.md) describes the supported
+XPath, the cases where the engine mirrors Saxon, what the oracle checks, resource use and the
+measurements.
 
 The compiled rules are a derivative of the CEN artefacts and are licensed under the **EUPL-1.2**.
 They are in a separate package, `intragile/einvoicing-rules-en16931` (`packages/rules-en16931`
 in this repository), which this package requires; the engine itself stays MIT. Neither package is
 published yet.
+
+## Peppol BIS 3
+
+`Validator::peppol($dir)` validates against Peppol BIS Billing 3.0.22: OpenPeppol's copy of the
+CEN rules (CEN 1.3.16) and the Peppol rules, for UBL and CII. OpenPeppol publishes its rule files
+without a licence, so this package ships no Peppol-derived file. One command downloads the
+official files at a pinned tag, verifies their SHA-256 checksums and compiles them on your
+machine; `--from=DIR` compiles from a local copy on an offline server.
+
+```bash
+vendor/bin/einvoicing-rules install peppol --dir=var/peppol-rules
+```
+
+```php
+$report = Validator::peppol(__DIR__.'/var/peppol-rules')->validate($xml);
+```
+
+Verdicts are checked equal to the OpenPeppol Schematron run by Saxon on a corpus of 1,611
+documents, with no mismatch; where Saxon aborts (101 documents), only the error code is compared.
+The invoice format is verified offline; Peppol transport and the envelope (SBDH) rules are not
+covered yet. Install, deployment, verification details and timings:
+[docs/PEPPOL.md](docs/PEPPOL.md).
 
 ## Security: hostile XML
 
@@ -176,6 +203,8 @@ possible. To report a vulnerability, see [SECURITY.md](SECURITY.md).
   rules, the oracle itself is checked to fire a rule on a deliberately broken total (BR-CO-16), and
   the validator's verdict must equal the oracle's on every document of the conformance corpus
   ([details](docs/VALIDATION.md#how-verdict-equality-is-checked)).
+  The same group compiles the OpenPeppol Schematron with the ISO Schematron skeleton in Saxon
+  and checks the Peppol verdicts ([details](docs/PEPPOL.md#how-the-verdicts-are-verified)).
   `docker/oracle/run.sh 8.5` builds the image and runs the group; it needs Docker and `vendor/`
   installed. This is development tooling only and is not part of the installed package.
 - CI runs PHPUnit and PHPStan (level max) on PHP 8.3, 8.4 and 8.5, plus Pint, the oracle and a
@@ -196,11 +225,13 @@ composer compile-rules           # recompiles the rules from the official Schema
 
 The library is MIT licensed ([LICENSE](LICENSE)). The CEN validation artefacts used in tests
 are licensed under the EUPL v1.2, are not part of the installed package, and are described in
-[tests/fixtures/official/SOURCE.md](https://github.com/intragile/php-einvoicing/blob/main/tests/fixtures/official/SOURCE.md). The code-list values in
-`src/CodeList/` are derived from those artefacts; see
+[tests/fixtures/official/SOURCE.md](https://github.com/intragile/php-einvoicing/blob/main/tests/fixtures/official/SOURCE.md).
+The code-list values in `src/CodeList/` are derived from those artefacts; see
 [src/CodeList/SOURCE.md](src/CodeList/SOURCE.md) for the attribution. The compiled validation
 rules in `packages/rules-en16931` are licensed under the EUPL-1.2; see
-[packages/rules-en16931/SOURCE.md](packages/rules-en16931/SOURCE.md).
+[packages/rules-en16931/SOURCE.md](packages/rules-en16931/SOURCE.md). The Peppol BIS rules are
+not distributed: OpenPeppol AISBL holds their copyright, and they are downloaded and compiled on
+your machine ([why](docs/PEPPOL.md#why-the-rules-are-compiled-on-your-machine)).
 
 ---
 

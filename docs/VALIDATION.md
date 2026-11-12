@@ -5,7 +5,8 @@ Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 This page explains how `IntrAgile\EInvoicing\Validation\Validator` checks an invoice against the
 official CEN EN 16931 business rules: what it runs, which XPath it understands, where it follows
 Saxon's behaviour, how its verdicts are checked against the official validator, and how fast it
-is.
+is. The same engine runs the Peppol BIS Billing 3 rules; installing and using them is described
+in [PEPPOL.md](PEPPOL.md).
 
 ## How it works
 
@@ -31,18 +32,31 @@ which in practice means Java (Saxon). This library runs the same rules in plain 
    returns a `ValidationReport`: the rule sets that ran (`ruleSets`, as `"<id> <version>"`), the
    failed asserts (`findings`, each an `IntrAgile\EInvoicing\Validation\Finding`: rule id,
    `Severity`, location, message, test; filtered by `fatal()`, `warnings()` and `information()`)
-   and the asserts that could not be evaluated (`dynamicErrors`, each a `DynamicError`). The
+   and the asserts that could not be evaluated (`dynamicErrors`, each a `DynamicError`).
+   `verdict()` gives the sorted distinct `"<rule id> <flag>"` strings the oracle compares. The
    classes under `IntrAgile\EInvoicing\Schematron` and `IntrAgile\EInvoicing\XPath` are
-   internal; only their exceptions (`UnsupportedSchematron`, `UnsupportedXPath`,
-   `XPathSyntaxError`) are meant to be caught.
+   internal, apart from `RuleSet` (it is passed to the `Validator` constructor) and the
+   exceptions (`UnsupportedSchematron`, `UnsupportedXPath`, `XPathSyntaxError`), which are meant
+   to be caught. The Peppol installer adds `RulesNotInstalled` and `RuleSourceMismatch` in
+   `IntrAgile\EInvoicing\Validation\Exception`.
 
 | Rule set | Patterns | Rules | Asserts | Fatal | Warning |
 |---|---|---|---|---|---|
 | `en16931-ubl` 1.3.17 | 3 | 104 | 982 | 284 | 698 |
 | `en16931-cii` 1.3.17 | 3 | 115 | 810 | 339 | 471 |
+| `peppol-cen-ubl` 3.0.22 (OpenPeppol's copy of CEN 1.3.16) | 3 | 104 | 979 | 281 | 698 |
+| `peppol-ubl` 3.0.22 | 13 | 99 | 165 | 139 | 26 |
+| `peppol-cen-cii` 3.0.22 (OpenPeppol's copy of CEN 1.3.16) | 3 | 113 | 806 | 335 | 471 |
+| `peppol-cii` 3.0.22 | 7 | 63 | 91 | 74 | 17 |
 
-`isValid()` is true only when no fatal assert failed and no assert raised a dynamic error.
-Warnings do not make an invoice invalid.
+`Validator::en16931()` runs one rule set per syntax. `Validator::peppol($rulesDir)` runs two per
+syntax, the CEN layer first, and the report concatenates their `ruleSets`, findings and dynamic
+errors in that order; `UnsupportedDocument` depends only on the first rule set. The constructor
+takes, per syntax, one `IntrAgile\EInvoicing\Schematron\RuleSet` or a list of them; a compiled rule
+file (as `composer compile-rules` or `einvoicing-rules install` writes it) is loaded with
+`RuleSet::fromFile($path)`, which caches each file per path for the life of the process. `isValid()`
+is true only when no fatal assert failed and no assert raised a dynamic error. Warnings do not make
+an invoice invalid.
 
 A document the rule set does not cover is refused, never reported as valid: an unknown document
 element (`<Order>`, or anything other than the three invoice roots) or a document element that no
@@ -51,9 +65,10 @@ not well-formed XML.
 
 ## Supported XPath
 
-The engine implements the XPath 2.0 subset the CEN rule sets use (measured on 1.3.17), and fails
-loudly on anything else: the compiler throws `UnsupportedSchematron` naming the assert, so a new
-rule set that needs more cannot be compiled into silently wrong rules.
+The engine implements the XPath 2.0 subset the CEN rule sets (measured on 1.3.17) and the Peppol BIS
+Billing 3.0.22 rule sets use, and fails loudly on anything else: the compiler throws
+`UnsupportedSchematron` naming the assert, so a new rule set that needs more cannot be compiled into
+silently wrong rules.
 
 | Area | Supported |
 |---|---|
@@ -66,10 +81,10 @@ rule set that needs more cannot be compiled into silently wrong rules.
 | Regular expressions | XML Schema syntax with anchors, back-references and reluctant quantifiers; flags `i s m x` (the XPath 3.0 flag `q` is reported as unsupported); `\w`, `\s`, `\d` and categories with XML Schema meaning |
 
 Rejected with `UnsupportedXPath` (in the compiler: `UnsupportedSchematron`): the XPath 3.0 `let`
-expression, `typeswitch`, `instance of`, `treat as`, `intersect`, `except`, `is`, `<<`, `>>`, unary `+`,
-casts to other types, other axes, `*:local`, other kind tests, unknown functions or arities, unknown
-prefixes, and in regular expressions `\i`, `\c`, `\I`, `\C`, `\p{IsBlock}` and character class
-subtraction. Schematron `report`, `value-of`, processing instructions, abstract rules and
+expression, `typeswitch`, `instance of`, `treat as`, `intersect`, `except`, `is`, `<<`, `>>`, unary
+`+`, casts to other types, other axes, `*:local`, other kind tests, unknown functions or arities,
+unknown prefixes, and in regular expressions `\i`, `\c`, `\I`, `\C`, `\p{IsBlock}` and character
+class subtraction. Schematron `report`, `value-of`, processing instructions, abstract rules and
 abstract patterns are rejected by the compiler as well, and so is any attribute the CEN and Peppol
 schemas do not use (such as `pattern/@documents`, `rule/@role` or `assert/@diagnostics`): the error
 names the element, the attribute and the line.
@@ -172,14 +187,31 @@ A received file can contain values that make an assert impossible to evaluate: `
 an amount, an empty amount, `2026-13-01` as a date, a singleton element given twice. Saxon then
 aborts the whole run with an error code and produces no report. The engine does not abort:
 
-- the assert is recorded in `dynamicErrors` as a `DynamicError` with the error code (`FORG0001`, `XPTY0004`, …), the
-  rule id and the location of the context node;
+- the assert is recorded in `dynamicErrors` as a `DynamicError` with the error code
+  (`FORG0001`, `XPTY0004`, …), the rule id and the location of the context node;
 - every other assert and rule is still evaluated, so the report also lists the other findings;
 - `isValid()` is false.
 
 So the engine never crashes on such input and never calls it valid. On a document that makes Saxon
 abort, the report carries the same error code as Saxon, plus the findings of the rules that could
 still be evaluated.
+
+## Engine limits
+
+Three guards stop input or a corrupt rule file from exhausting memory or recursing forever. Each
+is a non-recoverable error: in an assert it becomes a `DynamicError` of that assert, in a rule
+context one `DynamicError` for the rule (no rule id, location `/`), and the invoice is not valid.
+
+| Limit | Error code |
+|---|---|
+| A range `a to b` of more than 100,000 items | `INTRAGILE_RANGE` |
+| More than 2,000 nested user-function calls | `INTRAGILE_RECURSION` |
+| A variable (let or local `xsl:variable`) that depends on itself | `XTDE0640` |
+
+`INTRAGILE_*` codes are the engine's own; Saxon has no such limit (it evaluates ranges lazily),
+so on input that reaches one the engine reports an error where Saxon would answer. No measured
+CEN or Peppol rule comes near them: the deepest Peppol recursion is about a dozen calls, and the
+test suite validates a Peppol invoice with a 50,000-digit identifier in under 2 seconds.
 
 ## How verdict equality is checked
 
@@ -203,8 +235,11 @@ The corpus (CEN 1.3.17):
 That is 1,892 documents on which the verdicts are checked equal; this is a test corpus, not a
 proof for every possible input. Of the 680 mutations, Saxon aborts on 135 (102 `FORG0001`, 32
 `XPTY0004`, 1 `FORG0006`); on those only the XPath error code is compared, not the findings. On
-PHP 8.3, 8.4 and 8.5 the whole oracle group, including 245 single expression probes and the
-wrapper guard below, is 4,071 tests; any mismatch fails the build.
+PHP 8.3, 8.4 and 8.5 the whole oracle group, including the single expression probes, the
+wrapper guard below and the Peppol corpus ([PEPPOL.md](PEPPOL.md#how-the-verdicts-are-verified):
+1,611 documents compared with the OpenPeppol Schematron compiled by the ISO skeleton in Saxon,
+plus a guard that the skeleton-compiled CEN 1.3.17 Schematron equals the official CEN 1.3.17
+XSLT on 34 examples and 200 mutations), is 6,202 tests; any mismatch fails the build.
 
 The SaxonC PHP extension gives no error code for a dynamic error and cannot run another
 transformation after one. The oracle therefore wraps the official stylesheet in a test-only XSLT
@@ -267,8 +302,8 @@ Large invoices (UBL, generated lines, same machine):
 For these invoices time grows roughly linearly with the number of lines (ten times the lines took
 11.7 times as long; see [Resource use](#resource-use) for a rule that does not scale this way); the
 test suite asserts that 1,000 lines take less than 15 times as long as 100 lines and less than
-5 seconds. These are single measurements on one
-machine, not a guarantee.
+5 seconds. These are single measurements on one machine, not a guarantee. Peppol timings are in
+[PEPPOL.md](PEPPOL.md#performance).
 
 ## Resource use
 

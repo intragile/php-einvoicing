@@ -38,6 +38,29 @@ All notable changes to this project are documented here. The format follows
   mutations), only the XPath error code is compared.
 - `docs/VALIDATION.md`: how validation works, the supported XPath, what the oracle checks,
   resource use and measured timings.
+- `Validator::peppol($rulesDir)`: validation against Peppol BIS Billing 3.0.22, running
+  OpenPeppol's copy of the CEN rules (CEN 1.3.16) and then the Peppol rules for UBL and CII. The
+  `Validator` constructor accepts a list of rule sets per syntax, and `RuleSet::fromFile()` loads
+  custom compiled rule sets.
+- `vendor/bin/einvoicing-rules install peppol --dir=DIR [--from=DIR]` downloads the four official
+  OpenPeppol Schematron files at the pinned tag 3.0.22 (or reads them from a local folder),
+  verifies their SHA-256 checksums and compiles them on the user's machine; `check peppol
+  --dir=DIR` tells whether the compiled rules load. No Peppol-derived file is distributed.
+  New exceptions `RulesNotInstalled` and `RuleSourceMismatch`.
+- XPath engine: `if`, `for`, `some`, ranges, `castable as`, `idiv`, `mod`, the
+  `following-sibling` and `preceding-sibling` axes and the string, number and sequence functions
+  the Peppol rules use; Schematron `let` variables (lazy) and XSLT 2.0 functions
+  (`xsl:function` with `param`, `variable`, `sequence` and `choose`, recursion included); the
+  engine limits `INTRAGILE_RANGE` (ranges over 100,000 items), `INTRAGILE_RECURSION` (over
+  2,000 nested calls) and `XTDE0640` (circular variable).
+- Peppol conformance tests: verdicts checked equal to the OpenPeppol Schematron compiled with the
+  ISO Schematron skeleton and run by SaxonC on a corpus of 1,611 documents (CEN examples, Peppol
+  examples and unit tests, seeded mutations and model invoices); where Saxon aborts (101
+  documents), only the error code is compared. A guard checks that the skeleton-compiled CEN
+  1.3.17 Schematron gives the official CEN XSLT's verdicts.
+- `docs/PEPPOL.md`: what Peppol validation checks, why the rules are compiled locally, install
+  and deployment, verification and timings, and what is not covered yet (SBDH envelope rules,
+  Peppol transport).
 
 ### Changed
 
