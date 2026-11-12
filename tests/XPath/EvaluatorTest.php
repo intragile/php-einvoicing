@@ -242,9 +242,11 @@ final class EvaluatorTest extends TestCase
 
     public function test_huge_range_is_a_non_recoverable_error(): void
     {
+        self::assertSame('(xs:integer:100000)', $this->canonical('count(1 to 100000)'));
+
         try {
-            // 10,000,001 items: refused before any item is created.
-            $this->canonical('count(0 to 10000000)');
+            // 100,001 items: refused before any item is created.
+            $this->canonical('count(0 to 100000)');
             self::fail('Expected INTRAGILE_RANGE.');
         } catch (XPathError $error) {
             self::assertSame('INTRAGILE_RANGE', $error->errorCode);

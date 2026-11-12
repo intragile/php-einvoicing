@@ -32,7 +32,7 @@ final class Evaluator
     private const REVERSE_AXES = ['ancestor', 'ancestor-or-self', 'parent', 'preceding', 'preceding-sibling'];
 
     /** The longest sequence a range expression may produce; a longer one would exhaust memory. */
-    private const MAX_RANGE = 10_000_000;
+    private const MAX_RANGE = 100_000;
 
     /** Function calls whose result is always a boolean, so a predicate using them is never positional. */
     private const BOOLEAN_FUNCTIONS = ['fn:boolean', 'fn:contains', 'fn:empty', 'fn:ends-with', 'fn:exists', 'fn:false', 'fn:matches', 'fn:not', 'fn:true'];

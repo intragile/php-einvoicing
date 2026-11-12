@@ -115,8 +115,8 @@ probe expressions evaluated by both (`tests/XPath/ProbeCases.php`):
   value is truncated, a decimal lexical form is not an integer).
 - **Ranges.** `a to b` takes at most one `xs:integer` per operand (an untyped value is cast,
   `1.5 to 3` is `XPTY0004`); an empty operand or `a > b` gives `()`. A range of more than
-  10,000,000 items raises the engine error `INTRAGILE_RANGE` instead of exhausting memory (Saxon
-  evaluates ranges lazily).
+  100,000 items raises the engine error `INTRAGILE_RANGE` before any item is built, instead of
+  exhausting memory (Saxon evaluates ranges lazily; the engine builds them as a list).
 - **`if` and `for`.** Only the branch chosen by the condition is evaluated, so an error in the
   other branch never surfaces; `for` returns its results in iteration order, without sorting nodes.
 - **Dates.** A date without timezone is compared as UTC (the implicit timezone of the oracle).

@@ -296,6 +296,14 @@ final class ParserTest extends TestCase
         self::assertSame([Op::PATH, self::child('then'), self::child('else')], self::parse('then/else'));
     }
 
+    public function test_new_keywords_are_element_names_in_operand_position(): void
+    {
+        self::assertSame([Op::PATH, self::child('x'), self::child('to')], self::parse('x/to'));
+        self::assertSame(self::child('castable', self::CBC), self::parse('cbc:castable'));
+        self::assertSame([Op::PATH, self::child('for'), self::child('x')], self::parse('for/x'));
+        self::assertSame([Op::RANGE, self::child('to'), self::child('to')], self::parse('to to to'));
+    }
+
     public function test_for_expression(): void
     {
         self::assertSame(
