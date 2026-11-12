@@ -367,6 +367,24 @@ final class AtomicTest extends TestCase
         self::assertSame('1', $untyped->lexical());
     }
 
+    public function test_integer_arithmetic_is_exact_at_the_native_boundary(): void
+    {
+        $nine = self::int('999999999');
+        $ten = self::int('1000000000');
+
+        self::assertSame('999999998000000001', Atomic::arithmetic('*', $nine, $nine)->lexical());
+        self::assertSame('-999999998000000001', Atomic::arithmetic('*', self::int('-999999999'), $nine)->lexical());
+        self::assertSame('1000000000000000000', Atomic::arithmetic('*', $ten, $ten)->lexical());
+        self::assertSame('99999999980000000001', Atomic::arithmetic('*', self::int('9999999999'), self::int('9999999999'))->lexical());
+        self::assertSame('-1999999998', Atomic::arithmetic('-', self::int('-999999999'), $nine)->lexical());
+        self::assertSame('1999999999', Atomic::arithmetic('+', $ten, $nine)->lexical());
+        self::assertSame('1', Atomic::arithmetic('mod', $ten, $nine)->lexical());
+        $shared = Atomic::arithmetic('+', self::int('1'), self::int('2'));
+        self::assertInstanceOf(IntegerValue::class, $shared);
+        self::assertSame('3', $shared->lexical());
+        self::assertSame(0, $shared->value->getScale());
+    }
+
     public function test_mod_by_zero(): void
     {
         self::assertXPathError('FOAR0001', static fn () => Atomic::arithmetic('mod', self::int('5'), self::int('0')));

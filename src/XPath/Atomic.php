@@ -31,6 +31,15 @@ final class Atomic
      */
     private const DIVIDE_PRECISION = 18;
 
+    /** Operands of at most this many digits multiply within a 64-bit int (9 + 9 < 19). */
+    private const SMALL_INTEGER_DIGITS = 9;
+
+    /** Results below this are shared instances: digits, weights and remainders recur constantly. */
+    private const SHARED_INTEGERS = 1024;
+
+    /** @var array<int, IntegerValue> immutable values, see SHARED_INTEGERS */
+    private static array $sharedIntegers = [];
+
     /**
      * Longest integral lexical form (without a leading "+") that Saxon casts to xs:decimal as an xs:integer.
      */
@@ -158,6 +167,13 @@ final class Atomic
             throw new XPathError('XPTY0004', "Arithmetic operator {$op} is not defined for {$left->type()} and {$right->type()}.");
         }
 
+        if ($left instanceof IntegerValue && $right instanceof IntegerValue && in_array($op, ['+', '-', '*', 'mod'], true)) {
+            $small = self::smallIntegerArithmetic($op, (string) $left->value, (string) $right->value);
+            if ($small !== null) {
+                return $small;
+            }
+        }
+
         if ($left instanceof DoubleValue || $right instanceof DoubleValue) {
             $l = self::toDouble($left);
             $r = self::toDouble($right);
@@ -203,6 +219,39 @@ final class Atomic
         return $left instanceof IntegerValue && $right instanceof IntegerValue
             ? new IntegerValue($result)
             : new DecimalValue($result);
+    }
+
+    /**
+     * Integer arithmetic on native ints when both operands have at most SMALL_INTEGER_DIGITS
+     * digits, so no result can overflow; null when an operand is larger. The result is the same
+     * as with BigDecimal, which is several times slower on the loops of check-digit rules.
+     *
+     * @param  numeric-string  $left
+     * @param  numeric-string  $right
+     */
+    private static function smallIntegerArithmetic(string $op, string $left, string $right): ?IntegerValue
+    {
+        if (strlen(ltrim($left, '-')) > self::SMALL_INTEGER_DIGITS || strlen(ltrim($right, '-')) > self::SMALL_INTEGER_DIGITS) {
+            return null;
+        }
+        $l = (int) $left;
+        $r = (int) $right;
+        if ($op === 'mod' && $r === 0) {
+            throw new XPathError('FOAR0001', 'Division by zero.');
+        }
+
+        $result = match ($op) {
+            '+' => $l + $r,
+            '-' => $l - $r,
+            '*' => $l * $r,
+            // PHP's % keeps the sign of the dividend, as op:numeric-mod requires.
+            default => $l % $r,
+        };
+        if ($result >= 0 && $result < self::SHARED_INTEGERS) {
+            return self::$sharedIntegers[$result] ??= new IntegerValue(BigDecimal::of($result));
+        }
+
+        return new IntegerValue(BigDecimal::of($result));
     }
 
     /**

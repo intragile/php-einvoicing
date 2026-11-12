@@ -115,6 +115,45 @@ final class EvaluatorTest extends TestCase
         self::assertSame('(node:/Invoice[1]/cac:InvoiceLine[1])', $this->canonical('(//cbc:ID/..)[2]'));
     }
 
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function focusFreePredicates(): array
+    {
+        return [
+            'integer variable' => ['for $i in 2 return (10, 20, 30)[$i]', '(xs:integer:20)'],
+            'arithmetic' => ['for $i in 1 return (10, 20, 30)[$i + 2]', '(xs:integer:30)'],
+            'negated' => ['for $i in -3 return (10, 20, 30)[-$i]', '(xs:integer:30)'],
+            'zero' => ['for $i in 0 return (10, 20, 30)[$i]', '()'],
+            'past the end' => ['for $i in 4 return (10, 20, 30)[$i]', '()'],
+            'integral decimal' => ['for $i in 2.0 return (10, 20, 30)[$i]', '(xs:integer:20)'],
+            'fractional decimal' => ['for $i in 1.5 return (10, 20, 30)[$i]', '()'],
+            'integral double' => ['for $i in 3e0 return (10, 20, 30)[$i]', '(xs:integer:30)'],
+            'fractional double' => ['for $i in 2.5e0 return (10, 20, 30)[$i]', '()'],
+            'string keeps all' => ["for \$s in 'x' return (10, 20)[\$s]", '(xs:integer:10, xs:integer:20)'],
+            'empty string keeps none' => ["for \$s in '' return (10, 20)[\$s]", '()'],
+            'nodes' => ['for $i in 2 return /*/cac:InvoiceLine[$i]', '(node:/Invoice[1]/cac:InvoiceLine[2])'],
+            'filter of nodes' => ['for $i in 1 return (//cbc:ID/..)[$i + 1]', '(node:/Invoice[1]/cac:InvoiceLine[1])'],
+        ];
+    }
+
+    #[DataProvider('focusFreePredicates')]
+    public function test_focus_free_predicates_select_like_positional_ones(string $expression, string $expected): void
+    {
+        self::assertSame($expected, $this->canonical($expression));
+    }
+
+    public function test_indexing_a_long_sequence_in_a_loop_is_linear(): void
+    {
+        $sequence = $this->evaluator->evaluate($this->parse('1 to 20000'), $this->document);
+
+        $start = hrtime(true);
+        $result = $this->evaluator->evaluate($this->parse('count(for $i in 1 to 20000 return $s[$i])', ['s']), $this->document, ['s' => $sequence]);
+
+        self::assertSame('(xs:integer:20000)', Canonical::of($result, ProbeCases::NAMESPACES));
+        self::assertLessThan(5.0, (hrtime(true) - $start) / 1e9);
+    }
+
     public function test_effective_boolean_value_of_two_atomic_values_is_forg0006(): void
     {
         try {

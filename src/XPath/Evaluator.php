@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\XPath;
 
 use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use DOMAttr;
 use DOMDocument;
 use DOMDocumentType;
@@ -715,6 +716,11 @@ final class Evaluator
 
                 continue;
             }
+            if ($items !== [] && ! $this->matchingPattern && self::isFocusFree($predicate)) {
+                $items = $this->applyFocusFreePredicate($items, $predicate, $variables);
+
+                continue;
+            }
 
             $outerSize = $this->size;
             $this->size = count($items);
@@ -732,6 +738,60 @@ final class Evaluator
         }
 
         return $items;
+    }
+
+    /**
+     * A predicate that does not depend on the focus has the same value for every item, so it is
+     * evaluated once: a number selects the item at that position directly, anything else keeps
+     * all items or none. This keeps "$sequence[$i]" inside a loop linear instead of quadratic.
+     *
+     * @param  non-empty-list<DOMNode|AtomicValue>  $items
+     * @param  array<mixed>  $predicate
+     * @param  array<string, list<DOMNode|AtomicValue>|Thunk>  $variables
+     * @return list<DOMNode|AtomicValue>
+     */
+    private function applyFocusFreePredicate(array $items, array $predicate, array $variables): array
+    {
+        $value = $this->eval($predicate, $items[0], $variables);
+        $number = count($value) === 1 ? $value[0] : null;
+        if (! $number instanceof IntegerValue && ! $number instanceof DecimalValue && ! $number instanceof DoubleValue) {
+            return Functions::boolean($value) ? $items : [];
+        }
+
+        if ($number instanceof IntegerValue) {
+            // An xs:integer has no fraction, so a position of up to nine digits converts exactly.
+            $digits = (string) $number->value;
+            $position = strlen($digits) <= 9 ? (int) $digits : 0;
+
+            return $position >= 1 && isset($items[$position - 1]) ? [$items[$position - 1]] : [];
+        }
+        if ($number instanceof DoubleValue) {
+            $candidate = is_finite($number->value) && $number->value >= 1 && $number->value <= count($items) ? (int) floor($number->value) : null;
+        } else {
+            $candidate = $number->value->isGreaterThanOrEqualTo(1) && $number->value->isLessThanOrEqualTo(count($items))
+                ? $number->value->toScale(0, RoundingMode::DOWN)->toInt()
+                : null;
+        }
+
+        return $candidate !== null && Atomic::valueCompare('eq', $number, new IntegerValue(BigDecimal::of($candidate)))
+            ? [$items[$candidate - 1]]
+            : [];
+    }
+
+    /**
+     * Whether an expression is built only from literals, variable references and arithmetic, so
+     * its value cannot depend on the context item, position or size.
+     *
+     * @param  array<mixed>  $ast
+     */
+    private static function isFocusFree(array $ast): bool
+    {
+        return match ($ast[0] ?? null) {
+            Op::LITERAL, Op::VAR => true,
+            Op::NEG => is_array($ast[1] ?? null) && self::isFocusFree($ast[1]),
+            Op::ARITH => is_array($ast[2] ?? null) && is_array($ast[3] ?? null) && self::isFocusFree($ast[2]) && self::isFocusFree($ast[3]),
+            default => false,
+        };
     }
 
     /**
@@ -879,7 +939,12 @@ final class Evaluator
         $name = self::text($binding, 0);
         $result = [];
         foreach ($this->eval(self::sub($binding, 1), $item, $variables) as $value) {
-            array_push($result, ...$this->forLoop($bindings, $return, $item, [...$variables, $name => [$value]]));
+            $variables[$name] = [$value];
+            // The innermost binding evaluates the return expression directly: one call less per
+            // item, which matters in the long loops of check-digit functions.
+            foreach ($bindings === [] ? $this->eval($return, $item, $variables) : $this->forLoop($bindings, $return, $item, $variables) as $produced) {
+                $result[] = $produced;
+            }
         }
 
         return $result;

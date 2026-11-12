@@ -1,0 +1,97 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/*
+ * Installs rule sets that may not be redistributed, by compiling the official sources on this
+ * machine. Usage:
+ *
+ *   einvoicing-rules install peppol --dir=DIR [--from=DIR]
+ *   einvoicing-rules check peppol --dir=DIR
+ */
+
+use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
+use IntrAgile\EInvoicing\Validation\Exception\RuleSourceMismatch;
+use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
+use IntrAgile\EInvoicing\Validation\Peppol\PeppolRules;
+use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
+use IntrAgile\EInvoicing\Validation\Peppol\RuleInstaller;
+
+// Composer's bin proxy names the autoloader; otherwise look for it in this repository and in the
+// vendor folder of a project that installed this package.
+$autoload = $GLOBALS['_composer_autoload_path'] ?? null;
+foreach ([__DIR__.'/../vendor/autoload.php', __DIR__.'/../../../autoload.php'] as $candidate) {
+    if (! is_string($autoload) && is_file($candidate)) {
+        $autoload = $candidate;
+    }
+}
+if (! is_string($autoload)) {
+    fwrite(STDERR, "Cannot find the Composer autoloader; run composer install.\n");
+    exit(1);
+}
+require $autoload;
+
+$usage = <<<'TXT'
+    Usage:
+      einvoicing-rules install peppol --dir=DIR [--from=DIR]
+          Downloads the Peppol BIS Billing rules (or reads them from --from, a folder with the
+          four .sch files), verifies their checksums and compiles them into DIR.
+      einvoicing-rules check peppol --dir=DIR
+          Exits 0 when the compiled rules in DIR load with this engine, 1 otherwise.
+
+    TXT;
+
+$arguments = array_slice($argv, 1);
+$command = $arguments[0] ?? null;
+$target = $arguments[1] ?? null;
+$options = [];
+foreach (array_slice($arguments, 2) as $argument) {
+    if (preg_match('/^--(dir|from)=(.+)$/s', $argument, $match) !== 1 || isset($options[$match[1]])) {
+        $options = null;
+        break;
+    }
+    $options[$match[1]] = $match[2];
+}
+
+$allowed = ['install' => ['dir', 'from'], 'check' => ['dir']];
+if (! is_string($command) || ! isset($allowed[$command]) || $target !== 'peppol' || ! is_array($options)
+    || ! isset($options['dir']) || array_diff(array_keys($options), $allowed[$command]) !== []) {
+    fwrite(STDERR, $usage);
+    exit(1);
+}
+
+$dir = $options['dir'];
+
+if ($command === 'check') {
+    try {
+        $rules = PeppolRules::load($dir);
+    } catch (RulesNotInstalled|UnsupportedSchematron $exception) {
+        fwrite(STDERR, $exception->getMessage()."\n");
+        exit(1);
+    }
+    $names = [];
+    foreach ($rules as $ruleSets) {
+        foreach ($ruleSets as $ruleSet) {
+            $names[] = "{$ruleSet->id()} {$ruleSet->version()}";
+        }
+    }
+    echo "The Peppol BIS rules in \"{$dir}\" load: ".implode(', ', $names).".\n";
+    exit(0);
+}
+
+$from = $options['from'] ?? null;
+echo $from === null
+    ? 'Downloading the Peppol BIS Billing '.PeppolSources::VERSION.' rules from '.PeppolSources::BASE_URL."\n"
+    : 'Reading the Peppol BIS Billing '.PeppolSources::VERSION." rules from \"{$from}\"\n";
+try {
+    $written = (new RuleInstaller)->install($dir, $from);
+} catch (RuleSourceMismatch|UnsupportedSchematron|RuntimeException|InvalidArgumentException $exception) {
+    fwrite(STDERR, 'Nothing was installed: '.$exception->getMessage()."\n");
+    exit(1);
+}
+foreach ($written as $path) {
+    echo "Wrote {$path}\n";
+}
+echo "Compiled for this machine only: OpenPeppol AISBL holds the copyright of the rules, do not redistribute these files.\n";
+exit(0);

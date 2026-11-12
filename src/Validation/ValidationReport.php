@@ -7,7 +7,8 @@ namespace IntrAgile\EInvoicing\Validation;
 use IntrAgile\EInvoicing\Syntax\Syntax;
 
 /**
- * Outcome of validating one document against the rule sets of its syntax.
+ * Outcome of validating one document against the rule sets of its syntax, which run one after
+ * the other (for Peppol: OpenPeppol's copy of the CEN rules, then the Peppol rules).
  */
 final readonly class ValidationReport
 {
@@ -16,7 +17,7 @@ final readonly class ValidationReport
      * @param  list<Finding>  $findings  failed asserts, in rule set order, then pattern order, then
      *                                   document order
      * @param  list<DynamicError>  $dynamicErrors  asserts that could not be evaluated, such as a
-     *                                             non-numeric amount (FORG0001)
+     *                                             non-numeric amount (FORG0001), in rule set order
      */
     public function __construct(
         public array $ruleSets,

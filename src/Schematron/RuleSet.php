@@ -14,7 +14,8 @@ use IntrAgile\EInvoicing\Validation\Severity;
  * with a request to recompile it, so a rule file left over from an older engine never runs with
  * a different meaning.
  *
- * @internal
+ * Load a compiled rule file with RuleSet::fromFile() to pass custom rule sets to the Validator
+ * constructor; the rest of the class serves the engine.
  *
  * @phpstan-type Let array{name: string, value: string, ast: array<mixed>}
  * @phpstan-type Instruction list<mixed>
@@ -50,7 +51,8 @@ final class RuleSet
     ) {}
 
     /**
-     * Loads a compiled rule file once per path.
+     * Loads a compiled rule file (a PHP file written by the compiler that returns the compiled
+     * array) once per path; later calls with the same path return the same instance.
      *
      * @throws UnsupportedSchematron
      */

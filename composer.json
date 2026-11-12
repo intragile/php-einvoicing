@@ -49,6 +49,9 @@
             "url": "packages/rules-en16931"
         }
     ],
+    "bin": [
+        "bin/einvoicing-rules"
+    ],
     "autoload": {
         "psr-4": {
             "IntrAgile\\EInvoicing\\": "src/"

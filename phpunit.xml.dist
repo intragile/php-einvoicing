@@ -9,9 +9,10 @@
     <testsuites>
         <testsuite name="EInvoicing"><directory>tests</directory></testsuite>
     </testsuites>
-    <!-- The oracle group needs SaxonC; run it explicitly with the group option of PHPUnit. -->
+    <!-- The oracle group needs SaxonC and the network group downloads from GitHub; run them
+         explicitly with the group option of PHPUnit. -->
     <groups>
-        <exclude><group>oracle</group></exclude>
+        <exclude><group>oracle</group><group>network</group></exclude>
     </groups>
     <source>
         <include><directory>src</directory></include>

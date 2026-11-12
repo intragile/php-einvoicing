@@ -8,7 +8,11 @@
 
 # Development files are left out of the Composer dist archive.
 /.github            export-ignore
-/bin                export-ignore
+# bin/einvoicing-rules ships with the package; the other scripts are development tools.
+/bin/compile-schematron.php  export-ignore
+/bin/fetch-official.php      export-ignore
+/bin/generate-codelists.php  export-ignore
+/bin/generate-model-doc.php  export-ignore
 /docker             export-ignore
 /packages           export-ignore
 /tests              export-ignore

@@ -190,6 +190,33 @@ final class ValidatorTest extends TestCase
         $validator->validate(self::contents(self::example('ubl', 'ubl-tc434-example1.xml')));
     }
 
+    public function test_rule_sets_of_a_syntax_run_in_order(): void
+    {
+        $ubl = RuleSet::fromFile(RuleFiles::ubl());
+        $validator = new Validator(['ubl' => [$ubl, $ubl], 'cii' => RuleSet::fromFile(RuleFiles::cii())]);
+        $xml = self::mutate(self::example('ubl', 'ubl-tc434-example1.xml'), static function (DOMXPath $xpath): void {
+            self::element($xpath, '//cbc:PayableAmount')->textContent = '12,50';
+            self::element($xpath, '/*/cbc:ID')->textContent = '';
+        });
+
+        $single = Validator::en16931()->validate($xml);
+        $double = $validator->validate($xml);
+
+        self::assertSame(['en16931-ubl 1.3.17', 'en16931-ubl 1.3.17'], $double->ruleSets);
+        self::assertNotSame([], $single->findings);
+        self::assertNotSame([], $single->dynamicErrors);
+        self::assertEquals([...$single->findings, ...$single->findings], $double->findings);
+        self::assertEquals([...$single->dynamicErrors, ...$single->dynamicErrors], $double->dynamicErrors);
+    }
+
+    public function test_requires_at_least_one_rule_set_in_a_list(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('ubl');
+
+        new Validator(['ubl' => [], 'cii' => RuleSet::fromFile(RuleFiles::cii())]);
+    }
+
     public function test_requires_a_rule_set_per_syntax(): void
     {
         $this->expectException(InvalidArgumentException::class);
