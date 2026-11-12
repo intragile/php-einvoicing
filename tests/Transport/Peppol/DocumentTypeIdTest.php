@@ -44,6 +44,8 @@ final class DocumentTypeIdTest extends TestCase
             'no local name' => ['urn:oasis:names:specification:ubl:schema:xsd:Invoice-2##urn:cen.eu:en16931:2017::2.1'],
             'empty version' => ['urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice##urn:cen.eu:en16931:2017::'],
             'empty' => [''],
+            'version with a trailing newline' => [PeppolBis3::INVOICE."\n"],
+            'local name with a newline' => ["urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice\n##urn:cen.eu:en16931:2017::2.1"],
         ];
     }
 

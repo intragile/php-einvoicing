@@ -72,6 +72,7 @@ final class ParticipantIdTest extends TestCase
             'no separator' => ['02080123456789'],
             'empty string' => ['  '],
             'prefix only' => ['iso6523-actorid-upis::'],
+            'ICD with a trailing newline' => ["0208\n:abc"],
         ];
     }
 
@@ -88,5 +89,12 @@ final class ParticipantIdTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         new ParticipantId('208', '0123456789');
+    }
+
+    public function test_constructor_rejects_an_icd_with_a_trailing_newline(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new ParticipantId("0208\n", 'abc');
     }
 }

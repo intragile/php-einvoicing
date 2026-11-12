@@ -37,7 +37,7 @@ final readonly class DocumentTypeId
      */
     public function sbdhParts(): array
     {
-        if (preg_match('/^(?<standard>.+?)::(?<type>[^:#]+)##.+::(?<version>[^:]+)$/', $this->value, $match) !== 1) {
+        if (preg_match('/\A(?<standard>\S+?)::(?<type>[^:#\s]+)##\S+::(?<version>[^:\s]+)\z/', $this->value, $match) !== 1) {
             throw new InvalidArgumentException(sprintf(
                 'The document type identifier "%s" is not of the form "<namespace>::<local name>##<customization>::<version>".',
                 $this->value,

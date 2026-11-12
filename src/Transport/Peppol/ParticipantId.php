@@ -24,7 +24,7 @@ final readonly class ParticipantId
         /** Identifier value under the ICD, case preserved. */
         public string $value,
     ) {
-        if (preg_match('/^\d{4}$/', $icd) !== 1) {
+        if (preg_match('/\A\d{4}\z/', $icd) !== 1) {
             throw new InvalidArgumentException(sprintf('The participant identifier scheme "%s" is not a four-digit ISO 6523 ICD.', $icd));
         }
         if ($value === '' || preg_match('/[\s\p{Cc}]/u', $value) !== 0) {

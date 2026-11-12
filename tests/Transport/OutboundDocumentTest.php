@@ -89,6 +89,13 @@ final class OutboundDocumentTest extends TestCase
         OutboundDocument::fromInvoice(self::invoice(), 'hu');
     }
 
+    public function test_country_c1_with_a_trailing_newline_is_rejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        OutboundDocument::fromInvoice(self::invoice(), "HU\n");
+    }
+
     public function test_cii_is_not_sent(): void
     {
         $this->expectException(UnsupportedDocument::class);

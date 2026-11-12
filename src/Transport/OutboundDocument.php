@@ -144,7 +144,7 @@ final readonly class OutboundDocument
 
     private static function assertCountry(string $country): void
     {
-        if (preg_match('/^[A-Z0-9]{2}$/', $country) !== 1) {
+        if (preg_match('/\A[A-Z0-9]{2}\z/', $country) !== 1) {
             throw new InvalidArgumentException(sprintf('The sender country (C1) "%s" is not a two-character upper-case code.', $country));
         }
     }
