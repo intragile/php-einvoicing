@@ -11,8 +11,13 @@ updates:
     directory: /
     schedule:
       interval: monthly
-    # widen keeps older majors in "^0.12|^0.13" style constraints instead of dropping them.
+    # widen adds a new release to a constraint instead of replacing the old one.
     versioning-strategy: widen
+    ignore:
+      # brick/math 0.x minors are breaking: 0.15 is not compatible with the upper-case
+      # RoundingMode cases this package uses, so it is upgraded by hand, never widened.
+      - dependency-name: brick/math
+        versions: [">=0.15"]
     groups:
       composer-dependencies:
         patterns: ["*"]
