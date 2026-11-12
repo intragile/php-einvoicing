@@ -142,8 +142,9 @@ reported as valid.
 
 Verdicts are checked equal to the official CEN XSLT run by Saxon on a corpus of 1,892 documents
 (the 34 CEN example invoices, 1,169 CEN unit-test documents, 680 seeded mutations, 6 model
-invoices and 3 crafted documents): they give exactly the same rule ids and flags. On the 135
-mutations where Saxon aborts with a dynamic error, only the XPath error code is compared. A typical
+invoices and 3 crafted documents). On the 1,757 documents Saxon reports on, the rule ids and flags
+are exactly the same; on the 135 mutations where Saxon aborts with a dynamic error, only the XPath
+error code is compared. A typical
 invoice validates in 7–50 ms, a 1,000-line invoice in about 1.7 s (single measurement on the
 development machine, an Apple M1 with PHP 8.5). Some rules grow faster than linearly with
 repeated elements (UBL-SR-47 is quadratic in the number of payment means codes), so set input-size

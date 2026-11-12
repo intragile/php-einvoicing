@@ -146,9 +146,10 @@ a validátor egyiket sem minősíti érvényesnek.
 
 Az eredményeket 1892 dokumentumból álló korpuszon vetettük össze a Saxonnal futtatott hivatalos
 CEN XSLT-vel (34 CEN mintaszámla, 1169 CEN egységteszt-dokumentum, 680 gépileg módosított
-(mutált) változat, 6 modellből írt számla és 3 célzottan összeállított dokumentum): pontosan
-ugyanazokat a szabályazonosítókat és szinteket adják. Azon a 135 mutált változaton, amelyen a
-Saxon dinamikus hibával leáll, csak az XPath-hibakódot hasonlítjuk össze. Egy átlagos számla
+(mutált) változat, 6 modellből írt számla és 3 célzottan összeállított dokumentum). Az 1757
+dokumentumon, amelyről a Saxon eredményt ad, pontosan ugyanazok a szabályazonosítók és szintek
+jönnek ki; azon a 135 mutált változaton, amelyen a Saxon dinamikus hibával leáll, csak az
+XPath-hibakódot hasonlítjuk össze. Egy átlagos számla
 ellenőrzése 7–50 ms, egy 1000 tételes számláé körülbelül 1,7 s (egyszeri mérés a fejlesztői gépen:
 Apple M1, PHP 8.5). Egyes szabályok ismétlődő elemeknél a lineárisnál gyorsabban lassulnak (az
 UBL-SR-47 a fizetési mód kódok számában négyzetes), ezért kívülről érkező, megbízhatatlan
