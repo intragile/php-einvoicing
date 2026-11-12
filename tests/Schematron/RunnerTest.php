@@ -178,6 +178,69 @@ final class RunnerTest extends TestCase
         self::assertSame(['GLOBALS /t:Root[1]/t:Item[2]'], self::summary($result));
     }
 
+    public function test_schema_let_is_computed_once_per_document(): void
+    {
+        $schema = <<<'SCH'
+            <let name="total" value="sum(//t:Amount[. castable as xs:decimal])"/>
+            <let name="unused" value="1"/>
+            <pattern id="p">
+              <let name="half" value="$total div 2"/>
+              <rule context="t:Item">
+                <assert id="A" test="$total = 10 and $half = 5" flag="fatal">a</assert>
+                <assert id="B" test="$total &gt; 0" flag="fatal">b</assert>
+              </rule>
+              <rule context="t:Root[$total = 10]">
+                <assert id="C" test="$total = 10" flag="fatal">c</assert>
+              </rule>
+            </pattern>
+            <pattern id="q">
+              <rule context="t:Amount">
+                <assert id="D" test="$total = 10" flag="fatal">d</assert>
+              </rule>
+            </pattern>
+            SCH;
+        $computed = [];
+        $runner = new Runner(static function (string $name) use (&$computed): void {
+            $computed[] = $name;
+        });
+        $rules = self::compileSchematron($schema);
+
+        $result = $runner->run($rules, SafeXml::load(self::DOCUMENT));
+        self::assertSame([], $result->dynamicErrors);
+        self::assertSame([], $result->findings);
+        self::assertSame(['total', 'half'], $computed);
+
+        // A new document computes its globals again.
+        $runner->run($rules, SafeXml::load(self::DOCUMENT));
+        self::assertSame(['total', 'half', 'total', 'half'], $computed);
+    }
+
+    public function test_global_let_first_read_deep_in_a_recursion_starts_from_depth_zero(): void
+    {
+        // $deep needs 1,500 nested calls; it is first read 1,000 calls deep, which would exceed
+        // the limit of 2,000 if the global inherited the depth of its first reader.
+        $result = self::runSchematron(<<<'SCH'
+            <let name="deep" value="u:depth(1500)"/>
+            <xsl:function name="u:depth" as="xs:integer">
+              <xsl:param name="n" as="xs:integer"/>
+              <xsl:sequence select="if ($n le 0) then 0 else 1 + u:depth($n - 1)"/>
+            </xsl:function>
+            <xsl:function name="u:down" as="xs:integer">
+              <xsl:param name="n" as="xs:integer"/>
+              <xsl:sequence select="if ($n le 0) then $deep else u:down($n - 1)"/>
+            </xsl:function>
+            <pattern id="p">
+              <rule context="t:Root">
+                <assert id="DEEP" test="u:down(1000) = 1500" flag="fatal">deep</assert>
+                <assert id="AGAIN" test="$deep = 1500" flag="fatal">again</assert>
+              </rule>
+            </pattern>
+            SCH);
+
+        self::assertSame([], $result->dynamicErrors);
+        self::assertSame([], $result->findings);
+    }
+
     public function test_recursive_user_function(): void
     {
         $result = self::runSchematron(<<<'SCH'
@@ -416,12 +479,17 @@ final class RunnerTest extends TestCase
      */
     private static function runSchematron(string $body, string $xml = self::DOCUMENT): RunResult
     {
+        return (new Runner)->run(self::compileSchematron($body), SafeXml::load($xml));
+    }
+
+    private static function compileSchematron(string $body): RuleSet
+    {
         $schema = '<schema xmlns="'.Compiler::SCHEMATRON_NAMESPACE.'" xmlns:xsl="'.Compiler::XSLT_NAMESPACE.'"'
             .' xmlns:xs="'.StaticContext::XS.'" xmlns:u="urn:test:functions" queryBinding="xslt2">'
             .'<ns prefix="t" uri="'.self::NS.'"/><ns prefix="u" uri="urn:test:functions"/>'
             .$body.'</schema>';
 
-        return (new Runner)->run(RuleSet::fromArray(Compiler::compileString($schema, 'runner-test.sch', 'mini', '0')), SafeXml::load($xml));
+        return RuleSet::fromArray(Compiler::compileString($schema, 'runner-test.sch', 'mini', '0'));
     }
 
     /**

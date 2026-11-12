@@ -108,14 +108,15 @@ with the behaviour Saxon shows on probe cases (`ProbeCases::functions()`):
   `XTTE0780` for a function result. A variable whose content is text and has no `as` is a
   temporary tree in XSLT; the engine holds its text as an untyped value, which is what every use in
   an expression sees.
-- **Recursion limit.** More than 5,000 nested function calls raise the engine error
+- **Recursion limit.** More than 2,000 nested function calls raise the engine error
   `INTRAGILE_RECURSION` instead of exhausting memory or the PHP stack. The error is not
   recoverable: in an assert it is a `DynamicError` of that assert; in a rule context it is one
   `DynamicError` for the rule (no rule id, location `/`) and the rule handles no node. The Peppol
-  functions recurse at most a dozen levels (`u:addPIVA` over an 11-digit VAT number). 5,000 nested
-  calls take about 25 MB of memory with opcache and about 45 MB without it (PHP reserves more
-  per call frame without the opcode optimizer); a function that keeps a long string per level
-  needs more.
+  functions recurse at most a dozen levels (`u:addPIVA` over an 11-digit VAT number). 2,000 nested
+  calls take about 9 MB of memory with opcache and about 16 MB without it (PHP reserves more per
+  call frame without the opcode optimizer); a function that keeps a long string per level needs
+  more. A global let is always computed from call depth zero, so its value does not depend on
+  where it is first read.
 
 ## Where the engine follows Saxon
 

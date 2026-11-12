@@ -35,7 +35,7 @@ final class Evaluator
     private const MAX_RANGE = 100_000;
 
     /** The deepest nesting of user function calls; deeper recursion is reported, not run until PHP fails. */
-    private const MAX_DEPTH = 5_000;
+    private const MAX_DEPTH = 2_000;
 
     /** Function calls whose result is always a boolean, so a predicate using them is never positional. */
     private const BOOLEAN_FUNCTIONS = ['fn:boolean', 'fn:contains', 'fn:empty', 'fn:ends-with', 'fn:exists', 'fn:false', 'fn:matches', 'fn:not', 'fn:true'];
@@ -107,6 +107,28 @@ final class Evaluator
         } finally {
             $this->matchingPattern = $outerMatching;
             $this->size = $outerSize;
+        }
+    }
+
+    /**
+     * Evaluates the value of a global variable: like evaluate(), but with the call depth starting
+     * from zero, so the value (or the recursion error) does not depend on how deep inside user
+     * function calls the variable happens to be read first.
+     *
+     * @param  array<mixed>  $ast
+     * @param  array<string, list<DOMNode|AtomicValue>|Thunk>  $variables
+     * @return list<DOMNode|AtomicValue>
+     *
+     * @throws XPathError
+     */
+    public function evaluateGlobal(array $ast, DOMNode $context, array $variables = []): array
+    {
+        $outerDepth = $this->depth;
+        $this->depth = 0;
+        try {
+            return $this->evaluate($ast, $context, $variables);
+        } finally {
+            $this->depth = $outerDepth;
         }
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Schematron;
 
+use Closure;
 use DOMAttr;
 use DOMDocument;
 use DOMElement;
@@ -40,18 +41,24 @@ use IntrAgile\EInvoicing\XPath\XPathError;
  */
 final class Runner
 {
+    /**
+     * @param  (Closure(string): void)|null  $onGlobal  called with the name of a schema or pattern let
+     *                                                  each time its value is computed (for tests and profiling)
+     */
+    public function __construct(private readonly ?Closure $onGlobal = null) {}
+
     public function run(RuleSet $rules, DOMDocument $document): RunResult
     {
         $index = DocumentIndex::build($document);
         $evaluator = new Evaluator($index);
         // The global variables capture $evaluator by reference, so they run on the evaluator that
         // knows the functions, which in turn needs the schema lets for the function bodies.
-        $schemaLets = self::bind($rules->lets(), [], $document, $evaluator);
+        $schemaLets = $this->bindGlobals($rules->lets(), [], $document, $evaluator);
         $functions = array_map(static fn (array $function): UserFunction => new UserFunction($function), $rules->functions());
         $evaluator = $evaluator->withFunctions($functions, $schemaLets);
         $globals = $schemaLets;
         foreach ($rules->patterns() as $pattern) {
-            $globals = self::bind($pattern['lets'], $globals, $document, $evaluator);
+            $globals = $this->bindGlobals($pattern['lets'], $globals, $document, $evaluator);
         }
         $namespaces = $rules->namespaces();
         $root = $document->documentElement;
@@ -105,7 +112,34 @@ final class Runner
     }
 
     /**
-     * Binds lets in order, each to a Thunk evaluated with the given context node that sees the
+     * Binds global lets (schema and pattern level) in order, each to a Thunk evaluated from the
+     * document node with the call depth reset (see Evaluator::evaluateGlobal()).
+     *
+     * @param  list<Let>  $lets
+     * @param  array<string, list<DOMNode|AtomicValue>|Thunk>  $variables  the variables already in scope
+     * @return array<string, list<DOMNode|AtomicValue>|Thunk> $variables plus the lets
+     */
+    private function bindGlobals(array $lets, array $variables, DOMDocument $document, Evaluator &$evaluator): array
+    {
+        $onGlobal = $this->onGlobal;
+        foreach ($lets as $let) {
+            $visible = $variables;
+            $ast = $let['ast'];
+            $name = $let['name'];
+            $variables[$name] = new Thunk(static function () use (&$evaluator, $ast, $document, $visible, $onGlobal, $name): array {
+                if ($onGlobal !== null) {
+                    $onGlobal($name);
+                }
+
+                return $evaluator->evaluateGlobal($ast, $document, $visible);
+            });
+        }
+
+        return $variables;
+    }
+
+    /**
+     * Binds rule lets in order, each to a Thunk evaluated with the given context node that sees the
      * variables bound before it.
      *
      * @param  list<Let>  $lets

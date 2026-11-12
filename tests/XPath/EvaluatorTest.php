@@ -320,11 +320,11 @@ final class EvaluatorTest extends TestCase
         $functions = self::functions('<xsl:function name="u:depth" as="xs:integer"><xsl:param name="n" as="xs:integer"/>'
             .'<xsl:sequence select="if ($n le 0) then 0 else 1 + u:depth($n - 1)"/></xsl:function>');
 
-        // 5,000 nested calls: u:depth(4999) down to u:depth(0).
-        self::assertSame('(xs:integer:4999)', $this->call('u:depth(4999)', $functions));
-        self::assertSame('error:INTRAGILE_RECURSION', $this->call('u:depth(5000)', $functions));
+        // 2,000 nested calls: u:depth(1999) down to u:depth(0).
+        self::assertSame('(xs:integer:1999)', $this->call('u:depth(1999)', $functions));
+        self::assertSame('error:INTRAGILE_RECURSION', $this->call('u:depth(2000)', $functions));
         // The depth is back to zero after the error.
-        self::assertSame('(xs:integer:4999)', $this->call('u:depth(4999)', $functions));
+        self::assertSame('(xs:integer:1999)', $this->call('u:depth(1999)', $functions));
 
         $evaluator = $this->evaluator->withFunctions($functions);
         $context = new StaticContext(ProbeCases::NAMESPACES + ['u' => 'utils'], [], array_fill_keys(array_keys($functions), true));
