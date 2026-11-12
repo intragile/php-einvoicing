@@ -173,13 +173,29 @@ final class HttpClientTest extends TestCase
         self::assertStringNotContainsString('t0ps3cret', $exception->getMessage());
     }
 
-    public function test_stream_that_stalls_without_eof_ends_the_read(): void
+    /**
+     * @param  class-string<TransportException>  $expected
+     */
+    #[DataProvider('readFailures')]
+    public function test_stream_that_stalls_without_eof_is_a_read_failure(string $method, string $expected, bool $retryable): void
     {
-        $response = (new Response(200))->withBody(self::brokenStream(null));
+        $response = (new Response(200))->withBody(self::brokenStream(null, ['{"partial":']));
 
-        $result = self::client(new RecordingHttpClient($response))->send('GET', 'https://ap.example/api');
+        $exception = self::capture(fn () => self::client(new RecordingHttpClient($response))->send($method, 'https://ap.example/api'));
 
-        self::assertSame('', (string) $result->getBody());
+        self::assertInstanceOf($expected, $exception);
+        self::assertSame($retryable, $exception->isRetryable());
+        self::assertInstanceOf(RuntimeException::class, $exception->getPrevious());
+        self::assertStringContainsString('HTTP 200', $exception->getMessage());
+    }
+
+    public function test_stream_that_reports_eof_only_after_an_empty_read_ends_normally(): void
+    {
+        $response = (new Response(200))->withBody(self::brokenStream(null, ['{"a":', '1}'], eofAfterEmptyRead: true));
+
+        $result = self::client(new RecordingHttpClient($response))->send('POST', 'https://ap.example/api', [], '{}');
+
+        self::assertSame('{"a":1}', (string) $result->getBody());
     }
 
     public function test_declared_length_over_the_cap_is_rejected_before_reading(): void
@@ -249,11 +265,27 @@ final class HttpClientTest extends TestCase
      * A non-seekable stream that never reaches end of file: read() throws $failure, or returns
      * an empty string when $failure is null.
      */
-    private static function brokenStream(?RuntimeException $failure): StreamInterface
+    /**
+     * A non-seekable stream that throws $failure on read, or returns $chunks one by one and then
+     * empty strings; eof() stays false unless $eofAfterEmptyRead, in which case it turns true
+     * after the first empty read.
+     *
+     * @param  list<string>  $chunks
+     */
+    private static function brokenStream(?RuntimeException $failure, array $chunks = [], bool $eofAfterEmptyRead = false): StreamInterface
     {
-        return new class($failure) implements StreamInterface
+        return new class($failure, $chunks, $eofAfterEmptyRead) implements StreamInterface
         {
-            public function __construct(private readonly ?RuntimeException $failure) {}
+            private bool $eof = false;
+
+            /**
+             * @param  list<string>  $chunks
+             */
+            public function __construct(
+                private readonly ?RuntimeException $failure,
+                private array $chunks,
+                private readonly bool $eofAfterEmptyRead,
+            ) {}
 
             public function __toString(): string
             {
@@ -279,7 +311,7 @@ final class HttpClientTest extends TestCase
 
             public function eof(): bool
             {
-                return false;
+                return $this->eof;
             }
 
             public function isSeekable(): bool
@@ -317,8 +349,12 @@ final class HttpClientTest extends TestCase
                 if ($this->failure !== null) {
                     throw $this->failure;
                 }
+                $chunk = array_shift($this->chunks) ?? '';
+                if ($chunk === '' && $this->eofAfterEmptyRead) {
+                    $this->eof = true;
+                }
 
-                return '';
+                return $chunk;
             }
 
             public function getContents(): string

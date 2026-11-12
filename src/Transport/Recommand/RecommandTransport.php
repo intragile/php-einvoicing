@@ -46,8 +46,9 @@ final class RecommandTransport implements InboundSource, Transport
     /**
      * Sends the document as raw XML to the receiver named in it.
      *
-     * @throws OutcomeUnknown when the request failed without an answer or timed out at the gateway;
-     *                        the document may have been accepted, so check the document list before resending
+     * @throws OutcomeUnknown when the request failed without an answer, Recommand answered HTTP 500,
+     *                        502 or 504, or a 200 answer cannot be read; the document may have been
+     *                        accepted, so check the document list before resending
      * @throws InvalidArgumentException when the document cannot be encoded as JSON (invalid UTF-8)
      */
     public function send(OutboundDocument $document): SendResult

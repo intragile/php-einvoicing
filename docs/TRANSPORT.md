@@ -115,9 +115,9 @@ the same call later may succeed **and cannot cause a duplicate**.
 | `RecipientUnreachable` | false | The receiver is not registered or does not accept this document type (Recommand HTTP 422) | `$e->category` is a `FailureCategory`; use another channel or ask the receiver |
 | `AuthenticationFailed` | false | Wrong credentials or missing permission (HTTP 401/403); a webhook with a bad signature | Fix the configuration; for a webhook, refuse the request |
 | `RateLimited` | true | Too many requests (HTTP 429) | Wait `$e->retryAfterSeconds` (when given), then retry |
-| `TransportUnavailable` | true | A GET got no answer, or the provider answered 500, 502 or 503 | Retry later with backoff |
-| `OutcomeUnknown` | false | A send (or another state-changing request) got no answer, or the gateway timed out (HTTP 504) | **Do not resend blindly**; see below |
-| `UnexpectedResponse` | false | An unexpected status, a malformed or oversized body | Log `$e->status` and `$e->bodyExcerpt`; investigate |
+| `TransportUnavailable` | true | A GET got no answer (or its body stalled), the provider answered 503, or a GET answered 500 or 502 | Retry later with backoff |
+| `OutcomeUnknown` | false | A send (or another state-changing request) got no answer or a body that stalled; a send answered 500, 502 or 504; a send answered 200 with a body that cannot be read | **Do not resend blindly**; see below |
+| `UnexpectedResponse` | false | An unexpected status, a malformed or oversized body (on a send, only when the status is not 200) | Log `$e->status` and `$e->bodyExcerpt`; investigate |
 
 `fetch()` can also throw `UnsafeXml` and `UnsupportedDocument` (the library's own exceptions)
 for a received document with a DOCTYPE or broken XML; `InvalidArgumentException` signals an
@@ -134,9 +134,12 @@ the invoice. Resending at once risks delivering it twice. Instead:
    dashboard or the API) for a document to the same receiver with the same invoice number.
 3. Resend only when it is not there.
 
-An HTTP 504 from the Recommand gateway on `send()` is treated the same way. `acknowledge()` also
-throws `OutcomeUnknown` when it gets no answer, but marking as read is idempotent, so calling it
-again with the same id is safe.
+`send()` treats these answers the same way: HTTP 500 (the error may have come after the document
+was stored), 502 (the connection to the application usually broke after the request reached it),
+504 (the gateway gave up waiting), and a 200 whose body is not JSON, does not report success or
+has no document id (the original `UnexpectedResponse` is chained as `getPrevious()`). Only 503 and
+429 on `send()` are retryable. `acknowledge()` also throws `OutcomeUnknown` when it gets no
+answer, but marking as read is idempotent, so calling it again with the same id is safe.
 
 ## Participant lookup (SML and SMP)
 

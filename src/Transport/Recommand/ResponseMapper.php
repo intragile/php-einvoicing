@@ -41,6 +41,8 @@ final class ResponseMapper
     /**
      * The result of a send, or the exception its response stands for.
      *
+     * @throws OutcomeUnknown when Recommand answered HTTP 500, 502 or 504, or a 200 answer cannot be
+     *                        read; the document may have been accepted
      * @throws TransportException when the response is not a successful send
      */
     public function sendResult(ResponseInterface $response, ParticipantId $receiver): SendResult
@@ -50,11 +52,25 @@ final class ResponseMapper
             throw $this->sendFailure($response, $receiver);
         }
 
-        $data = $this->successBody($response);
+        // A 200 means the send went through, so a body that cannot be read leaves the outcome
+        // open rather than making it a failure that invites a resend.
+        try {
+            $data = $this->successBody($response);
+            $documentId = $this->documentId($response, $data);
+        } catch (UnexpectedResponse $exception) {
+            throw new OutcomeUnknown(
+                sprintf(
+                    'Recommand answered the document sent to %s with HTTP 200, but the response cannot be read, so Recommand may or may not have accepted it: %s Check the document list before resending to avoid a duplicate.',
+                    $receiver->toString(),
+                    $exception->getMessage(),
+                ),
+                $exception,
+            );
+        }
         [$failure] = $this->peppolDelivery($data);
 
         return new SendResult(
-            $this->documentId($response, $data),
+            $documentId,
             self::stateOf($data['deliveryStatus'] ?? null),
             self::optionalString($data['peppolMessageId'] ?? null),
             self::optionalString($data['envelopeId'] ?? null),
@@ -201,14 +217,20 @@ final class ResponseMapper
     }
 
     /**
-     * An UnexpectedResponse with the credentials removed from its message and body excerpt.
+     * An UnexpectedResponse with the credentials removed from its message and body excerpt. When
+     * the full body is given, the excerpt is cut from it after redaction, so that a credential
+     * cut in two by the excerpt limit cannot survive in part.
      */
-    public function sanitize(UnexpectedResponse $exception): UnexpectedResponse
+    public function sanitize(UnexpectedResponse $exception, ?string $body = null): UnexpectedResponse
     {
+        $excerpt = $body === null
+            ? $this->config->redact($exception->bodyExcerpt)
+            : substr($this->config->redact($body), 0, UnexpectedResponse::EXCERPT_BYTES);
+
         return new UnexpectedResponse(
             $this->config->redact($exception->getMessage()),
             $exception->status,
-            $this->config->redact($exception->bodyExcerpt),
+            $excerpt,
             $exception->getPrevious(),
         );
     }
@@ -253,6 +275,15 @@ final class ResponseMapper
             return new OutcomeUnknown(sprintf(
                 'Sending the document to %s timed out at the Recommand gateway (HTTP 504), so Recommand may or may not have accepted it. Check the document list before resending to avoid a duplicate.',
                 $receiver->toString(),
+            ));
+        }
+        if ($status === 500 || $status === 502) {
+            // A 500 can follow storing the document, and a 502 usually means the connection to
+            // the application broke after the request reached it. Only 503 says it was refused.
+            return new OutcomeUnknown(sprintf(
+                'Sending the document to %s failed with a Recommand server error (HTTP %d), which can come after the document was accepted, so Recommand may or may not have accepted it. Check the document list before resending to avoid a duplicate.',
+                $receiver->toString(),
+                $status,
             ));
         }
 
@@ -300,7 +331,7 @@ final class ResponseMapper
         try {
             $data = JsonResponse::decode($response);
         } catch (UnexpectedResponse $exception) {
-            throw $this->sanitize($exception);
+            throw $this->sanitize($exception, (string) $response->getBody());
         }
         if (($data['success'] ?? null) !== true) {
             throw $this->unexpected($response, 'The Recommand response does not report success');

@@ -147,7 +147,7 @@ final class HttpClient
 
     /**
      * @throws UnexpectedResponse when the body exceeds the size cap
-     * @throws RuntimeException when the stream fails while the body is read
+     * @throws RuntimeException when the stream fails or stalls before end of file while the body is read
      */
     private function read(ResponseInterface $response): string
     {
@@ -162,12 +162,18 @@ final class HttpClient
         }
 
         $body = '';
+        $emptyRead = false;
         while (! $stream->eof()) {
-            $chunk = $stream->read(self::CHUNK_BYTES);
-            if ($chunk === '') {
-                // A stream that returns nothing without reaching end of file would loop forever.
-                break;
+            if ($emptyRead) {
+                // A read returned nothing and the stream is still not at end of file. Returning
+                // what was read so far would pass a truncated body off as complete, and reading
+                // on could loop forever.
+                throw new RuntimeException(sprintf('The response body stalled after %d bytes without reaching end of file.', strlen($body)));
             }
+            $chunk = $stream->read(self::CHUNK_BYTES);
+            // Socket streams may report end of file only after a read that returns nothing, so
+            // an empty read is a stall only when the next end-of-file check still says no.
+            $emptyRead = $chunk === '';
             $body .= $chunk;
             if (strlen($body) > $this->maxResponseBytes) {
                 throw $this->tooLarge($response, $body);

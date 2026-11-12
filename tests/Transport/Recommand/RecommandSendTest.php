@@ -173,54 +173,87 @@ final class RecommandSendTest extends TestCase
         self::assertTrue($exception->isRetryable());
     }
 
-    /**
-     * @return iterable<string, array{int}>
-     */
-    public static function serverErrors(): iterable
+    public function test_503_is_transport_unavailable(): void
     {
-        yield '500' => [500];
-        yield '502' => [502];
-        yield '503' => [503];
-    }
-
-    #[DataProvider('serverErrors')]
-    public function test_5xx_is_transport_unavailable(int $status): void
-    {
-        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response($status, [], '{"success":false,"errors":{}}')))->send(self::document()));
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response(503, [], '{"success":false,"errors":{}}')))->send(self::document()));
 
         self::assertInstanceOf(TransportUnavailable::class, $exception);
         self::assertTrue($exception->isRetryable());
     }
 
-    public function test_gateway_timeout_on_send_is_outcome_unknown(): void
+    /**
+     * @return iterable<string, array{int, string}>
+     */
+    public static function possiblyAcceptedStatuses(): iterable
     {
-        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response(504, [], 'Gateway Timeout')))->send(self::document()));
+        yield '500' => [500, '{"success":false,"errors":{}}'];
+        yield '502' => [502, 'Bad Gateway'];
+        yield '504' => [504, 'Gateway Timeout'];
+    }
+
+    #[DataProvider('possiblyAcceptedStatuses')]
+    public function test_server_error_on_send_is_outcome_unknown(int $status, string $body): void
+    {
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response($status, [], $body)))->send(self::document()));
 
         self::assertInstanceOf(OutcomeUnknown::class, $exception);
         self::assertFalse($exception->isRetryable());
         self::assertStringContainsString('0208:0123456789AbC', $exception->getMessage());
-        self::assertStringContainsString('check', strtolower($exception->getMessage()));
+        self::assertStringContainsString('HTTP '.$status, $exception->getMessage());
+        self::assertStringContainsString('check the document list before resending', strtolower($exception->getMessage()));
+    }
+
+    public function test_other_status_is_unexpected(): void
+    {
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response(418, [], '{"success":false}')))->send(self::document()));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertSame(418, $exception->status);
     }
 
     /**
-     * @return iterable<string, array{Response}>
+     * @return iterable<string, array{string}>
      */
-    public static function unexpectedResponses(): iterable
+    public static function unreadableSuccesses(): iterable
     {
-        yield 'other status' => [new Response(418, [], '{"success":false}')];
-        yield '200 without success' => [new Response(200, [], '{"id":"doc_1"}')];
-        yield '200 with success false' => [new Response(200, [], '{"success":false,"id":"doc_1"}')];
-        yield '200 without id' => [new Response(200, [], '{"success":true}')];
-        yield '200 not json' => [new Response(200, [], '<html>maintenance</html>')];
+        yield 'not json' => ['<html>maintenance</html>'];
+        yield 'without success' => ['{"id":"doc_1"}'];
+        yield 'with success false' => ['{"success":false,"id":"doc_1"}'];
+        yield 'without id' => ['{"success":true}'];
+        yield 'with empty id' => ['{"success":true,"id":""}'];
     }
 
-    #[DataProvider('unexpectedResponses')]
-    public function test_other_responses_are_unexpected(Response $response): void
+    #[DataProvider('unreadableSuccesses')]
+    public function test_unreadable_200_on_send_is_outcome_unknown(string $body): void
     {
-        $exception = self::capture(fn () => self::transport(new RecordingHttpClient($response))->send(self::document()));
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response(200, [], $body)))->send(self::document()));
 
-        self::assertInstanceOf(UnexpectedResponse::class, $exception);
-        self::assertSame($response->getStatusCode(), $exception->status);
+        self::assertInstanceOf(OutcomeUnknown::class, $exception);
+        self::assertFalse($exception->isRetryable());
+        self::assertStringContainsString('0208:0123456789AbC', $exception->getMessage());
+        self::assertStringContainsString('HTTP 200', $exception->getMessage());
+        self::assertStringContainsString('check the document list before resending', strtolower($exception->getMessage()));
+        $previous = $exception->getPrevious();
+        self::assertInstanceOf(UnexpectedResponse::class, $previous);
+        self::assertSame(200, $previous->status);
+        self::assertSame($body, $previous->bodyExcerpt);
+    }
+
+    public function test_secret_cut_at_the_excerpt_boundary_is_redacted(): void
+    {
+        // The secret starts ten bytes before the excerpt limit, so a body cut first and
+        // redacted afterwards would keep its first ten bytes.
+        $body = str_repeat('x', UnexpectedResponse::EXCERPT_BYTES - 10).self::SECRET.' trailing text';
+
+        $send = self::capture(fn () => self::transport(new RecordingHttpClient(new Response(200, [], $body)))->send(self::document()));
+        $status = self::capture(fn () => self::transport(new RecordingHttpClient(new Response(200, [], $body)))->status('doc_1'));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $send->getPrevious());
+        self::assertInstanceOf(UnexpectedResponse::class, $status);
+        foreach ([$send->getPrevious(), $status] as $exception) {
+            self::assertStringNotContainsString('secret_', $exception->bodyExcerpt);
+            self::assertStringStartsWith(str_repeat('x', UnexpectedResponse::EXCERPT_BYTES - 10).'[redacted]', $exception->bodyExcerpt);
+        }
     }
 
     public function test_timeout_after_send_is_outcome_unknown(): void
@@ -305,6 +338,8 @@ final class RecommandSendTest extends TestCase
             fn () => self::transport(new RecordingHttpClient(self::fixture(401, 'error-401.json')))->send(self::document()),
             fn () => self::transport(new RecordingHttpClient(self::fixture(422, 'error-422.json')))->send(self::document()),
             fn () => self::transport(new RecordingHttpClient(new Response(429)))->send(self::document()),
+            fn () => self::transport(new RecordingHttpClient(new Response(500, [], $echo)))->send(self::document()),
+            fn () => self::transport(new RecordingHttpClient(new Response(502, [], $echo)))->send(self::document()),
             fn () => self::transport(new RecordingHttpClient(new Response(503, [], $echo)))->send(self::document()),
             fn () => self::transport(new RecordingHttpClient(new Response(504, [], $echo)))->send(self::document()),
             fn () => self::transport(new RecordingHttpClient(self::requestException('failed: '.self::SECRET)))->send(self::document()),
@@ -316,9 +351,11 @@ final class RecommandSendTest extends TestCase
             // carries whatever message the PSR-18 client produced.
             $exception = self::capture($scenario);
             self::assertStringNotContainsString('secret_', $exception->getMessage(), "scenario $index: ".$exception::class);
-            if ($exception instanceof UnexpectedResponse) {
-                self::assertStringNotContainsString('secret_', $exception->bodyExcerpt, "scenario $index excerpt");
-                self::assertStringNotContainsString(base64_encode(self::KEY_ID.':'.self::SECRET), $exception->bodyExcerpt, "scenario $index excerpt");
+            $excerpted = $exception instanceof UnexpectedResponse ? $exception : $exception->getPrevious();
+            if ($excerpted instanceof UnexpectedResponse) {
+                self::assertStringNotContainsString('secret_', $excerpted->getMessage(), "scenario $index previous");
+                self::assertStringNotContainsString('secret_', $excerpted->bodyExcerpt, "scenario $index excerpt");
+                self::assertStringNotContainsString(base64_encode(self::KEY_ID.':'.self::SECRET), $excerpted->bodyExcerpt, "scenario $index excerpt");
             }
             if ($exception instanceof DocumentRejected) {
                 self::assertStringNotContainsString('secret_', var_export($exception->errors, true), "scenario $index errors");
