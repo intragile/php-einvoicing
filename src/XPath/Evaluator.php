@@ -11,6 +11,7 @@ use DOMDocumentType;
 use DOMElement;
 use DOMNode;
 use DOMText;
+use IntrAgile\EInvoicing\XPath\Exception\UnsupportedXPath;
 use IntrAgile\EInvoicing\XPath\Value\AtomicValue;
 use IntrAgile\EInvoicing\XPath\Value\BooleanValue;
 use IntrAgile\EInvoicing\XPath\Value\DecimalValue;
@@ -28,7 +29,10 @@ use LogicException;
  */
 final class Evaluator
 {
-    private const REVERSE_AXES = ['ancestor', 'ancestor-or-self', 'parent', 'preceding'];
+    private const REVERSE_AXES = ['ancestor', 'ancestor-or-self', 'parent', 'preceding', 'preceding-sibling'];
+
+    /** The longest sequence a range expression may produce; a longer one would exhaust memory. */
+    private const MAX_RANGE = 10_000_000;
 
     /** Function calls whose result is always a boolean, so a predicate using them is never positional. */
     private const BOOLEAN_FUNCTIONS = ['fn:boolean', 'fn:contains', 'fn:empty', 'fn:ends-with', 'fn:exists', 'fn:false', 'fn:matches', 'fn:not', 'fn:true'];
@@ -163,6 +167,20 @@ final class Evaluator
                 }
 
                 return [Atomic::cast($operand, self::text($ast, 1))];
+            case Op::CASTABLE:
+                return [new BooleanValue($this->castable(self::text($ast, 1), $ast[2] === true, self::sub($ast, 3), $item, $variables))];
+            case Op::IF:
+                $branch = Functions::boolean($this->eval(self::sub($ast, 1), $item, $variables)) ? 2 : 3;
+
+                return $this->eval(self::sub($ast, $branch), $item, $variables);
+            case Op::FOR:
+                return $this->forLoop(self::subList($ast, 1), self::sub($ast, 2), $item, $variables);
+            case Op::RANGE:
+                return $this->range(self::sub($ast, 1), self::sub($ast, 2), $item, $variables);
+            case Op::UCALL:
+                $key = StaticContext::functionKey(self::text($ast, 1), self::text($ast, 2), count(self::subList($ast, 3)));
+
+                throw new UnsupportedXPath("user function {$key} is not available", $key, 0);
             case Op::SEQUENCE:
                 $result = [];
                 foreach (self::subList($ast, 1) as $member) {
@@ -306,7 +324,7 @@ final class Evaluator
     private static function isPositionFree(array $predicate): bool
     {
         return match ($predicate[0]) {
-            Op::GCMP, Op::VCMP, Op::AND, Op::OR, Op::QUANT, Op::STEP => true,
+            Op::GCMP, Op::VCMP, Op::AND, Op::OR, Op::QUANT, Op::CASTABLE, Op::STEP => true,
             Op::CALL => in_array($predicate[1], self::BOOLEAN_FUNCTIONS, true),
             Op::PATH => self::isPositionFree(self::sub($predicate, 2)),
             default => false,
@@ -394,6 +412,20 @@ final class Evaluator
                 $descendants = $this->index->descendantsOrSelf($node);
 
                 return $axis === 'descendant' ? array_slice($descendants, 1) : $descendants;
+            case 'following-sibling':
+            case 'preceding-sibling':
+                $siblings = [];
+                if ($node instanceof DOMAttr) {
+                    return $siblings;
+                }
+                $following = $axis === 'following-sibling';
+                for ($sibling = $following ? $node->nextSibling : $node->previousSibling; $sibling !== null; $sibling = $following ? $sibling->nextSibling : $sibling->previousSibling) {
+                    if (! $sibling instanceof DOMDocumentType) {
+                        $siblings[] = $sibling;
+                    }
+                }
+
+                return $siblings;
             case 'preceding':
                 return $test[0] === 'name'
                     ? $this->index->precedingNamed($node, self::text($test, 1), self::text($test, 2))
@@ -556,6 +588,96 @@ final class Evaluator
         }
 
         return ! $some;
+    }
+
+    /**
+     * Evaluates the bindings of a "for" expression as nested loops, left to right, and concatenates
+     * the results in iteration order.
+     *
+     * @param  list<array<mixed>>  $bindings
+     * @param  array<mixed>  $return
+     * @param  array<string, list<DOMNode|AtomicValue>>  $variables
+     * @return list<DOMNode|AtomicValue>
+     */
+    private function forLoop(array $bindings, array $return, DOMNode|AtomicValue $item, array $variables): array
+    {
+        if ($bindings === []) {
+            return $this->eval($return, $item, $variables);
+        }
+
+        $binding = array_shift($bindings);
+        $name = self::text($binding, 0);
+        $result = [];
+        foreach ($this->eval(self::sub($binding, 1), $item, $variables) as $value) {
+            array_push($result, ...$this->forLoop($bindings, $return, $item, [...$variables, $name => [$value]]));
+        }
+
+        return $result;
+    }
+
+    /**
+     * "l to r": both operands are atomized to at most one xs:integer (an untyped value is cast, any
+     * other type is XPTY0004); an empty operand or l > r gives the empty sequence.
+     *
+     * @param  array<mixed>  $lhs
+     * @param  array<mixed>  $rhs
+     * @param  array<string, list<DOMNode|AtomicValue>>  $variables
+     * @return list<IntegerValue>
+     */
+    private function range(array $lhs, array $rhs, DOMNode|AtomicValue $item, array $variables): array
+    {
+        $low = self::rangeBound($this->singleAtomic($lhs, $item, $variables));
+        $high = self::rangeBound($this->singleAtomic($rhs, $item, $variables));
+        if ($low === null || $high === null || $low->isGreaterThan($high)) {
+            return [];
+        }
+        if ($high->minus($low)->isGreaterThanOrEqualTo(self::MAX_RANGE)) {
+            throw new XPathError('INTRAGILE_RANGE', sprintf('The range %s to %s has more than %d items.', $low, $high, self::MAX_RANGE));
+        }
+
+        $result = [];
+        for ($offset = 0, $count = $high->minus($low)->toInt(); $offset <= $count; $offset++) {
+            $result[] = new IntegerValue($low->plus($offset));
+        }
+
+        return $result;
+    }
+
+    private static function rangeBound(?AtomicValue $value): ?BigDecimal
+    {
+        if ($value instanceof UntypedAtomic) {
+            $value = Atomic::cast($value, 'xs:integer');
+        }
+
+        return match (true) {
+            $value === null => null,
+            $value instanceof IntegerValue => $value->value,
+            default => throw new XPathError('XPTY0004', "An operand of \"to\" must be an xs:integer, not {$value->type()}."),
+        };
+    }
+
+    /**
+     * "castable as": whether the atomized operand can be cast to the type. An empty operand is
+     * castable only with "?"; more than one item is never castable (false, as in Saxon, rather
+     * than a type error). Errors raised while evaluating the operand itself still propagate.
+     *
+     * @param  array<mixed>  $operand
+     * @param  array<string, list<DOMNode|AtomicValue>>  $variables
+     */
+    private function castable(string $type, bool $allowEmpty, array $operand, DOMNode|AtomicValue $item, array $variables): bool
+    {
+        $values = Functions::data($this->eval($operand, $item, $variables));
+        if (count($values) !== 1) {
+            return $values === [] && $allowEmpty;
+        }
+
+        try {
+            Atomic::cast($values[0], $type);
+
+            return true;
+        } catch (XPathError) {
+            return false;
+        }
     }
 
     /**

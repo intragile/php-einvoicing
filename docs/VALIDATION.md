@@ -58,15 +58,16 @@ rule set that needs more cannot be compiled into silently wrong rules.
 | Area | Supported |
 |---|---|
 | Functions | `not`, `normalize-space`, `exists`, `empty`, `xs:decimal`, `xs:date`, `upper-case`, `count`, `sum`, `true`, `false`, `boolean`, `string`, `contains`, `string-length`, `substring`, `substring-after`, `substring-before`, `ends-with`, `round`, `concat`, `abs`, `name`, `local-name`, `distinct-values`, `matches` (XPath 2.0 arities, no collation arguments) |
-| Operators | `or`, `and`, general comparisons `= != < <= > >=`, value comparisons `eq ne lt le gt ge`, `+ - * div idiv mod`, unary `-`, `\|` / `union`, `every … in … satisfies`, `some … in … satisfies`, `cast as xs:decimal` / `xs:date` / `xs:boolean` (with optional `?`) |
-| Paths | axes `child`, `self`, `attribute`, `parent`, `ancestor`, `ancestor-or-self`, `descendant`, `descendant-or-self`, `preceding`; abbreviations `@`, `..`, `.`, `//`, `*`, `prefix:*`; kind tests `node()` and `text()`; expressions as path steps (`…/xs:decimal(cbc:Amount)`, `…/normalize-space(cbc:ID)`) |
-| Predicates | boolean and numeric (positional) predicates on steps and on parenthesised expressions, applied in axis order (`ancestor::*[1]` is the nearest ancestor) |
+| Operators | `or`, `and`, general comparisons `= != < <= > >=`, value comparisons `eq ne lt le gt ge`, `+ - * div idiv mod`, unary `-`, `\|` / `union`, `every … in … satisfies`, `some … in … satisfies`, `for … in … return` (several bindings nest left to right), `if (…) then … else …`, ranges `a to b`, `cast as` and `castable as` with `xs:boolean` / `xs:date` / `xs:decimal` / `xs:integer` / `xs:string` (with optional `?`) |
+| Paths | axes `child`, `self`, `attribute`, `parent`, `ancestor`, `ancestor-or-self`, `descendant`, `descendant-or-self`, `preceding`, `following-sibling`, `preceding-sibling`; abbreviations `@`, `..`, `.`, `//`, `*`, `prefix:*`; kind tests `node()` and `text()`; expressions as path steps (`…/xs:decimal(cbc:Amount)`, `…/normalize-space(cbc:ID)`) |
+| Predicates | boolean and numeric (positional) predicates on steps and on parenthesised expressions, applied in axis order (`ancestor::*[1]` is the nearest ancestor, `preceding-sibling::*[1]` the nearest preceding sibling) |
+| Variables and user functions | `$name` only when declared by the caller or bound by an enclosing `for`, `some` or `every` (otherwise `UnsupportedXPath` naming `XPST0008` at parse time); calls to functions in a namespace other than `fn` and `xs` only when declared with their arity (the engine does not yet evaluate them: such a call raises `UnsupportedXPath` until `xsl:function` is supported) |
 | Rule contexts | XSLT match patterns: `N`, `N/N`, `//N`, `/N/N/N`, `N[@attr]`, predicates with function calls, unions |
 | Regular expressions | XML Schema syntax with anchors, back-references and reluctant quantifiers; flags `i s m x`; `\w`, `\s`, `\d` and categories with XML Schema meaning |
 
-Rejected with `UnsupportedXPath` (in the compiler: `UnsupportedSchematron`): `let`, `for`, `if`,
-`typeswitch`, `instance of`, `treat as`, `castable as`, `intersect`, `except`, `to`, `is`, `<<`,
-`>>`, unary `+`, other axes, `*:local`, other kind tests, unknown functions or arities, unknown
+Rejected with `UnsupportedXPath` (in the compiler: `UnsupportedSchematron`): `let`,
+`typeswitch`, `instance of`, `treat as`, `intersect`, `except`, `is`, `<<`, `>>`, unary `+`,
+casts to other types, other axes, `*:local`, other kind tests, unknown functions or arities, unknown
 prefixes, and in regular expressions `\i`, `\c`, `\I`, `\C`, `\p{IsBlock}` and character class
 subtraction. Schematron `report`, `let`, `value-of`, processing instructions, abstract rules and
 abstract patterns are rejected by the compiler as well, and so is any attribute the CEN and Peppol
@@ -103,12 +104,21 @@ probe expressions evaluated by both (`tests/XPath/ProbeCases.php`):
 - **Errors while matching a rule context** are recoverable, as in XSLT 2.0: when a rule-context
   predicate raises an error for a node, that node does not match the rule (a later rule of the same
   pattern may take it), other nodes are unaffected, and no error is reported. This applies only to
-  data-driven errors (`FORG0001`, `XPTY0004`, `FOAR0001`, … — `XPathError::RECOVERABLE`); an unbound
+  data-driven errors (`FORG0001`, `XPTY0004`, `FOAR0001`, `XPTY0019`, … — `XPathError::RECOVERABLE`); an unbound
   variable, an engine guard or an unsupported construct still propagates.
 - **`idiv` and `mod`.** `idiv` truncates towards zero and returns an `xs:integer` (`-7 idiv 2` =
   `-3`); `mod` keeps the sign of the dividend (`-7 mod 2` = `-1`), is exact on decimals and uses
   IEEE `fmod` on doubles. A zero integer or decimal divisor is `FOAR0001`, as is `idiv` by a double
   zero; `5e0 mod 0` is `NaN`.
+- **`castable as`** is false, not a type error, when the operand atomizes to more than one item;
+  `'1.0' castable as xs:integer` is false while `1.5 castable as xs:integer` is true (a decimal
+  value is truncated, a decimal lexical form is not an integer).
+- **Ranges.** `a to b` takes at most one `xs:integer` per operand (an untyped value is cast,
+  `1.5 to 3` is `XPTY0004`); an empty operand or `a > b` gives `()`. A range of more than
+  10,000,000 items raises the engine error `INTRAGILE_RANGE` instead of exhausting memory (Saxon
+  evaluates ranges lazily).
+- **`if` and `for`.** Only the branch chosen by the condition is evaluated, so an error in the
+  other branch never surfaces; `for` returns its results in iteration order, without sorting nodes.
 - **Dates.** A date without timezone is compared as UTC (the implicit timezone of the oracle).
 
 ## Dynamic errors

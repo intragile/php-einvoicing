@@ -224,16 +224,20 @@ final class ParserTest extends TestCase
         yield 'unknown prefix function' => ['foo:bar()', 'foo'];
         yield 'unknown function' => ['tokenize(a, b)', 'fn:tokenize'];
         yield 'collation argument' => ["contains(a, 'b', 'c')", 'fn:contains'];
-        yield 'for' => ['for $x in a return $x', 'for'];
-        yield 'if' => ['if (a) then b else c', 'if'];
+        yield 'typeswitch' => ['typeswitch (a) case xs:string return 1 default return 2', 'typeswitch'];
         yield 'instance of' => ['a instance of xs:string', 'instance of'];
         yield 'treat as' => ['a treat as xs:string', 'treat as'];
-        yield 'castable' => ['a castable as xs:decimal', 'castable as'];
+        yield 'castable as unsupported type' => ['a castable as xs:double', 'castable as xs:double'];
+        yield 'cast as unsupported type' => ['a cast as xs:double', 'cast as xs:double'];
         yield 'intersect' => ['a intersect b', 'intersect'];
         yield 'except' => ['a except b', 'except'];
-        yield 'following-sibling axis' => ['following-sibling::a', 'following-sibling'];
+        yield 'following axis' => ['following::a', 'following axis'];
+        yield 'undeclared user function' => ['u:foo(.)', 'u:foo'];
+        yield 'user function with undeclared arity' => ['u:gln(., 1)', 'u:gln'];
+        yield 'undeclared variable' => ['$v', '$v'];
+        yield 'variable out of its for scope' => ['(for $i in a return $i), $i', '$i'];
+        yield 'if as a path step' => ['a/if (b) then c else d', 'if'];
         yield 'unknown name prefix' => ['foo:ID', 'foo'];
-        yield 'range' => ['1 to 3', 'to'];
         yield 'node comparison' => ['a is b', 'is'];
     }
 
@@ -258,6 +262,87 @@ final class ParserTest extends TestCase
             self::assertSame(8, $e->offset);
             self::assertStringContainsString('offset 8', $e->getMessage());
         }
+    }
+
+    public function test_undeclared_names_report_their_offset(): void
+    {
+        foreach (['1 + $v' => 4, '1 + u:foo(.)' => 4] as $expression => $offset) {
+            try {
+                self::parse($expression);
+                self::fail("Expected UnsupportedXPath for {$expression}");
+            } catch (UnsupportedXPath $e) {
+                self::assertSame($offset, $e->offset, $expression);
+            }
+        }
+    }
+
+    public function test_if_then_else(): void
+    {
+        self::assertSame([Op::IF, self::child('a'), self::child('b'), self::child('c')], self::parse('if (a) then b else c'));
+        self::assertSame(
+            [Op::IF, self::child('a'), self::int('1'), [Op::IF, self::child('b'), self::int('2'), self::int('3')]],
+            self::parse('if (a) then 1 else if (b) then 2 else 3'),
+        );
+        self::assertSame(
+            [Op::OR, [Op::IF, [Op::SEQUENCE, [self::child('a'), self::child('b')]], self::int('1'), self::int('2')], self::child('c')],
+            self::parse('(if (a, b) then 1 else 2) or c'),
+        );
+    }
+
+    public function test_if_is_an_element_name_outside_a_conditional(): void
+    {
+        self::assertSame([Op::PATH, self::child('x'), self::child('if', self::CBC)], self::parse('x/cbc:if'));
+        self::assertSame(self::child('if'), self::parse('if'));
+        self::assertSame([Op::PATH, self::child('then'), self::child('else')], self::parse('then/else'));
+    }
+
+    public function test_for_expression(): void
+    {
+        self::assertSame(
+            [Op::FOR, [['i', [Op::RANGE, self::int('0'), [Op::ARITH, '-', [Op::VAR, 'n'], self::int('1')]]]], [Op::ARITH, '*', [Op::VAR, 'i'], self::int('2')]],
+            self::parse('for $i in (0 to $n - 1) return $i * 2'),
+        );
+        self::assertSame(
+            [Op::FOR, [['a', self::child('x')], ['b', [Op::PATH, [Op::VAR, 'a'], self::child('y')]]], [Op::SEQUENCE, [[Op::VAR, 'a'], [Op::VAR, 'b']]]],
+            self::parse('for $a in x, $b in $a/y return ($a, $b)'),
+        );
+    }
+
+    public function test_range_binds_between_comparison_and_addition(): void
+    {
+        self::assertSame(
+            [Op::GCMP, '=', [Op::RANGE, self::int('1'), [Op::ARITH, '+', self::int('2'), self::int('3')]], self::int('4')],
+            self::parse('1 to 2 + 3 = 4'),
+        );
+    }
+
+    public function test_castable(): void
+    {
+        self::assertSame([Op::CASTABLE, 'xs:integer', true, self::child('x')], self::parse('x castable as xs:integer?'));
+        self::assertSame([Op::CASTABLE, 'xs:date', false, self::child('x')], self::parse('x castable as xs:date'));
+        self::assertSame(
+            [Op::AND, [Op::CASTABLE, 'xs:decimal', false, [Op::CAST, 'xs:string', false, self::child('x')]], self::child('y')],
+            self::parse('x cast as xs:string castable as xs:decimal and y'),
+        );
+        self::assertSame([Op::CAST, 'xs:integer', false, self::child('x')], self::parse('x cast as xs:integer'));
+    }
+
+    public function test_sibling_axes(): void
+    {
+        self::assertSame(
+            [Op::STEP, 'following-sibling', ['name', self::CBC, 'ID'], [self::int('1')]],
+            self::parse('following-sibling::cbc:ID[1]'),
+        );
+        self::assertSame([Op::STEP, 'preceding-sibling', ['any-name'], []], self::parse('preceding-sibling::*'));
+    }
+
+    public function test_declared_user_function_is_a_ucall(): void
+    {
+        self::assertSame([Op::UCALL, 'utils', 'gln', [[Op::CONTEXT]]], self::parse('u:gln(.)'));
+        self::assertSame(
+            [Op::CALL, 'fn:not', [[Op::UCALL, 'utils', 'gln', [self::child('ID', self::CBC)]]]],
+            self::parse('not(u:gln(cbc:ID))'),
+        );
     }
 
     public function test_pattern_keeps_absolute_alternatives(): void
@@ -345,7 +430,7 @@ final class ParserTest extends TestCase
 
     private static function context(): StaticContext
     {
-        return new StaticContext(['cbc' => self::CBC, 'cac' => self::CAC]);
+        return new StaticContext(['cbc' => self::CBC, 'cac' => self::CAC, 'u' => 'utils'], ['n'], ['{utils}gln#1' => true]);
     }
 
     /**

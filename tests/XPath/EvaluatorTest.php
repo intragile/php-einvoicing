@@ -190,10 +190,83 @@ final class EvaluatorTest extends TestCase
         self::assertTrue((new XPathError('XPTY0004', 'x'))->isRecoverable());
         self::assertFalse((new XPathError('XPST0008', 'x'))->isRecoverable());
         self::assertFalse((new XPathError('INTRAGILE_RECURSION', 'x'))->isRecoverable());
+        self::assertFalse((new XPathError('INTRAGILE_RANGE', 'x'))->isRecoverable());
         self::assertSame(
-            ['FORG0001', 'XPTY0004', 'FORG0006', 'FOAR0001', 'FOAR0002', 'FOCA0002', 'FOCH0002', 'FORX0002', 'FORX0003', 'FORX0004', 'FODT0001', 'FOCA0001', 'FOCA0003'],
+            ['FORG0001', 'XPTY0004', 'FORG0006', 'FOAR0001', 'FOAR0002', 'FOCA0002', 'FOCH0002', 'FORX0002', 'FORX0003', 'FORX0004', 'FODT0001', 'FOCA0001', 'FOCA0003', 'XPTY0018', 'XPTY0019', 'XPTY0020', 'XPDY0050'],
             XPathError::RECOVERABLE,
         );
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function patternTypeErrors(): iterable
+    {
+        yield 'mixed path result' => ['cac:InvoiceLine[./(cbc:ID, 1)]', 'XPTY0018'];
+        yield 'path over atomics' => ['cac:InvoiceLine[(1, 2)/cbc:ID]', 'XPTY0019'];
+        yield 'axis step on an atomic' => ['cac:InvoiceLine[(1, 2)[cbc:ID]]', 'XPTY0020'];
+        yield 'root of an atomic' => ['cac:InvoiceLine[(1, 2)[/]]', 'XPDY0050'];
+    }
+
+    #[DataProvider('patternTypeErrors')]
+    public function test_pattern_predicate_type_errors_do_not_match(string $pattern, string $code): void
+    {
+        $predicate = substr($pattern, strlen('cac:InvoiceLine['), -1);
+        try {
+            $this->evaluator->evaluate($this->parse($predicate), $this->node('//cac:InvoiceLine[1]'));
+            self::fail("Expected {$code}.");
+        } catch (XPathError $error) {
+            self::assertSame($code, $error->errorCode);
+        }
+
+        self::assertSame([], $this->matchPattern($pattern));
+    }
+
+    public function test_if_evaluates_only_the_chosen_branch(): void
+    {
+        self::assertSame('(xs:integer:1)', $this->canonical("if (//cbc:ID) then 1 else xs:decimal('x')"));
+        self::assertSame('(xs:string:no)', $this->canonical("if (//cbc:Nothing) then xs:decimal('x') else 'no'"));
+    }
+
+    public function test_for_binds_variables_over_outer_ones(): void
+    {
+        $ast = $this->parse('for $i in (1 to $n) return $i * $factor', ['n', 'factor']);
+        $result = $this->evaluator->evaluate($ast, $this->document, [
+            'n' => $this->evaluator->evaluate($this->parse('3'), $this->document),
+            'factor' => $this->evaluator->evaluate($this->parse('10'), $this->document),
+        ]);
+
+        self::assertSame('(xs:integer:10, xs:integer:20, xs:integer:30)', Canonical::of($result, ProbeCases::NAMESPACES));
+        self::assertSame('(xs:integer:2, xs:integer:1)', $this->canonical('for $i in (1, 2) return (for $i in $i return 3 - $i)'));
+    }
+
+    public function test_huge_range_is_a_non_recoverable_error(): void
+    {
+        try {
+            // 10,000,001 items: refused before any item is created.
+            $this->canonical('count(0 to 10000000)');
+            self::fail('Expected INTRAGILE_RANGE.');
+        } catch (XPathError $error) {
+            self::assertSame('INTRAGILE_RANGE', $error->errorCode);
+            self::assertFalse($error->isRecoverable());
+        }
+    }
+
+    public function test_user_function_call_needs_a_function_table(): void
+    {
+        $ast = (new Parser)->parse('u:gln(.)', new StaticContext(['u' => 'utils'], [], ['{utils}gln#1' => true]));
+
+        $this->expectException(UnsupportedXPath::class);
+        $this->expectExceptionMessage('user function {utils}gln#1 is not available');
+        $this->evaluator->evaluate($ast, $this->document);
+    }
+
+    public function test_sibling_axes_skip_attributes_and_keep_axis_order(): void
+    {
+        self::assertSame('()', $this->canonical('following-sibling::node()', $this->node('//cac:InvoiceLine[1]/cbc:LineExtensionAmount/@currencyID')));
+        self::assertSame('()', $this->canonical('preceding-sibling::node()', $this->node('//cac:InvoiceLine[1]/cbc:LineExtensionAmount/@extra')));
+        self::assertSame('(node:/Invoice[1]/cac:PaymentMeans[2])', $this->canonical('preceding-sibling::*[1]', $this->node('//cac:InvoiceLine[1]')));
+        self::assertSame('(node:/Invoice[1]/cac:InvoiceLine[1]/cbc:LineExtensionAmount[1])', $this->canonical('following-sibling::*', $this->node('//cac:InvoiceLine[1]/cbc:ID')));
     }
 
     public function test_index_orders_attributes_after_their_element_and_before_children(): void

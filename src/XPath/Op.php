@@ -63,6 +63,21 @@ final class Op
     /** [CAST, type, allowEmpty, operand]. */
     public const CAST = 'cast';
 
+    /** [CASTABLE, type, allowEmpty, operand]. */
+    public const CASTABLE = 'castable';
+
+    /** [IF, condition, then, else] — only the branch chosen by the condition is evaluated. */
+    public const IF = 'if';
+
+    /** [FOR, [[var, expr], ...], return] — several bindings iterate as nested loops, left to right. */
+    public const FOR = 'for';
+
+    /** [RANGE, l, r] — "l to r". */
+    public const RANGE = 'range';
+
+    /** [UCALL, uri, local, args] — a call to a user-defined function outside the fn and xs namespaces. */
+    public const UCALL = 'ucall';
+
     /** [SEQUENCE, items] — "()" and comma-separated expressions. */
     public const SEQUENCE = 'sequence';
 }

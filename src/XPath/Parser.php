@@ -46,10 +46,10 @@ final class Parser
         'xs:decimal' => [1, 1],
     ];
 
-    /** Target types accepted by "cast as". */
-    private const CAST_TYPES = ['xs:boolean', 'xs:date', 'xs:decimal'];
+    /** Target types accepted by "cast as" and "castable as". */
+    private const CAST_TYPES = ['xs:boolean', 'xs:date', 'xs:decimal', 'xs:integer', 'xs:string'];
 
-    private const AXES = ['ancestor', 'ancestor-or-self', 'attribute', 'child', 'descendant', 'descendant-or-self', 'parent', 'preceding', 'self'];
+    private const AXES = ['ancestor', 'ancestor-or-self', 'attribute', 'child', 'descendant', 'descendant-or-self', 'following-sibling', 'parent', 'preceding', 'preceding-sibling', 'self'];
 
     /** Names that are kind tests when followed by "(", supported or not. */
     private const KIND_TESTS = ['attribute', 'comment', 'document-node', 'element', 'node', 'processing-instruction', 'schema-attribute', 'schema-element', 'text'];
@@ -63,12 +63,10 @@ final class Parser
 
     /** Operators that are recognised only to be rejected, keyed by their first token. */
     private const UNSUPPORTED_OPERATORS = [
-        'castable' => 'castable as',
         'except' => 'except',
         'instance' => 'instance of',
         'intersect' => 'intersect',
         'is' => 'is',
-        'to' => 'to',
         'treat' => 'treat as',
         '<<' => '<<',
         '>>' => '>>',
@@ -155,12 +153,51 @@ final class Parser
             if ($token->value === 'some' || $token->value === 'every') {
                 return $this->quantified();
             }
-            if ($token->value === 'for' || $token->value === 'let') {
+            if ($token->value === 'for') {
+                return $this->forExpr();
+            }
+            if ($token->value === 'let') {
                 throw $this->unsupported($token->value, $token);
             }
         }
+        if ($token->is(Token::NAME, 'if') && $this->peek()->is(Token::SYMBOL, '(')) {
+            return $this->ifExpr();
+        }
 
         return $this->orExpr();
+    }
+
+    /**
+     * @return array<mixed>
+     */
+    private function ifExpr(): array
+    {
+        $this->advance();
+        $this->expect(Token::SYMBOL, '(');
+        $condition = $this->expr();
+        $this->rejectUnsupportedOperator();
+        $this->expect(Token::SYMBOL, ')');
+        $this->expectName('then');
+        $then = $this->exprSingle();
+        $this->rejectUnsupportedOperator();
+        $this->expectName('else');
+
+        return [Op::IF, $condition, $then, $this->exprSingle()];
+    }
+
+    /**
+     * @return array<mixed>
+     */
+    private function forExpr(): array
+    {
+        $this->advance();
+        $outerScope = $this->variables;
+        $bindings = $this->bindings();
+        $this->expectName('return');
+        $return = $this->exprSingle();
+        $this->variables = $outerScope;
+
+        return [Op::FOR, $bindings, $return];
     }
 
     /**
@@ -170,20 +207,32 @@ final class Parser
     {
         $quantifier = $this->advance()->value;
         $outerScope = $this->variables;
-        $bindings = [];
-
-        do {
-            $name = $this->variableName();
-            $this->expectName('in');
-            $bindings[] = [$name, $this->exprSingle()];
-            $this->variables[] = $name;
-        } while ($this->accept(Token::SYMBOL, ','));
-
+        $bindings = $this->bindings();
         $this->expectName('satisfies');
         $satisfies = $this->exprSingle();
         $this->variables = $outerScope;
 
         return [Op::QUANT, $quantifier, $bindings, $satisfies];
+    }
+
+    /**
+     * Parses "$name in expr, ..." and brings each variable into scope for the bindings after it and
+     * for the body; the caller restores the outer scope once the body is parsed.
+     *
+     * @return list<array{string, array<mixed>}>
+     */
+    private function bindings(): array
+    {
+        $bindings = [];
+        do {
+            $name = $this->variableName();
+            $this->expectName('in');
+            $bindings[] = [$name, $this->exprSingle()];
+            $this->rejectUnsupportedOperator();
+            $this->variables[] = $name;
+        } while ($this->accept(Token::SYMBOL, ','));
+
+        return $bindings;
     }
 
     /**
@@ -217,21 +266,31 @@ final class Parser
      */
     private function comparisonExpr(): array
     {
-        $left = $this->additiveExpr();
+        $left = $this->rangeExpr();
         $token = $this->current();
 
         if ($token->is(Token::SYMBOL) && in_array($token->value, self::GENERAL_COMPARISONS, true)) {
             $this->advance();
 
-            return [Op::GCMP, $token->value, $left, $this->additiveExpr()];
+            return [Op::GCMP, $token->value, $left, $this->rangeExpr()];
         }
         if ($token->is(Token::NAME) && in_array($token->value, self::VALUE_COMPARISONS, true)) {
             $this->advance();
 
-            return [Op::VCMP, $token->value, $left, $this->additiveExpr()];
+            return [Op::VCMP, $token->value, $left, $this->rangeExpr()];
         }
 
         return $left;
+    }
+
+    /**
+     * @return array<mixed>
+     */
+    private function rangeExpr(): array
+    {
+        $left = $this->additiveExpr();
+
+        return $this->acceptOperatorName('to') ? [Op::RANGE, $left, $this->additiveExpr()] : $left;
     }
 
     /**
@@ -272,12 +331,24 @@ final class Parser
      */
     private function unionExpr(): array
     {
-        $left = $this->castExpr();
+        $left = $this->castableExpr();
         while ($this->accept(Token::SYMBOL, '|') || $this->acceptOperatorName('union')) {
-            $left = [Op::UNION, $left, $this->castExpr()];
+            $left = [Op::UNION, $left, $this->castableExpr()];
         }
 
         return $left;
+    }
+
+    /**
+     * @return array<mixed>
+     */
+    private function castableExpr(): array
+    {
+        $operand = $this->castExpr();
+        $result = $this->singleTypeSuffix('castable', Op::CASTABLE, $operand);
+        $this->rejectUnsupportedOperator();
+
+        return $result;
     }
 
     /**
@@ -288,7 +359,19 @@ final class Parser
         $operand = $this->unaryExpr();
         $this->rejectUnsupportedOperator();
 
-        if (! ($this->current()->is(Token::NAME, 'cast') && $this->peek()->is(Token::NAME, 'as'))) {
+        return $this->singleTypeSuffix('cast', Op::CAST, $operand);
+    }
+
+    /**
+     * Parses an optional "cast as T" or "castable as T" (T optionally followed by "?") after an
+     * operand, returning [$op, type, allowEmpty, operand] or the operand itself.
+     *
+     * @param  array<mixed>  $operand
+     * @return array<mixed>
+     */
+    private function singleTypeSuffix(string $keyword, string $op, array $operand): array
+    {
+        if (! ($this->current()->is(Token::NAME, $keyword) && $this->peek()->is(Token::NAME, 'as'))) {
             return $operand;
         }
 
@@ -297,10 +380,10 @@ final class Parser
         $typeToken = $this->current();
         $type = $this->canonicalName($this->expectTypeName(), $typeToken);
         if (! in_array($type, self::CAST_TYPES, true)) {
-            throw $this->unsupported("cast as {$type}", $typeToken);
+            throw $this->unsupported("{$keyword} as {$type}", $typeToken);
         }
 
-        return [Op::CAST, $type, $this->accept(Token::SYMBOL, '?'), $operand];
+        return [$op, $type, $this->accept(Token::SYMBOL, '?'), $operand];
     }
 
     /**
@@ -417,7 +500,7 @@ final class Parser
         if ($token->is(Token::SYMBOL, '$')) {
             $name = $this->variableName();
             if (! in_array($name, $this->variables, true)) {
-                throw new XPathSyntaxError("Undeclared variable \${$name}", $this->expression, $token->offset);
+                throw $this->unsupported("undeclared variable \${$name} (XPST0008)", $token);
             }
 
             return [Op::VAR, $name];
@@ -446,7 +529,8 @@ final class Parser
             throw $this->unsupported($token->value, $token);
         }
 
-        $name = $this->canonicalName($token->value, $token);
+        $userFunction = $this->userFunction($token);
+        $name = $userFunction === null ? $this->canonicalName($token->value, $token) : '';
         $this->expect(Token::SYMBOL, '(');
         $arguments = [];
         if (! $this->accept(Token::SYMBOL, ')')) {
@@ -455,6 +539,15 @@ final class Parser
                 $this->rejectUnsupportedOperator();
             } while ($this->accept(Token::SYMBOL, ','));
             $this->expect(Token::SYMBOL, ')');
+        }
+
+        if ($userFunction !== null) {
+            [$uri, $local] = $userFunction;
+            if (! $this->context->hasFunction($uri, $local, count($arguments))) {
+                throw $this->unsupported(sprintf('function %s() with %d arguments in namespace %s', $token->value, count($arguments), $uri), $token);
+            }
+
+            return [Op::UCALL, $uri, $local, $arguments];
         }
 
         [$min, $max] = self::FUNCTIONS[$name] ?? [null, null];
@@ -466,6 +559,23 @@ final class Parser
         }
 
         return [Op::CALL, $name, $arguments];
+    }
+
+    /**
+     * The namespace URI and local name of a prefixed function name bound to a namespace other than
+     * fn and xs, or null for any other name.
+     *
+     * @return array{string, string}|null
+     */
+    private function userFunction(Token $token): ?array
+    {
+        if (! str_contains($token->value, ':')) {
+            return null;
+        }
+        [$prefix, $local] = explode(':', $token->value, 2);
+        $uri = $this->context->namespaceUri($prefix);
+
+        return $uri === null || $uri === StaticContext::FN || $uri === StaticContext::XS ? null : [$uri, $local];
     }
 
     /**

@@ -7,7 +7,7 @@ namespace IntrAgile\EInvoicing\XPath\Exception;
 use InvalidArgumentException;
 
 /**
- * Thrown when an XPath expression is not well-formed or refers to an undeclared variable.
+ * Thrown when an XPath expression is not well-formed.
  */
 final class XPathSyntaxError extends InvalidArgumentException
 {

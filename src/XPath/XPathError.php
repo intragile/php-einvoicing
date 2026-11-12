@@ -14,13 +14,13 @@ use RuntimeException;
 final class XPathError extends RuntimeException
 {
     /**
-     * Codes of the dynamic errors caused by the data being evaluated. Within an XSLT match pattern
-     * such an error makes the pattern not match; any other code (an unbound variable, a guard such
-     * as a recursion limit) always propagates.
+     * Codes of the dynamic and type errors caused by the data being evaluated. Within an XSLT match
+     * pattern such an error makes the pattern not match; any other code (an unbound variable, a guard
+     * such as a recursion or range limit) always propagates.
      *
      * @var list<string>
      */
-    public const RECOVERABLE = ['FORG0001', 'XPTY0004', 'FORG0006', 'FOAR0001', 'FOAR0002', 'FOCA0002', 'FOCH0002', 'FORX0002', 'FORX0003', 'FORX0004', 'FODT0001', 'FOCA0001', 'FOCA0003'];
+    public const RECOVERABLE = ['FORG0001', 'XPTY0004', 'FORG0006', 'FOAR0001', 'FOAR0002', 'FOCA0002', 'FOCH0002', 'FORX0002', 'FORX0003', 'FORX0004', 'FODT0001', 'FOCA0001', 'FOCA0003', 'XPTY0018', 'XPTY0019', 'XPTY0020', 'XPDY0050'];
 
     public function __construct(public readonly string $errorCode, string $message)
     {
