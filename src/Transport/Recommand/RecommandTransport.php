@@ -4,23 +4,35 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Transport\Recommand;
 
+use IntrAgile\EInvoicing\Exception\UnsafeXml;
+use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Transport\DeliveryStatus;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
+use IntrAgile\EInvoicing\Transport\Exception\TransportException;
 use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\Http\HttpClient;
+use IntrAgile\EInvoicing\Transport\InboundDocument;
+use IntrAgile\EInvoicing\Transport\InboundReference;
+use IntrAgile\EInvoicing\Transport\InboundSource;
 use IntrAgile\EInvoicing\Transport\OutboundDocument;
+use IntrAgile\EInvoicing\Transport\Sbdh\EnvelopeReader;
+use IntrAgile\EInvoicing\Transport\Sbdh\EnvelopeWriter;
 use IntrAgile\EInvoicing\Transport\SendResult;
 use IntrAgile\EInvoicing\Transport\Transport;
 use InvalidArgumentException;
 use JsonException;
+use Psr\Http\Message\ResponseInterface;
+use XMLReader;
 
 /**
- * Sends documents over Peppol through the Recommand access point REST API
+ * Sends and receives documents over Peppol through the Recommand access point REST API
  * (https://app.recommand.eu). Recommand builds the SBDH envelope itself, so the raw UBL document
- * is sent together with its routing metadata.
+ * is sent together with its routing metadata. Received documents are taken from the inbox of the
+ * configured company; one that still arrives wrapped in an SBDH is unwrapped.
  */
-final class RecommandTransport implements Transport
+final class RecommandTransport implements InboundSource, Transport
 {
     private readonly ResponseMapper $mapper;
 
@@ -77,21 +89,113 @@ final class RecommandTransport implements Transport
      */
     public function status(string $documentId): DeliveryStatus
     {
-        if ($documentId === '') {
-            throw new InvalidArgumentException('The document id must not be empty.');
+        self::assertDocumentId($documentId);
+
+        return $this->mapper->deliveryStatus($this->get($this->documentUrl($documentId)), $documentId);
+    }
+
+    /**
+     * The unread incoming documents of the configured company. Recommand returns them all at
+     * once, so acknowledge each processed document to keep the list short.
+     *
+     * @return list<InboundReference>
+     *
+     * @throws TransportUnavailable when the request failed without an answer; it is safe to retry
+     * @throws TransportException when Recommand refused the request or answered unexpectedly
+     */
+    public function pending(): array
+    {
+        $url = sprintf('%s/api/v1/inbox?companyId=%s', $this->config->baseUrl, rawurlencode($this->config->companyId));
+
+        return $this->mapper->inboundReferences($this->get($url));
+    }
+
+    /**
+     * The received document with any SBDH envelope removed and its metadata kept. The XML is
+     * parsed without DTD processing or network access; the response size is capped by the HTTP
+     * client (20 MB by default).
+     *
+     * @throws TransportUnavailable when the request failed without an answer; it is safe to retry
+     * @throws UnexpectedResponse when the document is unknown, has no XML or the response exceeds the size cap
+     * @throws TransportException when Recommand refused the request
+     * @throws UnsafeXml when the document carries a DOCTYPE declaration
+     * @throws UnsupportedDocument when the document is not well-formed XML or its envelope is incomplete
+     * @throws InvalidArgumentException when the document id is empty
+     */
+    public function fetch(string $documentId): InboundDocument
+    {
+        self::assertDocumentId($documentId);
+
+        [$reference, $xml] = $this->mapper->inboundDocument($this->get($this->documentUrl($documentId)), $documentId);
+
+        if (self::hasEnvelopeRoot($xml)) {
+            // The reader parses the envelope once with SafeXml and serialises the payload from the
+            // parsed tree, so the payload needs no second parse.
+            [$envelope, $payload] = (new EnvelopeReader)->unwrap($xml);
+
+            return new InboundDocument($reference, $payload, $envelope);
         }
 
-        $url = sprintf('%s/api/v1/documents/%s', $this->config->baseUrl, rawurlencode($documentId));
+        SafeXml::load($xml);
+
+        return new InboundDocument($reference, $xml);
+    }
+
+    /**
+     * Marks the document as read, which removes it from the inbox.
+     *
+     * Marking as read is idempotent at Recommand, so after an OutcomeUnknown it is safe to call
+     * this again with the same id.
+     *
+     * @throws OutcomeUnknown when the request failed without an answer; retrying is safe
+     * @throws UnexpectedResponse when Recommand does not know the document or answered unexpectedly
+     * @throws TransportException when Recommand refused the request
+     * @throws InvalidArgumentException when the document id is empty
+     */
+    public function acknowledge(string $documentId): void
+    {
+        self::assertDocumentId($documentId);
 
         try {
-            $response = $this->http->send('GET', $url, $this->headers());
+            $response = $this->http->send(
+                'POST',
+                $this->documentUrl($documentId).'/mark-as-read',
+                $this->headers() + ['Content-Type' => 'application/json'],
+                '{"read":true}',
+            );
+        } catch (OutcomeUnknown $exception) {
+            throw new OutcomeUnknown(
+                sprintf(
+                    'Marking document "%s" as read at Recommand failed without an answer, so it may or may not have been recorded. Marking as read is idempotent, so it is safe to retry.',
+                    $documentId,
+                ),
+                $exception,
+            );
+        } catch (UnexpectedResponse $exception) {
+            throw $this->mapper->sanitize($exception);
+        }
+
+        $this->mapper->acknowledged($response, $documentId);
+    }
+
+    /**
+     * @throws TransportUnavailable when the request failed without an answer
+     * @throws UnexpectedResponse when the response exceeds the size cap
+     */
+    private function get(string $url): ResponseInterface
+    {
+        try {
+            return $this->http->send('GET', $url, $this->headers());
         } catch (TransportUnavailable $exception) {
             throw new TransportUnavailable($this->config->redact($exception->getMessage()), $exception);
         } catch (UnexpectedResponse $exception) {
             throw $this->mapper->sanitize($exception);
         }
+    }
 
-        return $this->mapper->deliveryStatus($response, $documentId);
+    private function documentUrl(string $documentId): string
+    {
+        return sprintf('%s/api/v1/documents/%s', $this->config->baseUrl, rawurlencode($documentId));
     }
 
     /**
@@ -103,5 +207,48 @@ final class RecommandTransport implements Transport
             'Authorization' => $this->config->authorization(),
             'Accept' => 'application/json',
         ];
+    }
+
+    private static function assertDocumentId(string $documentId): void
+    {
+        if ($documentId === '') {
+            throw new InvalidArgumentException('The document id must not be empty.');
+        }
+    }
+
+    /**
+     * Whether the root element is a Standard Business Document, read from the start of the XML
+     * without building a tree. A DOCTYPE or a malformed start counts as no envelope, so that the
+     * full parse that follows refuses it.
+     */
+    private static function hasEnvelopeRoot(string $xml): bool
+    {
+        if (trim($xml) === '') {
+            return false;
+        }
+
+        $previous = libxml_use_internal_errors(true);
+        $reader = new XMLReader;
+
+        try {
+            if (! $reader->XML($xml, null, LIBXML_NONET)) {
+                return false;
+            }
+            while ($reader->read()) {
+                if ($reader->nodeType === XMLReader::DOC_TYPE) {
+                    return false;
+                }
+                if ($reader->nodeType === XMLReader::ELEMENT) {
+                    return $reader->namespaceURI === EnvelopeWriter::NAMESPACE_URI
+                        && $reader->localName === 'StandardBusinessDocument';
+                }
+            }
+
+            return false;
+        } finally {
+            $reader->close();
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
     }
 }

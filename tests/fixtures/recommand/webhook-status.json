@@ -1,0 +1,17 @@
+{
+  "eventType": "document.delivery_status_changed",
+  "documentId": "doc_01failed",
+  "teamId": "team_01example",
+  "companyId": "c_01example",
+  "deliveryStatus": "failed",
+  "deliveryId": "dlv_01peppol",
+  "channel": "peppol",
+  "address": "0208:0123456789",
+  "status": "failed",
+  "previousStatus": "pending",
+  "failure": {
+    "category": "recipient_not_found",
+    "message": "The receiver is not registered on the Peppol network.",
+    "providerCode": "SMP_NOT_FOUND"
+  }
+}

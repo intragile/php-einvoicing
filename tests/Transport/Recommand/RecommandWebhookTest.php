@@ -1,0 +1,225 @@
+<?php
+
+declare(strict_types=1);
+
+namespace IntrAgile\EInvoicing\Tests\Transport\Recommand;
+
+use IntrAgile\EInvoicing\Transport\DeliveryState;
+use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
+use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
+use IntrAgile\EInvoicing\Transport\FailureCategory;
+use IntrAgile\EInvoicing\Transport\Recommand\RecommandWebhook;
+use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\TestCase;
+use Throwable;
+
+final class RecommandWebhookTest extends TestCase
+{
+    private const SECRET = 'whsec_01topsecretvalue';
+
+    /**
+     * @return iterable<string, array{string, ?string, bool}>
+     */
+    public static function signatureCases(): iterable
+    {
+        $raw = self::read('webhook-received.json');
+        $valid = hash_hmac('sha256', $raw, self::SECRET);
+        $reencoded = json_encode(json_decode($raw), JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT);
+
+        yield 'valid lowercase hex' => [$raw, 'sha256='.$valid, true];
+        yield 'valid uppercase hex' => [$raw, 'sha256='.strtoupper($valid), true];
+        yield 'missing header' => [$raw, null, false];
+        yield 'empty header' => [$raw, '', false];
+        yield 'wrong secret' => [$raw, 'sha256='.hash_hmac('sha256', $raw, 'whsec_other'), false];
+        yield 'sha1 prefix' => [$raw, 'sha1='.$valid, false];
+        yield 'uppercase prefix' => [$raw, 'SHA256='.$valid, false];
+        yield 'prefix only' => [$raw, 'sha256=', false];
+        yield 'no prefix' => [$raw, $valid, false];
+        yield 'surrounding whitespace' => [$raw, ' sha256='.$valid.' ', false];
+        yield 'non-hex tail' => [$raw, 'sha256='.substr($valid, 0, 62).'zz', false];
+        yield 'truncated hex' => [$raw, 'sha256='.substr($valid, 0, 32), false];
+        yield 'signature over re-encoded JSON' => [$raw, 'sha256='.hash_hmac('sha256', $reencoded, self::SECRET), false];
+        yield 'body re-encoded, signature over raw' => [$reencoded, 'sha256='.$valid, false];
+        yield 'empty body with valid-looking header' => ['', 'sha256='.hash_hmac('sha256', '', self::SECRET), false];
+    }
+
+    #[DataProvider('signatureCases')]
+    public function test_webhook_signature_cases(string $rawBody, ?string $header, bool $expected): void
+    {
+        self::assertSame($expected, (new RecommandWebhook(self::SECRET))->verify($rawBody, $header));
+    }
+
+    public function test_received_event_is_parsed(): void
+    {
+        $raw = self::read('webhook-received.json');
+
+        $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)]);
+
+        self::assertSame('document.received', $event->type);
+        self::assertSame('doc_01inboundfirst', $event->documentId);
+        self::assertSame('c_01example', $event->companyId);
+        self::assertNull($event->idempotencyKey);
+        self::assertNull($event->deliveryState);
+        self::assertNull($event->failure);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function idempotencyHeaderNames(): iterable
+    {
+        yield 'canonical' => ['X-Idempotency-Key'];
+        yield 'lowercase' => ['x-idempotency-key'];
+        yield 'uppercase' => ['X-IDEMPOTENCY-KEY'];
+    }
+
+    #[DataProvider('idempotencyHeaderNames')]
+    public function test_idempotency_key_is_exposed(string $name): void
+    {
+        $raw = self::read('webhook-received.json');
+
+        $event = (new RecommandWebhook(self::SECRET))->parse($raw, [
+            'x-SIGNATURE' => [self::sign($raw)],
+            $name => 'idem_01abc',
+        ]);
+
+        self::assertSame('idem_01abc', $event->idempotencyKey);
+    }
+
+    public function test_status_event_maps_delivery_state_and_failure(): void
+    {
+        $raw = self::read('webhook-status.json');
+
+        $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)]);
+
+        self::assertSame('document.delivery_status_changed', $event->type);
+        self::assertSame('doc_01failed', $event->documentId);
+        self::assertSame(DeliveryState::Failed, $event->deliveryState);
+        self::assertNotNull($event->failure);
+        self::assertSame(FailureCategory::RecipientNotFound, $event->failure->category);
+        self::assertSame('The receiver is not registered on the Peppol network.', $event->failure->message);
+        self::assertSame('SMP_NOT_FOUND', $event->failure->providerCode);
+    }
+
+    public function test_sent_event_maps_delivery_state(): void
+    {
+        $raw = '{"eventType":"document.sent","documentId":"doc_01","teamId":"t","companyId":"c","deliveryStatus":"delivered"}';
+
+        $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)]);
+
+        self::assertSame(DeliveryState::Delivered, $event->deliveryState);
+        self::assertNull($event->failure);
+    }
+
+    public function test_failure_of_a_non_peppol_delivery_is_ignored(): void
+    {
+        $data = json_decode(self::read('webhook-status.json'), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($data);
+        $data['channel'] = 'email';
+        $data['deliveryStatus'] = 'delivered';
+        $raw = json_encode($data, JSON_THROW_ON_ERROR);
+
+        $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)]);
+
+        self::assertSame(DeliveryState::Delivered, $event->deliveryState);
+        self::assertNull($event->failure);
+    }
+
+    public function test_unknown_event_type_and_status_are_kept(): void
+    {
+        $raw = '{"eventType":"document.teleported","documentId":"doc_01","deliveryStatus":"somewhere"}';
+
+        $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)]);
+
+        self::assertSame('document.teleported', $event->type);
+        self::assertSame('doc_01', $event->documentId);
+        self::assertNull($event->companyId);
+        self::assertSame(DeliveryState::Unknown, $event->deliveryState);
+    }
+
+    /**
+     * @return iterable<string, array{array<string, string|list<string>>}>
+     */
+    public static function unverifiedHeaders(): iterable
+    {
+        yield 'no signature header' => [['X-Idempotency-Key' => 'idem']];
+        yield 'wrong signature' => [['X-Signature' => 'sha256='.str_repeat('0', 64)]];
+        yield 'two signature values' => [['X-Signature' => ['sha256='.str_repeat('0', 64), 'sha256='.str_repeat('1', 64)]]];
+    }
+
+    /**
+     * @param  array<string, string|list<string>>  $headers
+     */
+    #[DataProvider('unverifiedHeaders')]
+    public function test_parse_requires_a_verified_signature(array $headers): void
+    {
+        $exception = self::capture(fn () => (new RecommandWebhook(self::SECRET))->parse(self::read('webhook-received.json'), $headers));
+
+        self::assertInstanceOf(AuthenticationFailed::class, $exception);
+        self::assertStringNotContainsString(self::SECRET, $exception->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function malformedBodies(): iterable
+    {
+        yield 'not JSON' => ['not json'];
+        yield 'JSON scalar' => ['"document.received"'];
+        yield 'no event type' => ['{"documentId":"doc_01"}'];
+        yield 'empty event type' => ['{"eventType":"","documentId":"doc_01"}'];
+        yield 'no document id' => ['{"eventType":"document.received"}'];
+        yield 'empty document id' => ['{"eventType":"document.received","documentId":""}'];
+    }
+
+    #[DataProvider('malformedBodies')]
+    public function test_malformed_signed_body_is_unexpected(string $raw): void
+    {
+        $exception = self::capture(fn () => (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)]));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+    }
+
+    public function test_empty_secret_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new RecommandWebhook('  ');
+    }
+
+    public function test_secret_stays_out_of_dumps(): void
+    {
+        $webhook = new RecommandWebhook(self::SECRET);
+
+        self::assertStringNotContainsString(self::SECRET, var_export($webhook, true));
+        self::assertStringNotContainsString(self::SECRET, print_r($webhook, true));
+        ob_start();
+        var_dump($webhook);
+        self::assertStringNotContainsString(self::SECRET, (string) ob_get_clean());
+        self::assertStringNotContainsString(self::SECRET, (string) json_encode($webhook));
+    }
+
+    private static function sign(string $raw): string
+    {
+        return 'sha256='.hash_hmac('sha256', $raw, self::SECRET);
+    }
+
+    private static function read(string $name): string
+    {
+        $contents = file_get_contents(__DIR__.'/../../fixtures/recommand/'.$name);
+        self::assertIsString($contents);
+
+        return $contents;
+    }
+
+    private static function capture(callable $action): Throwable
+    {
+        try {
+            $action();
+        } catch (Throwable $exception) {
+            return $exception;
+        }
+        self::fail('No exception was thrown.');
+    }
+}

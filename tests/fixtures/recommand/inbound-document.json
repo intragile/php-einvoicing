@@ -1,0 +1,26 @@
+{
+  "success": true,
+  "document": {
+    "id": "doc_01inboundfirst",
+    "teamId": "team_01example",
+    "companyId": "c_01example",
+    "direction": "incoming",
+    "senderId": "0208:0987654321",
+    "receiverId": "0208:0123456789",
+    "docTypeId": "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice##urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0::2.1",
+    "processId": "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0",
+    "countryC1": "BE",
+    "type": "invoice",
+    "readAt": null,
+    "createdAt": "2026-11-12T07:45:10.000Z",
+    "updatedAt": "2026-11-12T07:45:10.000Z",
+    "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Invoice xmlns=\"urn:oasis:names:specification:ubl:schema:xsd:Invoice-2\" xmlns:cbc=\"urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2\"><cbc:ID>INV-1</cbc:ID></Invoice>\n",
+    "parsed": null,
+    "validation": {"result": "valid", "errors": []},
+    "peppolMessageId": "c0ffee00-0000-4000-8000-000000000001@ap.example",
+    "peppolConversationId": "conv-1",
+    "envelopeId": "0d6f2a8e-1c4b-4f7d-8e2a-9b3c5d7e1f01",
+    "deliveryStatus": null,
+    "deliveries": []
+  }
+}

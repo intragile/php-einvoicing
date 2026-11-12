@@ -19,8 +19,10 @@ use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\FailureCategory;
 use IntrAgile\EInvoicing\Transport\Http\JsonResponse;
+use IntrAgile\EInvoicing\Transport\InboundReference;
 use IntrAgile\EInvoicing\Transport\Peppol\ParticipantId;
 use IntrAgile\EInvoicing\Transport\SendResult;
+use InvalidArgumentException;
 use Psr\Http\Message\ResponseInterface;
 
 /**
@@ -53,9 +55,9 @@ final class ResponseMapper
 
         return new SendResult(
             $this->documentId($response, $data),
-            $this->state($data['deliveryStatus'] ?? null),
-            $this->optionalString($data['peppolMessageId'] ?? null),
-            $this->optionalString($data['envelopeId'] ?? null),
+            self::stateOf($data['deliveryStatus'] ?? null),
+            self::optionalString($data['peppolMessageId'] ?? null),
+            self::optionalString($data['envelopeId'] ?? null),
             $failure,
         );
     }
@@ -84,9 +86,117 @@ final class ResponseMapper
 
         return new DeliveryStatus(
             $documentId,
-            $this->state($document['deliveryStatus'] ?? null),
+            self::stateOf($document['deliveryStatus'] ?? null),
             $failure,
             $changedAt,
+        );
+    }
+
+    /**
+     * The unread incoming documents listed by an inbox response, in the order given.
+     *
+     * @return list<InboundReference>
+     *
+     * @throws TransportException when the response is not an inbox listing
+     */
+    public function inboundReferences(ResponseInterface $response): array
+    {
+        if ($response->getStatusCode() !== 200) {
+            throw $this->commonFailure($response, 'Listing the Recommand inbox');
+        }
+
+        $documents = $this->successBody($response)['documents'] ?? null;
+        if (! is_array($documents) || ! array_is_list($documents)) {
+            throw $this->unexpected($response, 'The Recommand inbox response has no document list');
+        }
+
+        $references = [];
+        foreach ($documents as $document) {
+            if (! is_array($document)) {
+                throw $this->unexpected($response, 'The Recommand inbox response lists a document that is not an object');
+            }
+            $references[] = $this->inboundReference($response, $document);
+        }
+
+        return $references;
+    }
+
+    /**
+     * The reference and the XML exactly as stored by Recommand of a document response.
+     *
+     * @return array{InboundReference, string}
+     *
+     * @throws TransportException when the response is not a document with XML
+     */
+    public function inboundDocument(ResponseInterface $response, string $documentId): array
+    {
+        $status = $response->getStatusCode();
+        if ($status === 404) {
+            throw $this->unexpected($response, sprintf('Recommand does not know the document "%s"', $documentId));
+        }
+        if ($status !== 200) {
+            throw $this->commonFailure($response, sprintf('Fetching document "%s"', $documentId));
+        }
+
+        $document = $this->successBody($response)['document'] ?? null;
+        if (! is_array($document)) {
+            throw $this->unexpected($response, 'The Recommand document response has no document');
+        }
+        $xml = $document['xml'] ?? null;
+        if (! is_string($xml)) {
+            throw $this->unexpected($response, sprintf('Recommand returned document "%s", but the document has no XML', $documentId));
+        }
+
+        return [$this->inboundReference($response, $document), $xml];
+    }
+
+    /**
+     * Checks that a mark-as-read response reports success.
+     *
+     * @throws TransportException when it does not
+     */
+    public function acknowledged(ResponseInterface $response, string $documentId): void
+    {
+        $status = $response->getStatusCode();
+        if ($status === 404) {
+            throw $this->unexpected($response, sprintf('Recommand does not know the document "%s"', $documentId));
+        }
+        if ($status !== 200) {
+            throw $this->commonFailure($response, sprintf('Marking document "%s" as read', $documentId));
+        }
+
+        $this->successBody($response);
+    }
+
+    /**
+     * The delivery state of a Recommand delivery status value. A missing status means delivery
+     * has not started yet; a status this version does not know is Unknown rather than an error,
+     * because the document was accepted and an exception would invite a duplicate send.
+     */
+    public static function stateOf(mixed $value): DeliveryState
+    {
+        if ($value === null) {
+            return DeliveryState::Pending;
+        }
+
+        return is_string($value) ? (DeliveryState::tryFrom($value) ?? DeliveryState::Unknown) : DeliveryState::Unknown;
+    }
+
+    /**
+     * The failure described by a Recommand delivery failure object, or null when there is none.
+     * The message is returned as given.
+     */
+    public static function failureOf(mixed $failure): ?DeliveryFailure
+    {
+        if (! is_array($failure)) {
+            return null;
+        }
+        $category = $failure['category'] ?? null;
+
+        return new DeliveryFailure(
+            is_string($category) ? FailureCategory::fromValue($category) : FailureCategory::Other,
+            self::optionalString($failure['message'] ?? null),
+            self::optionalString($failure['providerCode'] ?? null),
         );
     }
 
@@ -227,20 +337,6 @@ final class ResponseMapper
     }
 
     /**
-     * A missing status means delivery has not started yet; a status this version does not know
-     * is Unknown rather than an error, because the document was accepted and an exception would
-     * invite a duplicate send.
-     */
-    private function state(mixed $value): DeliveryState
-    {
-        if ($value === null) {
-            return DeliveryState::Pending;
-        }
-
-        return is_string($value) ? (DeliveryState::tryFrom($value) ?? DeliveryState::Unknown) : DeliveryState::Unknown;
-    }
-
-    /**
      * The failure and the status change time of the first Peppol delivery.
      *
      * @param  array<mixed>  $data
@@ -265,17 +361,51 @@ final class ResponseMapper
 
     private function failure(mixed $failure): ?DeliveryFailure
     {
-        if (! is_array($failure)) {
+        $parsed = self::failureOf($failure);
+        if ($parsed === null || $parsed->message === null) {
+            return $parsed;
+        }
+
+        return new DeliveryFailure($parsed->category, $this->config->redact($parsed->message), $parsed->providerCode);
+    }
+
+    /**
+     * @param  array<mixed>  $document
+     *
+     * @throws UnexpectedResponse when the document has no id or no valid creation time
+     */
+    private function inboundReference(ResponseInterface $response, array $document): InboundReference
+    {
+        $id = $document['id'] ?? null;
+        if (! is_string($id) || $id === '') {
+            throw $this->unexpected($response, 'The Recommand response lists a document without an id');
+        }
+        $receivedAt = $this->time($document['createdAt'] ?? null)
+            ?? throw $this->unexpected($response, sprintf('The Recommand document "%s" has no valid createdAt time', $id));
+
+        return new InboundReference(
+            $id,
+            self::participant($document['senderId'] ?? null),
+            self::participant($document['receiverId'] ?? null),
+            self::optionalString($document['docTypeId'] ?? null),
+            $receivedAt,
+        );
+    }
+
+    /**
+     * The participant of an identifier as reported by Recommand, or null when it is missing or
+     * not a participant identifier.
+     */
+    private static function participant(mixed $value): ?ParticipantId
+    {
+        if (! is_string($value) || trim($value) === '') {
             return null;
         }
-        $category = $failure['category'] ?? null;
-        $message = $this->optionalString($failure['message'] ?? null);
-
-        return new DeliveryFailure(
-            is_string($category) ? FailureCategory::fromValue($category) : FailureCategory::Other,
-            $message === null ? null : $this->config->redact($message),
-            $this->optionalString($failure['providerCode'] ?? null),
-        );
+        try {
+            return ParticipantId::parse($value);
+        } catch (InvalidArgumentException) {
+            return null;
+        }
     }
 
     private function time(mixed $value): ?DateTimeImmutable
@@ -290,7 +420,7 @@ final class ResponseMapper
         }
     }
 
-    private function optionalString(mixed $value): ?string
+    private static function optionalString(mixed $value): ?string
     {
         return is_string($value) && $value !== '' ? $value : null;
     }
