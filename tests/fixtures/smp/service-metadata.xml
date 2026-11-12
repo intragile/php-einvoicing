@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Hand-written SignedServiceMetadata in the Peppol SMP 1.x shape; the participant, SMP, access
+     point and certificate bytes are fictitious and the signature is a placeholder. -->
+<ns3:SignedServiceMetadata xmlns:ns3="http://busdox.org/serviceMetadata/publishing/1.0/" xmlns:ns2="http://busdox.org/transport/identifiers/1.0/" xmlns:ns4="http://www.w3.org/2005/08/addressing" xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+  <ns3:ServiceMetadata>
+    <ns3:ServiceInformation>
+      <ns2:ParticipantIdentifier scheme="iso6523-actorid-upis">0208:0123456789</ns2:ParticipantIdentifier>
+      <ns2:DocumentIdentifier scheme="busdox-docid-qns">urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice##urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0::2.1</ns2:DocumentIdentifier>
+      <ns3:ProcessList>
+        <ns3:Process>
+          <ns2:ProcessIdentifier scheme="cenbii-procid-ubl">urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</ns2:ProcessIdentifier>
+          <ns3:ServiceEndpointList>
+            <ns3:Endpoint transportProfile="peppol-transport-as4-v2_0">
+              <ns4:EndpointReference>
+                <ns4:Address>https://ap.example/as4</ns4:Address>
+              </ns4:EndpointReference>
+              <ns3:RequireBusinessLevelSignature>false</ns3:RequireBusinessLevelSignature>
+              <ns3:ServiceActivationDate>2024-01-01T00:00:00Z</ns3:ServiceActivationDate>
+              <ns3:ServiceExpirationDate>2999-12-31T23:59:59+01:00</ns3:ServiceExpirationDate>
+              <ns3:Certificate>MIIBszCCAVmgAwIBAgIUQ2VydGlmaWNhdGVQbGFjZWhvbGRlcjAKBggqhkjOPQQD
+AjAgMR4wHAYDVQQDDBVQRVBQT0wgQUNDRVNTIFBPSU5UIENBMB4XDTI0MDEwMTAw
+  MDAwMFoXDTI5MTIzMTIzNTk1OVow</ns3:Certificate>
+              <ns3:ServiceDescription>Example access point</ns3:ServiceDescription>
+              <ns3:TechnicalContactUrl>https://ap.example/support</ns3:TechnicalContactUrl>
+            </ns3:Endpoint>
+          </ns3:ServiceEndpointList>
+        </ns3:Process>
+        <ns3:Process>
+          <ns2:ProcessIdentifier scheme="cenbii-procid-ubl">urn:peppol:bis:billing_with_response</ns2:ProcessIdentifier>
+          <ns3:ServiceEndpointList>
+            <ns3:Endpoint transportProfile="peppol-transport-as4-v2_0">
+              <ns4:EndpointReference>
+                <ns4:Address>https://ap.example/as4-response</ns4:Address>
+              </ns4:EndpointReference>
+              <ns3:RequireBusinessLevelSignature>false</ns3:RequireBusinessLevelSignature>
+              <ns3:Certificate>MIIBszCCAVmgAwIBAgIU</ns3:Certificate>
+              <ns3:ServiceDescription>Example access point</ns3:ServiceDescription>
+              <ns3:TechnicalContactUrl>mailto:support@ap.example</ns3:TechnicalContactUrl>
+            </ns3:Endpoint>
+          </ns3:ServiceEndpointList>
+        </ns3:Process>
+      </ns3:ProcessList>
+    </ns3:ServiceInformation>
+  </ns3:ServiceMetadata>
+  <ds:Signature>
+    <ds:SignedInfo/>
+    <ds:SignatureValue>cGxhY2Vob2xkZXI=</ds:SignatureValue>
+  </ds:Signature>
+</ns3:SignedServiceMetadata>
