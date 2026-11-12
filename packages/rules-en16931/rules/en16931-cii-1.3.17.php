@@ -21,11 +21,20 @@ return array (
     'ram' => 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
     'xs' => 'http://www.w3.org/2001/XMLSchema',
   ),
+  'lets' => 
+  array (
+  ),
+  'functions' => 
+  array (
+  ),
   'patterns' => 
   array (
     0 => 
     array (
       'id' => 'EN16931-CII-Model',
+      'lets' => 
+      array (
+      ),
       'rules' => 
       array (
         0 => 
@@ -68,6 +77,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -198,6 +210,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -282,6 +297,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -447,6 +465,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -628,6 +649,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -890,6 +914,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -1425,6 +1452,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -1897,6 +1927,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -5660,6 +5693,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -13214,6 +13250,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -14225,6 +14264,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -14671,6 +14713,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -15074,6 +15119,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -15354,6 +15402,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -15616,6 +15667,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -15699,6 +15753,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -16141,6 +16198,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -16245,6 +16305,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -16329,6 +16392,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -16510,6 +16576,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -16871,6 +16940,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -17134,6 +17206,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -17361,6 +17436,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -19198,6 +19276,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -19799,6 +19880,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -20391,6 +20475,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -20964,6 +21051,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -22182,6 +22272,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -22677,6 +22770,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -23174,6 +23270,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -23642,6 +23741,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -24860,6 +24962,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -25355,6 +25460,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -25852,6 +25960,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -26344,6 +26455,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -28181,6 +28295,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -28677,6 +28794,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -29163,6 +29283,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -29656,6 +29779,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -31493,6 +31619,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -31900,6 +32029,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -32297,6 +32429,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -32701,6 +32836,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -34912,6 +35050,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -35422,6 +35563,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -35923,6 +36067,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -36405,6 +36552,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -37721,6 +37871,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -38328,6 +38481,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -38926,6 +39082,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -39462,6 +39621,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -41048,6 +41210,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -41543,6 +41708,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -42040,6 +42208,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -42465,6 +42636,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -44342,6 +44516,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -44838,6 +45015,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -45325,6 +45505,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -45717,6 +45900,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -47202,6 +47388,9 @@ return array (
     1 => 
     array (
       'id' => 'EN16931-CII-Syntax',
+      'lets' => 
+      array (
+      ),
       'rules' => 
       array (
         0 => 
@@ -47244,6 +47433,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -47320,6 +47512,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -47708,6 +47903,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -48408,6 +48606,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -48530,6 +48731,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -48758,6 +48962,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -49127,6 +49334,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -51286,6 +51496,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -51448,6 +51661,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -54092,6 +54308,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -54256,6 +54475,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -54378,6 +54600,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -54615,6 +54840,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -55481,6 +55709,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -57435,6 +57666,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -63161,6 +63395,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -64753,6 +64990,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -69494,6 +69734,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -70533,6 +70776,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -71283,6 +71529,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -71441,6 +71690,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -71841,6 +72093,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -72110,6 +72365,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -72271,6 +72529,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -72393,6 +72654,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -72600,6 +72864,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -72781,6 +73048,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -73649,6 +73919,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -73772,6 +74045,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -74070,6 +74346,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -75065,6 +75344,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -75552,6 +75834,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -76028,6 +76313,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -76062,6 +76350,9 @@ return array (
     2 => 
     array (
       'id' => 'EN16931-Codes',
+      'lets' => 
+      array (
+      ),
       'rules' => 
       array (
         0 => 
@@ -76122,6 +76413,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -76272,6 +76566,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -76429,6 +76726,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -76564,6 +76864,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -76701,6 +77004,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -76837,6 +77143,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -76972,6 +77281,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -77171,6 +77483,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -77363,6 +77678,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -77533,6 +77851,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -77689,6 +78010,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -77842,6 +78166,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -77997,6 +78324,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -78151,6 +78481,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -78304,6 +78637,9 @@ return array (
               array (
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -78504,6 +78840,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -78703,6 +79042,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -78871,6 +79213,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -79026,6 +79371,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -79241,6 +79589,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -79410,6 +79761,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (
@@ -79665,6 +80019,9 @@ return array (
               ),
             ),
           ),
+          'lets' => 
+          array (
+          ),
           'asserts' => 
           array (
             0 => 
@@ -79870,6 +80227,9 @@ return array (
                 ),
               ),
             ),
+          ),
+          'lets' => 
+          array (
           ),
           'asserts' => 
           array (

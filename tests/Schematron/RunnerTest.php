@@ -168,6 +168,56 @@ final class RunnerTest extends TestCase
     /**
      * @return iterable<string, array{array<string, mixed>, string}>
      */
+    public static function malformedDeclarations(): iterable
+    {
+        $base = ['format' => RuleSet::FORMAT, 'id' => 'x', 'version' => '1', 'namespaces' => [], 'lets' => [], 'functions' => [], 'patterns' => []];
+        $function = ['name' => 'u:f', 'as' => null, 'params' => [['name' => 'v', 'as' => 'xs:string']], 'body' => [['sequence', ['var', 'v']]]];
+        $rule = ['context' => 'a', 'match' => ['path'], 'lets' => [], 'asserts' => []];
+
+        yield 'no schema lets' => [array_diff_key($base, ['lets' => true]), 'The lets of "x"'];
+        yield 'no functions' => [array_diff_key($base, ['functions' => true]), 'The functions of "x"'];
+        yield 'no pattern lets' => [['patterns' => [['id' => 'p', 'rules' => []]]] + $base, 'The lets of pattern "p"'];
+        yield 'no rule lets' => [['patterns' => [['id' => 'p', 'lets' => [], 'rules' => [array_diff_key($rule, ['lets' => true])]]]] + $base, 'The lets of the rule "a"'];
+        yield 'let without ast' => [['lets' => [['name' => 'a', 'value' => '1']]] + $base, 'The value of the let "a"'];
+        yield 'function without "as"' => [['functions' => ['{u}f#1' => array_diff_key($function, ['as' => true])]] + $base, '"as" must be a string or null'];
+        yield 'unknown instruction' => [['functions' => ['{u}f#1' => ['body' => [['for-each', []]]] + $function]] + $base, 'unknown or incomplete instruction'];
+        yield 'choose with a bad branch' => [['functions' => ['{u}f#1' => ['body' => [['choose', [[['var', 'v']]], null]]] + $function]] + $base, 'unknown or incomplete instruction'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $compiled
+     */
+    #[DataProvider('malformedDeclarations')]
+    public function test_rejects_malformed_declarations(array $compiled, string $message): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage($message);
+
+        RuleSet::fromArray($compiled);
+    }
+
+    public function test_keeps_lets_and_functions(): void
+    {
+        $let = ['name' => 'a', 'value' => '1', 'ast' => ['literal', 'xs:integer', '1']];
+        $function = ['name' => 'u:f', 'as' => 'xs:boolean', 'params' => [['name' => 'v', 'as' => null]], 'body' => [
+            ['variable-text', 't', null, 'abc'],
+            ['choose', [[['var', 'v'], [['sequence', ['var', 't']]]]], [['variable', 'w', 'xs:string', ['var', 'v']], ['sequence', ['var', 'w']]]],
+        ]];
+        $rules = RuleSet::fromArray([
+            'format' => RuleSet::FORMAT, 'id' => 'x', 'version' => '1', 'namespaces' => [],
+            'lets' => [$let], 'functions' => ['{u}f#1' => $function],
+            'patterns' => [['id' => 'p', 'lets' => [$let], 'rules' => [['context' => 'a', 'match' => ['path'], 'lets' => [$let], 'asserts' => []]]]],
+        ]);
+
+        self::assertSame([$let], $rules->lets());
+        self::assertSame(['{u}f#1' => $function], $rules->functions());
+        self::assertSame([$let], $rules->patterns()[0]['lets']);
+        self::assertSame([$let], $rules->patterns()[0]['rules'][0]['lets']);
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string}>
+     */
     public static function staleFormats(): iterable
     {
         $current = ['id' => 'old', 'version' => '1', 'namespaces' => [], 'patterns' => []];
@@ -219,11 +269,11 @@ final class RunnerTest extends TestCase
         $context = new StaticContext($namespaces);
         $parser = new Parser;
 
-        $compiled = ['format' => RuleSet::FORMAT, 'id' => 'mini', 'version' => '0', 'namespaces' => $namespaces, 'patterns' => []];
+        $compiled = ['format' => RuleSet::FORMAT, 'id' => 'mini', 'version' => '0', 'namespaces' => $namespaces, 'lets' => [], 'functions' => [], 'patterns' => []];
         foreach ($patterns as $id => $rules) {
-            $pattern = ['id' => $id, 'rules' => []];
+            $pattern = ['id' => $id, 'lets' => [], 'rules' => []];
             foreach ($rules as [$ruleContext, $asserts]) {
-                $rule = ['context' => $ruleContext, 'match' => $parser->parsePattern($ruleContext, $context), 'asserts' => []];
+                $rule = ['context' => $ruleContext, 'match' => $parser->parsePattern($ruleContext, $context), 'lets' => [], 'asserts' => []];
                 foreach ($asserts as $assert) {
                     $rule['asserts'][] = [
                         'id' => $assert[0],

@@ -16,9 +16,12 @@ use IntrAgile\EInvoicing\Validation\Severity;
  *
  * @internal
  *
+ * @phpstan-type Let array{name: string, value: string, ast: array<mixed>}
+ * @phpstan-type Instruction list<mixed>
+ * @phpstan-type UserFunction array{name: string, as: ?string, params: list<array{name: string, as: ?string}>, body: list<Instruction>}
  * @phpstan-type RuleAssert array{id: string, severity: Severity, test: string, ast: array<mixed>, message: string}
- * @phpstan-type Rule array{context: string, match: array<mixed>, asserts: list<RuleAssert>, roots: list<array{string, string}>}
- * @phpstan-type Pattern array{id: string, rules: list<Rule>}
+ * @phpstan-type Rule array{context: string, match: array<mixed>, lets: list<Let>, asserts: list<RuleAssert>, roots: list<array{string, string}>}
+ * @phpstan-type Pattern array{id: string, lets: list<Let>, rules: list<Rule>}
  */
 final class RuleSet
 {
@@ -33,12 +36,16 @@ final class RuleSet
 
     /**
      * @param  array<string, string>  $namespaces  prefix => namespace URI
+     * @param  list<Let>  $lets
+     * @param  array<string, UserFunction>  $functions
      * @param  list<Pattern>  $patterns
      */
     private function __construct(
         private readonly string $id,
         private readonly string $version,
         private readonly array $namespaces,
+        private readonly array $lets,
+        private readonly array $functions,
         private readonly array $patterns,
     ) {}
 
@@ -80,6 +87,14 @@ final class RuleSet
             $namespaces[$prefix] = $uri;
         }
 
+        $functions = [];
+        foreach (self::map($compiled['functions'] ?? null, "The functions of \"{$id}\"") as $key => $function) {
+            if (! is_string($key)) {
+                throw new UnsupportedSchematron("The rule set \"{$id}\" has a function without a key.");
+            }
+            $functions[$key] = self::userFunction(self::map($function, "The function {$key}"), $key);
+        }
+
         $patterns = [];
         foreach (self::list($compiled['patterns'] ?? null, "The patterns of \"{$id}\"") as $pattern) {
             $pattern = self::map($pattern, "A pattern of \"{$id}\"");
@@ -88,10 +103,17 @@ final class RuleSet
             foreach (self::list($pattern['rules'] ?? null, "The rules of pattern \"{$patternId}\"") as $rule) {
                 $rules[] = self::rule(self::map($rule, "A rule of pattern \"{$patternId}\""), $namespaces, $patternId);
             }
-            $patterns[] = ['id' => $patternId, 'rules' => $rules];
+            $patterns[] = ['id' => $patternId, 'lets' => self::checkLets($pattern['lets'] ?? null, "The lets of pattern \"{$patternId}\""), 'rules' => $rules];
         }
 
-        return new self($id, self::string($compiled, 'version', "The rule set \"{$id}\""), $namespaces, $patterns);
+        return new self(
+            $id,
+            self::string($compiled, 'version', "The rule set \"{$id}\""),
+            $namespaces,
+            self::checkLets($compiled['lets'] ?? null, "The lets of \"{$id}\""),
+            $functions,
+            $patterns,
+        );
     }
 
     public function id(): string
@@ -110,6 +132,26 @@ final class RuleSet
     public function namespaces(): array
     {
         return $this->namespaces;
+    }
+
+    /**
+     * The schema-level lets, in document order.
+     *
+     * @return list<Let>
+     */
+    public function lets(): array
+    {
+        return $this->lets;
+    }
+
+    /**
+     * The XSLT functions, keyed by "{namespace URI}local-name#arity".
+     *
+     * @return array<string, UserFunction>
+     */
+    public function functions(): array
+    {
+        return $this->functions;
     }
 
     /**
@@ -148,9 +190,107 @@ final class RuleSet
         return [
             'context' => $context,
             'match' => self::map($rule['match'] ?? null, "The match of {$what}"),
+            'lets' => self::checkLets($rule['lets'] ?? null, 'The lets of '.lcfirst($what)),
             'asserts' => $asserts,
             'roots' => self::roots($context, $namespaces),
         ];
+    }
+
+    /**
+     * @return list<Let>
+     */
+    private static function checkLets(mixed $lets, string $what): array
+    {
+        $result = [];
+        foreach (self::list($lets, $what) as $let) {
+            $let = self::map($let, "A let of {$what}");
+            $name = self::string($let, 'name', "A let of {$what}");
+            $result[] = [
+                'name' => $name,
+                'value' => self::string($let, 'value', "The let \"{$name}\""),
+                'ast' => self::map($let['ast'] ?? null, "The value of the let \"{$name}\""),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  array<mixed>  $function
+     * @return UserFunction
+     */
+    private static function userFunction(array $function, string $key): array
+    {
+        $what = "The function {$key}";
+        $params = [];
+        foreach (self::list($function['params'] ?? null, "The parameters of {$key}") as $param) {
+            $param = self::map($param, "A parameter of {$key}");
+            $params[] = ['name' => self::string($param, 'name', "A parameter of {$key}"), 'as' => self::optionalString($param, 'as', "A parameter of {$key}")];
+        }
+
+        return [
+            'name' => self::string($function, 'name', $what),
+            'as' => self::optionalString($function, 'as', $what),
+            'params' => $params,
+            'body' => self::instructions($function['body'] ?? null, "The body of {$key}"),
+        ];
+    }
+
+    /**
+     * Checks a function body: ['variable', name, as, ast], ['variable-text', name, as, text],
+     * ['sequence', ast] or ['choose', list of [test ast, body], otherwise body or null].
+     *
+     * @return list<Instruction>
+     */
+    private static function instructions(mixed $body, string $what): array
+    {
+        $instructions = [];
+        foreach (self::list($body, $what) as $instruction) {
+            $instruction = self::list($instruction, "An instruction of {$what}");
+            $valid = match ($instruction[0] ?? null) {
+                'variable' => count($instruction) === 4 && is_string($instruction[1]) && self::isOptionalString($instruction[2]) && is_array($instruction[3]),
+                'variable-text' => count($instruction) === 4 && is_string($instruction[1]) && self::isOptionalString($instruction[2]) && is_string($instruction[3]),
+                'sequence' => count($instruction) === 2 && is_array($instruction[1]),
+                'choose' => count($instruction) === 3 && self::validBranches($instruction[1], $what) && ($instruction[2] === null || self::instructions($instruction[2], $what) !== []),
+                default => false,
+            };
+            if (! $valid) {
+                throw new UnsupportedSchematron("{$what} is malformed: an unknown or incomplete instruction.");
+            }
+            $instructions[] = $instruction;
+        }
+
+        return $instructions;
+    }
+
+    private static function validBranches(mixed $branches, string $what): bool
+    {
+        foreach (self::list($branches, "The branches of {$what}") as $branch) {
+            if (! is_array($branch) || ! array_is_list($branch) || count($branch) !== 2 || ! is_array($branch[0])) {
+                return false;
+            }
+            self::instructions($branch[1], $what);
+        }
+
+        return true;
+    }
+
+    private static function isOptionalString(mixed $value): bool
+    {
+        return $value === null || is_string($value);
+    }
+
+    /**
+     * @param  array<mixed>  $array
+     */
+    private static function optionalString(array $array, string $key, string $what): ?string
+    {
+        $value = $array[$key] ?? null;
+        if (! array_key_exists($key, $array) || ($value !== null && ! is_string($value))) {
+            throw new UnsupportedSchematron("{$what} is malformed: \"{$key}\" must be a string or null.");
+        }
+
+        return $value;
     }
 
     /**
