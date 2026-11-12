@@ -15,6 +15,10 @@
     <groups>
         <exclude><group>oracle</group><group>network</group><group>recommand-live</group><group>performance</group></exclude>
     </groups>
+    <!-- The suite needs about 160 MB on PHP 8.3, above the stock 128M limit of PHP images. -->
+    <php>
+        <ini name="memory_limit" value="512M"/>
+    </php>
     <source>
         <include><directory>src</directory></include>
     </source>

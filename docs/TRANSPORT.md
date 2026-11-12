@@ -22,10 +22,11 @@ use IntrAgile\EInvoicing\Transport\ValidatingTransport;
 use IntrAgile\EInvoicing\Validation\Validator;
 
 $config = new RecommandConfig($apiKeyId, $secret, $companyId);
+$recommand = new RecommandTransport($config, $http);  // $http: see "HTTP client" below
 
 $transport = new ValidatingTransport(
-    new RecommandTransport($config, $http),          // $http: see "HTTP client" below
-    Validator::peppol(__DIR__.'/var/peppol-rules'),  // installed with einvoicing-rules
+    $recommand,
+    Validator::peppol(__DIR__.'/var/peppol-rules'),   // installed with einvoicing-rules
 );
 
 $result = $transport->send(OutboundDocument::fromXml($ublXml));
@@ -98,7 +99,9 @@ clients, not with Guzzle or Symfony.
 - **Do not follow redirects**, at least for SMP lookups. `SmpClient` handles the SMP's own
   `Redirect` element (one hop) itself; an HTTP 3xx followed silently by the client would bypass
   the URL checks the lookup applies (https only, no user info, query string or fragment).
-- Credentials in the `Authorization` header are kept out of exception messages.
+- The `Authorization` header value is kept out of this package's exception messages; a PSR-18
+  client's own exception, chained as the previous exception, is passed through unchanged, so check
+  what your client puts in its messages before logging the whole chain.
 
 ## Errors
 
@@ -217,14 +220,15 @@ $entry = $directory->find(ParticipantId::parse('0208:0123456789'));  // null whe
 ```php
 use IntrAgile\EInvoicing\Syntax\Ubl\UblReader;
 
-foreach ($transport->pending() as $reference) {      // RecommandTransport implements InboundSource
-    $inbound = $transport->fetch($reference->documentId);
+// Poll on the driver itself: ValidatingTransport wraps sending only.
+foreach ($recommand->pending() as $reference) {      // RecommandTransport implements InboundSource
+    $inbound = $recommand->fetch($reference->documentId);
 
     $invoice = (new UblReader)->read($inbound->xml)->invoice;
     $inbound->envelope?->sender;                       // SBDH metadata, when it arrived in one
 
     // Store the invoice first, then acknowledge: an acknowledged document leaves the inbox.
-    $transport->acknowledge($reference->documentId);
+    $recommand->acknowledge($reference->documentId);
 }
 ```
 

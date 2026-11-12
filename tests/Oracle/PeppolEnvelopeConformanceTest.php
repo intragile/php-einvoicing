@@ -8,6 +8,10 @@ use DateTimeImmutable;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Validation\Peppol\InstalledRules;
 use IntrAgile\EInvoicing\Transport\OutboundDocument;
+use IntrAgile\EInvoicing\Transport\Peppol\DocumentTypeId;
+use IntrAgile\EInvoicing\Transport\Peppol\ParticipantId;
+use IntrAgile\EInvoicing\Transport\Peppol\PeppolBis3;
+use IntrAgile\EInvoicing\Transport\Peppol\ProcessId;
 use IntrAgile\EInvoicing\Transport\Sbdh\EnvelopeWriter;
 use IntrAgile\EInvoicing\Validation\DynamicError;
 use IntrAgile\EInvoicing\Validation\Validator;
@@ -119,8 +123,8 @@ final class PeppolEnvelopeConformanceTest extends TestCase
             'padded endpoint in the invoice' => self::wrap(self::replace($invoice, self::BUYER[0], "<cbc:EndpointID schemeID=\"0002\">\n  FR23342  </cbc:EndpointID>")),
             // The rule compares the envelope identifier as written, without normalising it.
             'padded receiver in the envelope' => self::swap(self::wrap($invoice), 'Receiver', self::BUYER[1], ' 0002:FR23342 '),
-            'self-billing as written' => self::wrap(self::selfBilling($invoice)),
-            'self-billing with swapped parties' => self::swapParties(self::wrap(self::selfBilling($invoice)), self::SELLER[1], self::BUYER[1]),
+            'self-billing as written' => self::wrapSelfBilling(self::selfBilling($invoice)),
+            'self-billing with swapped parties' => self::swapParties(self::wrapSelfBilling(self::selfBilling($invoice)), self::SELLER[1], self::BUYER[1]),
             'credit note with swapped parties' => self::swapCreditNoteParties(),
             default => throw new RuntimeException("Unknown envelope \"{$label}\"."),
         };
@@ -156,6 +160,27 @@ final class PeppolEnvelopeConformanceTest extends TestCase
     {
         return (new EnvelopeWriter)->wrap(
             OutboundDocument::fromXml($xml, 'BE'),
+            'f81d4fae-7dec-41d0-a765-00a0c91e6bf6',
+            new DateTimeImmutable('2026-11-12T09:30:00Z'),
+        );
+    }
+
+    /**
+     * Envelopes a self-billing invoice the way the billing envelope is written: seller as sender,
+     * buyer as receiver. OutboundDocument::fromXml() refuses self-billing, so the routing metadata
+     * is given explicitly; the BR-SBDH-3/4 rules expect the roles the other way round.
+     */
+    private static function wrapSelfBilling(string $xml): string
+    {
+        return (new EnvelopeWriter)->wrap(
+            new OutboundDocument(
+                $xml,
+                ParticipantId::parse(self::SELLER[1]),
+                ParticipantId::parse(self::BUYER[1]),
+                new DocumentTypeId(PeppolBis3::INVOICE),
+                new ProcessId(self::SELF_BILLING_PROFILE),
+                'BE',
+            ),
             'f81d4fae-7dec-41d0-a765-00a0c91e6bf6',
             new DateTimeImmutable('2026-11-12T09:30:00Z'),
         );
