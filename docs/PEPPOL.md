@@ -2,8 +2,8 @@
 
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
-This page explains how to validate invoices against the Peppol BIS Billing 3.0 rules
-(release 3.0.22): what is checked, why the rules are compiled on your machine instead of shipped
+This page explains how to validate invoices, and the Peppol envelope around them, against the
+Peppol BIS Billing 3.0 rules (release 3.0.22): what is checked, why the rules are compiled on your machine instead of shipped
 with the package, how to install them, how the verdicts are verified, and what is not covered
 yet. The engine itself is described in [VALIDATION.md](VALIDATION.md).
 
@@ -60,12 +60,48 @@ CII, for example check-digit and VAT-number checks). The engine runs both native
 error. A document that is not a UBL Invoice, UBL CreditNote or CII invoice (for example a UBL
 Order) throws `UnsupportedDocument`; a DOCTYPE throws `UnsafeXml`.
 
+## Envelope (SBDH) rules
+
+An invoice sent over Peppol travels inside a Standard Business Document: the Peppol Business
+Message Envelope (SBDH) followed by the invoice. OpenPeppol publishes rules for that envelope in
+`PeppolBIS-Envelope-Rules.sch`, and `install` compiles them together with the invoice rules.
+`Validator::peppolEnvelope($dir)` takes the whole Standard Business Document:
+
+```php
+$report = Validator::peppolEnvelope(__DIR__.'/var/peppol-rules')->validate($sbdXml);
+// $report->ruleSets === ['peppol-envelope 3.0.22']
+```
+
+| Rule | Applies to | Checks |
+|---|---|---|
+| `BR-SBDH-1` | BIS Billing 3.0 (`billing:01:1.0` or `billing_with_response`) | the envelope Receiver equals the buyer's `EndpointID` as `schemeID:value` |
+| `BR-SBDH-2` | same | the envelope Sender equals the seller's `EndpointID` |
+| `BR-SBDH-3` | self-billing 3.0 (`selfbilling:01:1.0`) | the envelope Receiver equals the seller's `EndpointID` |
+| `BR-SBDH-4` | same | the envelope Sender equals the buyer's `EndpointID` |
+
+- All four are fatal. Documents with another customization or profile pass without a check.
+- **The comparison is case-sensitive.** The official rule compares strings with XPath `=`, so
+  `0002:FR23342` in the envelope does not match `fr23342` in the invoice, although Peppol
+  participant identifiers are case-insensitive. The validator mirrors the official rule; write
+  the envelope identifiers exactly as they appear in the invoice. The invoice's `EndpointID` is
+  compared after `normalize-space()`, the envelope identifier and the `schemeID` as written.
+- The rules check only these identifiers: not `COUNTRY_C1`, the `DOCUMENTID` and `PROCESSID`
+  scopes or the header structure, and not the invoice itself. Run `Validator::peppol()` on the
+  invoice for that.
+- A document whose element is not an SBDH `StandardBusinessDocument` (for example a bare
+  invoice), or that envelopes no invoice, throws `UnsupportedDocument`. `$report->syntax` is the
+  syntax of the enveloped invoice.
+- A rules folder written by an earlier version of `install` holds only the four invoice rule
+  files: `Validator::peppol()` still works with it, `Validator::peppolEnvelope()` throws
+  `RulesNotInstalled` naming the `install` command, and `check` exits 1 until `install` is run
+  again.
+
 ## Why the rules are compiled on your machine
 
 OpenPeppol publishes its Schematron files without a licence (the repository has no LICENSE file,
 and OpenPeppol AISBL holds the copyright). This package therefore distributes no file derived
 from them: no compiled rules and no Peppol test documents, neither in the package nor in its git
-repository. Instead, `vendor/bin/einvoicing-rules install peppol` downloads the four official
+repository. Instead, `vendor/bin/einvoicing-rules install peppol` downloads the five official
 `.sch` files from the OpenPeppol repository at the pinned tag `3.0.22`, verifies each one against
 a pinned SHA-256 checksum, and compiles them into PHP rule files on your machine. The compiled
 files carry the note "OpenPeppol AISBL holds the copyright — do not redistribute" in their header;
@@ -79,6 +115,7 @@ Sources (`https://raw.githubusercontent.com/OpenPEPPOL/peppol-bis-invoice-3/3.0.
 | `CEN-EN16931-CII.sch` | `54e0dc6d06cd7f17d268bb9696ff56f58d386ee28961c9bbef0a56718c400c89` |
 | `PEPPOL-EN16931-UBL.sch` | `f637444fab75a6da7e5004f94a6de8e71383ef5658dafe6c68925103b17ea148` |
 | `PEPPOL-EN16931-CII.sch` | `7678c3cd4a219095ef5d4f2ece17e5d447eb92655e57a7d52290b35acfdc9dd8` |
+| `PeppolBIS-Envelope-Rules.sch` | `96648791fb824b6b58ddae9cc5575e8298e0061fc43dd0934a0b1459396d76f9` |
 
 The rules are compiled from the upstream files as they are: never edited by hand, and no rule is
 special-cased by its id.
@@ -89,20 +126,21 @@ special-cased by its id.
 # Download over HTTPS, verify the checksums, compile into DIR
 vendor/bin/einvoicing-rules install peppol --dir=DIR
 
-# Offline server: compile from a folder that holds the four .sch files
+# Offline server: compile from a folder that holds the five .sch files
 vendor/bin/einvoicing-rules install peppol --dir=DIR --from=/path/to/sch
 
-# Exit code 0 when the compiled rules in DIR load with the installed engine, 1 otherwise
+# Exit code 0 when all five compiled rule sets in DIR load with the installed engine, 1 otherwise
 vendor/bin/einvoicing-rules check peppol --dir=DIR
 ```
 
-- `install` verifies all four checksums before it writes anything. On a mismatch it throws
-  `RuleSourceMismatch`, names the file and both hashes, and leaves `DIR` unchanged. It writes four
-  files, `peppol-cen-ubl-3.0.22.php`, `peppol-ubl-3.0.22.php`, `peppol-cen-cii-3.0.22.php` and
-  `peppol-cii-3.0.22.php`, and replaces them only after all four have compiled.
+- `install` verifies all five checksums before it writes anything. On a mismatch it throws
+  `RuleSourceMismatch`, names the file and both hashes, and leaves `DIR` unchanged. It writes five
+  files, `peppol-cen-ubl-3.0.22.php`, `peppol-ubl-3.0.22.php`, `peppol-cen-cii-3.0.22.php`,
+  `peppol-cii-3.0.22.php` and `peppol-envelope-3.0.22.php`, and replaces them only after all five
+  have compiled.
 - The download uses PHP streams only (no HTTP client dependency): HTTPS with certificate
   verification, at most three HTTPS redirects, a time limit and a size limit.
-- For `--from`, get the four files from the
+- For `--from`, get the five files from the
   [OpenPeppol repository](https://github.com/OpenPEPPOL/peppol-bis-invoice-3/tree/3.0.22/rules/sch)
   at tag `3.0.22` on a machine with network access; the same checksums are verified.
 - `Validator::peppol($dir)` throws `RulesNotInstalled` when a file is missing, with the
@@ -116,19 +154,19 @@ vendor/bin/einvoicing-rules check peppol --dir=DIR
   of any public repository.
 - Re-run `install` after upgrading this package: a new engine version may change the rule-file
   format, and `check` tells you whether the current files still load.
-- With `--from`, the build server needs no network access; a copy of the four `.sch` files
+- With `--from`, the build server needs no network access; a copy of the five `.sch` files
   verified once is enough.
 - `RuleSet::fromFile()` caches each compiled file per path for the life of the PHP process. A
   long-running worker that reinstalls into the same folder keeps the old rules until it restarts;
   restart workers after `install`.
-- The four rule sets take about 16 MB of memory once loaded. A process that also loads the
+- The four invoice rule sets take about 16 MB of memory once loaded. A process that also loads the
   CEN 1.3.17 rules (`Validator::en16931()`) holds both.
 
 ## How the verdicts are verified
 
 No compiled XSLT for the Peppol layer is published; as far as we could find, OpenPeppol builds its
 own validator by compiling the Schematron with the ISO Schematron XSLT skeleton in Saxon. The oracle
-test group does the same: it compiles the four `.sch` files with the ISO skeleton in SaxonC-HE
+test group does the same: it compiles the four invoice `.sch` files with the ISO skeleton in SaxonC-HE
 (Docker), runs the resulting stylesheets, and compares the verdict of every document with ours (the
 sorted set of distinct `"<rule id> <flag>"` strings over both layers; locations and messages are not
 compared). If Saxon aborts with a dynamic error, our report must carry a dynamic error with the same
@@ -147,6 +185,13 @@ unit-test documents; on those only the error code is compared, not the findings.
 documents among the unit tests are not counted above; they are not invoices: the validator throws
 `UnsupportedDocument` for them, and a test asserts it. This is a test corpus, not a proof for every
 possible input.
+
+The envelope rules are verified the same way, in `PeppolEnvelopeConformanceTest`: the
+`PeppolBIS-Envelope-Rules.sch` compiled with the ISO skeleton and run by SaxonC-HE gives the same
+verdict as `Validator::peppolEnvelope()` on the 14 documents of the official envelope tests
+(`rules/unit-SBDH`) and on 10 envelopes written by `EnvelopeWriter` for Peppol examples, some
+altered afterwards (another sender or receiver, letter case, padding, self-billing and swapped
+parties). That class is not counted in the totals below.
 
 The skeleton pipeline is itself guarded: the CEN 1.3.17 Schematron compiled with the ISO
 skeleton gives the same verdicts as the official CEN 1.3.17 XSLT on the 34 CEN examples and 200
@@ -173,8 +218,6 @@ input in [Resource use](VALIDATION.md#resource-use) apply here too.
 
 ## Not covered yet
 
-- **The Peppol envelope (SBDH) rules** (`rules/unit-SBDH` in the OpenPeppol repository): the
-  validator checks the invoice document, not the Standard Business Document Header around it.
 - **Peppol transport**: sending and receiving through an access point, SMP and Peppol Directory
   lookup. Both are planned for a later release.
 - **Live network**: the format is verified offline against the official rules; transmission

@@ -12,6 +12,7 @@ use IntrAgile\EInvoicing\Validation\Exception\RuleSourceMismatch;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolRules;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use IntrAgile\EInvoicing\Validation\Peppol\RuleInstaller;
+use IntrAgile\EInvoicing\Validation\Validator;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -29,11 +30,14 @@ final class RuleInstallerTest extends TestCase
         BuildDir::remove($this->dir);
     }
 
-    public function test_installs_the_four_rule_files_from_a_local_folder(): void
+    public function test_installs_the_five_rule_files_from_a_local_folder(): void
     {
         $target = $this->dir.'/rules';
 
         $written = (new RuleInstaller)->install($target, self::sourceDir());
+
+        self::assertCount(5, $written);
+        self::assertSame("{$target}/peppol-envelope-3.0.22.php", $written[4]);
 
         $expected = array_values(array_map(
             static fn (array $source): string => "{$target}/{$source['id']}-3.0.22.php",
@@ -60,6 +64,47 @@ final class RuleInstallerTest extends TestCase
         self::assertSame(['ubl' => ['peppol-cen-ubl', 'peppol-ubl'], 'cii' => ['peppol-cen-cii', 'peppol-cii']], $ids);
     }
 
+    public function test_installed_envelope_rules_load(): void
+    {
+        $ruleSet = PeppolRules::loadEnvelope(InstalledRules::dir());
+
+        self::assertSame('peppol-envelope', $ruleSet->id());
+        self::assertSame('3.0.22', $ruleSet->version());
+    }
+
+    public function test_folder_installed_before_the_envelope_rules_still_validates_invoices(): void
+    {
+        $this->copyInvoiceRules();
+        // Run in a child process: loading a second copy of the invoice rule sets here would keep
+        // it in memory for the rest of the test run.
+        $script = sprintf(
+            'require %s; echo json_encode(%s::peppol(%s)->validate((string) file_get_contents(%s))->ruleSets);',
+            var_export(dirname(__DIR__, 3).'/vendor/autoload.php', true),
+            Validator::class,
+            var_export($this->dir, true),
+            var_export(dirname(InstalledRules::sourceDir()).'/examples/base-example.xml', true),
+        );
+        $process = proc_open([PHP_BINARY, '-r', $script], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        self::assertIsResource($process);
+        $stdout = (string) stream_get_contents($pipes[1]);
+        $stderr = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        self::assertSame(0, proc_close($process), $stderr);
+        self::assertSame('["peppol-cen-ubl 3.0.22","peppol-ubl 3.0.22"]', $stdout);
+    }
+
+    public function test_folder_installed_before_the_envelope_rules_has_no_envelope_rules(): void
+    {
+        $this->copyInvoiceRules();
+
+        $this->expectException(RulesNotInstalled::class);
+        $this->expectExceptionMessage("envelope rules are not installed in \"{$this->dir}\". Run: vendor/bin/einvoicing-rules install peppol --dir=\"{$this->dir}\"");
+
+        PeppolRules::loadEnvelope($this->dir);
+    }
+
     public function test_checksum_mismatch_writes_nothing(): void
     {
         $source = $this->dir.'/source';
@@ -68,8 +113,8 @@ final class RuleInstallerTest extends TestCase
             copy(self::sourceDir().'/'.$file['file'], $source.'/'.$file['file']);
         }
         // The last file is altered, so a check that ran only while writing would already have
-        // written the first three.
-        $altered = $source.'/PEPPOL-EN16931-CII.sch';
+        // written the first four.
+        $altered = $source.'/PeppolBIS-Envelope-Rules.sch';
         $bytes = (string) file_get_contents($altered);
         $bytes[100] = $bytes[100] === 'a' ? 'b' : 'a';
         file_put_contents($altered, $bytes);
@@ -79,8 +124,8 @@ final class RuleInstallerTest extends TestCase
             (new RuleInstaller)->install($target, $source);
             self::fail('A changed source file must be refused.');
         } catch (RuleSourceMismatch $exception) {
-            self::assertStringContainsString('PEPPOL-EN16931-CII.sch', $exception->getMessage());
-            self::assertStringContainsString(PeppolSources::all()['peppol-cii']['sha256'], $exception->getMessage());
+            self::assertStringContainsString('PeppolBIS-Envelope-Rules.sch', $exception->getMessage());
+            self::assertStringContainsString(PeppolSources::all()['envelope']['sha256'], $exception->getMessage());
             self::assertStringContainsString(hash('sha256', $bytes), $exception->getMessage());
         }
 
@@ -168,6 +213,7 @@ final class RuleInstallerTest extends TestCase
         self::assertSame($before[1], file_get_contents($first[1]));
         self::assertTrue(is_dir($blocked));
         self::assertSame($before[3], file_get_contents($first[3]));
+        self::assertSame($before[4], file_get_contents($first[4]));
         self::assertSame([], glob($target.'/*.bak-*') ?: [], 'No backup may be left behind.');
         self::assertSame([], glob($target.'/*.tmp-*') ?: [], 'No temporary file may be left behind.');
     }
@@ -179,10 +225,21 @@ final class RuleInstallerTest extends TestCase
 
         $written = (new RuleInstaller)->install($target, self::sourceDir());
 
-        self::assertCount(4, $written);
+        self::assertCount(5, $written);
         self::assertSame([], glob($target.'/*.bak-*') ?: [], 'No backup may be left behind.');
         self::assertSame([], glob($target.'/*.tmp-*') ?: [], 'No temporary file may be left behind.');
-        self::assertCount(4, array_diff(scandir($target) ?: [], ['.', '..']));
+        self::assertCount(5, array_diff(scandir($target) ?: [], ['.', '..']));
+    }
+
+    /**
+     * Fills the test folder as an installer that knew only the four invoice rule files did.
+     */
+    private function copyInvoiceRules(): void
+    {
+        foreach (['cen-ubl', 'cen-cii', 'peppol-ubl', 'peppol-cii'] as $key) {
+            $id = PeppolSources::all()[$key]['id'];
+            copy(PeppolRules::path(InstalledRules::dir(), $id), PeppolRules::path($this->dir, $id));
+        }
     }
 
     private static function sourceDir(): string

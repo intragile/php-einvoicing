@@ -72,7 +72,7 @@ final class FixturesTest extends TestCase
     {
         $sources = PeppolSources::all();
 
-        self::assertSame(['cen-ubl', 'cen-cii', 'peppol-ubl', 'peppol-cii'], array_keys($sources));
+        self::assertSame(['cen-ubl', 'cen-cii', 'peppol-ubl', 'peppol-cii', 'envelope'], array_keys($sources));
 
         foreach ($sources as $key => $source) {
             $file = Fixtures::peppolSchematron($key);

@@ -167,7 +167,7 @@ official repository onto the developer's or CI machine, into the git-ignored
 | Rule files | `https://raw.githubusercontent.com/OpenPEPPOL/peppol-bis-invoice-3/3.0.22/rules/sch/<file>`, into `peppol-3.0.22/sch/` |
 | Test corpus | `rules/` of the repository archive at the tag (`https://github.com/OpenPEPPOL/peppol-bis-invoice-3/archive/refs/tags/3.0.22.zip`) |
 
-The four rule files are pinned by SHA-256 in
+The five rule files are pinned by SHA-256 in
 [`src/Validation/Peppol/PeppolSources.php`](../../../src/Validation/Peppol/PeppolSources.php),
 the single place these pins are kept:
 
@@ -177,13 +177,17 @@ the single place these pins are kept:
 | `CEN-EN16931-CII.sch` | `54e0dc6d06cd7f17d268bb9696ff56f58d386ee28961c9bbef0a56718c400c89` |
 | `PEPPOL-EN16931-UBL.sch` | `f637444fab75a6da7e5004f94a6de8e71383ef5658dafe6c68925103b17ea148` |
 | `PEPPOL-EN16931-CII.sch` | `7678c3cd4a219095ef5d4f2ece17e5d447eb92655e57a7d52290b35acfdc9dd8` |
+| `PeppolBIS-Envelope-Rules.sch` | `96648791fb824b6b58ddae9cc5575e8298e0061fc43dd0934a0b1459396d76f9` |
 
 The `CEN-*` files are OpenPeppol's own copy of the CEN rules (CEN 1.3.16), not the 1.3.17 files
-above.
+above. `PeppolBIS-Envelope-Rules.sch` holds the rules for the Peppol Business Message Envelope
+(SBDH) around an invoice; the copy published at
+`https://docs.peppol.eu/poacc/billing/3.0/files/PeppolBIS-Envelope-Rules.sch` has the same
+SHA-256 (checked 2026-11-12).
 
-From the archive only `rules/unit-UBL-*`, `rules/unit-CII-*`, `rules/examples/` and
-`rules/snippets/` are unpacked (268 files); `rules/unit-SBDH/` (envelope rules) and
-`rules/national-examples/` are skipped. Every unpacked file is verified against
+From the archive only `rules/unit-UBL-*`, `rules/unit-CII-*`, `rules/unit-SBDH/` (envelope
+rules), `rules/examples/` and `rules/snippets/` are unpacked (269 files);
+`rules/national-examples/` is skipped. Every unpacked file is verified against
 [`../peppol-3.0.22.sha256`](../peppol-3.0.22.sha256), a manifest of our own that holds only the
 relative paths and SHA-256 sums, no OpenPeppol content. Two upstream files are misnamed
 `PEPPOL-COMMON-R048.xm`; they are kept, because `Fixtures::peppolUnitTests()` reads every regular
@@ -192,8 +196,9 @@ Order documents rather than invoices.
 
 | Fixture helper | Content |
 |---|---|
-| `Fixtures::peppolSchematron($key)` | path of a rule file, keyed `cen-ubl`, `cen-cii`, `peppol-ubl`, `peppol-cii` |
+| `Fixtures::peppolSchematron($key)` | path of a rule file, keyed `cen-ubl`, `cen-cii`, `peppol-ubl`, `peppol-cii`, `envelope` |
 | `Fixtures::peppolUnitTests()` | 1,029 documents (678 UBL, 351 CII) from 242 VEFA `testSet` files, named `peppol/<dir>/<file>#<index>` |
+| `Fixtures::peppolEnvelopeTests()` | the 14 Standard Business Documents of `unit-SBDH/BR-SBDH.xml` (VEFA test set expanded), named `peppol/unit-SBDH/BR-SBDH.xml#<index>`; the syntax is that of the enveloped invoice |
 | `Fixtures::peppolExamples()` | the 26 files of `examples/` and `snippets/`, keyed `examples/<file>` or `snippets/<file>` |
 
 ## Refreshing

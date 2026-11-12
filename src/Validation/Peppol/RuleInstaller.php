@@ -30,10 +30,11 @@ final class RuleInstaller
     }
 
     /**
-     * Installs the four rule files. No installed file is replaced unless every source matches its
-     * checksum and compiles; if moving the files into place fails, the previous rules are restored.
+     * Installs the five rule files: the invoice rules and the envelope rules. No installed file is
+     * replaced unless every source matches its checksum and compiles; if moving the files into
+     * place fails, the previous rules are restored.
      *
-     * @param  ?string  $sourceDir  a folder holding the four .sch files, for air-gapped machines;
+     * @param  ?string  $sourceDir  a folder holding the five .sch files, for air-gapped machines;
      *                              null downloads them from PeppolSources::BASE_URL
      * @return list<string> written file paths
      *
@@ -71,7 +72,7 @@ final class RuleInstaller
         }
 
         // Each source is compiled straight into a temporary file, so only one compiled rule set is
-        // held in memory; the files replace the installed ones only once all four have compiled.
+        // held in memory; the files replace the installed ones only once all of them have compiled.
         $temporary = [];
         try {
             foreach (PeppolSources::all() as $key => $source) {

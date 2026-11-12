@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Validation\Peppol;
 
 /**
- * The official Peppol BIS Billing 3.0 Schematron files, pinned by release tag and SHA-256.
+ * The official Peppol BIS Billing 3.0 Schematron files, pinned by release tag and SHA-256: the
+ * invoice rules and the rules for the Peppol Business Message Envelope (SBDH) around an invoice.
  *
  * OpenPeppol publishes no licence for these files, so they are never redistributed: they are
  * downloaded from the official repository and verified against the checksums below before use.
@@ -17,9 +18,10 @@ final class PeppolSources
     public const BASE_URL = 'https://raw.githubusercontent.com/OpenPEPPOL/peppol-bis-invoice-3/3.0.22/rules/sch/';
 
     /**
-     * The four rule files: OpenPeppol's copy of the CEN rules and the Peppol rules, per syntax.
+     * The five rule files: OpenPeppol's copy of the CEN rules and the Peppol rules, per syntax,
+     * then the envelope rules.
      *
-     * @return array<string, array{file: string, sha256: string, id: string}> keyed 'cen-ubl', 'cen-cii', 'peppol-ubl', 'peppol-cii'
+     * @return array<string, array{file: string, sha256: string, id: string}> keyed 'cen-ubl', 'cen-cii', 'peppol-ubl', 'peppol-cii', 'envelope'
      */
     public static function all(): array
     {
@@ -43,6 +45,11 @@ final class PeppolSources
                 'file' => 'PEPPOL-EN16931-CII.sch',
                 'sha256' => '7678c3cd4a219095ef5d4f2ece17e5d447eb92655e57a7d52290b35acfdc9dd8',
                 'id' => 'peppol-cii',
+            ],
+            'envelope' => [
+                'file' => 'PeppolBIS-Envelope-Rules.sch',
+                'sha256' => '96648791fb824b6b58ddae9cc5575e8298e0061fc43dd0934a0b1459396d76f9',
+                'id' => 'peppol-envelope',
             ],
         ];
     }

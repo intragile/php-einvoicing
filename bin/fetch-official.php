@@ -102,10 +102,10 @@ const PEPPOL_ARCHIVE = [
 ];
 
 /**
- * Archive folders below rules/ that are unpacked. The envelope unit tests (unit-SBDH) and the
- * national examples are not needed.
+ * Archive folders below rules/ that are unpacked: the invoice unit tests, the envelope unit tests
+ * (unit-SBDH) and the examples. The national examples are not needed.
  */
-const PEPPOL_PREFIXES = ['unit-UBL-', 'unit-CII-', 'examples/', 'snippets/'];
+const PEPPOL_PREFIXES = ['unit-UBL-', 'unit-CII-', 'unit-SBDH/', 'examples/', 'snippets/'];
 
 $root = dirname(__DIR__);
 $cacheDir = $root.'/.cache/official';

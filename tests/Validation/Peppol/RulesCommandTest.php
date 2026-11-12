@@ -39,6 +39,24 @@ final class RulesCommandTest extends TestCase
         [$exit, $stdout, $stderr] = self::runScript('check', 'peppol', "--dir={$this->dir}");
         self::assertSame(0, $exit, $stderr);
         self::assertStringContainsString('peppol-cen-cii 3.0.22', $stdout);
+        self::assertStringContainsString('peppol-envelope 3.0.22', $stdout);
+        self::assertSame(5, substr_count($stdout, ' 3.0.22'), $stdout);
+    }
+
+    public function test_check_fails_without_the_envelope_rules(): void
+    {
+        $source = dirname(Fixtures::peppolSchematron('cen-ubl'));
+        [$exit, , $stderr] = self::runScript('install', 'peppol', "--dir={$this->dir}", "--from={$source}");
+        self::assertSame(0, $exit, $stderr);
+        // The folder of an installer that knew only the four invoice rule files.
+        unlink("{$this->dir}/peppol-envelope-3.0.22.php");
+
+        [$exit, $stdout, $stderr] = self::runScript('check', 'peppol', "--dir={$this->dir}");
+
+        self::assertSame(1, $exit);
+        self::assertSame('', $stdout);
+        self::assertStringContainsString('envelope rules are not installed', $stderr);
+        self::assertStringContainsString('vendor/bin/einvoicing-rules install peppol', $stderr);
     }
 
     public function test_install_reports_a_bad_source_folder(): void

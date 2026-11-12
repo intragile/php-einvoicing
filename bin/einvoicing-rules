@@ -36,10 +36,10 @@ require $autoload;
 $usage = <<<'TXT'
     Usage:
       einvoicing-rules install peppol --dir=DIR [--from=DIR]
-          Downloads the Peppol BIS Billing rules (or reads them from --from, a folder with the
-          four .sch files), verifies their checksums and compiles them into DIR.
+          Downloads the Peppol BIS Billing invoice and envelope rules (or reads them from --from,
+          a folder with the five .sch files), verifies their checksums and compiles them into DIR.
       einvoicing-rules check peppol --dir=DIR
-          Exits 0 when the compiled rules in DIR load with this engine, 1 otherwise.
+          Exits 0 when all five compiled rule sets in DIR load with this engine, 1 otherwise.
 
     TXT;
 
@@ -67,6 +67,7 @@ $dir = $options['dir'];
 if ($command === 'check') {
     try {
         $rules = PeppolRules::load($dir);
+        $rules['envelope'] = [PeppolRules::loadEnvelope($dir)];
     } catch (RulesNotInstalled|UnsupportedSchematron $exception) {
         fwrite(STDERR, $exception->getMessage()."\n");
         exit(1);

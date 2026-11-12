@@ -50,6 +50,9 @@ final class Fixtures
     /** Container format of the CEN unit tests: a testSet with one invoice in each test child. */
     private const VEFA_NAMESPACE = 'http://difi.no/xsd/vefa/validator/1.0';
 
+    /** Namespace of the Peppol Business Message Envelope (Standard Business Document Header). */
+    private const SBDH_NAMESPACE = 'http://www.unece.org/cefact/namespaces/StandardBusinessDocumentHeader';
+
     /** Namespace of any UBL 2 main document, such as Invoice-2 or Order-2. */
     private const UBL_DOCUMENT_NAMESPACE = '/^urn:oasis:names:specification:ubl:schema:xsd:[A-Za-z]+-2$/';
 
@@ -150,6 +153,24 @@ final class Fixtures
     }
 
     /**
+     * Every Standard Business Document in the Peppol envelope unit tests (rules/unit-SBDH): one
+     * entry per test of a testSet file, ordered by file name and position. The syntax of an entry
+     * is that of the enveloped invoice.
+     *
+     * @return list<UnitTestDocument>
+     */
+    public static function peppolEnvelopeTests(): array
+    {
+        $dir = self::peppolDir().'/unit-SBDH';
+        $documents = [];
+        foreach (self::regularFiles($dir) as $file) {
+            array_push($documents, ...self::unitTestDocuments($dir.'/'.$file, 'peppol/'));
+        }
+
+        return $documents;
+    }
+
+    /**
      * The Peppol example invoices (rules/examples and rules/snippets), keyed by a name such as
      * "examples/base-example.xml", in directory and file-name order.
      *
@@ -243,13 +264,21 @@ final class Fixtures
 
     /**
      * Syntax of a corpus document. Besides invoices and credit notes, the Peppol corpus tests its
-     * syntax-independent rules on other UBL documents (an Order in PEPPOL-COMMON-R041.xml).
+     * syntax-independent rules on other UBL documents (an Order in PEPPOL-COMMON-R041.xml), and
+     * its envelope rules on Standard Business Documents, whose syntax is that of the enveloped
+     * document (the last child element).
      *
      * @return 'ubl'|'cii'
      */
     private static function invoiceSyntax(DOMElement $element, string $file): string
     {
         $namespace = (string) $element->namespaceURI;
+        if ($namespace === self::SBDH_NAMESPACE && $element->localName === 'StandardBusinessDocument') {
+            $payload = $element->lastElementChild
+                ?? throw new RuntimeException("A StandardBusinessDocument in {$file} envelopes no document.");
+
+            return self::invoiceSyntax($payload, $file);
+        }
         if (preg_match(self::UBL_DOCUMENT_NAMESPACE, $namespace) === 1) {
             return 'ubl';
         }
