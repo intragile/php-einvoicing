@@ -16,6 +16,7 @@ use IntrAgile\EInvoicing\XPath\Parser;
 use IntrAgile\EInvoicing\XPath\Regex;
 use IntrAgile\EInvoicing\XPath\StaticContext;
 use IntrAgile\EInvoicing\XPath\Value\AtomicValue;
+use IntrAgile\EInvoicing\XPath\Value\BooleanValue;
 use IntrAgile\EInvoicing\XPath\XPathError;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -192,7 +193,7 @@ final class EvaluatorTest extends TestCase
         self::assertFalse((new XPathError('INTRAGILE_RECURSION', 'x'))->isRecoverable());
         self::assertFalse((new XPathError('INTRAGILE_RANGE', 'x'))->isRecoverable());
         self::assertSame(
-            ['FORG0001', 'XPTY0004', 'FORG0006', 'FOAR0001', 'FOAR0002', 'FOCA0002', 'FOCH0002', 'FORX0002', 'FORX0003', 'FORX0004', 'FODT0001', 'FOCA0001', 'FOCA0003', 'XPTY0018', 'XPTY0019', 'XPTY0020', 'XPDY0050'],
+            ['FORG0001', 'XPTY0004', 'FORG0006', 'FOAR0001', 'FOAR0002', 'FOCA0002', 'FOCH0001', 'FOCH0002', 'FORX0002', 'FORX0003', 'FORX0004', 'FODT0001', 'FOCA0001', 'FOCA0003', 'XPTY0018', 'XPTY0019', 'XPTY0020', 'XPDY0050'],
             XPathError::RECOVERABLE,
         );
     }
@@ -206,6 +207,7 @@ final class EvaluatorTest extends TestCase
         yield 'path over atomics' => ['cac:InvoiceLine[(1, 2)/cbc:ID]', 'XPTY0019'];
         yield 'axis step on an atomic' => ['cac:InvoiceLine[(1, 2)[cbc:ID]]', 'XPTY0020'];
         yield 'root of an atomic' => ['cac:InvoiceLine[(1, 2)[/]]', 'XPDY0050'];
+        yield 'illegal XML character from data' => ["cac:InvoiceLine[codepoints-to-string(xs:integer(cbc:ID) - 1) = '']", 'FOCH0001'];
     }
 
     #[DataProvider('patternTypeErrors')]
@@ -313,11 +315,96 @@ final class EvaluatorTest extends TestCase
         self::assertSame(0, preg_match(Regex::toPcre('a$', ''), "a\n"));
 
         try {
-            Regex::toPcre('a', 'q');
+            Regex::toPcre('a', 'z');
             self::fail('Expected FORX0001.');
         } catch (XPathError $error) {
             self::assertSame('FORX0001', $error->errorCode);
         }
+    }
+
+    public function test_xpath_30_flag_q_is_unsupported(): void
+    {
+        $this->expectException(UnsupportedXPath::class);
+        $this->expectExceptionMessage('flag q');
+
+        Regex::toPcre('a', 'q');
+    }
+
+    /**
+     * @return iterable<string, array{string, int, string}>
+     */
+    public static function replacements(): iterable
+    {
+        yield 'plain text' => ['abc', 9, 'abc'];
+        yield 'group references' => ['$2-$1', 2, '${2}-${1}'];
+        yield 'whole match' => ['[$0]', 0, '[${0}]'];
+        yield 'escaped dollar' => ['\\$1', 1, '\\$1'];
+        yield 'escaped backslash' => ['\\\\', 0, '\\\\'];
+        yield 'group then literal digit' => ['$12', 2, '${1}2'];
+        yield 'two-digit group' => ['$12', 12, '${12}'];
+        yield 'missing group is kept for preg_replace' => ['$3', 1, '${3}'];
+        yield 'non-ASCII text' => ['ß$1😀', 1, 'ß${1}😀'];
+    }
+
+    #[DataProvider('replacements')]
+    public function test_replacement_strings(string $xpath, int $groups, string $pcre): void
+    {
+        self::assertSame($pcre, Regex::toReplacement($xpath, $groups));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function invalidReplacements(): iterable
+    {
+        yield 'lone dollar' => ['a$'];
+        yield 'dollar letter' => ['$x'];
+        yield 'lone backslash' => ['a\\'];
+        yield 'backslash letter' => ['\\n'];
+    }
+
+    #[DataProvider('invalidReplacements')]
+    public function test_invalid_replacement_strings_are_forx0004(string $xpath): void
+    {
+        try {
+            Regex::toReplacement($xpath);
+            self::fail('Expected FORX0004.');
+        } catch (XPathError $error) {
+            self::assertSame('FORX0004', $error->errorCode);
+        }
+    }
+
+    public function test_group_count(): void
+    {
+        self::assertSame(0, Regex::groupCount(Regex::toPcre('a|b', '')));
+        self::assertSame(3, Regex::groupCount(Regex::toPcre('(a)|(b(c)?)', 'i')));
+    }
+
+    public function test_last_outside_a_predicate_or_path_step_is_unsupported(): void
+    {
+        $this->expectException(UnsupportedXPath::class);
+        $this->expectExceptionMessage('fn:last()');
+
+        $this->evaluator->evaluate($this->parse('last()'), $this->document);
+    }
+
+    public function test_parenthesised_pattern_matches_only_when_its_predicate_holds(): void
+    {
+        $pattern = '(/ubl:Invoice/cac:PaymentMeans[cbc:PaymentMeansCode = 58] | /ubl:Invoice/cbc:ID)[$enabled and true()]';
+        $selected = static fn (bool $enabled): array => ['enabled' => [new BooleanValue($enabled)]];
+
+        self::assertSame(
+            '(node:/Invoice[1]/cbc:ID[1], node:/Invoice[1]/cac:PaymentMeans[2])',
+            Canonical::of($this->matchPattern($pattern, $selected(true))),
+        );
+        self::assertSame([], $this->matchPattern($pattern, $selected(false)));
+    }
+
+    public function test_parenthesised_pattern_predicate_error_is_no_match(): void
+    {
+        $pattern = '(/ubl:Invoice/cac:InvoiceLine)[xs:decimal(cbc:LineExtensionAmount/@currencyID) > 0]';
+
+        self::assertSame([], $this->matchPattern($pattern));
     }
 
     public function test_invalid_regex_is_forx0002(): void

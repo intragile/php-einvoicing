@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\XPath;
 
 use IntrAgile\EInvoicing\XPath\Exception\UnsupportedXPath;
+use LogicException;
 
 /**
  * Translates XPath 2.0 regular expressions (XML Schema syntax plus anchors, back-references and
@@ -33,13 +34,17 @@ final class Regex
      * @param  string  $flags  any of s, m, i, x
      * @return string a complete PCRE pattern including delimiters and modifiers; matching is unanchored
      *
-     * @throws UnsupportedXPath for \i, \c, \I, \C, Unicode block escapes (\p{IsBlock}) and character class subtraction
+     * @throws UnsupportedXPath for \i, \c, \I, \C, Unicode block escapes (\p{IsBlock}), character class subtraction
+     *                          and the XPath 3.0 flag q
      * @throws XPathError FORX0001 for invalid flags, FORX0002 for an invalid regular expression
      */
     public static function toPcre(string $regex, string $flags): string
     {
         $modifiers = 'Du';
         foreach (mb_str_split($flags, 1, 'UTF-8') as $flag) {
+            if ($flag === 'q') {
+                throw new UnsupportedXPath('regular expression flag q', $flags, 0);
+            }
             $modifier = self::FLAGS[$flag] ?? throw new XPathError('FORX0001', "Invalid regular expression flag \"{$flag}\".");
             if ($modifier !== '' && ! str_contains($modifiers, $modifier)) {
                 $modifiers .= $modifier;
@@ -100,6 +105,79 @@ final class Regex
         }
 
         return $pcre;
+    }
+
+    /**
+     * Translates an XPath replacement string (fn:replace) into a preg_replace replacement: "$N"
+     * refers to a captured group, "\$" and "\\" stand for a literal "$" and "\". The digits after
+     * "$" form the longest group number that does not exceed $groups, at least one digit: with two
+     * groups, "$12" is group 1 followed by "2". A group that does not exist is replaced by the
+     * empty string.
+     *
+     * @param  int  $groups  the number of capturing groups of the pattern
+     *
+     * @throws XPathError FORX0004 for a "\" or "$" that does not start one of these forms
+     */
+    public static function toReplacement(string $xpathReplacement, int $groups = 9): string
+    {
+        $replacement = '';
+        $length = strlen($xpathReplacement);
+        for ($i = 0; $i < $length; $i++) {
+            $character = $xpathReplacement[$i];
+            $next = $xpathReplacement[$i + 1] ?? '';
+
+            if ($character === '\\') {
+                if ($next !== '\\' && $next !== '$') {
+                    throw self::invalidReplacement($xpathReplacement);
+                }
+                $replacement .= '\\'.$next;
+                $i++;
+
+                continue;
+            }
+
+            if ($character === '$') {
+                if (! ctype_digit($next)) {
+                    throw self::invalidReplacement($xpathReplacement);
+                }
+                $group = (int) $next;
+                for ($i += 2; $i < $length && ctype_digit($xpathReplacement[$i]) && $group * 10 + (int) $xpathReplacement[$i] <= $groups; $i++) {
+                    $group = $group * 10 + (int) $xpathReplacement[$i];
+                }
+                $i--;
+                $replacement .= '${'.$group.'}';
+
+                continue;
+            }
+
+            $replacement .= $character;
+        }
+
+        return $replacement;
+    }
+
+    /**
+     * The number of capturing groups of a pattern returned by toPcre().
+     */
+    public static function groupCount(string $pcre): int
+    {
+        $end = strrpos($pcre, '/');
+        if ($end === false || $end === 0) {
+            throw new LogicException('Not a pattern returned by toPcre().');
+        }
+
+        // The empty alternative always matches, and every group is reported, unmatched ones as null.
+        $probe = '/(?:'.substr($pcre, 1, $end - 1).')|'.substr($pcre, $end);
+        if (preg_match($probe, '', $matches, PREG_UNMATCHED_AS_NULL) !== 1) {
+            throw new LogicException('Cannot count the groups of '.$pcre.'.');
+        }
+
+        return count($matches) - 1;
+    }
+
+    private static function invalidReplacement(string $replacement): XPathError
+    {
+        return new XPathError('FORX0004', "Invalid replacement string \"{$replacement}\": \"\\\" must be followed by \"\\\" or \"$\", and \"$\" by a digit.");
     }
 
     /**

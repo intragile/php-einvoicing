@@ -24,6 +24,8 @@ final class ParserTest extends TestCase
 
     private const SCHEMATRON = 'http://purl.oclc.org/dsdl/schematron';
 
+    private const XSL = 'http://www.w3.org/1999/XSL/Transform';
+
     public function test_or_binds_weaker_than_and(): void
     {
         self::assertSame(
@@ -222,7 +224,8 @@ final class ParserTest extends TestCase
     {
         yield 'let' => ['let $x := 1 return $x', 'let'];
         yield 'unknown prefix function' => ['foo:bar()', 'foo'];
-        yield 'unknown function' => ['tokenize(a, b)', 'fn:tokenize'];
+        yield 'unknown function' => ['lower-case(a)', 'fn:lower-case'];
+        yield 'XPath 3.0 arity' => ['tokenize(a)', 'fn:tokenize'];
         yield 'collation argument' => ["contains(a, 'b', 'c')", 'fn:contains'];
         yield 'typeswitch' => ['typeswitch (a) case xs:string return 1 default return 2', 'typeswitch'];
         yield 'instance of' => ['a instance of xs:string', 'instance of'];
@@ -405,13 +408,109 @@ final class ParserTest extends TestCase
         self::assertSame(104 + 982 + 115 + 810, $count);
     }
 
+    public function test_pattern_with_parenthesised_alternatives_and_predicates_filters_their_union(): void
+    {
+        self::assertSame(
+            [Op::FILTER, self::parse('/a | //b/c'), [[Op::VAR, 'n'], self::child('d')]],
+            self::parsePattern('(/a | b/c)[$n][d]'),
+        );
+        self::assertSame(
+            [Op::FILTER, self::parse('/cac:a/cbc:b'), [self::parse('$n and not(d)')]],
+            self::parsePattern('(/cac:a/cbc:b)[$n and not(d)]'),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unsupportedPatterns(): iterable
+    {
+        yield 'numeric predicate on parenthesised alternatives' => ['(/a | /b)[1]'];
+        yield 'decimal predicate on parenthesised alternatives' => ['(/a | /b)[$n][2.0]'];
+        yield 'parenthesised non-pattern' => ['(ancestor::a)[$n]'];
+        yield 'parenthesised alternatives as a step' => ['(/a | /b)[$n]/c'];
+        yield 'filter on an atomic' => ["('a')[\$n]"];
+    }
+
+    #[DataProvider('unsupportedPatterns')]
+    public function test_unsupported_patterns_fail_loudly(string $pattern): void
+    {
+        $this->expectException(UnsupportedXPath::class);
+
+        self::parsePattern($pattern);
+    }
+
+    /**
+     * Every rule context, assert test, let value and XSLT select or test expression of the four
+     * Peppol rule files, with the namespaces, variable names and user functions each file declares
+     * (all variable names of the file are in scope; the compiler applies the real scoping).
+     */
+    public function test_parses_every_peppol_expression(): void
+    {
+        $parser = new Parser;
+        $counts = [];
+
+        foreach (['cen-ubl', 'cen-cii', 'peppol-ubl', 'peppol-cii'] as $key) {
+            $document = new DOMDocument;
+            self::assertTrue($document->load(Fixtures::peppolSchematron($key), LIBXML_NONET));
+            $xpath = new DOMXPath($document);
+            $xpath->registerNamespace('sch', self::SCHEMATRON);
+            $xpath->registerNamespace('xsl', self::XSL);
+
+            $namespaces = [];
+            foreach (self::elements($xpath, '//sch:ns') as $ns) {
+                $namespaces[$ns->getAttribute('prefix')] = $ns->getAttribute('uri');
+            }
+            $variables = [];
+            foreach (self::elements($xpath, '//sch:let | //xsl:param | //xsl:variable') as $declaration) {
+                $variables[] = $declaration->getAttribute('name');
+            }
+            $functions = [];
+            foreach (self::elements($xpath, '//xsl:function') as $function) {
+                [$prefix, $local] = explode(':', $function->getAttribute('name'), 2);
+                $uri = $namespaces[$prefix] ?? self::fail("Unbound function prefix {$prefix}");
+                $arity = count(self::elements($xpath, 'xsl:param', $function));
+                $functions[StaticContext::functionKey($uri, $local, $arity)] = true;
+            }
+            $context = new StaticContext($namespaces, array_values(array_unique($variables)), $functions);
+
+            $count = 0;
+            foreach (self::elements($xpath, '//sch:rule') as $rule) {
+                self::assertNotEmpty($parser->parsePattern($rule->getAttribute('context'), $context));
+                $count++;
+            }
+            $expressions = [
+                '//sch:assert/@test', '//sch:report/@test', '//sch:let/@value',
+                '//xsl:*/@select', '//xsl:when/@test',
+            ];
+            foreach ($xpath->query(implode(' | ', $expressions)) ?: [] as $attribute) {
+                $expression = (string) $attribute->nodeValue;
+                try {
+                    self::assertNotEmpty($parser->parse($expression, $context));
+                } catch (UnsupportedXPath|XPathSyntaxError $e) {
+                    self::fail("{$key}: {$e->getMessage()}");
+                }
+                $count++;
+            }
+            $counts[$key] = $count;
+        }
+
+        // Rules + asserts + lets + XSLT select/test attributes of each file.
+        self::assertSame([
+            'cen-ubl' => 104 + 979,
+            'cen-cii' => 113 + 806,
+            'peppol-ubl' => 99 + 165 + 49 + 32 + 1,
+            'peppol-cii' => 63 + 91 + 23 + 29 + 1,
+        ], $counts);
+    }
+
     /**
      * @return list<DOMElement>
      */
-    private static function elements(DOMXPath $xpath, string $query): array
+    private static function elements(DOMXPath $xpath, string $query, ?DOMElement $contextNode = null): array
     {
         $result = [];
-        foreach ($xpath->query($query) ?: [] as $node) {
+        foreach ($xpath->query($query, $contextNode) ?: [] as $node) {
             if ($node instanceof DOMElement) {
                 $result[] = $node;
             }

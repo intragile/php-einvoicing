@@ -43,6 +43,12 @@ final class Evaluator
     /** True while the steps of a match pattern are evaluated, outside their predicates. */
     private bool $matchingPattern = false;
 
+    /**
+     * The context size (fn:last) inside a predicate or the right operand of "/"; null at the top
+     * level of an expression, where this engine does not know the size of the caller's focus.
+     */
+    private ?int $size = null;
+
     public function __construct(private readonly DocumentIndex $index) {}
 
     /**
@@ -122,6 +128,9 @@ final class Evaluator
 
                 return $variables[$name] ?? throw new XPathError('XPST0008', "The variable \${$name} is not bound.");
             case Op::CALL:
+                if ($ast[1] === 'fn:last') {
+                    return [new IntegerValue(BigDecimal::of($this->size ?? throw new UnsupportedXPath('fn:last() outside a predicate or a path step', 'last()', 0)))];
+                }
                 $arguments = [];
                 foreach (self::subList($ast, 2) as $argument) {
                     $arguments[] = $this->eval($argument, $item, $variables);
@@ -206,6 +215,8 @@ final class Evaluator
 
         $nodes = [];
         $atomics = [];
+        $outerSize = $this->size;
+        $size = count($left);
         foreach ($left as $context) {
             if (! $context instanceof DOMNode) {
                 throw new XPathError('XPTY0019', 'The left operand of "/" contains an atomic value.');
@@ -223,7 +234,13 @@ final class Evaluator
                 continue;
             }
 
-            foreach ($this->eval($rhs, $context, $variables) as $result) {
+            $this->size = $size;
+            try {
+                $results = $this->eval($rhs, $context, $variables);
+            } finally {
+                $this->size = $outerSize;
+            }
+            foreach ($results as $result) {
                 if ($result instanceof DOMNode) {
                     $nodes[] = $result;
                 } else {
@@ -316,19 +333,42 @@ final class Evaluator
     }
 
     /**
-     * Whether a predicate is known to yield a boolean or nodes, so its outcome never depends on the
-     * position of the context item.
+     * Whether a predicate is known to yield a boolean or nodes and does not call fn:last, so its
+     * outcome never depends on the position of the context item or the context size.
      *
      * @param  array<mixed>  $predicate
      */
     private static function isPositionFree(array $predicate): bool
     {
+        if (self::callsLast($predicate)) {
+            return false;
+        }
+
         return match ($predicate[0]) {
             Op::GCMP, Op::VCMP, Op::AND, Op::OR, Op::QUANT, Op::CASTABLE, Op::STEP => true,
             Op::CALL => in_array($predicate[1], self::BOOLEAN_FUNCTIONS, true),
             Op::PATH => self::isPositionFree(self::sub($predicate, 2)),
             default => false,
         };
+    }
+
+    /**
+     * Whether an AST calls fn:last anywhere, nested predicates included.
+     *
+     * @param  array<mixed>  $ast
+     */
+    private static function callsLast(array $ast): bool
+    {
+        if ($ast !== [] && $ast[0] === Op::CALL && ($ast[1] ?? null) === 'fn:last') {
+            return true;
+        }
+        foreach ($ast as $value) {
+            if (is_array($value) && self::callsLast($value)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -461,7 +501,8 @@ final class Evaluator
     }
 
     /**
-     * Applies predicates left to right; a numeric predicate value selects by position.
+     * Applies predicates left to right; a numeric predicate value selects by position, and fn:last
+     * is the number of items the predicate filters.
      *
      * @param  list<DOMNode|AtomicValue>  $items
      * @param  list<array<mixed>>  $predicates
@@ -478,11 +519,17 @@ final class Evaluator
                 continue;
             }
 
-            $kept = [];
-            foreach ($items as $position => $item) {
-                if ($this->keeps($predicate, $item, $position + 1, $variables)) {
-                    $kept[] = $item;
+            $outerSize = $this->size;
+            $this->size = count($items);
+            try {
+                $kept = [];
+                foreach ($items as $position => $item) {
+                    if ($this->keeps($predicate, $item, $position + 1, $variables)) {
+                        $kept[] = $item;
+                    }
                 }
+            } finally {
+                $this->size = $outerSize;
             }
             $items = $kept;
         }

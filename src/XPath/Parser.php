@@ -20,6 +20,7 @@ final class Parser
     private const FUNCTIONS = [
         'fn:abs' => [1, 1],
         'fn:boolean' => [1, 1],
+        'fn:codepoints-to-string' => [1, 1],
         'fn:concat' => [2, null],
         'fn:contains' => [2, 2],
         'fn:count' => [1, 1],
@@ -28,22 +29,33 @@ final class Parser
         'fn:ends-with' => [2, 2],
         'fn:exists' => [1, 1],
         'fn:false' => [0, 0],
+        'fn:last' => [0, 0],
         'fn:local-name' => [0, 1],
         'fn:matches' => [2, 3],
         'fn:name' => [0, 1],
         'fn:normalize-space' => [0, 1],
         'fn:not' => [1, 1],
+        'fn:number' => [0, 1],
+        'fn:replace' => [3, 4],
+        'fn:reverse' => [1, 1],
         'fn:round' => [1, 1],
+        'fn:starts-with' => [2, 2],
         'fn:string' => [0, 1],
+        'fn:string-join' => [2, 2],
         'fn:string-length' => [0, 1],
+        'fn:string-to-codepoints' => [1, 1],
         'fn:substring' => [2, 3],
         'fn:substring-after' => [2, 2],
         'fn:substring-before' => [2, 2],
         'fn:sum' => [1, 2],
+        'fn:tokenize' => [2, 3],
+        'fn:translate' => [3, 3],
         'fn:true' => [0, 0],
         'fn:upper-case' => [1, 1],
         'xs:date' => [1, 1],
         'xs:decimal' => [1, 1],
+        'xs:integer' => [1, 1],
+        'xs:string' => [1, 1],
     ];
 
     /** Target types accepted by "cast as" and "castable as". */
@@ -110,12 +122,42 @@ final class Parser
      * "a/b" becomes "//a/b" and "@x" becomes "//@x". The result has the same shape as the parsed
      * "//a/b", with "//" bound to the first step, which the evaluator answers from its name index.
      *
+     * A parenthesised union of such alternatives followed by predicates, "(P1 | P2)[pred]" (an XSLT
+     * 3.0 pattern that Saxon also accepts in XSLT 2.0 stylesheets), selects the nodes of the union
+     * for which every predicate holds: FILTER(UNION of the converted alternatives, predicates). A
+     * predicate that is a numeric literal would select by position within the whole union and is
+     * rejected.
+     *
      * @return array<mixed>
      */
     public function parsePattern(string $pattern, StaticContext $context): array
     {
+        $ast = $this->parse($pattern, $context);
+        if ($ast[0] !== Op::FILTER) {
+            return $this->patternSelection($ast, $pattern);
+        }
+
+        /** @var array<mixed> $primary */
+        $primary = $ast[1];
+        /** @var list<array<mixed>> $predicates */
+        $predicates = $ast[2];
+        foreach ($predicates as $predicate) {
+            if (self::isNumericLiteral($predicate)) {
+                throw new UnsupportedXPath('numeric predicate on a parenthesised match pattern', $pattern, 0);
+            }
+        }
+
+        return [Op::FILTER, $this->patternSelection($primary, $pattern), $predicates];
+    }
+
+    /**
+     * @param  array<mixed>  $ast
+     * @return array<mixed>
+     */
+    private function patternSelection(array $ast, string $pattern): array
+    {
         $alternatives = [];
-        foreach ($this->alternatives($this->parse($pattern, $context)) as $alternative) {
+        foreach ($this->alternatives($ast) as $alternative) {
             $this->assertPatternPath($alternative, true, $pattern);
             $alternatives[] = $this->startsAtRoot($alternative)
                 ? $alternative
@@ -739,6 +781,21 @@ final class Parser
             $this->assertPatternPath($left, $leftmost, $pattern);
             $this->assertPatternPath($right, false, $pattern);
         }
+    }
+
+    /**
+     * @param  array<mixed>  $ast
+     */
+    private static function isNumericLiteral(array $ast): bool
+    {
+        if ($ast[0] === Op::NEG) {
+            /** @var array<mixed> $operand */
+            $operand = $ast[1];
+
+            return self::isNumericLiteral($operand);
+        }
+
+        return $ast[0] === Op::LITERAL && $ast[1] !== 'xs:string';
     }
 
     /**

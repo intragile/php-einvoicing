@@ -280,8 +280,8 @@ final class ProbeCases
 
             // type label of a cast to xs:decimal; Saxon labels a cast from xs:integer xs:decimal, from a short integral string xs:integer
             'decimal of integer literal' => ['xs:decimal(5)', $u, '(xs:decimal:5)'],
-            // Stands in for xs:decimal(xs:integer('5')) until the xs:integer constructor exists: the operand is a computed xs:integer.
-            'decimal of computed integer' => ['xs:decimal(2 + 3)', $u, '(xs:decimal:5)'],
+            'decimal of computed integer' => ["xs:decimal(xs:integer('5'))", $u, '(xs:decimal:5)'],
+            'decimal of integer arithmetic' => ['xs:decimal(2 + 3)', $u, '(xs:decimal:5)'],
             'decimal of integral string' => ["xs:decimal('5')", $u, '(xs:integer:5)'],
             'decimal of integral string div' => ["xs:decimal('5') div 3", $u, '(xs:decimal:1.666666666666666667)'],
             'decimal of integer literal div' => ['xs:decimal(5) div 3', $u, '(xs:decimal:1.666666666666666667)'],
@@ -466,6 +466,144 @@ final class ProbeCases
             'expression step arithmetic' => ['//cac:InvoiceLine[1]/xs:decimal(cbc:LineExtensionAmount - 1)', $u, '(xs:decimal:99)'],
             'rounded total' => ['round(sum(//cac:InvoiceLine/xs:decimal(cbc:LineExtensionAmount)) * 10 * 10) div 100', $u, '(xs:decimal:150.5)'],
             'empty expression step' => ['//cbc:Nothing/xs:decimal(.)', $u, '()'],
+
+            // fn:number: xs:double, NaN for anything that does not cast to xs:double
+            'number string' => ["number('12')", $u, '(xs:double:12)'],
+            'number whitespace' => ["number(' 12 ')", $u, '(xs:double:12)'],
+            'number exponent' => ["number('1e3')", $u, '(xs:double:1000)'],
+            'number decimal' => ['number(1.5)', $u, '(xs:double:1.5)'],
+            'number boolean' => ['number(true())', $u, '(xs:double:1)'],
+            'number untyped' => ['number(/r/n10)', $p, '(xs:double:10)'],
+            'number arabic-indic digits' => ["number('١٢')", $u, '(xs:double:NaN)'],
+            'number empty string' => ["number('')", $u, '(xs:double:NaN)'],
+            'number comma' => ["number('1,5')", $u, '(xs:double:NaN)'],
+            'number letters' => ['number(/r/a[1])', $p, '(xs:double:NaN)'],
+            'number empty' => ['number(())', $u, '(xs:double:NaN)'],
+            'number infinity' => ["number('INF')", $u, '(xs:double:INF)'],
+            'number date' => ["number(xs:date('2026-01-01'))", $u, '(xs:double:NaN)'],
+            'number two nodes' => ['number(//cbc:Percent)', $u, 'error:XPTY0004'],
+            'number context' => ['/r/n9/number()', $p, '(xs:double:9)'],
+            'number context letters' => ['/*/cbc:ID/number()', $u, '(xs:double:NaN)'],
+
+            // fn:string-to-codepoints, fn:codepoints-to-string
+            'string-to-codepoints' => ["string-to-codepoints('AB')", $u, '(xs:integer:65, xs:integer:66)'],
+            'string-to-codepoints empty string' => ["string-to-codepoints('')", $u, '()'],
+            'string-to-codepoints empty' => ['string-to-codepoints(())', $u, '()'],
+            'string-to-codepoints arabic-indic digit' => ["string-to-codepoints('٣')", $u, '(xs:integer:1635)'],
+            'string-to-codepoints astral' => ["string-to-codepoints('😀')", $u, '(xs:integer:128512)'],
+            'string-to-codepoints untyped' => ['string-to-codepoints(/r/n10)', $p, '(xs:integer:49, xs:integer:48)'],
+            'string-to-codepoints integer' => ['string-to-codepoints(1)', $u, 'error:XPTY0004'],
+            'string-to-codepoints two nodes' => ['string-to-codepoints(//cbc:ID)', $u, 'error:XPTY0004'],
+            'codepoints-to-string' => ['codepoints-to-string((72, 105))', $u, '(xs:string:Hi)'],
+            'codepoints-to-string empty' => ['codepoints-to-string(())', $u, '(xs:string:)'],
+            'codepoints-to-string astral' => ['codepoints-to-string(128512)', $u, '(xs:string:😀)'],
+            'codepoints-to-string zero' => ['codepoints-to-string(0)', $u, 'error:FOCH0001'],
+            'codepoints-to-string surrogate' => ['codepoints-to-string(55296)', $u, 'error:FOCH0001'],
+            'codepoints-to-string fffe' => ['codepoints-to-string(65534)', $u, 'error:FOCH0001'],
+            'codepoints-to-string beyond unicode' => ['codepoints-to-string(1114112)', $u, 'error:FOCH0001'],
+            'codepoints-to-string untyped' => ['string-length(codepoints-to-string(/r/n10))', $p, '(xs:integer:1)'],
+            'codepoints-to-string untyped letters' => ['codepoints-to-string(/r/a[1])', $p, 'error:FORG0001'],
+            'codepoints-to-string decimal' => ['codepoints-to-string(65.0)', $u, 'error:XPTY0004'],
+            'codepoints-to-string string' => ["codepoints-to-string('65')", $u, 'error:XPTY0004'],
+            'codepoints round trip' => ["for \$c in string-to-codepoints('a😀') return codepoints-to-string(\$c)", $u, '(xs:string:a, xs:string:😀)'],
+
+            // fn:reverse
+            'reverse' => ['reverse((1, 2, 3))', $u, '(xs:integer:3, xs:integer:2, xs:integer:1)'],
+            'reverse empty' => ['reverse(())', $u, '()'],
+            'reverse single' => ["reverse('a')", $u, '(xs:string:a)'],
+            'reverse nodes' => ['reverse(//cac:InvoiceLine/cbc:ID)', $u, '(node:/Invoice[1]/cac:InvoiceLine[2]/cbc:ID[1], node:/Invoice[1]/cac:InvoiceLine[1]/cbc:ID[1])'],
+
+            // fn:translate, by code point; a $map character without counterpart in $trans is removed
+            'translate sharp s' => ["translate('straße', 'ß', 'S')", $u, '(xs:string:straSe)'],
+            'translate astral removed' => ["translate('a😀b', '😀', '')", $u, '(xs:string:ab)'],
+            'translate longer map' => ["translate('abcabc', 'abc', 'AB')", $u, '(xs:string:ABAB)'],
+            'translate first occurrence wins' => ["translate('aaa', 'aa', 'xy')", $u, '(xs:string:xxx)'],
+            'translate longer trans' => ["translate('ab', 'a', 'xyz')", $u, '(xs:string:xb)'],
+            'translate empty input' => ["translate((), 'a', 'b')", $u, '(xs:string:)'],
+            'translate empty map' => ["translate('abc', (), 'x')", $u, 'error:XPTY0004'],
+            'translate integer' => ["translate(1, '1', '2')", $u, 'error:XPTY0004'],
+            'translate node' => ["translate(/*/cbc:ID, 'INV', 'inv')", $u, '(xs:string:inv-1)'],
+
+            // fn:tokenize
+            'tokenize date' => ["tokenize('2026-11-12', '-')", $u, '(xs:string:2026, xs:string:11, xs:string:12)'],
+            'tokenize empty string' => ["tokenize('', '-')", $u, '()'],
+            'tokenize empty' => ["tokenize((), '-')", $u, '()'],
+            'tokenize leading and trailing match' => ["tokenize('-a-', '-')", $u, '(xs:string:, xs:string:a, xs:string:)'],
+            'tokenize whitespace runs' => ["tokenize('a b  c', '\\s+')", $u, '(xs:string:a, xs:string:b, xs:string:c)'],
+            'tokenize code list' => ["tokenize(' 1.1 1.6 ', '\\s')", $u, '(xs:string:, xs:string:1.1, xs:string:1.6, xs:string:)'],
+            'tokenize flags' => ["tokenize('aXbxc', 'x', 'i')", $u, '(xs:string:a, xs:string:b, xs:string:c)'],
+            'tokenize matches empty string' => ["tokenize('abc', 'x*')", $u, 'error:FORX0003'],
+            'tokenize invalid pattern' => ["tokenize('abc', '(')", $u, 'error:FORX0002'],
+            // Saxon also accepts the XPath 3.0 flag q, which this engine reports as unsupported.
+            'tokenize invalid flag' => ["tokenize('abc', 'b', 'z')", $u, 'error:FORX0001'],
+            'tokenize integer' => ["tokenize(1, '1')", $u, 'error:XPTY0004'],
+            'tokenize last segment' => ["tokenize('x#a#y#b#z', '#[a-z]#')[last()]", $u, '(xs:string:z)'],
+            'tokenize as path step' => ["/*/cbc:IssueDate/tokenize(., '-')[2]", $u, '(xs:string:11)'],
+
+            // fn:replace
+            'replace' => ["replace('abc', 'b', 'X')", $u, '(xs:string:aXc)'],
+            'replace groups' => ["replace('abcabc', '(b)(c)', '\$2\$1')", $u, '(xs:string:acbacb)'],
+            'replace whole match' => ["replace('abc', 'b', '\$0\$0')", $u, '(xs:string:abbc)'],
+            'replace escaped dollar' => ["replace('abc', 'b', '\\\$')", $u, '(xs:string:a$c)'],
+            'replace escaped backslash' => ["replace('abc', 'b', '\\\\')", $u, '(xs:string:a\\c)'],
+            'replace group then digit' => ["replace('abc', '(b)', '\$12')", $u, '(xs:string:ab2c)'],
+            'replace missing group' => ["replace('abc', 'b', '\$1')", $u, '(xs:string:ac)'],
+            'replace lone dollar' => ["replace('abc', 'b', '\$')", $u, 'error:FORX0004'],
+            'replace lone backslash' => ["replace('abc', 'b', '\\')", $u, 'error:FORX0004'],
+            'replace dollar letter' => ["replace('abc', 'b', '\$x')", $u, 'error:FORX0004'],
+            'replace matches empty string' => ["replace('abc', 'x*', 'y')", $u, 'error:FORX0003'],
+            'replace flags' => ["replace('aBc', 'b', 'X', 'i')", $u, '(xs:string:aXc)'],
+            'replace empty input' => ["replace((), 'a', 'b')", $u, '(xs:string:)'],
+            'replace integer' => ["replace(1, '1', '2')", $u, 'error:XPTY0004'],
+            'replace node' => ["replace(/*/cbc:ID, '[0-9]', 'N')", $u, '(xs:string:INV-N)'],
+
+            // fn:string-join
+            'string-join' => ["string-join(('a', 'b'), ', ')", $u, '(xs:string:a, b)'],
+            'string-join empty' => ["string-join((), '-')", $u, '(xs:string:)'],
+            'string-join untyped' => ["string-join(//cac:InvoiceLine/cbc:ID, '+')", $u, '(xs:string:1+2)'],
+            // Saxon applies the XPath 3.0 signature (xs:anyAtomicType*): any atomic value joins as its string value.
+            'string-join integers' => ["string-join((1, 2.50), '-')", $u, '(xs:string:1-2.5)'],
+            'string-join empty separator' => ["string-join(('a', 'b'), ())", $u, 'error:XPTY0004'],
+
+            // fn:starts-with
+            'starts-with' => ["starts-with('abc', 'ab')", $u, '(xs:boolean:true)'],
+            'starts-with no' => ["starts-with('abc', 'b')", $u, '(xs:boolean:false)'],
+            'starts-with empty input and prefix' => ["starts-with((), '')", $u, '(xs:boolean:true)'],
+            'starts-with empty prefix' => ["starts-with('abc', ())", $u, '(xs:boolean:true)'],
+            'starts-with empty input' => ["starts-with((), 'a')", $u, '(xs:boolean:false)'],
+            'starts-with integer' => ["starts-with(1, '1')", $u, 'error:XPTY0004'],
+            'starts-with node' => ["starts-with(/*/cbc:ID, 'INV')", $u, '(xs:boolean:true)'],
+
+            // fn:last: the context size of a predicate or of a path step
+            'last on a three-node step' => ['//ram:SpecifiedTradeAllowanceCharge[last()]', self::CII, '(node:/rsm:CrossIndustryInvoice[1]/ram:SpecifiedTradeAllowanceCharge[3])'],
+            'last per parent' => ['//cbc:Percent[last()]', $u, '(node:/Invoice[1]/cac:InvoiceLine[1]/cac:Item[1]/cac:ClassifiedTaxCategory[1]/cbc:Percent[1], node:/Invoice[1]/cac:InvoiceLine[2]/cac:Item[1]/cac:ClassifiedTaxCategory[1]/cbc:Percent[2])'],
+            'last of all' => ['(//ram:ActualAmount)[last()]', self::CII, '(node:/rsm:CrossIndustryInvoice[1]/ram:SpecifiedTradeAllowanceCharge[2]/ram:ActualAmount[1])'],
+            'last atomic' => ['(1, 2, 3)[last()]', $u, '(xs:integer:3)'],
+            'last minus one' => ['(1, 2, 3)[last() - 1]', $u, '(xs:integer:2)'],
+            'last empty' => ['()[last()]', $u, '()'],
+            'last as value' => ['(1, 2, 3)[. = last()]', $u, '(xs:integer:3)'],
+            'last in a comparison predicate' => ['//ram:SpecifiedTradeAllowanceCharge[ram:ActualAmount = last()]', self::CII, '(node:/rsm:CrossIndustryInvoice[1]/ram:SpecifiedTradeAllowanceCharge[2])'],
+            'last nested' => ['//ram:SpecifiedTradeAllowanceCharge[ram:ActualAmount[last()] = 7]', self::CII, '(node:/rsm:CrossIndustryInvoice[1]/ram:SpecifiedTradeAllowanceCharge[1])'],
+            'last as path step' => ['/r/a/last()', $p, '(xs:integer:2, xs:integer:2)'],
+            'last on reverse axis' => ['//cbc:Percent[2]/ancestor::*[last()]', $u, '(node:/Invoice[1])'],
+
+            // constructor functions xs:integer and xs:string
+            'integer constructor whitespace' => ["xs:integer(' 7 ')", $u, '(xs:integer:7)'],
+            'integer constructor truncates decimal' => ['xs:integer(1.9)', $u, '(xs:integer:1)'],
+            'integer constructor decimal lexical' => ["xs:integer('1.0')", $u, 'error:FORG0001'],
+            'integer constructor empty' => ['xs:integer(())', $u, '()'],
+            'integer constructor two nodes' => ['xs:integer(//cbc:Percent)', $u, 'error:XPTY0004'],
+            'string constructor decimal' => ['xs:string(1.0)', $u, '(xs:string:1)'],
+            'string constructor computed decimal' => ["xs:string(xs:decimal('1.50'))", $u, '(xs:string:1.5)'],
+            'string constructor empty' => ['xs:string(())', $u, '()'],
+            'string constructor node' => ['xs:string(/*/cbc:ID)', $u, '(xs:string:INV-1)'],
+            'string constructor two nodes' => ['xs:string(//cbc:ID)', $u, 'error:XPTY0004'],
+            'mod97 shape' => ["xs:string(97 - (xs:integer(substring('12345678901', 1, 8)) mod 97))", $u, '(xs:string:94)'],
+
+            // Peppol GLN check digit (u:gln) inlined
+            'gln digits' => ["reverse(for \$i in string-to-codepoints(substring('5790000435975', 0, 13)) return \$i - 48)", $u, '(xs:integer:7, xs:integer:9, xs:integer:5, xs:integer:3, xs:integer:4, xs:integer:0, xs:integer:0, xs:integer:0, xs:integer:0, xs:integer:9, xs:integer:7, xs:integer:5)'],
+            'gln valid' => ["(10 - (sum(for \$i in (0 to 11) return reverse(for \$c in string-to-codepoints(substring('5790000435975', 0, 13)) return \$c - 48)[\$i + 1] * (1 + (((\$i + 1) mod 2) * 2))) mod 10)) mod 10 = number(substring('5790000435975', 13, 1))", $u, '(xs:boolean:true)'],
+            'gln invalid' => ["(10 - (sum(for \$i in (0 to 11) return reverse(for \$c in string-to-codepoints(substring('5790000435976', 0, 13)) return \$c - 48)[\$i + 1] * (1 + (((\$i + 1) mod 2) * 2))) mod 10)) mod 10 = number(substring('5790000435976', 13, 1))", $u, '(xs:boolean:false)'],
         ];
     }
 }
