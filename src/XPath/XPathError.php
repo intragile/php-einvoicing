@@ -8,6 +8,8 @@ use RuntimeException;
 
 /**
  * A dynamic XPath error, identified by its W3C error code (for example FORG0001).
+ *
+ * @internal
  */
 final class XPathError extends RuntimeException
 {

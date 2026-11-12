@@ -9,6 +9,8 @@ use IntrAgile\EInvoicing\XPath\Exception\UnsupportedXPath;
 /**
  * Translates XPath 2.0 regular expressions (XML Schema syntax plus anchors, back-references and
  * reluctant quantifiers) into PCRE patterns with the u modifier.
+ *
+ * @internal
  */
 final class Regex
 {

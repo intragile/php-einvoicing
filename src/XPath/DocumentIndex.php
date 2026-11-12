@@ -17,6 +17,8 @@ use InvalidArgumentException;
  * The index keeps every node wrapper in an array, so PHP returns the same DOMNode object for a node
  * on every access and spl_object_id() identifies nodes for as long as the index lives. Attributes of
  * an element follow the element directly and precede its children.
+ *
+ * @internal
  */
 final class DocumentIndex
 {

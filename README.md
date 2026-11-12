@@ -121,7 +121,7 @@ if (! $report->isValid()) {
     foreach ($report->fatal() as $finding) {
         echo "{$finding->ruleId} at {$finding->location}: {$finding->message}\n";
     }
-    foreach ($report->errors as $error) {   // values the rules could not evaluate, such as "12,50"
+    foreach ($report->dynamicErrors as $error) {   // values the rules could not evaluate, such as "12,50"
         echo "{$error->errorCode} in {$error->ruleId} at {$error->location}\n";
     }
 }
@@ -133,9 +133,10 @@ An invoice built with the model is written and validated in one call:
 
 The validator runs the official CEN EN 16931 rules (validation artefacts 1.3.17: 982 asserts for
 UBL, 810 for CII), compiled from the official Schematron into PHP; no Java, no XSLT processor.
-`isValid()` is true when no fatal rule failed; warnings are listed by `warnings()` and do not make
-an invoice invalid. A value the rules cannot evaluate, such as `abc` as an amount, does not stop
-the run: it is reported in `$report->errors` with its XPath error code (`FORG0001`), the other
+`isValid()` is true when no fatal rule failed; warnings (`warnings()`) and information findings
+(`information()`) do not make an invoice invalid, and `$report->ruleSets` names the rule sets that
+ran (`en16931-ubl 1.3.17`). A value the rules cannot evaluate, such as `abc` as an amount, does not
+stop the run: it is reported in `$report->dynamicErrors` with its XPath error code (`FORG0001`), the other
 rules are still checked, and the invoice is not valid. A document that is not an invoice of a
 supported syntax throws `UnsupportedDocument`, and a DOCTYPE throws `UnsafeXml`; neither is ever
 reported as valid.

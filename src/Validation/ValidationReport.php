@@ -4,27 +4,25 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Validation;
 
-use IntrAgile\EInvoicing\Schematron\DynamicError;
-use IntrAgile\EInvoicing\Schematron\Finding;
-use IntrAgile\EInvoicing\Schematron\Severity;
 use IntrAgile\EInvoicing\Syntax\Syntax;
 
 /**
- * Outcome of validating one document against a rule set.
+ * Outcome of validating one document against the rule sets of its syntax.
  */
 final readonly class ValidationReport
 {
     /**
-     * @param  list<Finding>  $findings  failed asserts, in pattern order, then document order
-     * @param  list<DynamicError>  $errors  asserts that could not be evaluated, such as a
-     *                                      non-numeric amount (FORG0001)
+     * @param  list<string>  $ruleSets  the rule sets that ran, as "<id> <version>", in run order
+     * @param  list<Finding>  $findings  failed asserts, in rule set order, then pattern order, then
+     *                                   document order
+     * @param  list<DynamicError>  $dynamicErrors  asserts that could not be evaluated, such as a
+     *                                             non-numeric amount (FORG0001)
      */
     public function __construct(
-        public string $ruleSet,
-        public string $version,
+        public array $ruleSets,
         public Syntax $syntax,
         public array $findings,
-        public array $errors,
+        public array $dynamicErrors,
     ) {}
 
     /**
@@ -33,7 +31,7 @@ final readonly class ValidationReport
      */
     public function isValid(): bool
     {
-        return $this->errors === [] && $this->fatal() === [];
+        return $this->dynamicErrors === [] && $this->fatal() === [];
     }
 
     /**
@@ -50,6 +48,14 @@ final readonly class ValidationReport
     public function warnings(): array
     {
         return $this->withSeverity(Severity::Warning);
+    }
+
+    /**
+     * @return list<Finding>
+     */
+    public function information(): array
+    {
+        return $this->withSeverity(Severity::Information);
     }
 
     /**

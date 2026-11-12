@@ -6,6 +6,8 @@ namespace IntrAgile\EInvoicing\XPath;
 
 /**
  * A lexical token of an XPath expression.
+ *
+ * @internal
  */
 final readonly class Token
 {

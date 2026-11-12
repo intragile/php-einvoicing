@@ -23,6 +23,8 @@ use LogicException;
 /**
  * Evaluates the array AST of Parser over one indexed DOM document with XPath 2.0 semantics
  * (no schema: element and attribute values atomize to xs:untypedAtomic).
+ *
+ * @internal
  */
 final class Evaluator
 {

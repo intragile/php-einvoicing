@@ -39,6 +39,20 @@ All notable changes to this project are documented here. The format follows
 - `docs/VALIDATION.md`: how validation works, the supported XPath, what the oracle checks,
   resource use and measured timings.
 
+### Changed
+
+- The validation result types are `IntrAgile\EInvoicing\Validation\{Finding, DynamicError,
+  Severity}` (moved from `Schematron`). `ValidationReport` renames `errors` to `dynamicErrors`,
+  adds `information()`, and replaces `ruleSet` and `version` with `ruleSets`, the list of rule
+  sets that ran as `"<id> <version>"`. The classes under `IntrAgile\EInvoicing\Schematron` and
+  `IntrAgile\EInvoicing\XPath` are marked `@internal`, apart from their exceptions.
+- Compiled rule files carry a `format` key (format 2); a rule file of another format is refused
+  with `UnsupportedSchematron` asking to recompile it. `CompiledRuleSetWriter` takes the origin
+  named in the file header.
+- The Schematron compiler refuses attributes outside those the CEN and Peppol schemas use (for
+  example `pattern/@documents` or `assert/@diagnostics`) and processing instructions inside an
+  assert, instead of ignoring them.
+
 ### Fixed
 
 - The UBL writer refuses a purchase order reference (BT-13) of exactly `NA` beside a sales

@@ -124,7 +124,7 @@ if (! $report->isValid()) {
     foreach ($report->fatal() as $finding) {
         echo "{$finding->ruleId} itt: {$finding->location}: {$finding->message}\n";
     }
-    foreach ($report->errors as $error) {   // ki nem értékelhető értékek, például "12,50"
+    foreach ($report->dynamicErrors as $error) {   // ki nem értékelhető értékek, például "12,50"
         echo "{$error->errorCode} a(z) {$error->ruleId} szabályban itt: {$error->location}\n";
     }
 }
@@ -137,9 +137,11 @@ A modellel összeállított számlát egy hívás megírja és ellenőrzi:
 A validátor a hivatalos CEN EN 16931 szabályokat futtatja (1.3.17-es validációs csomag: UBL-re
 982, CII-re 810 ellenőrzés), amelyeket a hivatalos Schematronból PHP-ra fordítottunk; nincs
 szükség Javára vagy XSLT-feldolgozóra. Az `isValid()` akkor igaz, ha egyetlen fatal szintű szabály sem
-sérült; a figyelmeztetéseket a `warnings()` adja vissza, ezek nem teszik érvénytelenné a számlát.
-Ha egy érték nem értékelhető ki (például összegként `abc` szerepel), az ellenőrzés nem áll le: a
-hiba a `$report->errors` listába kerül az XPath-hibakóddal (`FORG0001`), a többi szabály
+sérült; a figyelmeztetések (`warnings()`) és a tájékoztató megállapítások (`information()`) nem
+teszik érvénytelenné a számlát, a `$report->ruleSets` pedig a lefutott szabálykészleteket nevezi
+meg (`en16931-ubl 1.3.17`). Ha egy érték nem értékelhető ki (például összegként `abc` szerepel), az
+ellenőrzés nem áll le: a hiba a `$report->dynamicErrors` listába kerül az XPath-hibakóddal
+(`FORG0001`), a többi szabály
 ellenőrzése folytatódik, a számla pedig érvénytelen. Ha a dokumentum nem támogatott szintaxisú
 számla (vagy nem is számla), `UnsupportedDocument` kivétel keletkezik, DOCTYPE esetén `UnsafeXml`;
 a validátor egyiket sem minősíti érvényesnek.

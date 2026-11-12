@@ -12,6 +12,8 @@ use DOMNode;
 /**
  * Builds an XPath location such as "/ubl:Invoice[1]/cac:LegalMonetaryTotal[1]/cbc:PayableAmount[1]"
  * for a node, using the rule set's prefixes for known namespace URIs and "Q{uri}local" otherwise.
+ *
+ * @internal
  */
 final class LocationPath
 {

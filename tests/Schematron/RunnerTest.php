@@ -8,18 +8,19 @@ use DOMAttr;
 use DOMDocument;
 use DOMElement;
 use IntrAgile\EInvoicing\Rules\En16931\RuleFiles;
-use IntrAgile\EInvoicing\Schematron\DynamicError;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
-use IntrAgile\EInvoicing\Schematron\Finding;
 use IntrAgile\EInvoicing\Schematron\LocationPath;
 use IntrAgile\EInvoicing\Schematron\RuleSet;
 use IntrAgile\EInvoicing\Schematron\Runner;
 use IntrAgile\EInvoicing\Schematron\RunResult;
-use IntrAgile\EInvoicing\Schematron\Severity;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Tests\Fixtures;
+use IntrAgile\EInvoicing\Validation\DynamicError;
+use IntrAgile\EInvoicing\Validation\Finding;
+use IntrAgile\EInvoicing\Validation\Severity;
 use IntrAgile\EInvoicing\XPath\Parser;
 use IntrAgile\EInvoicing\XPath\StaticContext;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class RunnerTest extends TestCase
@@ -51,7 +52,7 @@ final class RunnerTest extends TestCase
             'B-1 /t:Root[1]/t:Item[1]',
             'B-1 /t:Root[1]/t:Item[2]',
         ], self::summary($result));
-        self::assertSame([], $result->errors);
+        self::assertSame([], $result->dynamicErrors);
     }
 
     public function test_visits_attribute_contexts(): void
@@ -92,8 +93,8 @@ final class RunnerTest extends TestCase
             ['NEXT', 'warning', 'false()'],
         ]]]]);
 
-        self::assertCount(1, $result->errors);
-        $error = $result->errors[0];
+        self::assertCount(1, $result->dynamicErrors);
+        $error = $result->dynamicErrors[0];
         self::assertInstanceOf(DynamicError::class, $error);
         self::assertSame('DEC', $error->ruleId);
         self::assertSame('FORG0001', $error->errorCode);
@@ -108,7 +109,7 @@ final class RunnerTest extends TestCase
             ['t:Item', [['OTHER', 'fatal', 'false()']]],
         ]]);
 
-        self::assertSame([], $result->errors);
+        self::assertSame([], $result->dynamicErrors);
         self::assertSame(['POSITIVE /t:Root[1]/t:Item[1]', 'OTHER /t:Root[1]/t:Item[2]'], self::summary($result));
     }
 
@@ -119,7 +120,7 @@ final class RunnerTest extends TestCase
             ['/t:Root//t:Item[@kind = \'y\'][xs:decimal(t:Amount) > 0] | t:Item[@kind = \'x\']', [['UNION', 'fatal', 'false()']]],
         ]]);
 
-        self::assertSame([], $result->errors);
+        self::assertSame([], $result->dynamicErrors);
         self::assertSame(['UNION /t:Root[1]/t:Item[1]'], self::summary($result));
     }
 
@@ -148,7 +149,7 @@ final class RunnerTest extends TestCase
         self::assertSame('en16931-ubl', $rules->id());
         self::assertSame('1.3.17', $rules->version());
         self::assertTrue($result->rootRuleFired);
-        self::assertSame([], $result->errors);
+        self::assertSame([], $result->dynamicErrors);
         self::assertSame([], array_values(array_filter($result->findings, static fn (Finding $finding): bool => $finding->severity === Severity::Fatal)));
     }
 
@@ -161,7 +162,32 @@ final class RunnerTest extends TestCase
     {
         $this->expectException(UnsupportedSchematron::class);
 
-        RuleSet::fromArray(['id' => 'x', 'version' => '1', 'namespaces' => [], 'patterns' => [['id' => 'p', 'rules' => [['context' => 'a']]]]]);
+        RuleSet::fromArray(['format' => RuleSet::FORMAT, 'id' => 'x', 'version' => '1', 'namespaces' => [], 'patterns' => [['id' => 'p', 'rules' => [['context' => 'a']]]]]);
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string}>
+     */
+    public static function staleFormats(): iterable
+    {
+        $current = ['id' => 'old', 'version' => '1', 'namespaces' => [], 'patterns' => []];
+
+        yield 'no format key' => [$current, 'format 1'];
+        yield 'format 1' => [['format' => 1, ...$current], 'format 1'];
+        yield 'format 3' => [['format' => 3, ...$current], 'format 3'];
+        yield 'format as string' => [['format' => '2', ...$current], 'format "2"'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $compiled
+     */
+    #[DataProvider('staleFormats')]
+    public function test_old_format_asks_to_recompile(array $compiled, string $format): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage("The rule set \"old\" was compiled with {$format}; this engine reads format 2. Recompile it.");
+
+        RuleSet::fromArray($compiled);
     }
 
     public function test_location_path_uses_known_prefixes_and_expanded_names_otherwise(): void
@@ -193,7 +219,7 @@ final class RunnerTest extends TestCase
         $context = new StaticContext($namespaces);
         $parser = new Parser;
 
-        $compiled = ['id' => 'mini', 'version' => '0', 'namespaces' => $namespaces, 'patterns' => []];
+        $compiled = ['format' => RuleSet::FORMAT, 'id' => 'mini', 'version' => '0', 'namespaces' => $namespaces, 'patterns' => []];
         foreach ($patterns as $id => $rules) {
             $pattern = ['id' => $id, 'rules' => []];
             foreach ($rules as [$ruleContext, $asserts]) {

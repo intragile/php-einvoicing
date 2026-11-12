@@ -19,7 +19,8 @@ which in practice means Java (Saxon). This library runs the same rules in plain 
    into a syntax tree with namespace prefixes resolved, and writes one PHP file per syntax that
    returns those arrays. The files ship in the separate package `intragile/einvoicing-rules-en16931`
    (see [Licences](#licences)). At runtime nothing is parsed, and with opcache the arrays are
-   shared memory.
+   shared memory. Each file records the format of its array; a file written by an engine with
+   another format is refused with `UnsupportedSchematron` asking to recompile it.
 2. **Run time.** The runner applies the semantics of the ISO Schematron XSLT skeleton: every
    pattern visits the document node and every element and attribute in document order, a node is
    handled by the first rule of the pattern whose context matches it, and every assert of that rule
@@ -27,8 +28,13 @@ which in practice means Java (Saxon). This library runs the same rules in plain 
    official XSLT).
 3. **Report.** `Validator` loads the XML safely (a DOCTYPE is refused with `UnsafeXml`), detects
    UBL Invoice, UBL CreditNote or CII from the document element, runs the matching rule set and
-   returns a `ValidationReport` with the failed asserts (`Finding`: rule id, severity, location,
-   message, test) and the asserts that could not be evaluated (`DynamicError`).
+   returns a `ValidationReport`: the rule sets that ran (`ruleSets`, as `"<id> <version>"`), the
+   failed asserts (`findings`, each an `IntrAgile\EInvoicing\Validation\Finding`: rule id,
+   `Severity`, location, message, test; filtered by `fatal()`, `warnings()` and `information()`)
+   and the asserts that could not be evaluated (`dynamicErrors`, each a `DynamicError`). The
+   classes under `IntrAgile\EInvoicing\Schematron` and `IntrAgile\EInvoicing\XPath` are
+   internal; only their exceptions (`UnsupportedSchematron`, `UnsupportedXPath`,
+   `XPathSyntaxError`) are meant to be caught.
 
 | Rule set | Patterns | Rules | Asserts | Fatal | Warning |
 |---|---|---|---|---|---|
@@ -62,8 +68,10 @@ Rejected with `UnsupportedXPath` (in the compiler: `UnsupportedSchematron`): `le
 `typeswitch`, `instance of`, `treat as`, `castable as`, `intersect`, `except`, `to`, `is`, `<<`,
 `>>`, unary `+`, other axes, `*:local`, other kind tests, unknown functions or arities, unknown
 prefixes, and in regular expressions `\i`, `\c`, `\I`, `\C`, `\p{IsBlock}` and character class
-subtraction. Schematron `report`, `let`, `value-of`, abstract rules and abstract patterns are
-rejected by the compiler as well. Peppol BIS 3 needs `let` and `xsl:function`; the engine will be
+subtraction. Schematron `report`, `let`, `value-of`, processing instructions, abstract rules and
+abstract patterns are rejected by the compiler as well, and so is any attribute the CEN and Peppol
+schemas do not use (such as `pattern/@documents`, `rule/@role` or `assert/@diagnostics`): the error
+names the element, the attribute and the line. Peppol BIS 3 needs `let` and `xsl:function`; the engine will be
 extended for it.
 
 ## Where the engine follows Saxon
@@ -109,7 +117,7 @@ A received file can contain values that make an assert impossible to evaluate: `
 an amount, an empty amount, `2026-13-01` as a date, a singleton element given twice. Saxon then
 aborts the whole run with an error code and produces no report. The engine does not abort:
 
-- the assert is recorded as a `DynamicError` with the error code (`FORG0001`, `XPTY0004`, …), the
+- the assert is recorded in `dynamicErrors` as a `DynamicError` with the error code (`FORG0001`, `XPTY0004`, …), the
   rule id and the location of the context node;
 - every other assert and rule is still evaluated, so the report also lists the other findings;
 - `isValid()` is false.

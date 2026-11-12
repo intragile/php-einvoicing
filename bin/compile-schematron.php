@@ -18,6 +18,7 @@ use IntrAgile\EInvoicing\Schematron\Compiler;
 require dirname(__DIR__).'/vendor/autoload.php';
 
 const VERSION = '1.3.17';
+const ORIGIN = 'CEN EN 16931 validation artefacts '.VERSION.' (EUPL-1.2)';
 const SOURCE_DIR = 'tests/fixtures/official/cen-1.3.17';
 const TARGET_DIR = 'packages/rules-en16931/rules';
 const SCHEMATRON = [
@@ -32,7 +33,7 @@ $stale = [];
 foreach (SCHEMATRON as $syntax => $file) {
     $id = "en16931-{$syntax}";
     $target = "{$root}/".TARGET_DIR."/{$id}-".VERSION.'.php';
-    $contents = CompiledRuleSetWriter::render(Compiler::compile("{$root}/".SOURCE_DIR."/{$file}", $id, VERSION));
+    $contents = CompiledRuleSetWriter::render(Compiler::compile("{$root}/".SOURCE_DIR."/{$file}", $id, VERSION), ORIGIN);
 
     if ($check) {
         if (! is_file($target) || file_get_contents($target) !== $contents) {

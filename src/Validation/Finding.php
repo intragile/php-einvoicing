@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace IntrAgile\EInvoicing\Schematron;
+namespace IntrAgile\EInvoicing\Validation;
 
 /**
  * A failed assert on one node.

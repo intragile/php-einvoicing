@@ -16,6 +16,8 @@ use IntrAgile\EInvoicing\XPath\Value\AtomicValue;
  * "(item, item)" where an atomic value is "type:lexical" (for example "xs:decimal:1.5") and a node is
  * "node:" followed by its path of name()[n] steps ("node:/Invoice[1]/cbc:ID[1]", "/@currencyID" for an
  * attribute, "node:/" for the document node). An evaluation error is written "error:CODE".
+ *
+ * @internal
  */
 final class Canonical
 {

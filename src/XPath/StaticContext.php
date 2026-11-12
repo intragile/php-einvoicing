@@ -9,6 +9,8 @@ use InvalidArgumentException;
 /**
  * Namespace bindings and in-scope variable names available while parsing an expression.
  * The prefixes xs and fn are always bound to the XML Schema and the functions-and-operators namespace.
+ *
+ * @internal
  */
 final readonly class StaticContext
 {

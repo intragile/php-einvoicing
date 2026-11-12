@@ -6,6 +6,8 @@ namespace IntrAgile\EInvoicing\XPath\Value;
 
 /**
  * An xs:double value; PHP's float is the same IEEE 754 binary64 type.
+ *
+ * @internal
  */
 final readonly class DoubleValue implements AtomicValue
 {

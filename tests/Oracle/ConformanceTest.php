@@ -8,12 +8,12 @@ use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
-use IntrAgile\EInvoicing\Schematron\DynamicError;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
 use IntrAgile\EInvoicing\Tests\Support\Mutator;
+use IntrAgile\EInvoicing\Validation\DynamicError;
 use IntrAgile\EInvoicing\Validation\Validator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -228,7 +228,7 @@ final class ConformanceTest extends TestCase
     {
         $report = (self::$validator ??= Validator::en16931())->validate($xml);
         $ours = $report->verdict();
-        $errorCodes = array_values(array_unique(array_map(static fn (DynamicError $error): string => $error->errorCode, $report->errors)));
+        $errorCodes = array_values(array_unique(array_map(static fn (DynamicError $error): string => $error->errorCode, $report->dynamicErrors)));
         sort($errorCodes, SORT_STRING);
 
         try {
@@ -241,7 +241,7 @@ final class ConformanceTest extends TestCase
                     implode(', ', $errorCodes),
                     $error->getMessage(),
                 );
-                $this->dump($xml, 'error '.$error->getMessage(), $this->describe($ours, $report->errors));
+                $this->dump($xml, 'error '.$error->getMessage(), $this->describe($ours, $report->dynamicErrors));
                 self::fail($message);
             }
             $this->addToAssertionCount(1);
@@ -249,18 +249,18 @@ final class ConformanceTest extends TestCase
             return;
         }
 
-        if ($official === $ours && $report->errors === []) {
+        if ($official === $ours && $report->dynamicErrors === []) {
             $this->addToAssertionCount(1);
 
             return;
         }
 
-        $this->dump($xml, implode("\n", $official), $this->describe($ours, $report->errors));
+        $this->dump($xml, implode("\n", $official), $this->describe($ours, $report->dynamicErrors));
         self::fail(sprintf(
             "Verdicts differ.\nOnly Saxon: %s\nOnly ours: %s\nOur dynamic errors: %s",
             implode(', ', array_diff($official, $ours)) ?: '-',
             implode(', ', array_diff($ours, $official)) ?: '-',
-            implode('; ', array_map(static fn (DynamicError $error): string => "{$error->errorCode} {$error->ruleId} at {$error->location}: {$error->message}", $report->errors)) ?: '-',
+            implode('; ', array_map(static fn (DynamicError $error): string => "{$error->errorCode} {$error->ruleId} at {$error->location}: {$error->message}", $report->dynamicErrors)) ?: '-',
         ));
     }
 

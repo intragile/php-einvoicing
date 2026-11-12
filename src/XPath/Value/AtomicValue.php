@@ -6,6 +6,8 @@ namespace IntrAgile\EInvoicing\XPath\Value;
 
 /**
  * An XPath 2.0 atomic value.
+ *
+ * @internal
  */
 interface AtomicValue
 {

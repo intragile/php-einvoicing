@@ -6,6 +6,8 @@ namespace IntrAgile\EInvoicing\XPath\Value;
 
 /**
  * The atomized value of a node that carries no schema type annotation.
+ *
+ * @internal
  */
 final readonly class UntypedAtomic implements AtomicValue
 {

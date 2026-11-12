@@ -6,6 +6,9 @@ namespace IntrAgile\EInvoicing\XPath\Value;
 
 use Brick\Math\BigDecimal;
 
+/**
+ * @internal
+ */
 final readonly class DecimalValue implements AtomicValue
 {
     public function __construct(public BigDecimal $value) {}

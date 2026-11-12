@@ -8,6 +8,7 @@ use IntrAgile\EInvoicing\Rules\En16931\RuleFiles;
 use IntrAgile\EInvoicing\Schematron\CompiledRuleSetWriter;
 use IntrAgile\EInvoicing\Schematron\Compiler;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
+use IntrAgile\EInvoicing\Schematron\RuleSet;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\XPath\Op;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -40,6 +41,7 @@ final class CompilerTest extends TestCase
     {
         $compiled = self::compiled($syntax);
 
+        self::assertSame(RuleSet::FORMAT, $compiled['format']);
         self::assertSame("en16931-{$syntax}", $compiled['id']);
         self::assertSame('1.3.17', $compiled['version']);
         self::assertSame(basename(Fixtures::schematron($syntax)), $compiled['source']);
@@ -139,6 +141,73 @@ final class CompilerTest extends TestCase
         Compiler::compile(self::writeSchematron($rules), 'tiny', '0.1');
     }
 
+    /**
+     * @return iterable<string, array{string, string, string, string, string}>
+     */
+    public static function unsupportedAttributes(): iterable
+    {
+        $rule = '<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x</assert></rule>';
+
+        yield 'pattern/@documents' => [$rule, ' documents="/other"', '', '', 'attribute "documents" of element "pattern"'];
+        yield 'rule/@role' => ['<rule context="cbc:ID" role="x"><assert id="R-1" flag="fatal" test="true()">x</assert></rule>', '', '', '', 'attribute "role" of element "rule"'];
+        yield 'assert/@diagnostics' => ['<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()" diagnostics="d">x</assert></rule>', '', '', '', 'attribute "diagnostics" of element "assert"'];
+        yield 'schema/@see' => [$rule, '', ' see="x"', '', 'attribute "see" of element "schema"'];
+        yield 'ns/@xml:base' => [$rule, '', '', ' xml:base="x"', 'attribute "xml:base" of element "ns"'];
+        yield 'phase/@fpi' => [$rule.'</pattern><phase id="ph" fpi="x"><active pattern="p"/></phase><pattern id="q">', '', '', '', 'attribute "fpi" of element "phase"'];
+        yield 'active/@xml:lang' => [$rule.'</pattern><phase id="ph"><active pattern="p" xml:lang="en"/></phase><pattern id="q">', '', '', '', 'attribute "xml:lang" of element "active"'];
+    }
+
+    #[DataProvider('unsupportedAttributes')]
+    public function test_rejects_unsupported_attributes(string $rules, string $patternAttributes, string $schemaAttributes, string $nsAttributes, string $message): void
+    {
+        $path = self::writeSchematron($rules, $patternAttributes, $schemaAttributes, $nsAttributes);
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessageMatches('/Unsupported '.preg_quote($message, '/').' \\(tiny\.sch line \d+\)/');
+
+        Compiler::compile($path, 'tiny', '0.1');
+    }
+
+    /**
+     * OpenPeppol's own copies of the CEN rules (1.3.16) use every attribute the compiler accepts
+     * on Schematron elements except let/@name and let/@value.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function peppolCenCopies(): iterable
+    {
+        yield 'ubl' => ['cen-ubl'];
+        yield 'cii' => ['cen-cii'];
+    }
+
+    #[DataProvider('peppolCenCopies')]
+    public function test_accepts_the_attributes_of_openpeppols_cen_copies(string $key): void
+    {
+        $compiled = Compiler::compile(Fixtures::peppolSchematron($key), $key, '3.0.22');
+
+        self::assertCount(3, $compiled['patterns']);
+    }
+
+    public function test_default_phase_keeps_its_own_message(): void
+    {
+        $path = self::writeSchematron('<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x</assert></rule>', '', ' defaultPhase="ph"');
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('selects a default phase');
+
+        Compiler::compile($path, 'tiny', '0.1');
+    }
+
+    public function test_rejects_a_processing_instruction_inside_an_assert(): void
+    {
+        $path = self::writeSchematron('<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x <?php echo 1; ?></assert></rule>');
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('processing instruction');
+
+        Compiler::compile($path, 'tiny', '0.1');
+    }
+
     public function test_rejects_abstract_patterns(): void
     {
         $path = self::writeSchematron('<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x</assert></rule>', ' abstract="true"');
@@ -156,12 +225,20 @@ final class CompilerTest extends TestCase
         $first = self::SCRATCH.'/first.php';
         $second = self::SCRATCH.'/second.php';
 
-        CompiledRuleSetWriter::write($compiled, $first);
-        CompiledRuleSetWriter::write($compiled, $second);
+        CompiledRuleSetWriter::write($compiled, $first, 'CEN EN 16931 validation artefacts 1.3.17 (EUPL-1.2)');
+        CompiledRuleSetWriter::write($compiled, $second, 'CEN EN 16931 validation artefacts 1.3.17 (EUPL-1.2)');
 
         self::assertSame(file_get_contents($first), file_get_contents($second));
-        self::assertStringContainsString('Generated from CEN EN 16931 validation artefacts 1.3.17 (EUPL-1.2) — do not edit', (string) file_get_contents($first));
+        self::assertStringContainsString('// Generated from CEN EN 16931 validation artefacts 1.3.17 (EUPL-1.2) — do not edit.', (string) file_get_contents($first));
         self::assertTrue((require $first) == $compiled);
+    }
+
+    public function test_header_names_the_given_origin(): void
+    {
+        $lines = explode("\n", CompiledRuleSetWriter::render(self::compiled('ubl'), 'X origin'));
+        $comments = array_values(array_filter($lines, static fn (string $line): bool => str_starts_with($line, '//')));
+
+        self::assertSame('// Generated from X origin — do not edit.', $comments[0]);
     }
 
     public function test_check_passes_on_a_clean_tree(): void
@@ -217,16 +294,16 @@ final class CompilerTest extends TestCase
         }
     }
 
-    private static function writeSchematron(string $rules, string $patternAttributes = ''): string
+    private static function writeSchematron(string $rules, string $patternAttributes = '', string $schemaAttributes = '', string $nsAttributes = ''): string
     {
         self::scratch();
         $path = self::SCRATCH.'/tiny.sch';
         $cbc = self::CBC;
         file_put_contents($path, <<<XML
             <?xml version="1.0" encoding="UTF-8"?>
-            <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
+            <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2"{$schemaAttributes}>
               <title>Tiny</title>
-              <ns prefix="cbc" uri="{$cbc}"/>
+              <ns prefix="cbc" uri="{$cbc}"{$nsAttributes}/>
               <pattern id="p"{$patternAttributes}>
                 {$rules}
               </pattern>

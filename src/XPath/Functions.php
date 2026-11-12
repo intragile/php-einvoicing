@@ -23,6 +23,8 @@ use LogicException;
 /**
  * The XPath 2.0 functions used by the supported rule sets, with the function conversion rules
  * applied to their arguments (atomization, untyped values cast to the expected type, cardinality checks).
+ *
+ * @internal
  */
 final class Functions
 {

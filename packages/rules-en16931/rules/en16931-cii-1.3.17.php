@@ -7,6 +7,7 @@
 declare(strict_types=1);
 
 return array (
+  'format' => 2,
   'id' => 'en16931-cii',
   'version' => '1.3.17',
   'source' => 'EN16931-CII-validation-preprocessed.sch',

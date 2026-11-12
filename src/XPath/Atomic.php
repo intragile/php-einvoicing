@@ -21,6 +21,8 @@ use LogicException;
 /**
  * XPath 2.0 casting, comparison and arithmetic over atomic values, without a schema
  * (nodes atomize to xs:untypedAtomic).
+ *
+ * @internal
  */
 final class Atomic
 {

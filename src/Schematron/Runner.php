@@ -8,6 +8,8 @@ use DOMAttr;
 use DOMDocument;
 use DOMElement;
 use DOMNode;
+use IntrAgile\EInvoicing\Validation\DynamicError;
+use IntrAgile\EInvoicing\Validation\Finding;
 use IntrAgile\EInvoicing\XPath\DocumentIndex;
 use IntrAgile\EInvoicing\XPath\Evaluator;
 use IntrAgile\EInvoicing\XPath\XPathError;
@@ -20,6 +22,8 @@ use IntrAgile\EInvoicing\XPath\XPathError;
  *
  * Each rule's match set is computed once per document instead of testing the pattern per node.
  * Unlike the XSLT, a dynamic error does not abort the run: it is recorded and evaluation continues.
+ *
+ * @internal
  *
  * @phpstan-import-type Rule from RuleSet
  */

@@ -7,6 +7,8 @@ namespace IntrAgile\EInvoicing\XPath;
 /**
  * Node kinds of the array AST produced by the parser. Every node is a list whose first element is
  * one of these constants, followed by its operands.
+ *
+ * @internal
  */
 final class Op
 {

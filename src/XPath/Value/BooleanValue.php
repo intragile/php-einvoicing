@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\XPath\Value;
 
+/**
+ * @internal
+ */
 final readonly class BooleanValue implements AtomicValue
 {
     public function __construct(public bool $value) {}

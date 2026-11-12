@@ -9,6 +9,8 @@ use IntrAgile\EInvoicing\XPath\Exception\XPathSyntaxError;
 /**
  * Splits an XPath 2.0 expression into tokens. Operator names such as "and" or "div" are returned as
  * names; whether they act as operators depends on the parser's position.
+ *
+ * @internal
  */
 final class Lexer
 {

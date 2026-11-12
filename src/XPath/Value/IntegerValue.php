@@ -9,6 +9,8 @@ use InvalidArgumentException;
 
 /**
  * An xs:integer value, held as a BigDecimal at scale 0.
+ *
+ * @internal
  */
 final readonly class IntegerValue implements AtomicValue
 {

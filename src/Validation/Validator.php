@@ -75,7 +75,7 @@ final class Validator
             ));
         }
 
-        return new ValidationReport($ruleSet->id(), $ruleSet->version(), $syntax, $result->findings, $result->errors);
+        return new ValidationReport(["{$ruleSet->id()} {$ruleSet->version()}"], $syntax, $result->findings, $result->dynamicErrors);
     }
 
     /**

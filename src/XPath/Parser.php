@@ -11,6 +11,8 @@ use IntrAgile\EInvoicing\XPath\Exception\XPathSyntaxError;
  * Recursive-descent parser for the XPath 2.0 subset used by the CEN EN 16931 rules. It produces an
  * array AST (see Op) with namespace prefixes already resolved to URIs. Constructs outside the subset
  * raise UnsupportedXPath instead of being approximated.
+ *
+ * @internal
  */
 final class Parser
 {

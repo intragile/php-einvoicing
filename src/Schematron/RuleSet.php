@@ -5,9 +5,16 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Schematron;
 
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
+use IntrAgile\EInvoicing\Validation\Severity;
 
 /**
  * A compiled Schematron rule set (the array a compiled rule file returns), with its shape checked.
+ *
+ * Compiled arrays carry the format they were written in; a file of any other format is refused
+ * with a request to recompile it, so a rule file left over from an older engine never runs with
+ * a different meaning.
+ *
+ * @internal
  *
  * @phpstan-type RuleAssert array{id: string, severity: Severity, test: string, ast: array<mixed>, message: string}
  * @phpstan-type Rule array{context: string, match: array<mixed>, asserts: list<RuleAssert>, roots: list<array{string, string}>}
@@ -15,6 +22,12 @@ use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
  */
 final class RuleSet
 {
+    /**
+     * The layout of the compiled array this engine reads and the compiler writes. Files written
+     * before the "format" key existed are format 1.
+     */
+    public const FORMAT = 2;
+
     /** @var array<string, self> */
     private static array $loaded = [];
 
@@ -53,6 +66,12 @@ final class RuleSet
     {
         $compiled = self::map($compiled, 'The rule set');
         $id = self::string($compiled, 'id', 'The rule set');
+        $format = $compiled['format'] ?? 1;
+        if ($format !== self::FORMAT) {
+            $format = is_int($format) ? (string) $format : (json_encode($format) ?: get_debug_type($format));
+
+            throw new UnsupportedSchematron("The rule set \"{$id}\" was compiled with format {$format}; this engine reads format ".self::FORMAT.'. Recompile it.');
+        }
         $namespaces = [];
         foreach (self::map($compiled['namespaces'] ?? null, 'The namespaces of the rule set') as $prefix => $uri) {
             if (! is_string($prefix) || ! is_string($uri)) {

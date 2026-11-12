@@ -23,21 +23,54 @@ use InvalidArgumentException;
  * Compiles a preprocessed ISO Schematron schema (includes and abstract patterns resolved, XSLT 2.0
  * query binding) into a plain array with every rule context and assert test parsed to an XPath AST.
  *
- * Only schema, title, ns, phase, active, pattern, rule and assert are accepted; anything else
- * (report, let, value-of in messages, foreign elements, abstract patterns or rules) raises
- * UnsupportedSchematron instead of being ignored, because ignoring it could change a verdict.
- * Phases are not compiled: like the official XSLT without a selected phase, all patterns run.
+ * Only schema, title, ns, phase, active, pattern, rule and assert are accepted, each with the
+ * attributes listed in ATTRIBUTES; anything else (report, let, value-of in messages, foreign
+ * elements, processing instructions, abstract patterns or rules, attributes such as
+ * pattern/@documents or assert/@diagnostics) raises UnsupportedSchematron instead of being
+ * ignored, because ignoring it could change a verdict or a message. Phases are not compiled: like
+ * the official XSLT without a selected phase, all patterns run.
+ *
+ * @internal
  *
  * @phpstan-type CompiledAssert array{id: string, flag: string, test: string, ast: array<mixed>, message: string}
  * @phpstan-type CompiledRule array{context: string, match: array<mixed>, asserts: list<CompiledAssert>}
  * @phpstan-type CompiledPattern array{id: string, rules: list<CompiledRule>}
- * @phpstan-type CompiledRuleSet array{id: string, version: string, source: string, sha256: string, namespaces: array<string, string>, patterns: list<CompiledPattern>}
+ * @phpstan-type CompiledRuleSet array{format: int, id: string, version: string, source: string, sha256: string, namespaces: array<string, string>, patterns: list<CompiledPattern>}
  */
 final class Compiler
 {
     public const SCHEMATRON_NAMESPACE = 'http://purl.oclc.org/dsdl/schematron';
 
+    public const XSLT_NAMESPACE = 'http://www.w3.org/1999/XSL/Transform';
+
     private const FLAGS = ['fatal', 'warning', 'information'];
+
+    /**
+     * The attributes accepted per element: every attribute the CEN preprocessed schemas and the
+     * Peppol BIS Billing schemas use. Any other attribute is refused by name.
+     */
+    private const ATTRIBUTES = [
+        self::SCHEMATRON_NAMESPACE => [
+            'schema' => ['schemaVersion', 'queryBinding'],
+            'title' => [],
+            'ns' => ['uri', 'prefix'],
+            'let' => ['name', 'value'],
+            'phase' => ['id'],
+            'active' => ['pattern'],
+            'pattern' => ['id'],
+            'rule' => ['context', 'flag'],
+            'assert' => ['id', 'test', 'flag'],
+        ],
+        self::XSLT_NAMESPACE => [
+            'function' => ['name', 'as'],
+            'param' => ['name', 'as'],
+            'variable' => ['name', 'select', 'as'],
+            'sequence' => ['select'],
+            'choose' => [],
+            'when' => ['test'],
+            'otherwise' => [],
+        ],
+    ];
 
     private readonly Parser $parser;
 
@@ -64,6 +97,7 @@ final class Compiler
         $source = basename($schPath);
 
         return [
+            'format' => RuleSet::FORMAT,
             'id' => $id,
             'version' => $version,
             'source' => $source,
@@ -91,14 +125,17 @@ final class Compiler
         if ($schema->hasAttribute('defaultPhase')) {
             throw new UnsupportedSchematron("{$this->source} selects a default phase; only schemas that run all patterns are supported.");
         }
+        $this->checkAttributes($schema);
 
         $namespaces = [];
         $patternElements = [];
         foreach ($this->children($schema) as $child) {
             switch ($child->localName) {
                 case 'title':
+                    $this->checkAttributes($child);
                     break;
                 case 'ns':
+                    $this->checkAttributes($child);
                     $prefix = $child->getAttribute('prefix');
                     $uri = $child->getAttribute('uri');
                     if (isset($namespaces[$prefix]) && $namespaces[$prefix] !== $uri) {
@@ -107,10 +144,12 @@ final class Compiler
                     $namespaces[$prefix] = $uri;
                     break;
                 case 'phase':
+                    $this->checkAttributes($child);
                     foreach ($this->children($child) as $active) {
                         if ($active->localName !== 'active') {
                             throw $this->unsupportedElement($active);
                         }
+                        $this->checkAttributes($active);
                     }
                     break;
                 case 'pattern':
@@ -142,6 +181,7 @@ final class Compiler
         if ($pattern->getAttribute('abstract') === 'true' || $pattern->hasAttribute('is-a')) {
             throw new UnsupportedSchematron("Pattern \"{$id}\" ({$this->line($pattern)}) is or instantiates an abstract pattern; compile the preprocessed schema instead.");
         }
+        $this->checkAttributes($pattern);
 
         $rules = [];
         foreach ($this->children($pattern) as $rule) {
@@ -165,6 +205,7 @@ final class Compiler
         if (! $rule->hasAttribute('context')) {
             throw new UnsupportedSchematron("Rule without a context ({$this->line($rule)}).");
         }
+        $this->checkAttributes($rule);
 
         $context = $rule->getAttribute('context');
         try {
@@ -194,6 +235,7 @@ final class Compiler
         if ($id === '') {
             throw new UnsupportedSchematron("Assert without an id in the rule with context \"{$context}\" ({$this->line($assert)}).");
         }
+        $this->checkAttributes($assert);
         $flag = $assert->getAttribute('flag');
         if (! in_array($flag, self::FLAGS, true)) {
             throw new UnsupportedSchematron("Assert \"{$id}\" has the unsupported flag \"{$flag}\" ({$this->line($assert)}).");
@@ -213,6 +255,9 @@ final class Compiler
         foreach ($assert->childNodes as $node) {
             if ($node instanceof DOMElement) {
                 throw $this->unsupportedElement($node);
+            }
+            if ($node->nodeType === XML_PI_NODE) {
+                throw $this->unsupportedProcessingInstruction($node);
             }
         }
 
@@ -274,20 +319,42 @@ final class Compiler
                 }
                 $children[] = $node;
             } elseif ($node->nodeType === XML_PI_NODE) {
-                throw new UnsupportedSchematron("Unsupported processing instruction in {$this->source} ({$this->line($node)}).");
+                throw $this->unsupportedProcessingInstruction($node);
             }
         }
 
         return $children;
     }
 
+    /**
+     * Refuses any attribute the element does not accept (see ATTRIBUTES), naming it, the element
+     * and the line.
+     */
+    private function checkAttributes(DOMElement $element): void
+    {
+        $allowed = self::ATTRIBUTES[$element->namespaceURI ?? ''][$element->localName ?? $element->nodeName] ?? [];
+        foreach ($element->attributes ?? [] as $attribute) {
+            if ($attribute->namespaceURI !== null || ! in_array($attribute->localName, $allowed, true)) {
+                throw new UnsupportedSchematron("Unsupported attribute \"{$attribute->nodeName}\" of element \"{$this->elementName($element)}\" ({$this->line($element)}).");
+            }
+        }
+    }
+
     private function unsupportedElement(DOMElement $element): UnsupportedSchematron
     {
-        $name = $element->namespaceURI === self::SCHEMATRON_NAMESPACE
-            ? $element->localName
-            : '{'.$element->namespaceURI.'}'.$element->localName;
+        return new UnsupportedSchematron("Unsupported Schematron element \"{$this->elementName($element)}\" ({$this->line($element)}).");
+    }
 
-        return new UnsupportedSchematron("Unsupported Schematron element \"{$name}\" ({$this->line($element)}).");
+    private function unsupportedProcessingInstruction(DOMNode $node): UnsupportedSchematron
+    {
+        return new UnsupportedSchematron("Unsupported processing instruction in {$this->source} ({$this->line($node)}).");
+    }
+
+    private function elementName(DOMElement $element): string
+    {
+        $localName = $element->localName ?? $element->nodeName;
+
+        return $element->namespaceURI === self::SCHEMATRON_NAMESPACE ? $localName : '{'.$element->namespaceURI.'}'.$localName;
     }
 
     private function line(DOMNode $node): string

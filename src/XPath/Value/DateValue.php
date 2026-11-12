@@ -6,6 +6,8 @@ namespace IntrAgile\EInvoicing\XPath\Value;
 
 /**
  * An xs:date value with an optional timezone offset in minutes east of UTC.
+ *
+ * @internal
  */
 final readonly class DateValue implements AtomicValue
 {

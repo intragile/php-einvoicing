@@ -19,13 +19,15 @@ use IntrAgile\EInvoicing\Model\Item;
 use IntrAgile\EInvoicing\Model\LineVat;
 use IntrAgile\EInvoicing\Model\Price;
 use IntrAgile\EInvoicing\Rules\En16931\RuleFiles;
-use IntrAgile\EInvoicing\Schematron\DynamicError;
 use IntrAgile\EInvoicing\Schematron\RuleSet;
 use IntrAgile\EInvoicing\Syntax\Syntax;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Support\HostileXml;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
+use IntrAgile\EInvoicing\Validation\DynamicError;
+use IntrAgile\EInvoicing\Validation\Finding;
+use IntrAgile\EInvoicing\Validation\Severity;
 use IntrAgile\EInvoicing\Validation\ValidationReport;
 use IntrAgile\EInvoicing\Validation\Validator;
 use InvalidArgumentException;
@@ -67,7 +69,7 @@ final class ValidatorTest extends TestCase
         $report = Validator::en16931()->validate(self::contents($file));
 
         self::assertSame(Syntax::from($syntax), $report->syntax);
-        self::assertSame([], $report->errors);
+        self::assertSame([], $report->dynamicErrors);
         $expected = self::$oracleFatal["{$syntax} ".basename($file)] ?? [];
         self::assertSame($expected, self::fatalIds($report), implode("\n", $report->verdict()));
         self::assertSame($expected === [], $report->isValid());
@@ -77,8 +79,23 @@ final class ValidatorTest extends TestCase
     {
         $report = Validator::en16931()->validate(self::contents(self::example('ubl', 'ubl-tc434-example1.xml')));
 
-        self::assertSame('en16931-ubl', $report->ruleSet);
-        self::assertSame('1.3.17', $report->version);
+        self::assertSame(['en16931-ubl 1.3.17'], $report->ruleSets);
+    }
+
+    public function test_report_filters_findings_by_severity(): void
+    {
+        $finding = static fn (string $id, Severity $severity): Finding => new Finding($id, $severity, '/', "[{$id}]", 'false()');
+        $report = new ValidationReport(['x 1'], Syntax::Ubl, [
+            $finding('F-1', Severity::Fatal),
+            $finding('I-1', Severity::Information),
+            $finding('W-1', Severity::Warning),
+            $finding('I-2', Severity::Information),
+        ], []);
+
+        self::assertSame(['I-1', 'I-2'], array_map(static fn (Finding $f): string => $f->ruleId, $report->information()));
+        self::assertSame(['W-1'], array_map(static fn (Finding $f): string => $f->ruleId, $report->warnings()));
+        self::assertSame(['F-1'], array_map(static fn (Finding $f): string => $f->ruleId, $report->fatal()));
+        self::assertFalse($report->isValid());
     }
 
     public function test_model_invoice_written_as_cii_is_valid(): void
@@ -134,10 +151,10 @@ final class ValidatorTest extends TestCase
 
         $report = Validator::en16931()->validate($xml);
 
-        self::assertNotSame([], $report->errors);
+        self::assertNotSame([], $report->dynamicErrors);
         self::assertContains('FORG0001', self::errorCodes($report));
-        self::assertSame('BR-CO-16', $report->errors[0]->ruleId);
-        self::assertSame('/ubl:Invoice[1]/cac:LegalMonetaryTotal[1]', $report->errors[0]->location);
+        self::assertSame('BR-CO-16', $report->dynamicErrors[0]->ruleId);
+        self::assertSame('/ubl:Invoice[1]/cac:LegalMonetaryTotal[1]', $report->dynamicErrors[0]->location);
         self::assertFalse($report->isValid());
         self::assertContains('BR-02 fatal', $report->verdict(), 'Rules unrelated to the amount must still be evaluated.');
     }
@@ -275,7 +292,7 @@ final class ValidatorTest extends TestCase
      */
     private static function errorCodes(ValidationReport $report): array
     {
-        return array_map(static fn (DynamicError $error): string => $error->errorCode, $report->errors);
+        return array_map(static fn (DynamicError $error): string => $error->errorCode, $report->dynamicErrors);
     }
 
     /**
