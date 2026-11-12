@@ -6,3 +6,5 @@
 /phpunit.xml
 /vendor
 /build/
+# OpenPeppol publishes no licence for its rules and test files: downloaded, never committed.
+/tests/fixtures/peppol-*/

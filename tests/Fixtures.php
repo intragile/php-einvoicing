@@ -8,17 +8,29 @@ use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use IntrAgile\EInvoicing\Tests\Support\UnitTestDocument;
+use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use InvalidArgumentException;
+use PHPUnit\Framework\Assert;
 use RuntimeException;
 
 /**
- * Locates the official CEN EN 16931 artefacts (validation-1.3.17) used as test fixtures.
+ * Locates the official test fixtures: the CEN EN 16931 artefacts (validation-1.3.17), the Peppol
+ * BIS Billing rules and test corpus (downloaded only, never committed) and the ISO Schematron
+ * skeleton.
  */
 final class Fixtures
 {
     private const OFFICIAL_DIR = __DIR__.'/fixtures/official/cen-1.3.17';
 
     private const UBL_SCHEMA_DIR = __DIR__.'/fixtures/official/ubl-2.1/xsd/maindoc';
+
+    /** Git-ignored folder filled by bin/fetch-official.php; OpenPeppol content is never committed. */
+    private const PEPPOL_DIR = __DIR__.'/fixtures/peppol-'.PeppolSources::VERSION;
+
+    /** Folders of the Peppol corpus that hold plain example invoices, in listing order. */
+    private const PEPPOL_EXAMPLE_DIRS = ['examples', 'snippets'];
+
+    private const ISO_SKELETON = __DIR__.'/fixtures/iso-schematron/iso_svrl_for_xslt2.xsl';
 
     private const CII_SCHEMA = __DIR__.'/fixtures/official/cii-d16b/CrossIndustryInvoice_100pD16B.xsd';
 
@@ -38,10 +50,11 @@ final class Fixtures
     /** Container format of the CEN unit tests: a testSet with one invoice in each test child. */
     private const VEFA_NAMESPACE = 'http://difi.no/xsd/vefa/validator/1.0';
 
-    /** Syntax of an invoice by the namespace of its document element. */
+    /** Namespace of any UBL 2 main document, such as Invoice-2 or Order-2. */
+    private const UBL_DOCUMENT_NAMESPACE = '/^urn:oasis:names:specification:ubl:schema:xsd:[A-Za-z]+-2$/';
+
+    /** Syntax of a non-UBL invoice by the namespace of its document element. */
     private const SYNTAX_BY_NAMESPACE = [
-        'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2' => 'ubl',
-        'urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2' => 'ubl',
         'urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100' => 'cii',
     ];
 
@@ -104,9 +117,95 @@ final class Fixtures
     }
 
     /**
+     * Absolute path of a downloaded Peppol Schematron file, keyed as in PeppolSources::all().
+     */
+    public static function peppolSchematron(string $key): string
+    {
+        $source = PeppolSources::all()[$key] ?? throw new InvalidArgumentException("Unknown Peppol rule file \"{$key}\".");
+
+        return self::peppolDir().'/sch/'.$source['file'];
+    }
+
+    /**
+     * Every invoice in the Peppol unit-test corpus (rules/unit-UBL-* and rules/unit-CII-*): one
+     * entry per test of a testSet file, ordered by directory, file name and position. Every
+     * regular file is read, whatever its extension, because some upstream files are misnamed.
+     *
      * @return list<UnitTestDocument>
      */
-    private static function unitTestDocuments(string $file): array
+    public static function peppolUnitTests(): array
+    {
+        $peppolDir = self::peppolDir();
+        $dirs = array_merge(glob($peppolDir.'/unit-UBL-*', GLOB_ONLYDIR) ?: [], glob($peppolDir.'/unit-CII-*', GLOB_ONLYDIR) ?: []);
+        sort($dirs, SORT_STRING);
+
+        $documents = [];
+        foreach ($dirs as $dir) {
+            foreach (self::regularFiles($dir) as $file) {
+                array_push($documents, ...self::unitTestDocuments($dir.'/'.$file, 'peppol/'));
+            }
+        }
+
+        return $documents;
+    }
+
+    /**
+     * The Peppol example invoices (rules/examples and rules/snippets), keyed by a name such as
+     * "examples/base-example.xml", in directory and file-name order.
+     *
+     * @return array<string, string> name => XML
+     */
+    public static function peppolExamples(): array
+    {
+        $examples = [];
+        foreach (self::PEPPOL_EXAMPLE_DIRS as $dir) {
+            $path = self::peppolDir().'/'.$dir;
+            foreach (self::regularFiles($path) as $file) {
+                $examples[$dir.'/'.$file] = (string) file_get_contents($path.'/'.$file);
+            }
+        }
+
+        return $examples;
+    }
+
+    /**
+     * Absolute path of the ISO Schematron SVRL stylesheet for XSLT 2 (it imports the Saxon
+     * skeleton from the same folder).
+     */
+    public static function isoSkeleton(): string
+    {
+        return self::ISO_SKELETON;
+    }
+
+    private static function peppolDir(): string
+    {
+        if (! is_dir(self::PEPPOL_DIR)) {
+            Assert::markTestSkipped('Run composer fetch-official');
+        }
+
+        return self::PEPPOL_DIR;
+    }
+
+    /**
+     * Names of the regular files in a directory, sorted.
+     *
+     * @return list<string>
+     */
+    private static function regularFiles(string $dir): array
+    {
+        $files = array_values(array_filter(
+            scandir($dir) ?: throw new RuntimeException("Cannot list {$dir}"),
+            static fn (string $file): bool => is_file($dir.'/'.$file),
+        ));
+        sort($files, SORT_STRING);
+
+        return $files;
+    }
+
+    /**
+     * @return list<UnitTestDocument>
+     */
+    private static function unitTestDocuments(string $file, string $corpus = ''): array
     {
         $document = new DOMDocument;
         if (! $document->load($file, LIBXML_NONET) || $document->documentElement === null) {
@@ -115,7 +214,7 @@ final class Fixtures
         $root = $document->documentElement;
 
         if ($root->namespaceURI !== self::VEFA_NAMESPACE) {
-            return [new UnitTestDocument($file, 0, self::invoiceSyntax($root, $file), (string) $document->saveXML())];
+            return [new UnitTestDocument($file, 0, self::invoiceSyntax($root, $file), (string) $document->saveXML(), $corpus)];
         }
 
         $documents = [];
@@ -135,7 +234,7 @@ final class Fixtures
                 throw new RuntimeException("Test {$index} in {$file} holds ".count($invoices).' documents; expected 1.');
             }
 
-            $documents[] = new UnitTestDocument($file, $index, self::invoiceSyntax($invoices[0], $file), self::standalone($invoices[0]));
+            $documents[] = new UnitTestDocument($file, $index, self::invoiceSyntax($invoices[0], $file), self::standalone($invoices[0]), $corpus);
             $index++;
         }
 
@@ -143,11 +242,19 @@ final class Fixtures
     }
 
     /**
+     * Syntax of a corpus document. Besides invoices and credit notes, the Peppol corpus tests its
+     * syntax-independent rules on other UBL documents (an Order in PEPPOL-COMMON-R041.xml).
+     *
      * @return 'ubl'|'cii'
      */
     private static function invoiceSyntax(DOMElement $element, string $file): string
     {
-        return self::SYNTAX_BY_NAMESPACE[(string) $element->namespaceURI]
+        $namespace = (string) $element->namespaceURI;
+        if (preg_match(self::UBL_DOCUMENT_NAMESPACE, $namespace) === 1) {
+            return 'ubl';
+        }
+
+        return self::SYNTAX_BY_NAMESPACE[$namespace]
             ?? throw new RuntimeException("Unexpected document element {{$element->namespaceURI}}{$element->localName} in {$file}.");
     }
 

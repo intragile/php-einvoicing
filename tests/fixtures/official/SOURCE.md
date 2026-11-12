@@ -148,6 +148,54 @@ Redistribution is therefore allowed on two conditions, which this folder meets:
 - **Notice included:** the copyright notice and the permission paragraph are part of every file,
   so no separate notice file is needed.
 
+## Peppol BIS Billing 3.0.22 (downloaded, not committed)
+
+Unlike everything above, the Peppol material is **not committed and not redistributed**.
+OpenPeppol publishes no licence for it: the
+[peppol-bis-invoice-3](https://github.com/OpenPEPPOL/peppol-bis-invoice-3) repository has no
+licence file, and the specification only states that "OpenPeppol AISBL holds the copyright of
+this Peppol BIS" (`guide/bis/introduction.adoc`, "Statement of copyright"). Without a licence
+there is no permission to redistribute, so `bin/fetch-official.php` downloads the files from the
+official repository onto the developer's or CI machine, into the git-ignored
+`tests/fixtures/peppol-3.0.22/` (`.gitignore`: `/tests/fixtures/peppol-*/`). The test helpers in
+`tests/Fixtures.php` skip their tests when that folder is absent.
+
+| | |
+|---|---|
+| Project | [OpenPEPPOL/peppol-bis-invoice-3](https://github.com/OpenPEPPOL/peppol-bis-invoice-3) |
+| Tag | [`3.0.22`](https://github.com/OpenPEPPOL/peppol-bis-invoice-3/tree/3.0.22) (commit `38d693d71d28d813781323a6ca97324edcc4d239`, 2026-11-04) |
+| Rule files | `https://raw.githubusercontent.com/OpenPEPPOL/peppol-bis-invoice-3/3.0.22/rules/sch/<file>`, into `peppol-3.0.22/sch/` |
+| Test corpus | `rules/` of the repository archive at the tag (`https://github.com/OpenPEPPOL/peppol-bis-invoice-3/archive/refs/tags/3.0.22.zip`) |
+
+The four rule files are pinned by SHA-256 in
+[`src/Validation/Peppol/PeppolSources.php`](../../../src/Validation/Peppol/PeppolSources.php),
+the single place these pins are kept:
+
+| File | SHA-256 |
+|---|---|
+| `CEN-EN16931-UBL.sch` | `268d4f7a2688676695e6c69cba6fba69a6802604fee12cb544a6b30ff09555a3` |
+| `CEN-EN16931-CII.sch` | `54e0dc6d06cd7f17d268bb9696ff56f58d386ee28961c9bbef0a56718c400c89` |
+| `PEPPOL-EN16931-UBL.sch` | `f637444fab75a6da7e5004f94a6de8e71383ef5658dafe6c68925103b17ea148` |
+| `PEPPOL-EN16931-CII.sch` | `7678c3cd4a219095ef5d4f2ece17e5d447eb92655e57a7d52290b35acfdc9dd8` |
+
+The `CEN-*` files are OpenPeppol's own copy of the CEN rules (CEN 1.3.16), not the 1.3.17 files
+above.
+
+From the archive only `rules/unit-UBL-*`, `rules/unit-CII-*`, `rules/examples/` and
+`rules/snippets/` are unpacked (268 files); `rules/unit-SBDH/` (envelope rules) and
+`rules/national-examples/` are skipped. Every unpacked file is verified against
+[`../peppol-3.0.22.sha256`](../peppol-3.0.22.sha256), a manifest of our own that holds only the
+relative paths and SHA-256 sums, no OpenPeppol content. Two upstream files are misnamed
+`PEPPOL-COMMON-R048.xm`; they are kept, because `Fixtures::peppolUnitTests()` reads every regular
+file. `rules/unit-UBL-PEPPOL/PEPPOL-COMMON-R041.xml` tests the syntax-independent rules on UBL
+Order documents rather than invoices.
+
+| Fixture helper | Content |
+|---|---|
+| `Fixtures::peppolSchematron($key)` | path of a rule file, keyed `cen-ubl`, `cen-cii`, `peppol-ubl`, `peppol-cii` |
+| `Fixtures::peppolUnitTests()` | 1,029 documents (678 UBL, 351 CII) from 242 VEFA `testSet` files, named `peppol/<dir>/<file>#<index>` |
+| `Fixtures::peppolExamples()` | the 26 files of `examples/` and `snippets/`, keyed `examples/<file>` or `snippets/<file>` |
+
 ## Refreshing
 
 ```bash
@@ -155,10 +203,12 @@ php bin/fetch-official.php
 ```
 
 The script downloads the two release archives, the repository archive, the licence text, the
-UBL 2.1 package and the CII D16B schemas, verifies each against the SHA-256 sums above (the
-unit tests file by file against `MANIFEST.sha256`), and rebuilds `cen-1.3.17/`, `ubl-2.1/` and
-`cii-d16b/`. `php bin/fetch-official.php --write-manifest` recreates the manifest from the
-archive instead of verifying against it; use it only when moving to a new tag.
+UBL 2.1 package, the CII D16B schemas and the Peppol rule files and repository archive, verifies
+each against the SHA-256 sums above (the CEN unit tests file by file against `MANIFEST.sha256`,
+the Peppol corpus against `peppol-3.0.22.sha256`), and rebuilds `cen-1.3.17/`, `ubl-2.1/`,
+`cii-d16b/` and `../peppol-3.0.22/`. `php bin/fetch-official.php --write-manifest` recreates both
+manifests from the archives instead of verifying against them; use it only when moving to a new
+tag. CI runs `composer fetch-official` before the test suite.
 Verified downloads are cached in the git-ignored `.cache/official/`, so repeated runs work
 offline and produce the same files. It
 needs the `zip` extension.

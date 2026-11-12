@@ -20,9 +20,10 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: dom, libxml, mbstring
+          extensions: dom, libxml, mbstring, zip
           coverage: none
       - run: composer update --prefer-dist --no-interaction --no-progress
+      - run: composer fetch-official
       - run: vendor/bin/phpunit
       - run: php bin/compile-schematron.php --check
       - run: vendor/bin/phpstan analyse --memory-limit=1G
@@ -52,9 +53,10 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: dom, libxml, mbstring
+          extensions: dom, libxml, mbstring, zip
           coverage: none
       - run: composer update --prefer-dist --no-interaction --no-progress
+      - run: composer fetch-official
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
@@ -86,7 +88,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: dom, libxml, mbstring
+          extensions: dom, libxml, mbstring, zip
           coverage: none
       - name: Retarget composer.json at the upcoming versions
         run: |
@@ -100,4 +102,5 @@ jobs:
             file_put_contents("composer.json", json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
           '
       - run: composer update --prefer-dist --no-interaction --no-progress --ignore-platform-req=php+
+      - run: composer fetch-official
       - run: vendor/bin/phpunit

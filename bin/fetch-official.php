@@ -26,7 +26,18 @@ declare(strict_types=1);
  * It also downloads the UN/CEFACT Cross Industry Invoice D16B schemas (SCRDM subset, uncoupled
  * code lists) that the CEN repository ships at the same tag, into
  * tests/fixtures/official/cii-d16b/, for schema validation of written CII documents.
+ *
+ * It also downloads the Peppol BIS Billing 3.0 rule files pinned in PeppolSources, and the unit
+ * tests, examples and snippets of the peppol-bis-invoice-3 repository archive at the same tag,
+ * into tests/fixtures/peppol-<version>/. OpenPeppol publishes no licence for this material, so
+ * that folder is git-ignored and never committed; the per-file SHA-256 sums of the unpacked
+ * archive entries are kept in tests/fixtures/peppol-<version>.sha256 (relative paths and sums
+ * only), which --write-manifest also recreates.
  */
+
+use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
+
+require_once dirname(__DIR__).'/src/Validation/Peppol/PeppolSources.php';
 
 const TAG = 'validation-1.3.17';
 const RELEASE_URL = 'https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/'.TAG.'/';
@@ -83,11 +94,25 @@ const CII_SCHEMAS = [
     'CrossIndustryInvoice_UnqualifiedDataType_100pD16B.xsd' => '5d4ce8a6445caa4b7691f6fba6ad08e312e6a853cd3a422666d121ee2d13ef8c',
 ];
 
+/** The peppol-bis-invoice-3 source archive at PeppolSources::VERSION, its cache name and top-level folder. */
+const PEPPOL_ARCHIVE = [
+    'https://github.com/OpenPEPPOL/peppol-bis-invoice-3/archive/refs/tags/'.PeppolSources::VERSION.'.zip',
+    'peppol-bis-invoice-3-'.PeppolSources::VERSION.'.zip',
+    'peppol-bis-invoice-3-'.PeppolSources::VERSION.'/rules/',
+];
+
+/**
+ * Archive folders below rules/ that are unpacked. The envelope unit tests (unit-SBDH) and the
+ * national examples are not needed.
+ */
+const PEPPOL_PREFIXES = ['unit-UBL-', 'unit-CII-', 'examples/', 'snippets/'];
+
 $root = dirname(__DIR__);
 $cacheDir = $root.'/.cache/official';
 $targetDir = $root.'/tests/fixtures/official/cen-1.3.17';
 $schemaDir = $root.'/tests/fixtures/official/ubl-2.1';
 $ciiSchemaDir = $root.'/tests/fixtures/official/cii-d16b';
+$peppolDir = $root.'/tests/fixtures/peppol-'.PeppolSources::VERSION;
 $writeManifest = array_key_exists('write-manifest', getopt('', ['write-manifest']) ?: []);
 
 try {
@@ -96,7 +121,7 @@ try {
     }
 
     // Staging folders and partial downloads left behind by an interrupted run.
-    foreach ([$cacheDir, dirname($targetDir), $targetDir] as $directory) {
+    foreach ([$cacheDir, dirname($targetDir), $targetDir, dirname($peppolDir)] as $directory) {
         foreach (glob($directory.'/*.tmp') ?: [] as $debris) {
             removeTree($debris);
         }
@@ -135,6 +160,10 @@ try {
         copyFile(fetchVerified(CII_SCHEMA_URL.$ciiSchemaFile, $cacheDir.'/'.$ciiSchemaFile, $ciiSchemaSha256), $ciiSchemaDir.'/'.$ciiSchemaFile);
     }
     fwrite(STDOUT, 'cii-d16b: copied '.count(CII_SCHEMAS)." schema files\n");
+
+    $peppolCount = unpackPeppol($cacheDir, $peppolDir, $peppolDir.'.sha256', $writeManifest);
+    fwrite(STDOUT, 'peppol-'.PeppolSources::VERSION.': copied '.count(PeppolSources::all())." rule files, unpacked {$peppolCount} files"
+        .($writeManifest ? ', manifest written' : ', manifest verified')."\n");
 } catch (RuntimeException $e) {
     fwrite(STDERR, 'fetch-official: '.$e->getMessage()."\n");
     exit(1);
@@ -209,44 +238,115 @@ function unpackUnitTests(string $archive, string $prefix, string $target, bool $
     removeTree($staging);
     ensureDirectory($staging);
     extractEntries($archive, $staging, [$prefix], $prefix);
-
-    $actual = [];
-    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($staging, FilesystemIterator::SKIP_DOTS));
-    /** @var SplFileInfo $file */
-    foreach ($files as $file) {
-        $relative = substr($file->getPathname(), strlen($staging) + 1);
-        $actual[$relative] = (string) hash_file('sha256', $file->getPathname());
-    }
-    ksort($actual, SORT_STRING);
+    $actual = hashTree($staging);
 
     if ($expected === null) {
-        $lines = array_map(static fn (string $name, string $sum): string => "{$sum}  {$name}\n", array_keys($actual), $actual);
-        if (file_put_contents($staging.'/'.UNIT_TEST_MANIFEST, implode('', $lines)) === false) {
-            throw new RuntimeException('Cannot write '.UNIT_TEST_MANIFEST);
-        }
+        writeManifest($actual, $staging.'/'.UNIT_TEST_MANIFEST);
     } else {
-        $problems = [];
-        foreach (array_diff_key($expected, $actual) as $name => $sum) {
-            $problems[] = "missing {$name}";
-        }
-        foreach ($actual as $name => $sum) {
-            if (! isset($expected[$name])) {
-                $problems[] = "unexpected {$name}";
-            } elseif ($expected[$name] !== $sum) {
-                $problems[] = "checksum mismatch {$name}";
-            }
-        }
-        if ($problems !== []) {
-            removeTree($staging);
-            throw new RuntimeException("Unit tests in {$archive} do not match ".UNIT_TEST_MANIFEST
-                ." (delete the cached archive to download it again):\n  ".implode("\n  ", array_slice($problems, 0, 20)));
-        }
+        checkManifest($expected, $actual, $staging, "Unit tests in {$archive} do not match ".UNIT_TEST_MANIFEST);
         copyFile($manifestPath, $staging.'/'.UNIT_TEST_MANIFEST);
     }
 
     replaceTree($staging, $target);
 
     return count($actual);
+}
+
+/**
+ * Replaces $target with the Peppol rule files (in sch/, each verified against its pinned sum) and
+ * the selected entries of the repository archive (verified against the manifest at
+ * $manifestPath, or recorded there with --write-manifest). Returns the archive file count.
+ */
+function unpackPeppol(string $cacheDir, string $target, string $manifestPath, bool $writeManifest): int
+{
+    $expected = $writeManifest ? null : readManifest($manifestPath);
+
+    [$archiveUrl, $archiveFile, $archiveRoot] = PEPPOL_ARCHIVE;
+    $archive = $cacheDir.'/'.$archiveFile;
+    if (! is_file($archive)) {
+        download($archiveUrl, $archive);
+    }
+
+    $staging = $target.'.tmp';
+    removeTree($staging);
+    ensureDirectory($staging);
+    extractEntries($archive, $staging, array_map(static fn (string $prefix): string => $archiveRoot.$prefix, PEPPOL_PREFIXES), $archiveRoot);
+    $actual = hashTree($staging);
+
+    if ($expected === null) {
+        writeManifest($actual, $manifestPath);
+    } else {
+        checkManifest($expected, $actual, $staging, "Peppol files in {$archive} do not match ".basename($manifestPath));
+    }
+
+    $sourceCache = $cacheDir.'/peppol-'.PeppolSources::VERSION;
+    ensureDirectory($sourceCache);
+    ensureDirectory($staging.'/sch');
+    foreach (PeppolSources::all() as $source) {
+        copyFile(fetchVerified(PeppolSources::BASE_URL.$source['file'], $sourceCache.'/'.$source['file'], $source['sha256']), $staging.'/sch/'.$source['file']);
+    }
+
+    replaceTree($staging, $target);
+
+    return count($actual);
+}
+
+/**
+ * SHA-256 sums of every file below $dir, keyed by path relative to $dir, sorted by path.
+ *
+ * @return array<string, string>
+ */
+function hashTree(string $dir): array
+{
+    $sums = [];
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
+    /** @var SplFileInfo $file */
+    foreach ($files as $file) {
+        $relative = substr($file->getPathname(), strlen($dir) + 1);
+        $sums[$relative] = (string) hash_file('sha256', $file->getPathname());
+    }
+    ksort($sums, SORT_STRING);
+
+    return $sums;
+}
+
+/**
+ * Writes sums in sha256sum format: one "<sum>  <relative path>" line per file.
+ *
+ * @param  array<string, string>  $sums
+ */
+function writeManifest(array $sums, string $path): void
+{
+    $lines = array_map(static fn (string $name, string $sum): string => "{$sum}  {$name}\n", array_keys($sums), $sums);
+    if (file_put_contents($path, implode('', $lines)) === false) {
+        throw new RuntimeException("Cannot write {$path}");
+    }
+}
+
+/**
+ * Throws, after removing $staging, unless the unpacked files match the manifest exactly.
+ *
+ * @param  array<string, string>  $expected
+ * @param  array<string, string>  $actual
+ */
+function checkManifest(array $expected, array $actual, string $staging, string $message): void
+{
+    $problems = [];
+    foreach (array_diff_key($expected, $actual) as $name => $sum) {
+        $problems[] = "missing {$name}";
+    }
+    foreach ($actual as $name => $sum) {
+        if (! isset($expected[$name])) {
+            $problems[] = "unexpected {$name}";
+        } elseif ($expected[$name] !== $sum) {
+            $problems[] = "checksum mismatch {$name}";
+        }
+    }
+
+    if ($problems !== []) {
+        removeTree($staging);
+        throw new RuntimeException($message.' (delete the cached archive to download it again):'."\n  ".implode("\n  ", array_slice($problems, 0, 20)));
+    }
 }
 
 /**
