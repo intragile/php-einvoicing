@@ -89,7 +89,7 @@ try {
     $written = (new RuleInstaller)->install($dir, $from);
 } catch (PartialInstall $exception) {
     fwrite(STDERR, 'Installation incomplete: '.$exception->getMessage()."\n");
-    fwrite(STDERR, "These files were already replaced; run the install again to make the folder consistent:\n");
+    fwrite(STDERR, "The previous rules could not be restored for these files; run the install again to make the folder consistent:\n");
     foreach ($exception->writtenPaths as $path) {
         fwrite(STDERR, "  {$path}\n");
     }

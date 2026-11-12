@@ -31,7 +31,7 @@ final class RuleInstaller
 
     /**
      * Installs the four rule files. No installed file is replaced unless every source matches its
-     * checksum and compiles; each file is then replaced atomically.
+     * checksum and compiles; if moving the files into place fails, the previous rules are restored.
      *
      * @param  ?string  $sourceDir  a folder holding the four .sch files, for air-gapped machines;
      *                              null downloads them from PeppolSources::BASE_URL
@@ -39,7 +39,8 @@ final class RuleInstaller
      *
      * @throws RuleSourceMismatch when a source file does not have its pinned checksum
      * @throws UnsupportedSchematron when a source file cannot be compiled
-     * @throws PartialInstall when a file could not be moved into place after others already were
+     * @throws PartialInstall when a file could not be moved into place and restoring the previous
+     *                        rules failed as well
      * @throws InvalidArgumentException|RuntimeException when a source cannot be read or downloaded,
      *                                                   or the target folder cannot be written
      */
@@ -90,16 +91,7 @@ final class RuleInstaller
                 unset($contents[$key]);
             }
 
-            $written = [];
-            foreach (PeppolSources::all() as $key => $source) {
-                $target = PeppolRules::path($targetDir, $source['id']);
-                if (! @rename($temporary[$key], $target)) {
-                    $message = "Cannot move the compiled rule set to \"{$target}\".";
-
-                    throw $written === [] ? new RuntimeException($message) : new PartialInstall($message, $written);
-                }
-                $written[] = $target;
-            }
+            $written = self::replace($targetDir, $temporary);
         } finally {
             foreach ($temporary as $path) {
                 if (is_file($path)) {
@@ -109,6 +101,88 @@ final class RuleInstaller
         }
 
         return $written;
+    }
+
+    /**
+     * Moves the compiled files into place. Every installed file is first renamed to a backup, so a
+     * failed move can put all of them back; the backups are deleted once every file is in place.
+     *
+     * @param  array<string, string>  $temporary  compiled file path per source key
+     * @return list<string> written file paths
+     *
+     * @throws RuntimeException when a file could not be moved and the previous rules were restored
+     * @throws PartialInstall when a file could not be moved and restoring the previous rules failed
+     */
+    private static function replace(string $targetDir, array $temporary): array
+    {
+        $targets = [];
+        foreach (PeppolSources::all() as $key => $source) {
+            $targets[$key] = PeppolRules::path($targetDir, $source['id']);
+        }
+
+        /** @var array<string, string> $backups backup path per source key */
+        $backups = [];
+        /** @var list<string> $written */
+        $written = [];
+        try {
+            foreach ($targets as $key => $target) {
+                if (! is_file($target)) {
+                    continue;
+                }
+                $backup = $target.'.bak-'.bin2hex(random_bytes(6));
+                if (! @rename($target, $backup)) {
+                    throw new RuntimeException("Cannot back up the installed rule set \"{$target}\".");
+                }
+                $backups[$key] = $backup;
+            }
+            foreach ($targets as $key => $target) {
+                if (! @rename($temporary[$key], $target)) {
+                    throw new RuntimeException("Cannot move the compiled rule set to \"{$target}\".");
+                }
+                $written[] = $target;
+            }
+        } catch (RuntimeException $exception) {
+            $notRestored = self::restore($targets, $backups, $written);
+            if ($notRestored !== []) {
+                throw new PartialInstall(
+                    $exception->getMessage().' Restoring the previous rules failed; these files now hold the new rules or are missing.',
+                    $notRestored,
+                    $exception,
+                );
+            }
+
+            throw new RuntimeException($exception->getMessage().' The previous rules were restored; nothing was changed.', 0, $exception);
+        }
+
+        foreach ($backups as $backup) {
+            @unlink($backup);
+        }
+
+        return $written;
+    }
+
+    /**
+     * Puts every backup back in place and removes the new files that had no previous version.
+     *
+     * @param  array<string, string>  $targets  installed path per source key
+     * @param  array<string, string>  $backups  backup path per source key
+     * @param  list<string>  $written  targets that already hold a new file
+     * @return list<string> targets that could not be restored
+     */
+    private static function restore(array $targets, array $backups, array $written): array
+    {
+        $failed = [];
+        foreach ($targets as $key => $target) {
+            if (isset($backups[$key])) {
+                if (! @rename($backups[$key], $target)) {
+                    $failed[] = $target;
+                }
+            } elseif (in_array($target, $written, true) && ! @unlink($target)) {
+                $failed[] = $target;
+            }
+        }
+
+        return $failed;
     }
 
     private static function read(string $path): string

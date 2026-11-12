@@ -8,13 +8,14 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Thrown when installing compiled rules failed after some of the files had already replaced the
- * installed ones, so the rules folder now holds a mix of old and new files.
+ * Thrown when moving compiled rules into place failed and restoring the previously installed
+ * rules failed as well, so the rules folder now holds a mix of old and new files.
  */
 final class PartialInstall extends RuntimeException
 {
     /**
-     * @param  list<string>  $writtenPaths  the files that were replaced before the failure
+     * @param  list<string>  $writtenPaths  the files left in the new state (or missing) after the
+     *                                      failed restore
      */
     public function __construct(string $message, public readonly array $writtenPaths, ?Throwable $previous = null)
     {

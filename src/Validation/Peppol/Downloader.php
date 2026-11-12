@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Validation\Peppol;
 
+use Closure;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -19,10 +20,23 @@ final class Downloader
 
     private const CHUNK_BYTES = 65_536;
 
+    private readonly StreamOpener $opener;
+
+    /** @var Closure(): float */
+    private readonly Closure $clock;
+
+    /**
+     * @param  ?Closure(): float  $clock  the current time in seconds; defaults to microtime(true)
+     */
     public function __construct(
         private readonly int $timeoutSeconds = 30,
         private readonly int $maxBytes = 5_000_000,
-    ) {}
+        ?StreamOpener $opener = null,
+        ?Closure $clock = null,
+    ) {
+        $this->opener = $opener ?? new PhpStreamOpener;
+        $this->clock = $clock ?? static fn (): float => microtime(true);
+    }
 
     /**
      * @throws InvalidArgumentException when the URL, or a redirect target, is not an https:// URL
@@ -57,39 +71,18 @@ final class Downloader
      */
     private function fetch(string $current, string $url): array
     {
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'GET',
-                'follow_location' => 0,
-                'ignore_errors' => true,
-                'timeout' => $this->timeoutSeconds,
-                'user_agent' => 'intragile-php-einvoicing',
-            ],
-            'ssl' => [
-                'verify_peer' => true,
-                'verify_peer_name' => true,
-                'allow_self_signed' => false,
-            ],
-        ]);
-
-        $error = null;
-        set_error_handler(static function (int $level, string $message) use (&$error): bool {
-            $error = $message;
-
-            return true;
-        });
         try {
-            $stream = fopen($current, 'rb', false, $context);
-        } finally {
-            restore_error_handler();
+            $response = $this->opener->open($current, $this->timeoutSeconds);
+        } catch (RuntimeException $exception) {
+            throw new RuntimeException("Downloading \"{$url}\" failed: ".$exception->getMessage(), 0, $exception);
         }
-        if ($stream === false) {
-            throw new RuntimeException("Downloading \"{$url}\" failed: ".($error ?? 'the connection could not be opened.'));
+        if ($response === false) {
+            throw new RuntimeException("Downloading \"{$url}\" failed: the connection could not be opened.");
         }
+        [$headers, $stream] = $response;
 
         try {
-            $headers = stream_get_meta_data($stream)['wrapper_data'] ?? [];
-            [$status, $location] = self::parseHeaders(is_array($headers) ? $headers : []);
+            [$status, $location] = self::parseHeaders($headers);
             if ($status >= 300 && $status < 400) {
                 return [$status, $location, ''];
             }
@@ -105,7 +98,7 @@ final class Downloader
      */
     private function readBody($stream, string $url): string
     {
-        $deadline = microtime(true) + $this->timeoutSeconds;
+        $deadline = ($this->clock)() + $this->timeoutSeconds;
         $body = '';
         while (! feof($stream)) {
             $chunk = fread($stream, self::CHUNK_BYTES);
@@ -116,7 +109,7 @@ final class Downloader
             if (strlen($body) > $this->maxBytes) {
                 throw new RuntimeException("Downloading \"{$url}\" was aborted: the file is larger than {$this->maxBytes} bytes.");
             }
-            if (stream_get_meta_data($stream)['timed_out'] || microtime(true) > $deadline) {
+            if (stream_get_meta_data($stream)['timed_out'] || ($this->clock)() > $deadline) {
                 throw new RuntimeException("Downloading \"{$url}\" timed out after {$this->timeoutSeconds} seconds.");
             }
         }
@@ -127,7 +120,7 @@ final class Downloader
     /**
      * The status code and Location header of the last response in the wrapper data.
      *
-     * @param  array<mixed>  $headers
+     * @param  list<string>  $headers
      * @return array{int, ?string}
      */
     private static function parseHeaders(array $headers): array
@@ -135,9 +128,6 @@ final class Downloader
         $status = 0;
         $location = null;
         foreach ($headers as $header) {
-            if (! is_string($header)) {
-                continue;
-            }
             if (preg_match('#^HTTP/\S+\s+(\d{3})#', $header, $match) === 1) {
                 $status = (int) $match[1];
                 $location = null;

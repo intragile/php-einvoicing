@@ -13,6 +13,7 @@ use IntrAgile\EInvoicing\Validation\Peppol\PeppolRules;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use IntrAgile\EInvoicing\Validation\Peppol\RuleInstaller;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 final class RuleInstallerTest extends TestCase
 {
@@ -122,7 +123,7 @@ final class RuleInstallerTest extends TestCase
         PeppolRules::load($this->dir);
     }
 
-    public function test_failed_move_after_some_files_reports_the_written_paths(): void
+    public function test_failed_move_on_fresh_install_leaves_no_file(): void
     {
         $target = $this->dir.'/rules';
         // A non-empty folder under the third file's name makes its rename fail after two succeeded.
@@ -132,13 +133,56 @@ final class RuleInstallerTest extends TestCase
             (new RuleInstaller)->install($target, self::sourceDir());
             self::fail('The blocked rename must fail.');
         } catch (PartialInstall $exception) {
-            self::assertSame(
-                ["{$target}/peppol-cen-ubl-3.0.22.php", "{$target}/peppol-cen-cii-3.0.22.php"],
-                $exception->writtenPaths,
-            );
+            self::fail('A successful rollback must not report a partial install.');
+        } catch (RuntimeException $exception) {
             self::assertStringContainsString('peppol-ubl-3.0.22.php', $exception->getMessage());
+            self::assertStringContainsString('nothing was changed', $exception->getMessage());
         }
-        self::assertSame([], glob($target.'/*.tmp*') ?: [], 'No temporary file may be left behind.');
+        self::assertSame(['peppol-ubl-3.0.22.php'], array_values(array_diff(scandir($target) ?: [], ['.', '..'])));
+    }
+
+    public function test_failed_move_restores_previous_rules(): void
+    {
+        $target = $this->dir.'/rules';
+        $first = (new RuleInstaller)->install($target, self::sourceDir());
+        $before = array_map(static fn (string $path): string => (string) file_get_contents($path), $first);
+        // Marks the installed files, so restoring them is told apart from writing new ones.
+        foreach ($first as $index => $path) {
+            $before[$index] .= "\n// installed earlier\n";
+            file_put_contents($path, $before[$index]);
+        }
+        $blocked = $first[2];
+        unlink($blocked);
+        mkdir($blocked.'/blocker', 0775, true);
+
+        try {
+            (new RuleInstaller)->install($target, self::sourceDir());
+            self::fail('The blocked rename must fail.');
+        } catch (PartialInstall $exception) {
+            self::fail('A successful rollback must not report a partial install.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('nothing was changed', $exception->getMessage());
+        }
+
+        self::assertSame($before[0], file_get_contents($first[0]));
+        self::assertSame($before[1], file_get_contents($first[1]));
+        self::assertTrue(is_dir($blocked));
+        self::assertSame($before[3], file_get_contents($first[3]));
+        self::assertSame([], glob($target.'/*.bak-*') ?: [], 'No backup may be left behind.');
+        self::assertSame([], glob($target.'/*.tmp-*') ?: [], 'No temporary file may be left behind.');
+    }
+
+    public function test_success_leaves_no_backups(): void
+    {
+        $target = $this->dir.'/rules';
+        (new RuleInstaller)->install($target, self::sourceDir());
+
+        $written = (new RuleInstaller)->install($target, self::sourceDir());
+
+        self::assertCount(4, $written);
+        self::assertSame([], glob($target.'/*.bak-*') ?: [], 'No backup may be left behind.');
+        self::assertSame([], glob($target.'/*.tmp-*') ?: [], 'No temporary file may be left behind.');
+        self::assertCount(4, array_diff(scandir($target) ?: [], ['.', '..']));
     }
 
     private static function sourceDir(): string

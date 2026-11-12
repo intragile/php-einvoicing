@@ -61,7 +61,7 @@ final class RulesCommandTest extends TestCase
         }
     }
 
-    public function test_install_reports_an_incomplete_installation(): void
+    public function test_failed_install_reports_the_rollback(): void
     {
         mkdir($this->dir.'/peppol-ubl-3.0.22.php/blocker', 0775, true);
         $source = dirname(Fixtures::peppolSchematron('cen-ubl'));
@@ -69,9 +69,10 @@ final class RulesCommandTest extends TestCase
         [$exit, , $stderr] = self::runScript('install', 'peppol', "--dir={$this->dir}", "--from={$source}");
 
         self::assertSame(1, $exit);
-        self::assertStringContainsString('Installation incomplete', $stderr);
-        self::assertStringNotContainsString('Nothing was installed', $stderr);
-        self::assertStringContainsString("{$this->dir}/peppol-cen-ubl-3.0.22.php", $stderr);
+        self::assertStringContainsString('Nothing was installed', $stderr);
+        self::assertStringContainsString('nothing was changed', $stderr);
+        self::assertStringNotContainsString('Installation incomplete', $stderr);
+        self::assertFileDoesNotExist("{$this->dir}/peppol-cen-ubl-3.0.22.php");
     }
 
     /**
