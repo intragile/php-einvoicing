@@ -1,0 +1,46 @@
+{
+  "version": "1.0",
+  "total-result-count": 83,
+  "used-result-count": 3,
+  "result-page-index": 0,
+  "result-page-count": 20,
+  "first-result-index": 0,
+  "last-result-index": 2,
+  "query-terms": "country=HU",
+  "creation-dt": "2026-11-12T09:00:00.000Z",
+  "matches": [
+    {
+      "participantID": {"scheme": "iso6523-actorid-upis", "value": "9910:hu11200589"},
+      "docTypes": [
+        {"scheme": "busdox-docid-qns", "value": "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice##urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0::2.1"},
+        {"scheme": "busdox-docid-qns", "value": "urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2::CreditNote##urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0::2.1"}
+      ],
+      "entities": [
+        {
+          "name": [{"name": "Example Kereskedelmi Kft.", "language": "hu"}, {"name": "Example Trading Ltd.", "language": "en"}],
+          "countryCode": "HU",
+          "geoInfo": "Budapest",
+          "identifiers": [{"scheme": "HU:VAT", "value": "HU11200589"}],
+          "websites": ["https://example.hu"],
+          "regDate": "2024-03-15"
+        },
+        {
+          "name": [{"name": "Example Trading Ltd."}],
+          "countryCode": "HU",
+          "identifiers": [{"scheme": "0088", "value": "5990000000001"}],
+          "regDate": "2023-01-10"
+        }
+      ]
+    },
+    {
+      "participantID": {"scheme": "other-scheme", "value": "9910:hu99999999"},
+      "docTypes": [],
+      "entities": [{"name": [{"name": "Foreign Scheme Bt."}], "countryCode": "HU"}]
+    },
+    {
+      "participantID": {"scheme": "iso6523-actorid-upis", "value": "0088:5990000000002"},
+      "docTypes": [],
+      "entities": [{"name": [{"name": "Minimal Zrt."}]}]
+    }
+  ]
+}
