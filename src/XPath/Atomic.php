@@ -168,7 +168,7 @@ final class Atomic
         }
 
         if ($left instanceof IntegerValue && $right instanceof IntegerValue && in_array($op, ['+', '-', '*', 'mod'], true)) {
-            $small = self::smallIntegerArithmetic($op, (string) $left->value, (string) $right->value);
+            $small = self::smallIntegerArithmetic($op, $left->value->toString(), $right->value->toString());
             if ($small !== null) {
                 return $small;
             }
@@ -447,7 +447,7 @@ final class Atomic
             $result = BigDecimal::ofUnscaledValue($unscaled->multipliedBy(BigInteger::of(5)->power(-$exponent)), -$exponent);
         }
 
-        $result = $result->stripTrailingZeros();
+        $result = $result->strippedOfTrailingZeros();
 
         return $double < 0 ? $result->negated() : $result;
     }

@@ -111,6 +111,7 @@ All notable changes to this project are documented here. The format follows
 - The Schematron compiler refuses attributes outside those the CEN and Peppol schemas use (for
   example `pattern/@documents` or `assert/@diagnostics`) and processing instructions inside an
   assert, instead of ignoring them.
+- Requires `brick/math` ^0.14.2 (previously ^0.12 or ^0.13), the range Laravel 13 installs.
 
 ### Fixed
 

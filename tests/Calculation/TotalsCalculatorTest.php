@@ -583,7 +583,7 @@ final class TotalsCalculatorTest extends TestCase
             static fn (VatBreakdown $entry): string => sprintf(
                 '%s/%s:%s|%s',
                 $entry->category->value,
-                $entry->rate?->stripTrailingZeros() ?? '-',
+                $entry->rate?->strippedOfTrailingZeros() ?? '-',
                 $entry->taxableAmount->toScale(2),
                 $entry->taxAmount->toScale(2),
             ),

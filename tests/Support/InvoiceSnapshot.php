@@ -44,7 +44,7 @@ final class InvoiceSnapshot
             return;
         }
         if ($value instanceof BigDecimal) {
-            $flat[$path] = (string) $value->stripTrailingZeros();
+            $flat[$path] = (string) $value->strippedOfTrailingZeros();
 
             return;
         }

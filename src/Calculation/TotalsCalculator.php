@@ -440,6 +440,6 @@ final class TotalsCalculator
 
     private static function groupKey(VatCategory $category, ?BigDecimal $rate): string
     {
-        return $category->value.'|'.($rate === null ? '' : (string) $rate->stripTrailingZeros());
+        return $category->value.'|'.($rate === null ? '' : (string) $rate->strippedOfTrailingZeros());
     }
 }

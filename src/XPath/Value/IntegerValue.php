@@ -19,7 +19,7 @@ final readonly class IntegerValue implements AtomicValue
     public function __construct(BigDecimal $value)
     {
         if ($value->getScale() !== 0) {
-            $integral = $value->stripTrailingZeros();
+            $integral = $value->strippedOfTrailingZeros();
             if ($integral->getScale() > 0) {
                 throw new InvalidArgumentException("An xs:integer cannot hold the fractional value {$value}.");
             }

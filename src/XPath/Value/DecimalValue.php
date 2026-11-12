@@ -23,6 +23,6 @@ final readonly class DecimalValue implements AtomicValue
      */
     public function lexical(): string
     {
-        return (string) $this->value->stripTrailingZeros();
+        return (string) $this->value->strippedOfTrailingZeros();
     }
 }
