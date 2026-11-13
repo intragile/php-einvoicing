@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"
+    xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100"
+    targetNamespace="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"
+    elementFormDefault="qualified">
+  <xs:import namespace="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" schemaLocation="small-ram.xsd"/>
+  <xs:element name="CrossIndustryInvoice" type="rsm:RootType"/>
+  <xs:complexType name="RootType">
+    <xs:sequence>
+      <xs:element name="First" type="ram:CodeType"/>
+      <xs:element name="Second" type="ram:BlockType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:choice>
+        <xs:element name="Third" type="xs:string"/>
+        <xs:element name="Fourth">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Inner" type="xs:token"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:choice>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>
