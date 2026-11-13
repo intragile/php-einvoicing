@@ -142,6 +142,53 @@ final class ScenarioTableCompilerTest extends TestCase
         ScenarioTableCompiler::compile($xml);
     }
 
+    /**
+     * @return iterable<string, array{string, string, string}>
+     */
+    public static function unknownAttributes(): iterable
+    {
+        yield 'on the scenario' => ['<scenario>', '<scenario id="s1">', 'id'];
+        yield 'on the schema step' => ['<validateWithXmlSchema>', '<validateWithXmlSchema mode="lax">', 'mode'];
+        yield 'on the Schematron step' => ['<validateWithSchematron>', '<validateWithSchematron phase="all">', 'phase'];
+        yield 'on a resource location' => ['<location>resources/ubl/2.1/xsl/', '<location xml:base="https://example.org/">resources/ubl/2.1/xsl/', 'xml:base'];
+        yield 'on the match' => ['<match>', '<match lang="xpath31">', 'lang'];
+        yield 'on a custom level' => ['<customLevel level="warning">', '<customLevel level="warning" scope="all">', 'scope'];
+    }
+
+    #[DataProvider('unknownAttributes')]
+    public function test_unknown_attribute_is_refused(string $search, string $replace, string $attribute): void
+    {
+        $xml = self::scenarios(customLevels: '<customLevel level="warning">BR-01</customLevel>');
+        self::assertSame(1, substr_count($xml, $search));
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageMatches('/Scenario "Test scenario".*"'.preg_quote($attribute, '/').'"/');
+
+        ScenarioTableCompiler::compile(str_replace($search, $replace, $xml));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function singletons(): iterable
+    {
+        yield 'name' => ['name', '<name>Test scenario</name>'];
+        yield 'match' => ['match', '<match>exists(/invoice:Invoice)</match>'];
+        yield 'createReport' => ['createReport', '<createReport/>'];
+        yield 'acceptMatch' => ['acceptMatch', '<acceptMatch>/rep:report/rep:assessment[1]/rep:accept[1]</acceptMatch>'];
+    }
+
+    #[DataProvider('singletons')]
+    public function test_repeated_singleton_is_refused(string $element, string $repeat): void
+    {
+        $xml = str_replace('</scenario>', $repeat.'</scenario>', self::scenarios());
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage("Scenario \"Test scenario\": more than one {$element} element.");
+
+        ScenarioTableCompiler::compile($xml);
+    }
+
     public function test_documentation_elements_are_ignored(): void
     {
         $table = ScenarioTableCompiler::compile(self::scenarios());

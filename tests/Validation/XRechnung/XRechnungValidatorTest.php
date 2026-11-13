@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Validation\XRechnung;
 
+use Composer\Autoload\ClassLoader;
 use DateTimeImmutable;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
@@ -26,6 +27,7 @@ use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\PaymentInstructions;
 use IntrAgile\EInvoicing\Model\PostalAddress;
 use IntrAgile\EInvoicing\Model\Price;
+use IntrAgile\EInvoicing\Rules\En16931\RuleFiles as En16931RuleFiles;
 use IntrAgile\EInvoicing\Rules\XRechnung\RuleFiles;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiReader;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
@@ -39,6 +41,7 @@ use IntrAgile\EInvoicing\Validation\Severity;
 use IntrAgile\EInvoicing\Validation\ValidationReport;
 use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungValidator;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 
 final class XRechnungValidatorTest extends TestCase
@@ -205,12 +208,60 @@ final class XRechnungValidatorTest extends TestCase
         self::validator()->validate($xml);
     }
 
-    public function test_missing_rules_package_names_the_composer_command(): void
+    public function test_missing_scenario_table_names_the_composer_command(): void
     {
         $this->expectException(RulesNotInstalled::class);
         $this->expectExceptionMessage('composer require intragile/einvoicing-rules-xrechnung');
 
         new XRechnungValidator(__DIR__.'/missing/scenarios.php', RuleFiles::schemaDir(), []);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_missing_rules_package_names_the_composer_command(): void
+    {
+        self::hideXRechnungRulesPackage();
+
+        $this->expectException(RulesNotInstalled::class);
+        $this->expectExceptionMessage('composer require intragile/einvoicing-rules-xrechnung');
+
+        XRechnungValidator::create();
+    }
+
+    #[RunInSeparateProcess]
+    public function test_create_without_scenario_table_class_names_the_package(): void
+    {
+        self::hideXRechnungRulesPackage();
+
+        try {
+            XRechnungValidator::create();
+            self::fail('create() must refuse without the XRechnung rules package.');
+        } catch (RulesNotInstalled $exception) {
+            self::assertStringContainsString('KoSIT XRechnung rules', $exception->getMessage());
+            self::assertStringContainsString('intragile/einvoicing-rules-xrechnung', $exception->getMessage());
+        }
+    }
+
+    /**
+     * The table pins CEN 1.3.16; a rule map that hands it the 1.3.17 file must not run that file
+     * under the 1.3.16 name.
+     */
+    public function test_rule_set_mismatch_names_both_versions(): void
+    {
+        $validator = new XRechnungValidator(RuleFiles::scenarios(), RuleFiles::schemaDir(), [
+            'en16931-ubl 1.3.16' => En16931RuleFiles::ubl('1.3.17'),
+            'en16931-cii 1.3.16' => En16931RuleFiles::cii('1.3.16'),
+            'xrechnung-ubl '.RuleFiles::VERSION => RuleFiles::ubl(),
+            'xrechnung-cii '.RuleFiles::VERSION => RuleFiles::cii(),
+        ]);
+
+        try {
+            $validator->validate(self::read(self::VALID_UBL));
+            self::fail('A rule file of another version must be refused.');
+        } catch (RulesNotInstalled $exception) {
+            self::assertStringContainsString('en16931-ubl 1.3.16', $exception->getMessage());
+            self::assertStringContainsString('en16931-ubl 1.3.17', $exception->getMessage());
+            self::assertStringContainsString('composer require intragile/einvoicing-rules-xrechnung', $exception->getMessage());
+        }
     }
 
     /**
@@ -311,6 +362,19 @@ final class XRechnungValidatorTest extends TestCase
                 creditTransfers: [new CreditTransfer(accountIdentifier: 'DE75512108001245126199', accountName: 'Muster Software GmbH')],
             ),
         );
+    }
+
+    /**
+     * Makes the classes of intragile/einvoicing-rules-xrechnung unloadable, as if the package were
+     * not installed. Only for tests that run in a separate process.
+     */
+    private static function hideXRechnungRulesPackage(): void
+    {
+        self::assertFalse(class_exists(RuleFiles::class, false), 'The rules package is already loaded in this process.');
+        foreach (ClassLoader::getRegisteredLoaders() as $loader) {
+            $loader->setPsr4('IntrAgile\\EInvoicing\\Rules\\XRechnung\\', []);
+        }
+        self::assertFalse(class_exists(RuleFiles::class));
     }
 
     private static function validator(): XRechnungValidator

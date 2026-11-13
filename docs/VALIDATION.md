@@ -287,11 +287,16 @@ $report = XRechnungValidator::create()->validate($xml);
    no fallback to a weaker scenario.
 3. The document is validated against the scenario's XML Schema, KoSIT's copy of UBL 2.1 or
    CII D16B, shipped in the rules package (`SchemaValidator`, no network access, instance schema
-   hints ignored).
+   hints ignored). Schema imports resolve only local paths and `file://` URIs on this machine;
+   another scheme, or a `file://` URI with a host other than `localhost` (a remote share), raises
+   `UnusableSchema` naming the refused URI.
 4. Only when the document is schema valid, the scenario's Schematron rule sets run in order: CEN
    1.3.16 (the release KoSIT pins, not the default 1.3.17), then XRechnung 2.6.0 for the
    XRechnung scenarios. After an XML Schema failure KoSIT runs no Schematron, so the report then
    has the scenario name, the schema errors, no findings and no rule sets, and is not valid.
+   Each rule file must hold exactly the rule set and version the scenario table names; a file of
+   another release (for example the CEN 1.3.17 file given for `en16931-ubl 1.3.16`) raises
+   `RulesNotInstalled` naming both versions and the composer command.
 5. The scenario's custom levels replace the flag of each matching finding (`error` → `fatal`,
    `warning`, `information`); id, location and message are kept. They differ per scenario: for
    example `UBL-CR-646` is an error in the XRechnung CIUS and CVD invoice scenarios and
@@ -303,7 +308,11 @@ acceptance. Information findings (such as `BR-DE-TMP-32`) are reported, as KoSIT
 
 The scenario table, the compiled XRechnung rule sets and the schemas live in
 `packages/rules-xrechnung` and are generated from the pinned KoSIT releases, never edited by
-hand. "Validated like KoSIT" means that, per document, the scenario name, the XML Schema
+hand. The table compiler refuses whatever it cannot model instead of dropping it: an unknown
+element or attribute (only `prefix` on `namespace`, `psvi` on `validateWithSchematron` and
+`level` on `customLevel` are modelled), a repeated `name`, `match`, `createReport` or
+`acceptMatch`, a second schema, a PSVI step or another acceptance expression, naming the scenario
+and the element or attribute. "Validated like KoSIT" means that, per document, the scenario name, the XML Schema
 validity, the sorted set of `"<rule id> <level>"` strings and the acceptance equal what the KoSIT
 validator reports. The conformance test against the KoSIT validator itself is described in the
 next section ([The KoSIT conformance run](#the-kosit-conformance-run)): 579 documents give

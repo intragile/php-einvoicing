@@ -134,6 +134,8 @@ final class XRechnungValidator
      *                             not one of XRechnung::CIUS, EXTENSION, CVD or the EN 16931 one
      * @throws UnusableSchema when a scenario schema of the rules package cannot be used
      * @throws UnsupportedSchematron when a rule set was compiled by an engine of another format
+     * @throws RulesNotInstalled when a rule file holds another rule set or version than the
+     *                           scenario table names for it
      */
     public function validate(string $xml): ValidationReport
     {
@@ -183,10 +185,30 @@ final class XRechnungValidator
     }
 
     /**
+     * Loads the rule set the scenario table names as $key and checks that the file holds exactly
+     * that rule set, so that a rule map pointing at another release cannot run it under the
+     * pinned name.
+     *
+     * @throws RulesNotInstalled when the file holds another rule set or version
      * @throws UnsupportedSchematron
      */
     private function ruleSet(string $key): RuleSet
     {
-        return $this->loaded[$key] ??= RuleSet::fromFile($this->ruleFiles[$key]);
+        if (isset($this->loaded[$key])) {
+            return $this->loaded[$key];
+        }
+        $ruleSet = RuleSet::fromFile($this->ruleFiles[$key]);
+        $loaded = "{$ruleSet->id()} {$ruleSet->version()}";
+        if ($loaded !== $key) {
+            throw new RulesNotInstalled(sprintf(
+                'The scenario table needs the rule set %s, but "%s" holds %s. Install matching rule packages: %s',
+                $key,
+                $this->ruleFiles[$key],
+                $loaded,
+                self::COMPOSER_COMMAND,
+            ));
+        }
+
+        return $this->loaded[$key] = $ruleSet;
     }
 }

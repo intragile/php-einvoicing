@@ -177,6 +177,72 @@ final class SchemaValidatorTest extends TestCase
         }
     }
 
+    /**
+     * A file URI with a host names a remote share (UNC path); only an empty host and "localhost"
+     * mean this machine.
+     */
+    public function test_remote_file_host_is_refused(): void
+    {
+        file_put_contents($this->scratch.'/imported.xsd', '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:imported">'
+            .'<xs:element name="b" type="xs:string"/></xs:schema>');
+        $importing = static fn (string $uri): string => '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">'
+            .'<xs:import namespace="urn:imported" schemaLocation="'.$uri.'"/>'
+            .'<xs:element name="a" type="xs:string"/></xs:schema>';
+        $document = new DOMDocument;
+        $document->loadXML('<a>x</a>');
+
+        file_put_contents($this->scratch.'/local.xsd', $importing('file://localhost'.$this->scratch.'/imported.xsd'));
+        self::assertSame([], (new SchemaValidator)->validate($document, $this->scratch.'/local.xsd'));
+
+        $remote = 'file://fileserver.example/share/imported.xsd';
+        file_put_contents($this->scratch.'/remote.xsd', $importing($remote));
+        try {
+            (new SchemaValidator)->validate($document, $this->scratch.'/remote.xsd');
+            self::fail('A file URI with a remote host must be refused.');
+        } catch (UnusableSchema $e) {
+            self::assertStringContainsString('network access is refused', $e->getMessage());
+            self::assertStringContainsString($remote, $e->getMessage());
+        }
+    }
+
+    /**
+     * Only the warnings that signal an unusable schema are taken over; any other warning raised
+     * while validating reaches the error handler that was active before.
+     */
+    public function test_unrelated_warning_is_not_swallowed(): void
+    {
+        $missing = $this->scratch.'/not-there.txt';
+        $document = new class extends DOMDocument
+        {
+            public string $missing = '';
+
+            public function schemaValidate(string $filename, int $flags = 0): bool
+            {
+                file_get_contents($this->missing);
+
+                return parent::schemaValidate($filename, $flags);
+            }
+        };
+        $document->missing = $missing;
+        $document->loadXML((string) SafeXml::loadPreservingWhitespace(self::ublInvoice())->saveXML());
+
+        $warnings = [];
+        set_error_handler(static function (int $level, string $message) use (&$warnings): bool {
+            $warnings[] = $message;
+
+            return true;
+        });
+        try {
+            $errors = (new SchemaValidator)->validate($document, self::xsd(self::UBL_INVOICE_XSD));
+        } finally {
+            restore_error_handler();
+        }
+
+        self::assertSame([], $errors);
+        self::assertCount(1, $warnings);
+        self::assertStringContainsString('not-there.txt', $warnings[0]);
+    }
+
     public function test_previous_entity_loader_is_restored(): void
     {
         $sentinel = static fn (?string $public, string $system): ?string => null;

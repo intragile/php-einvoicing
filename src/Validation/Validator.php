@@ -20,6 +20,7 @@ use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolRules;
 use InvalidArgumentException;
+use LogicException;
 
 /**
  * Validates invoices against the compiled rule sets of their syntax.
@@ -211,9 +212,15 @@ final class Validator
      * @throws InvalidArgumentException when the writer refuses the model, for example because its
      *                                  totals are not completed (see TotalsCalculator::complete())
      * @throws UnsupportedDocument when no rule of the rule set handles the written document element
+     * @throws LogicException when called on the envelope validator of peppolEnvelope(), which
+     *                        takes a Standard Business Document, not an invoice
      */
     public function validateInvoice(Invoice $invoice, Syntax $syntax = Syntax::Ubl): ValidationReport
     {
+        if ($this->envelopeRuleSet !== null) {
+            throw new LogicException('validateInvoice() needs an invoice validator; this one validates SBDH envelopes');
+        }
+
         return $this->validate(match ($syntax) {
             Syntax::Ubl => (new UblWriter)->write($invoice),
             Syntax::Cii => (new CiiWriter)->write($invoice),

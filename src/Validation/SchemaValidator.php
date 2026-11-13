@@ -14,14 +14,17 @@ use LibXMLError;
  * Only the schema passed to validate() is used. libxml does not follow xsi:schemaLocation or
  * xsi:noNamespaceSchemaLocation hints in the instance when a schema is given explicitly.
  * LIBXML_NONET does not apply to schema compilation, so a temporary external entity loader
- * resolves only local file paths and file:// URIs and refuses every other scheme; the schema
- * and the files it imports or includes must be available locally, and an import with another
- * scheme raises UnusableSchema naming the refused URI (see FileOnlyEntityLoader).
+ * resolves only local file paths and file:// URIs on this machine (no host, or "localhost") and
+ * refuses remote file hosts and every other scheme; the schema and the files it imports or
+ * includes must be available locally, and a refused import raises UnusableSchema naming the URI
+ * (see FileOnlyEntityLoader).
  *
  * A schema that cannot be read, parsed or compiled raises UnusableSchema, so a broken schema
  * installation can never be reported as an invalid document. libxml compiles the schema before
  * it validates the instance and stops when compilation fails, which PHP signals with an
- * "Invalid Schema" warning; that warning is captured here and turned into the exception.
+ * "Invalid Schema" warning; that warning, and a "failed to load" warning, is captured here and
+ * turned into the exception. Any other warning raised meanwhile is passed on to the error handler
+ * that was active before, or to PHP's standard handler.
  *
  * The caller's libxml error handling mode is restored afterwards. libxml's error buffer is
  * cleared before validating, so earlier errors are not attributed to this document, and again
@@ -47,10 +50,17 @@ final class SchemaValidator
         libxml_clear_errors();
         $phpWarning = null;
         $refused = [];
-        set_error_handler(static function (int $level, string $message) use (&$phpWarning): bool {
-            $phpWarning = $message;
+        $previousHandler = null;
+        $previousHandler = set_error_handler(static function (int $level, string $message, string $file = '', int $line = 0) use (&$phpWarning, &$previousHandler): bool {
+            if (str_contains($message, 'Invalid Schema') || str_contains($message, 'failed to load')) {
+                $phpWarning = $message;
 
-            return true;
+                return true;
+            }
+
+            // Any other warning is not about the schema: hand it on as if this handler were not
+            // installed. Returning false lets PHP's standard handler deal with it.
+            return $previousHandler !== null && $previousHandler($level, $message, $file, $line) !== false;
         }, E_WARNING);
 
         try {

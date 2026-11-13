@@ -15,9 +15,10 @@ use UnexpectedValueException;
  *
  * The table models exactly what decides a verdict. Documentation elements and the report
  * stylesheets are skipped; anything else the table cannot represent (another rule set, a second
- * schema, a PSVI step, an unknown element, another acceptance expression) is refused with the
- * offending element named, so that a configuration update can never drop a validation step
- * silently.
+ * schema, a PSVI step, an unknown element or attribute, a repeated name, match, createReport or
+ * acceptMatch, another acceptance expression) is refused with the scenario and the offending
+ * element or attribute named, so that a configuration update can never drop or alter a validation
+ * step silently.
  *
  * @internal
  *
@@ -50,6 +51,21 @@ final class ScenarioTableCompiler
      * Top-level elements that carry no validation step.
      */
     private const IGNORED_TOP_LEVEL = ['name', 'author', 'date', 'description', 'noScenarioReport'];
+
+    /**
+     * Scenario children that may occur at most once.
+     */
+    private const SINGLETONS = ['name', 'match', 'createReport', 'acceptMatch'];
+
+    /**
+     * The attributes the table models, per element of a scenario. Every other attribute, including
+     * namespaced ones such as xml:base, is refused.
+     */
+    private const ATTRIBUTES = [
+        'namespace' => ['prefix'],
+        'validateWithSchematron' => ['psvi'],
+        'customLevel' => ['level'],
+    ];
 
     /**
      * Compiles the contents of a scenarios.xml file.
@@ -127,8 +143,22 @@ final class ScenarioTableCompiler
         $ruleSets = [];
         $customLevels = [];
         $acceptMatch = null;
+        $seen = [];
 
+        $label = self::firstName($scenario);
+        self::checkAttributes($scenario, $label);
         foreach (self::children($scenario) as $element) {
+            foreach (self::SINGLETONS as $singleton) {
+                if (self::is($element, $singleton)) {
+                    if (isset($seen[$singleton])) {
+                        throw new UnexpectedValueException("Scenario \"{$label}\": more than one {$singleton} element.");
+                    }
+                    $seen[$singleton] = true;
+                }
+            }
+            if (! self::is($element, 'description')) {
+                self::checkAttributes($element, $label);
+            }
             switch (self::is($element) ? $element->localName : null) {
                 case 'name':
                     $name = self::collapse($element->textContent);
@@ -253,6 +283,7 @@ final class ScenarioTableCompiler
             if (! self::is($element, 'customLevel')) {
                 throw self::unmodelled($element, "createReport of scenario \"{$scenario}\"");
             }
+            self::checkAttributes($element, $scenario);
             $level = trim($element->getAttribute('level'));
             if (! in_array($level, self::LEVELS, true)) {
                 throw new UnexpectedValueException("Scenario \"{$scenario}\": unknown custom level \"{$level}\"; expected one of ".implode(', ', self::LEVELS).'.');
@@ -282,8 +313,10 @@ final class ScenarioTableCompiler
             if (! self::is($resource, 'resource')) {
                 throw self::unmodelled($resource, "{$step->localName} of scenario \"{$scenario}\"");
             }
+            self::checkAttributes($resource, $scenario);
             $location = null;
             foreach (self::children($resource) as $element) {
+                self::checkAttributes($element, $scenario);
                 if (self::is($element, 'location')) {
                     $location = trim($element->textContent);
                 } elseif (! self::is($element, 'name')) {
@@ -297,6 +330,45 @@ final class ScenarioTableCompiler
         }
 
         return $locations;
+    }
+
+    /**
+     * The scenario's name for messages, taken before its children are checked, so that a refusal
+     * names the scenario even when it comes before the name element.
+     */
+    private static function firstName(DOMElement $scenario): string
+    {
+        foreach (self::children($scenario) as $element) {
+            if (self::is($element, 'name')) {
+                return self::collapse($element->textContent);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Refuses every attribute of $element the table does not model.
+     */
+    private static function checkAttributes(DOMElement $element, string $scenario): void
+    {
+        $allowed = [];
+        foreach (self::ATTRIBUTES as $owner => $names) {
+            if (self::is($element, $owner)) {
+                $allowed = $names;
+            }
+        }
+        foreach ($element->attributes ?? [] as $attribute) {
+            if ($attribute->namespaceURI === null && in_array($attribute->localName, $allowed, true)) {
+                continue;
+            }
+            throw new UnexpectedValueException(sprintf(
+                'Scenario "%s": unsupported attribute "%s" on %s; the scenario table does not model it.',
+                $scenario,
+                $attribute->nodeName,
+                $element->localName,
+            ));
+        }
     }
 
     /**

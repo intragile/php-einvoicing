@@ -6,12 +6,13 @@ namespace IntrAgile\EInvoicing\Validation;
 
 /**
  * Runs libxml work with a temporary external entity loader that resolves only local file paths
- * and file:// URIs.
+ * and file:// URIs without a host or with the host "localhost".
  *
  * LIBXML_NONET does not apply to schema compilation or to every document load, so this loader is
- * what keeps schema handling off the network. Every other scheme is refused: libxml receives no
- * resource, and the refused URI is reported to the caller, which decides how to fail. The
- * caller's loader is restored afterwards, also when the work throws.
+ * what keeps schema handling off the network. A file URI with another host (a remote share) and
+ * every other scheme are refused: libxml receives no resource, and the refused URI is reported to
+ * the caller, which decides how to fail. The caller's loader is restored afterwards, also when the
+ * work throws.
  *
  * @internal
  */
@@ -33,7 +34,10 @@ final class FileOnlyEntityLoader
         $previousLoader = libxml_get_external_entity_loader();
         libxml_set_external_entity_loader(static function (?string $public, string $system) use (&$refused): ?string {
             if (preg_match('~^([a-z][a-z0-9+.-]+):~i', $system, $match) === 1) {
-                if (strtolower($match[1]) !== 'file') {
+                // A file URI with a host other than "localhost" names a remote share (a UNC path on
+                // Windows), which is network access as well.
+                $host = preg_match('~^file://([^/]*)~i', $system, $authority) === 1 ? $authority[1] : '';
+                if (strtolower($match[1]) !== 'file' || ($host !== '' && strtolower($host) !== 'localhost')) {
                     $refused[] = $system;
 
                     return null;

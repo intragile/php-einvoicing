@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\Tests\Validation;
 use DateTimeImmutable;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Syntax\Syntax;
+use IntrAgile\EInvoicing\Syntax\Ubl\UblReader;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Validation\Peppol\BuildDir;
 use IntrAgile\EInvoicing\Tests\Validation\Peppol\InstalledRules;
@@ -15,6 +16,7 @@ use IntrAgile\EInvoicing\Transport\Sbdh\EnvelopeWriter;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\Finding;
 use IntrAgile\EInvoicing\Validation\Validator;
+use LogicException;
 use PHPUnit\Framework\TestCase;
 
 final class PeppolEnvelopeValidatorTest extends TestCase
@@ -107,6 +109,20 @@ final class PeppolEnvelopeValidatorTest extends TestCase
                 $this->addToAssertionCount(1);
             }
         }
+    }
+
+    /**
+     * The envelope validator expects a Standard Business Document; writing an invoice model and
+     * running the envelope rules on the bare invoice would only end in a misleading refusal.
+     */
+    public function test_envelope_validator_refuses_validate_invoice(): void
+    {
+        $invoice = (new UblReader)->read(self::baseExample())->invoice;
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('validateInvoice() needs an invoice validator; this one validates SBDH envelopes');
+
+        self::validator()->validateInvoice($invoice);
     }
 
     public function test_envelope_validator_refuses_a_folder_without_the_envelope_rules(): void
