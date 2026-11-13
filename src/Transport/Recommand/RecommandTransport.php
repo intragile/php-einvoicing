@@ -26,8 +26,8 @@ use Psr\Http\Message\ResponseInterface;
 
 /**
  * Sends and receives documents over Peppol through the Recommand access point REST API
- * (https://app.recommand.eu). Recommand builds the SBDH envelope itself, so the raw UBL document
- * is sent together with its routing metadata. Received documents are taken from the inbox of the
+ * (https://app.recommand.eu). Recommand builds the SBDH envelope itself, so the raw business
+ * document is sent together with its routing metadata. Received documents are taken from the inbox of the
  * configured company; one that still arrives wrapped in an SBDH is unwrapped.
  */
 final class RecommandTransport implements InboundSource, Transport

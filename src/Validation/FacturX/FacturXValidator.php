@@ -17,6 +17,7 @@ use IntrAgile\EInvoicing\Syntax\FacturX\ProfileMismatch;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Syntax\Syntax;
 use IntrAgile\EInvoicing\Syntax\XRechnung;
+use IntrAgile\EInvoicing\Validation\DocumentValidator;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\Exception\UnusableSchema;
 use IntrAgile\EInvoicing\Validation\SchemaValidator;
@@ -35,7 +36,7 @@ use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungValidator;
  * Usage: FacturXValidator::create()->validate($xml)->isValid(). It needs the package
  * intragile/einvoicing-rules-facturx.
  */
-final class FacturXValidator
+final class FacturXValidator implements DocumentValidator
 {
     private const COMPOSER_COMMAND = 'composer require intragile/einvoicing-rules-facturx';
 

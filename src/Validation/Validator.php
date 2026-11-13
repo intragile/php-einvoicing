@@ -30,7 +30,7 @@ use LogicException;
  * Peppol invoice (a Standard Business Document) is checked with
  * Validator::peppolEnvelope($rulesDir)->validate($sbdXml).
  */
-final class Validator
+final class Validator implements DocumentValidator
 {
     private const SBDH_NAMESPACE = 'http://www.unece.org/cefact/namespaces/StandardBusinessDocumentHeader';
 

@@ -5,17 +5,20 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Transport;
 
 use IntrAgile\EInvoicing\Transport\Exception\InvalidDocument;
-use IntrAgile\EInvoicing\Validation\Validator;
+use IntrAgile\EInvoicing\Validation\DocumentValidator;
 
 /**
  * Validates every document before handing it to the wrapped transport, so that an invalid
  * document never leaves.
+ *
+ * For Peppol, PeppolPayloadValidator validates each document with the rules of the specification
+ * it declares (Peppol BIS Billing 3.0 or XRechnung 3.0).
  */
 final class ValidatingTransport implements Transport
 {
     public function __construct(
         private readonly Transport $inner,
-        private readonly Validator $validator,
+        private readonly DocumentValidator $validator,
     ) {}
 
     /**

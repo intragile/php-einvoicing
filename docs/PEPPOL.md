@@ -89,8 +89,9 @@ $report = Validator::peppolEnvelope(__DIR__.'/var/peppol-rules')->validate($sbdX
   scopes or the header structure, and not the invoice itself. Run `Validator::peppol()` on the
   invoice for that.
 - **The rules address UBL paths only.** An enveloped CII invoice is never checked by them: no
-  official rule matches its elements, so it passes without a finding. Validate the identifiers
-  of an enveloped CII invoice yourself (the Peppol transport of this package sends UBL only).
+  official rule matches its elements, so it passes without a finding. The transport sends CII
+  only for XRechnung, and the envelope of such a document is checked structurally only (see
+  [What can be sent](#what-can-be-sent)).
 - A document whose element is not an SBDH `StandardBusinessDocument` (for example a bare
   invoice), or that envelopes no invoice, throws `UnsupportedDocument`. `$report->syntax` is the
   syntax of the enveloped invoice.
@@ -100,6 +101,42 @@ $report = Validator::peppolEnvelope(__DIR__.'/var/peppol-rules')->validate($sbdX
   again.
 
 Writing the envelope and sending it is described in [TRANSPORT.md](TRANSPORT.md#the-sbdh-envelope).
+
+## What can be sent
+
+The Peppol transport of this package (`OutboundDocument`) sends Peppol BIS Billing 3.0 and
+XRechnung 3.0. Each document goes out under the document type that the Peppol Code Lists v9.7
+(released 2026-07-02) register for its root element and specification identifier (BT-24); the
+pair must match exactly, without surrounding whitespace:
+
+| Specification (BT-24) | UBL Invoice | UBL CreditNote | CII CrossIndustryInvoice |
+|---|---|---|---|
+| Peppol BIS Billing 3.0 (`…#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0`) | sent | sent | refused |
+| XRechnung 3.0 (`XRechnung::CIUS`) | sent | sent | sent |
+| XRechnung 3.0 Extension (`XRechnung::EXTENSION`) | sent | refused: deprecated in the Code Lists | sent |
+| XRechnung CVD (`XRechnung::CVD`) | refused: no Peppol document type | refused | refused |
+| anything else, including plain EN 16931 and older XRechnung versions | refused | refused | refused |
+
+The document type identifiers are the constants of `PeppolBis3` and `XRechnungPeppol`. A CII
+credit note shares the CrossIndustryInvoice root, so it travels under the CII invoice document
+type of its specification.
+
+- **Process.** The Code Lists bind every XRechnung 3.0 document type to the process
+  `urn:fdc:peppol.eu:2017:poacc:billing:01:1.0`. An XRechnung document with another business
+  process type (BT-23) is refused before sending, with the process named in the message; when
+  BT-23 is absent, that process is used.
+- **The receiver's SMP.** An XRechnung document is delivered only to a receiver whose SMP entry
+  lists its XRechnung document type; a receiver registered for BIS Billing 3.0 alone cannot take
+  it, and the access point reports `recipient_not_found` or a similar error.
+- **Validation.** `PeppolPayloadValidator` picks the rules by the same pairs: the BIS rules of
+  this page for BIS documents, the KoSIT XRechnung rules (`XRechnungValidator`, package
+  `intragile/einvoicing-rules-xrechnung`) for XRechnung documents. It refuses every other pair
+  with `UnsupportedDocument`. To check an XRechnung CVD document, call `XRechnungValidator`
+  directly.
+- **Envelope.** The envelope rules (`BR-SBDH-*`) address UBL paths, so the envelope of a CII
+  payload is checked structurally only: `EnvelopeWriter` takes the sender and receiver from the
+  CII electronic addresses (BT-34, BT-49) and checks that `Standard` and `Type` name the payload
+  root.
 
 ## Why the rules are compiled on your machine
 
@@ -231,8 +268,8 @@ input in [Resource use](VALIDATION.md#resource-use) apply here too.
 - **Live network transmission through Recommand** is not verified yet. Sending, receiving and
   participant lookup are described in [TRANSPORT.md](TRANSPORT.md), with what is verified and
   how; the lookups (SML, SMP) have been checked against the live network.
-- **CII and self-billing over Peppol**: the envelope rules check UBL paths only, and the
-  transport sends BIS Billing 3.0 UBL invoices and credit notes only.
+- **Self-billing over Peppol** is refused, and CII is sent only for XRechnung; see
+  [What can be sent](#what-can-be-sent).
 - Other Peppol BIS documents (orders, despatch advice and the like) are refused, not validated.
 
 ---

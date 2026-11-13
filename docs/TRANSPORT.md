@@ -19,14 +19,14 @@ use IntrAgile\EInvoicing\Transport\OutboundDocument;
 use IntrAgile\EInvoicing\Transport\Recommand\RecommandConfig;
 use IntrAgile\EInvoicing\Transport\Recommand\RecommandTransport;
 use IntrAgile\EInvoicing\Transport\ValidatingTransport;
-use IntrAgile\EInvoicing\Validation\Validator;
+use IntrAgile\EInvoicing\Validation\PeppolPayloadValidator;
 
 $config = new RecommandConfig($apiKeyId, $secret, $companyId);
 $recommand = new RecommandTransport($config, $http);  // $http: see "HTTP client" below
 
 $transport = new ValidatingTransport(
     $recommand,
-    Validator::peppol(__DIR__.'/var/peppol-rules'),   // installed with einvoicing-rules
+    PeppolPayloadValidator::create(__DIR__.'/var/peppol-rules'),   // installed with einvoicing-rules
 );
 
 $result = $transport->send(OutboundDocument::fromXml($ublXml));
@@ -36,27 +36,62 @@ $result->state;        // DeliveryState::Pending, Delivered, Failed or Unknown
 ```
 
 `OutboundDocument::fromXml()` reads the routing metadata from the invoice itself: the sender
-from the seller's electronic address (BT-34, `cbc:EndpointID`), the receiver from the buyer's
-(BT-49), the process from `cbc:ProfileID` and the sender's country (C1) from the seller's
-country. `OutboundDocument::fromInvoice($invoice)` writes a model invoice as UBL first. Later,
-`$transport->status($result->documentId)` returns a `DeliveryStatus` with the current state and,
-for a failed delivery, a `DeliveryFailure` with a `FailureCategory`.
+from the seller's electronic address (BT-34; UBL `cbc:EndpointID`, CII
+`ram:SellerTradeParty/ram:URIUniversalCommunication/ram:URIID`), the receiver from the buyer's
+(BT-49), the process from the business process type (BT-23; UBL `cbc:ProfileID`, CII
+`ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID`; Peppol billing when absent) and
+the sender's country (C1) from the seller's country (BT-40).
+`OutboundDocument::fromInvoice($invoice)` writes a model invoice as UBL first;
+`fromInvoice($invoice, syntax: Syntax::Cii)` writes CII, which is allowed only for an invoice
+with `XRechnung::processControl()`. Later, `$transport->status($result->documentId)` returns a
+`DeliveryStatus` with the current state and, for a failed delivery, a `DeliveryFailure` with a
+`FailureCategory`.
 
-**Always wrap the driver in `ValidatingTransport` with `Validator::peppol()`.** It validates
-every document before it leaves and throws `InvalidDocument` (with the full report) instead of
-sending. It also catches documents that are not Peppol BIS Billing 3.0 at all: the Peppol
-document type identifier is derived from the root element (UBL `Invoice` or `CreditNote`), not
-from `cbc:CustomizationID`, so without validation an XRechnung or other national UBL invoice
-would be sent under the BIS 3.0 document type. The Peppol rules refuse such a document.
+### What can be sent
 
-`OutboundDocument::fromXml()` refuses, with `UnsupportedDocument`:
+The Peppol document type is chosen by the exact pair of root element and specification
+identifier (BT-24, UBL `cbc:CustomizationID`, CII
+`ram:GuidelineSpecifiedDocumentContextParameter/ram:ID`), compared as written, without trimming:
 
-- **UN/CEFACT CII invoices.** This version sends UBL only; write the invoice as UBL.
-- **Self-billing invoices** (a `CustomizationID` containing `selfbilling`). Self-billing swaps
-  the envelope roles and uses its own document type, which this version does not support.
-- An invoice without a seller or buyer electronic address, and an `EndpointID` whose `schemeID`
-  has surrounding whitespace (the official envelope rule compares it as written, so the envelope
-  would fail).
+| Document | BT-24 | Peppol document type |
+|---|---|---|
+| UBL Invoice, UBL CreditNote | `urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0` | `PeppolBis3::INVOICE`, `PeppolBis3::CREDIT_NOTE` |
+| UBL Invoice, UBL CreditNote, CII CrossIndustryInvoice | `XRechnung::CIUS` (`…#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0`) | `XRechnungPeppol::UBL_INVOICE`, `UBL_CREDIT_NOTE`, `CII_INVOICE` |
+| UBL Invoice, CII CrossIndustryInvoice | `XRechnung::EXTENSION` | `XRechnungPeppol::UBL_INVOICE_EXTENSION`, `CII_INVOICE_EXTENSION` |
+
+Everything else is refused with `UnsupportedDocument`, and the message lists the sendable
+identifiers. That includes a plain EN 16931 invoice (`urn:cen.eu:en16931:2017`, which the writers
+use for an invoice without process control), older XRechnung versions, the XRechnung CVD (it has
+no Peppol document type), the XRechnung UBL Credit Note Extension (deprecated in Peppol Code
+Lists v9.7), a CII document with the BIS identifier and an identifier with surrounding
+whitespace. An XRechnung document must use the process
+`urn:fdc:peppol.eu:2017:poacc:billing:01:1.0` (BT-23), the only one its document types are
+registered for; another process is refused and named in the message. See
+[What can be sent](PEPPOL.md#what-can-be-sent) for the background.
+
+**The receiver must be registered for the document type.** An XRechnung document travels under
+its own Peppol document type, not the BIS one. A receiver whose SMP lists only BIS Billing 3.0
+cannot receive it: the access point then reports `recipient_not_found` or a similar error. Check
+the receiver's SMP entry with `ParticipantLookup` (see
+[Participant lookup](#participant-lookup-sml-and-smp)) before you send.
+
+**Always wrap the driver in `ValidatingTransport` with `PeppolPayloadValidator`.** It validates
+every document before it leaves with the rules of the specification it declares: a BIS document
+with the Peppol rules (`Validator::peppol()`), an XRechnung document with the KoSIT XRechnung
+rules (`XRechnungValidator`), and throws `InvalidDocument` (with the full report) instead of
+sending. Validating XRechnung needs `composer require intragile/einvoicing-rules-xrechnung`;
+without it an XRechnung document throws `RulesNotInstalled`, which names that command, and BIS
+documents are still validated. `ValidatingTransport` takes any `DocumentValidator`, so
+`Validator::peppol()` alone still works when you send BIS only.
+
+`OutboundDocument::fromXml()` also refuses, with `UnsupportedDocument`:
+
+- **Self-billing invoices and credit notes** (a specification identifier containing
+  `selfbilling`). Self-billing swaps the envelope roles and uses its own document type, which
+  this version does not support.
+- An invoice without a seller or buyer electronic address, and an electronic address whose
+  `schemeID` has surrounding whitespace (the official envelope rule compares it as written, so
+  the envelope would fail).
 
 A DOCTYPE throws `UnsafeXml`; a malformed identifier or country throws `InvalidArgumentException`.
 
@@ -333,8 +368,10 @@ that do not name the payload root. It tolerates a participant `Identifier` witho
 on a whole Standard Business Document; see [Envelope (SBDH) rules](PEPPOL.md#envelope-sbdh-rules).
 Two limits matter here:
 
-- The rules address **UBL paths only**. An enveloped CII invoice passes without any envelope
-  check, because no official rule matches it; this package does not send CII anyway.
+- The rules address **UBL paths only**. An enveloped CII invoice (an XRechnung CII document)
+  passes without any envelope check, because no official rule matches it. Its envelope is checked
+  structurally only: `EnvelopeWriter` takes the sender and receiver from the CII electronic
+  addresses and checks that `Standard` and `Type` name the payload root.
 - The rules check the sender and receiver ids only, not the invoice. Validate the invoice with
   `Validator::peppol()` as well.
 
@@ -409,10 +446,11 @@ SML and SMP lookups (and the rule download from GitHub).
 ## Known limitations
 
 - **No SMP signature verification**: the XMLDSig signature of SMP answers is not checked.
-- **No CII sending**: `OutboundDocument` accepts UBL Invoice and CreditNote only.
+- **CII only for XRechnung**: BIS Billing 3.0 is sent as UBL; CII goes out only as XRechnung
+  3.0 or XRechnung 3.0 Extension. See [What can be sent](#what-can-be-sent).
 - **No self-billing**: self-billing documents are refused.
-- **The document type follows the root element**, so non-Peppol customizations must be stopped
-  by `ValidatingTransport` with `Validator::peppol()`.
+- **No XRechnung CVD and no XRechnung UBL Credit Note Extension**: neither has an active Peppol
+  document type.
 - **`dns_get_record()`** has no timeout and may report SERVFAIL as NXDOMAIN; inject your own
   `NaptrResolver` in production.
 - **Only the first-ranked NAPTR record** is tried.

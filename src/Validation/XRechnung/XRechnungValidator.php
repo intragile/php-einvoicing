@@ -14,6 +14,7 @@ use IntrAgile\EInvoicing\Schematron\Runner;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Syntax\Syntax;
 use IntrAgile\EInvoicing\Syntax\XRechnung;
+use IntrAgile\EInvoicing\Validation\DocumentValidator;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\Exception\UnusableSchema;
 use IntrAgile\EInvoicing\Validation\Finding;
@@ -36,7 +37,7 @@ use InvalidArgumentException;
  * Usage: XRechnungValidator::create()->validate($xml)->isValid(). It needs the package
  * intragile/einvoicing-rules-xrechnung.
  */
-final class XRechnungValidator
+final class XRechnungValidator implements DocumentValidator
 {
     private const COMPOSER_COMMAND = 'composer require intragile/einvoicing-rules-xrechnung';
 
