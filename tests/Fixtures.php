@@ -7,12 +7,18 @@ namespace IntrAgile\EInvoicing\Tests;
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
+use FilesystemIterator;
+use IntrAgile\EInvoicing\Rules\FacturX\RuleFiles as FacturXRuleFiles;
 use IntrAgile\EInvoicing\Tests\Support\UnitTestDocument;
 use IntrAgile\EInvoicing\Validation\FacturX\FacturXSources;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
+use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungSources;
 use InvalidArgumentException;
 use PHPUnit\Framework\Assert;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use RuntimeException;
+use SplFileInfo;
 
 /**
  * Locates the official test fixtures: the CEN EN 16931 artefacts (validation-1.3.17, plus the
@@ -33,14 +39,24 @@ final class Fixtures
     /** Folders of the Peppol corpus that hold plain example invoices, in listing order. */
     private const PEPPOL_EXAMPLE_DIRS = ['examples', 'snippets'];
 
-    private const CEN_1316_DIR = __DIR__.'/fixtures/official/cen-1.3.16';
+    private const CEN_1316_DIR = __DIR__.'/fixtures/official/cen-'.XRechnungSources::CEN_VERSION;
 
     private const XRECHNUNG_DIR = __DIR__.'/fixtures/official/xrechnung';
 
     private const XRECHNUNG_MANIFEST = __DIR__.'/fixtures/official/xrechnung.sha256';
 
-    /** Folders of the xrechnung tree whose XML files are instance documents. */
-    private const XRECHNUNG_INSTANCE_DIRS = ['testsuite-2026-08-31', 'unit-2.6.0', 'configuration-tests-2026-08-31'];
+    /**
+     * Folders of the xrechnung tree whose XML files are instance documents, named as
+     * bin/fetch-official.php names them after the pinned KoSIT releases.
+     */
+    private const XRECHNUNG_INSTANCE_DIRS = [
+        'testsuite-'.XRechnungSources::CONFIGURATION_VERSION,
+        'unit-'.XRechnungSources::SCHEMATRON_VERSION,
+        'configuration-tests-'.XRechnungSources::CONFIGURATION_VERSION,
+    ];
+
+    /** Length of the "<SHA-256>  " prefix of a manifest line. */
+    private const MANIFEST_PREFIX_LENGTH = 66;
 
     private const ISO_SKELETON = __DIR__.'/fixtures/iso-schematron/iso_svrl_for_xslt2.xsl';
 
@@ -48,16 +64,10 @@ final class Fixtures
 
     private const FACTURX_DIR = __DIR__.'/fixtures/official/facturx-'.FacturXSources::VERSION;
 
-    /** Factur-X profiles that have a Schematron rule set, by the names of the ZF_250 files. */
-    private const FACTURX_PROFILES = ['MINIMUM', 'BASIC-WL', 'BASIC', 'EN16931', 'EXTENDED'];
-
     /** Git-ignored folder filled by bin/fetch-official.php --facturx-examples, laid out by repository path. */
     private const FACTURX_EXAMPLES_DIR = __DIR__.'/fixtures/facturx-examples';
 
     private const FACTURX_EXAMPLES_MANIFEST = __DIR__.'/fixtures/facturx-examples.sha256';
-
-    /** Repository folder of the FeRD example files. */
-    private const FERD_EXAMPLES = 'library/src/test/resources/ZF252_Beispiele/';
 
     private const STYLESHEETS = [
         'ubl' => 'EN16931-UBL-validation.xslt',
@@ -85,6 +95,9 @@ final class Fixtures
     private const SYNTAX_BY_NAMESPACE = [
         'urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100' => 'cii',
     ];
+
+    /** @var array<string, string>|null flag per file of the xrechnung tree, read once */
+    private static ?array $xrechnungManifest = null;
 
     /**
      * Absolute paths of the official example invoices for a syntax, sorted by file name.
@@ -269,8 +282,8 @@ final class Fixtures
     public static function xrechnungSchematron(string $syntax): string
     {
         return match ($syntax) {
-            'ubl' => self::XRECHNUNG_DIR.'/schematron-2.6.0/ubl/XRechnung-UBL-validation.sch',
-            'cii' => self::XRECHNUNG_DIR.'/schematron-2.6.0/cii/XRechnung-CII-validation.sch',
+            'ubl' => self::XRECHNUNG_DIR.'/schematron-'.XRechnungSources::SCHEMATRON_VERSION.'/ubl/XRechnung-UBL-validation.sch',
+            'cii' => self::XRECHNUNG_DIR.'/schematron-'.XRechnungSources::SCHEMATRON_VERSION.'/cii/XRechnung-CII-validation.sch',
             default => throw new InvalidArgumentException("Unknown syntax \"{$syntax}\"; expected \"ubl\" or \"cii\"."),
         };
     }
@@ -280,7 +293,7 @@ final class Fixtures
      */
     public static function xrechnungConfiguration(): string
     {
-        return self::XRECHNUNG_DIR.'/configuration-2026-08-31';
+        return self::XRECHNUNG_DIR.'/configuration-'.XRechnungSources::CONFIGURATION_VERSION;
     }
 
     /**
@@ -311,6 +324,17 @@ final class Fixtures
         ksort($examples, SORT_STRING);
 
         return $examples;
+    }
+
+    /**
+     * The Factur-X profiles that have a Schematron rule set, named like the ZF_250 files: the
+     * profiles of the compiled rules package.
+     *
+     * @return list<string>
+     */
+    public static function facturxProfiles(): array
+    {
+        return FacturXRuleFiles::profiles();
     }
 
     /**
@@ -348,7 +372,7 @@ final class Fixtures
      */
     public static function facturxExampleXml(): array
     {
-        return self::facturxExamples(static fn (string $path): bool => str_starts_with($path, self::FERD_EXAMPLES) && str_ends_with($path, '.xml'));
+        return self::facturxExamples(static fn (string $path): bool => self::isFerdExample($path) && str_ends_with($path, '.xml'));
     }
 
     /**
@@ -406,10 +430,22 @@ final class Fixtures
         return $examples;
     }
 
+    private static function isFerdExample(string $path): bool
+    {
+        foreach (FacturXSources::FERD_EXAMPLES as $folder) {
+            if (str_starts_with($path, $folder)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static function facturxProfile(string $profile): string
     {
-        if (! in_array($profile, self::FACTURX_PROFILES, true)) {
-            throw new InvalidArgumentException("Unknown Factur-X profile \"{$profile}\"; expected one of ".implode(', ', self::FACTURX_PROFILES).'.');
+        $profiles = self::facturxProfiles();
+        if (! in_array($profile, $profiles, true)) {
+            throw new InvalidArgumentException("Unknown Factur-X profile \"{$profile}\"; expected one of ".implode(', ', $profiles).'.');
         }
 
         return $profile;
@@ -422,16 +458,22 @@ final class Fixtures
      */
     private static function xrechnungManifest(): array
     {
+        if (self::$xrechnungManifest !== null) {
+            return self::$xrechnungManifest;
+        }
         $lines = file(self::XRECHNUNG_MANIFEST, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES)
             ?: throw new RuntimeException('Cannot read '.self::XRECHNUNG_MANIFEST);
 
         $files = [];
         foreach ($lines as $line) {
             [$entry, $flag] = array_pad(explode("\t", $line, 2), 2, '');
-            $files[substr($entry, 66)] = $flag;
+            if (strlen($entry) <= self::MANIFEST_PREFIX_LENGTH || preg_match('/^[0-9a-f]{64}  $/', substr($entry, 0, self::MANIFEST_PREFIX_LENGTH)) !== 1) {
+                throw new RuntimeException('Malformed line in '.self::XRECHNUNG_MANIFEST.": {$line}");
+            }
+            $files[substr($entry, self::MANIFEST_PREFIX_LENGTH)] = $flag;
         }
 
-        return $files;
+        return self::$xrechnungManifest = $files;
     }
 
     private static function isXrechnungInstance(string $name): bool
@@ -446,6 +488,28 @@ final class Fixtures
         }
 
         return self::PEPPOL_DIR;
+    }
+
+    /**
+     * Paths, relative to $dir, of every file below it, sorted in byte order. Hidden files (names
+     * starting with a dot, such as the .DS_Store files macOS Finder leaves behind) are skipped, so
+     * a developer machine counts the same files as a fresh checkout.
+     *
+     * @return list<string>
+     */
+    public static function filesBelow(string $dir): array
+    {
+        $files = [];
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
+        /** @var SplFileInfo $file */
+        foreach ($iterator as $file) {
+            if ($file->isFile() && ! str_starts_with($file->getFilename(), '.')) {
+                $files[] = substr($file->getPathname(), strlen($dir) + 1);
+            }
+        }
+        sort($files, SORT_STRING);
+
+        return $files;
     }
 
     /**

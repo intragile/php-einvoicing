@@ -15,6 +15,8 @@ shift $(( $# > 0 ? 1 : 0 ))
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 image="php-einvoicing-oracle:php${php_version}"
 
+command -v timeout >/dev/null || { echo "timeout not found; on macOS: brew install coreutils" >&2; exit 1; }
+
 if [ ! -f "$root/vendor/autoload.php" ]; then
     echo "vendor/autoload.php is missing; run composer install first." >&2
     exit 1

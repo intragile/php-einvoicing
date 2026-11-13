@@ -5,16 +5,14 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests;
 
 use DOMDocument;
-use FilesystemIterator;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+use IntrAgile\EInvoicing\Rules\FacturX\RuleFiles;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
+use IntrAgile\EInvoicing\Tests\Validation\Peppol\BuildDir;
 use IntrAgile\EInvoicing\Validation\FacturX\FacturXSources;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use PHPUnit\Framework\TestCase;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use SplFileInfo;
 
 final class FixturesTest extends TestCase
 {
@@ -150,14 +148,7 @@ final class FixturesTest extends TestCase
             self::assertSame($match[1], hash_file('sha256', $directory.'/'.$match[2]), "{$match[2]} does not match its manifest entry.");
         }
 
-        $found = [];
-        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS));
-        /** @var SplFileInfo $file */
-        foreach ($files as $file) {
-            $found[substr($file->getPathname(), strlen($directory) + 1)] = true;
-        }
-
-        self::assertEqualsCanonicalizing(array_keys($found), array_keys($listed));
+        self::assertEqualsCanonicalizing(Fixtures::filesBelow($directory), array_keys($listed));
     }
 
     public function test_xrechnung_corpus_size(): void
@@ -236,13 +227,7 @@ final class FixturesTest extends TestCase
             self::assertSame($match[1], hash_file('sha256', $directory.'/'.$match[2]), "{$match[2]} does not match its manifest entry.");
         }
 
-        $found = [];
-        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS));
-        /** @var SplFileInfo $file */
-        foreach ($files as $file) {
-            $found[] = substr($file->getPathname(), strlen($directory) + 1);
-        }
-        self::assertEqualsCanonicalizing($found, array_keys($listed));
+        self::assertEqualsCanonicalizing(Fixtures::filesBelow($directory), array_keys($listed));
 
         // Same value as `find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256`
         // run inside each upstream ZF_250 folder at the pinned commit.
@@ -271,9 +256,35 @@ final class FixturesTest extends TestCase
         self::assertSame(FacturXSources::LICENCE_FILES['NOTICE'], $listed['NOTICE'] ?? null);
     }
 
+    public function test_facturx_profiles_come_from_rule_files(): void
+    {
+        self::assertSame(RuleFiles::profiles(), Fixtures::facturxProfiles());
+    }
+
+    public function test_hidden_files_are_ignored(): void
+    {
+        $copy = BuildDir::create('fixtures-hidden');
+        try {
+            $source = dirname(Fixtures::isoSkeleton());
+            foreach (Fixtures::filesBelow($source) as $name) {
+                self::assertTrue(copy($source.'/'.$name, $copy.'/'.$name));
+            }
+            $before = Fixtures::filesBelow($copy);
+            mkdir($copy.'/nested');
+            file_put_contents($copy.'/.DS_Store', 'Finder metadata');
+            file_put_contents($copy.'/nested/.DS_Store', 'Finder metadata');
+
+            self::assertSame(Fixtures::filesBelow($source), $before);
+            self::assertCount(4, $before);
+            self::assertSame($before, Fixtures::filesBelow($copy));
+        } finally {
+            BuildDir::remove($copy);
+        }
+    }
+
     public function test_facturx_rule_sources_present(): void
     {
-        foreach (['MINIMUM', 'BASIC-WL', 'BASIC', 'EN16931', 'EXTENDED'] as $profile) {
+        foreach (Fixtures::facturxProfiles() as $profile) {
             $schematron = Fixtures::facturxSchematron($profile);
             self::assertSame("FACTUR-X_{$profile}.sch", basename($schematron));
             self::assertSame('http://purl.oclc.org/dsdl/schematron', SafeXml::load((string) file_get_contents($schematron))->documentElement?->namespaceURI);

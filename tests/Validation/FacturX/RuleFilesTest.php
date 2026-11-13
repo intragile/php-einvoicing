@@ -33,6 +33,11 @@ final class RuleFilesTest extends TestCase
         self::assertSame(['MINIMUM', 'BASIC-WL', 'BASIC', 'EN16931', 'EXTENDED'], RuleFiles::profiles());
     }
 
+    public function test_counts_cover_every_profile(): void
+    {
+        self::assertSame(RuleFiles::profiles(), array_keys(iterator_to_array(self::profiles())));
+    }
+
     #[DataProvider('profiles')]
     public function test_every_profile_has_rules_and_schema(string $profile): void
     {

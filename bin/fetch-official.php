@@ -158,12 +158,8 @@ const XRECHNUNG_SOURCE_CACHE = [
 /** Name of the manifest of the xrechnung/ tree, next to that folder. */
 const XRECHNUNG_MANIFEST = 'xrechnung.sha256';
 
-/** Folders of the xrechnung/ tree whose XML files form the instance corpus, checked for well-formedness. */
 /** Seconds a single Factur-X file download may stall before it fails. */
 const FACTURX_FILE_TIMEOUT = 60;
-
-/** Repository folder of the FeRD example files. */
-const FERD_EXAMPLES = 'library/src/test/resources/ZF252_Beispiele/';
 
 /** Repository folders whose PDF files belong to the example corpus as well. */
 const MUSTANG_TEST_RESOURCES = ['library/src/test/resources/', 'validator/src/test/resources/'];
@@ -171,6 +167,7 @@ const MUSTANG_TEST_RESOURCES = ['library/src/test/resources/', 'validator/src/te
 /** GitHub API listing of every file at the pinned Mustang commit, used to (re)write the manifests. */
 const MUSTANG_TREE_URL = 'https://api.github.com/repos/ZUGFeRD/mustangproject/git/trees/'.FacturXSources::MUSTANG_COMMIT.'?recursive=1';
 
+/** Folders of the xrechnung/ tree whose XML files form the instance corpus, checked for well-formedness. */
 const XRECHNUNG_INSTANCE_DIRS = ['testsuite-'.XRechnungSources::CONFIGURATION_VERSION, 'unit-'.XRechnungSources::SCHEMATRON_VERSION, 'configuration-tests-'.XRechnungSources::CONFIGURATION_VERSION];
 
 $root = dirname(__DIR__);
@@ -312,7 +309,7 @@ function unpackXrechnung(string $cacheDir, string $target, string $manifestPath,
     $configurationSource = $path('configuration-source');
     $configurationRoot = 'validator-configuration-xrechnung-'.$configurationVersion.'/';
     extractEntries($path('configuration'), $staging.'/configuration-'.$configurationVersion, ['']);
-    extractTarEntries($configurationSource, $staging.'/configuration-'.$configurationVersion, [$configurationRoot.'LICENSE', $configurationRoot.'NOTICE'], $configurationRoot);
+    extractTarEntries($configurationSource, $staging.'/configuration-'.$configurationVersion, [$configurationRoot.'LICENSE', $configurationRoot.'NOTICE'], [$configurationRoot]);
 
     // The KoSIT test suite; its release zip has no licence either.
     extractEntries($path('testsuite'), $staging.'/testsuite-'.$configurationVersion, ['instances/']);
@@ -320,10 +317,10 @@ function unpackXrechnung(string $cacheDir, string $target, string $manifestPath,
 
     // The Schematron unit-test instances.
     $schematronRoot = 'xrechnung-schematron-'.$schematronVersion.'/';
-    extractTarEntries($path('schematron-source'), $staging.'/unit-'.$schematronVersion, [$schematronRoot.'test/instances/', $schematronRoot.'LICENSE'], $schematronRoot.'test/instances/', $schematronRoot);
+    extractTarEntries($path('schematron-source'), $staging.'/unit-'.$schematronVersion, [$schematronRoot.'test/instances/', $schematronRoot.'LICENSE'], [$schematronRoot.'test/instances/', $schematronRoot]);
 
     // The configuration's own test files: every XML file below src/test/.
-    extractTarEntries($configurationSource, $staging.'/configuration-tests-'.$configurationVersion, [$configurationRoot.'src/test/', $configurationRoot.'LICENSE'], $configurationRoot.'src/test/', $configurationRoot, '.xml');
+    extractTarEntries($configurationSource, $staging.'/configuration-tests-'.$configurationVersion, [$configurationRoot.'src/test/', $configurationRoot.'LICENSE'], [$configurationRoot.'src/test/', $configurationRoot], '.xml');
 
     $actual = hashTree($staging);
     $flags = [];
@@ -413,13 +410,13 @@ function readXrechnungManifest(string $path): array
 
 /**
  * Writes the files of a tar archive (plain or gzip-compressed) whose names start with one of the
- * prefixes below $destinationDir, with $strip removed from the start of each name. $stripAlt is
- * a second prefix that is removed when $strip does not apply (for entries outside the folder
- * that $strip names). With $suffix, only files with that ending are written.
+ * prefixes below $destinationDir, each named as withoutPrefix() returns it for $strip. With
+ * $suffix, only files with that ending are written, and LICENSE files.
  *
  * @param  list<string>  $prefixes
+ * @param  list<string>  $strip  prefixes to remove from entry names, most specific first
  */
-function extractTarEntries(string $archive, string $destinationDir, array $prefixes, string $strip, string $stripAlt = '', string $suffix = ''): void
+function extractTarEntries(string $archive, string $destinationDir, array $prefixes, array $strip, string $suffix = ''): void
 {
     try {
         $tar = new PharData($archive);
@@ -431,7 +428,12 @@ function extractTarEntries(string $archive, string $destinationDir, array $prefi
     /** @var SplFileInfo $entry */
     foreach (new RecursiveIteratorIterator($tar) as $entry) {
         $name = substr($entry->getPathname(), strlen($base));
-        if (! isSelected($name, $prefixes) || ($suffix !== '' && ! str_ends_with($name, $suffix) && ! str_ends_with($name, '/LICENSE'))) {
+        if (! isSelected($name, $prefixes)) {
+            continue;
+        }
+        // A suffix filter keeps LICENSE files too, so that a folder of filtered files still
+        // carries the licence of the archive it was taken from.
+        if ($suffix !== '' && ! str_ends_with($name, $suffix) && ! str_ends_with($name, '/LICENSE')) {
             continue;
         }
         if (str_starts_with($name, '/') || str_contains($name, '\\') || in_array('..', explode('/', $name), true)) {
@@ -443,13 +445,30 @@ function extractTarEntries(string $archive, string $destinationDir, array $prefi
             throw new RuntimeException("Cannot read {$name} from {$archive}");
         }
 
-        $relative = str_starts_with($name, $strip) ? substr($name, strlen($strip)) : (str_starts_with($name, $stripAlt) ? substr($name, strlen($stripAlt)) : $name);
-        $destination = $destinationDir.'/'.$relative;
+        $destination = $destinationDir.'/'.withoutPrefix($name, $strip);
         ensureDirectory(dirname($destination));
         if (file_put_contents($destination, $contents) === false) {
             throw new RuntimeException("Cannot write {$destination}");
         }
     }
+}
+
+/**
+ * $name without the first of $prefixes it starts with, or unchanged when it starts with none.
+ * Listing a folder before its parent ("root/test/instances/", "root/") flattens the files of the
+ * folder while files next to it, such as root/LICENSE, keep only their name below the root.
+ *
+ * @param  list<string>  $prefixes
+ */
+function withoutPrefix(string $name, array $prefixes): string
+{
+    foreach ($prefixes as $prefix) {
+        if ($prefix !== '' && str_starts_with($name, $prefix)) {
+            return substr($name, strlen($prefix));
+        }
+    }
+
+    return $name;
 }
 
 /**
@@ -640,7 +659,7 @@ function fetchFacturx(string $target, string $manifestPath, bool $writeManifest)
 function fetchFacturxExamples(string $target, string $manifestPath, bool $writeManifest): int
 {
     if ($writeManifest) {
-        $paths = array_values(array_filter(mustangTree(), static fn (string $path): bool => str_starts_with($path, FERD_EXAMPLES)
+        $paths = array_values(array_filter(mustangTree(), static fn (string $path): bool => isSelected($path, FacturXSources::FERD_EXAMPLES)
             || (isSelected($path, MUSTANG_TEST_RESOURCES) && str_ends_with(strtolower($path), '.pdf'))));
         $sources = array_combine($paths, $paths);
         $expected = null;
@@ -677,32 +696,39 @@ function downloadMustangFiles(array $sources, ?array $expected, string $current,
     ensureDirectory($staging);
 
     $sums = [];
-    foreach ($sources as $name => $path) {
-        if (str_starts_with($name, '/') || str_contains($name, '\\') || in_array('..', explode('/', $name), true)) {
+    $complete = false;
+    try {
+        foreach ($sources as $name => $path) {
+            if (str_starts_with($name, '/') || str_contains($name, '\\') || in_array('..', explode('/', $name), true)) {
+                throw new RuntimeException("Unsafe file name: {$name}");
+            }
+
+            $destination = $staging.'/'.$name;
+            ensureDirectory(dirname($destination));
+
+            if ($expected !== null && is_file($current.'/'.$name) && hash_file('sha256', $current.'/'.$name) === $expected[$name]) {
+                copyFile($current.'/'.$name, $destination);
+                $sums[$name] = $expected[$name];
+
+                continue;
+            }
+
+            $body = httpGet(FacturXSources::url($path), FACTURX_FILE_TIMEOUT);
+            $sum = hash('sha256', $body);
+            if ($expected !== null && $sum !== $expected[$name]) {
+                throw new RuntimeException("Checksum mismatch for {$name} ({$path}): expected {$expected[$name]}, got {$sum}");
+            }
+            if (file_put_contents($destination, $body) === false) {
+                throw new RuntimeException("Cannot write {$destination}");
+            }
+            $sums[$name] = $sum;
+        }
+        $complete = true;
+    } finally {
+        // A failed download, check or write leaves no half-filled staging folder behind.
+        if (! $complete) {
             removeTree($staging);
-            throw new RuntimeException("Unsafe file name: {$name}");
         }
-
-        $destination = $staging.'/'.$name;
-        ensureDirectory(dirname($destination));
-
-        if ($expected !== null && is_file($current.'/'.$name) && hash_file('sha256', $current.'/'.$name) === $expected[$name]) {
-            copyFile($current.'/'.$name, $destination);
-            $sums[$name] = $expected[$name];
-
-            continue;
-        }
-
-        $body = httpGet(FacturXSources::url($path), FACTURX_FILE_TIMEOUT);
-        $sum = hash('sha256', $body);
-        if ($expected !== null && $sum !== $expected[$name]) {
-            removeTree($staging);
-            throw new RuntimeException("Checksum mismatch for {$name} ({$path}): expected {$expected[$name]}, got {$sum}");
-        }
-        if (file_put_contents($destination, $body) === false) {
-            throw new RuntimeException("Cannot write {$destination}");
-        }
-        $sums[$name] = $sum;
     }
     ksort($sums, SORT_STRING);
 

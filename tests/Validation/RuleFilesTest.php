@@ -28,12 +28,17 @@ final class RuleFilesTest extends TestCase
         self::assertSame(RuleFiles::cii('1.3.17'), RuleFiles::cii());
     }
 
+    public function test_assert_counts_cover_every_version(): void
+    {
+        self::assertSame(RuleFiles::VERSIONS, array_keys(self::ASSERTS));
+    }
+
     /**
      * @return iterable<string, array{string, string}>
      */
     public static function builds(): iterable
     {
-        foreach (['1.3.16', '1.3.17'] as $version) {
+        foreach (RuleFiles::VERSIONS as $version) {
             foreach (['ubl', 'cii'] as $syntax) {
                 yield "{$syntax} {$version}" => [$syntax, $version];
             }

@@ -88,8 +88,13 @@ final class MustangCorpusTest extends TestCase
         $writer = new FacturXPdfWriter;
         $embedded = [];
         $refused = 0;
+        $attachments = [];
         foreach (Fixtures::facturxExamplePdfs() as $name => $path) {
+            // The attachments of the FeRD examples are not inputs of the writer; they are skipped
+            // by path, and the list is pinned below so that none is skipped by accident.
             if (in_array($name, FacturXPdfReaderTest::FERD_EXCLUDED, true)) {
+                $attachments[] = $name;
+
                 continue;
             }
             $pdf = self::contents($path);
@@ -122,6 +127,12 @@ final class MustangCorpusTest extends TestCase
             self::assertSame(3, $document->pdfaPart, $name);
         }
 
+        self::assertSame(FacturXPdfReaderTest::FERD_EXCLUDED, $attachments);
+        self::assertCount(9, $attachments);
+        foreach ($attachments as $name) {
+            self::assertStringContainsString('/ZF252_Beispiele/', $name);
+            self::assertStringContainsString('/attachments/', $name);
+        }
         self::assertSame(self::WITHOUT_INVOICE, $embedded);
         self::assertSame(102 - count(FacturXPdfReaderTest::FERD_EXCLUDED) - count(self::RECONSTRUCTED) - count(self::WITHOUT_INVOICE), $refused);
     }

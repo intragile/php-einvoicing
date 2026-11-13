@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Validation\Peppol;
 
 use IntrAgile\EInvoicing\Tests\Fixtures;
+use IntrAgile\EInvoicing\Tests\Support\Process;
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 
 final class RulesCommandTest extends TestCase
 {
@@ -98,16 +98,8 @@ final class RulesCommandTest extends TestCase
      */
     private static function runScript(string ...$arguments): array
     {
-        $command = [PHP_BINARY, self::SCRIPT, ...array_values($arguments)];
-        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-        if ($process === false) {
-            throw new RuntimeException('Cannot start bin/einvoicing-rules.');
-        }
-        $stdout = (string) stream_get_contents($pipes[1]);
-        $stderr = (string) stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
+        $result = Process::run([PHP_BINARY, self::SCRIPT, ...array_values($arguments)]);
 
-        return [proc_close($process), $stdout, $stderr];
+        return [$result['status'], $result['stdout'], $result['stderr']];
     }
 }

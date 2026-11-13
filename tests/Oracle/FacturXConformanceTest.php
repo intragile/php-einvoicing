@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Oracle;
 
+use DOMDocument;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Rules\FacturX\RuleFiles;
@@ -35,6 +36,10 @@ use RuntimeException;
  * the flag "fatal" and the id the compiler synthesizes with the prefix "FX-REPORT", as the
  * rule sets are compiled. Verdicts and dynamic errors are compared as in ConformanceTest, and a
  * mismatch is written to build/conformance-facturx/<key>/ for inspection.
+ *
+ * PHPUnit builds every data provider even when the oracle group is excluded, so the providers
+ * read and parse the corpus only where the oracle can run (SaxonC loaded) and the examples have
+ * been downloaded; elsewhere each returns one placeholder case, whose test skips.
  */
 #[Group('oracle')]
 final class FacturXConformanceTest extends TestCase
@@ -45,8 +50,8 @@ final class FacturXConformanceTest extends TestCase
 
     private const MISSING_ID_PREFIX = 'FX-REPORT';
 
-    /** The one case of a data provider when the examples are missing; its test skips. */
-    private const NOT_DOWNLOADED = 'Factur-X examples not downloaded';
+    /** The one case of a data provider when the corpus is not built; its test skips. */
+    private const NOT_BUILT = 'Factur-X examples not downloaded or SaxonC not loaded';
 
     private const DUMP_DIR = __DIR__.'/../../build/conformance-facturx';
 
@@ -54,6 +59,9 @@ final class FacturXConformanceTest extends TestCase
 
     /** @var array<string, RuleSet> */
     private static array $ruleSets = [];
+
+    /** @var array<string, array{string, string}>|null */
+    private static ?array $examples = null;
 
     /**
      * The FeRD example XMLs of the five Factur-X profiles, with the profile key their guideline
@@ -63,18 +71,20 @@ final class FacturXConformanceTest extends TestCase
      */
     public static function examples(): array
     {
-        if (! Fixtures::hasFacturxExamples()) {
-            return [self::NOT_DOWNLOADED => ['MINIMUM', '']];
+        if (! self::corpusAvailable()) {
+            return [self::NOT_BUILT => ['MINIMUM', '']];
         }
-        $cases = [];
-        foreach (Fixtures::facturxExampleXml() as $name => $file) {
-            $key = self::ruleProfile(self::contents($file));
-            if ($key !== null) {
-                $cases["example {$key} {$name}"] = [$key, $file];
+        if (self::$examples === null) {
+            self::$examples = [];
+            foreach (Fixtures::facturxExampleXml() as $name => $file) {
+                $key = self::ruleProfile(self::contents($file));
+                if ($key !== null) {
+                    self::$examples["example {$key} {$name}"] = [$key, $file];
+                }
             }
         }
 
-        return $cases;
+        return self::$examples;
     }
 
     /**
@@ -84,8 +94,8 @@ final class FacturXConformanceTest extends TestCase
      */
     public static function examplePdfs(): array
     {
-        if (! Fixtures::hasFacturxExamples()) {
-            return [self::NOT_DOWNLOADED => ['MINIMUM', '']];
+        if (! self::corpusAvailable()) {
+            return [self::NOT_BUILT => ['MINIMUM', '']];
         }
         $cases = [];
         foreach (Fixtures::facturxExamplePdfs() as $name => $file) {
@@ -134,8 +144,8 @@ final class FacturXConformanceTest extends TestCase
      */
     public static function mutations(): array
     {
-        if (! Fixtures::hasFacturxExamples()) {
-            return [self::NOT_DOWNLOADED => ['MINIMUM', '', '']];
+        if (! self::corpusAvailable()) {
+            return [self::NOT_BUILT => ['MINIMUM', '', '']];
         }
         $cases = [];
         foreach (self::examples() as [$key, $file]) {
@@ -150,7 +160,7 @@ final class FacturXConformanceTest extends TestCase
 
     public function test_corpus_sizes(): void
     {
-        Fixtures::facturxExamplesDir();
+        self::requireCorpus();
         $examples = ['MINIMUM' => 2, 'BASIC-WL' => 2, 'BASIC' => 3, 'EN16931' => 25, 'EXTENDED' => 25];
 
         self::assertSame($examples, self::perProfile(self::examples()));
@@ -162,14 +172,14 @@ final class FacturXConformanceTest extends TestCase
     #[DataProvider('examples')]
     public function test_ferd_example_xml(string $key, string $file): void
     {
-        Fixtures::facturxExamplesDir();
+        self::requireCorpus();
         $this->assertParity($key, self::contents($file));
     }
 
     #[DataProvider('examplePdfs')]
     public function test_ferd_example_pdf_xml(string $key, string $file): void
     {
-        Fixtures::facturxExamplesDir();
+        self::requireCorpus();
         $this->assertParity($key, (new FacturXPdfReader)->read(self::contents($file))->xml);
     }
 
@@ -182,8 +192,35 @@ final class FacturXConformanceTest extends TestCase
     #[DataProvider('mutations')]
     public function test_mutated_examples(string $key, string $file, string $label): void
     {
-        Fixtures::facturxExamplesDir();
-        $this->assertParity($key, Mutator::mutation(self::contents($file), crc32(basename($file)), self::MUTATIONS_PER_EXAMPLE, $label));
+        self::requireCorpus();
+        $original = self::contents($file);
+        $mutated = Mutator::mutation($original, crc32(basename($file)), self::MUTATIONS_PER_EXAMPLE, $label);
+
+        self::assertNotSame(self::serialized($original), self::serialized($mutated), "{$label} leaves the document unchanged.");
+        $this->assertParity($key, $mutated);
+    }
+
+    /**
+     * Each profile has at least one mutation that changes the verdict of its example, so the
+     * mutation cases cannot all pass by leaving the rules untouched. Parity with Saxon is checked
+     * per case; this test needs only the PHP verdict.
+     */
+    public function test_mutations_change_a_verdict_in_every_profile(): void
+    {
+        self::requireCorpus();
+        $changed = [];
+        foreach (self::mutations() as [$key, $file, $label]) {
+            if (isset($changed[$key])) {
+                continue;
+            }
+            $original = self::contents($file);
+            $mutated = Mutator::mutation($original, crc32(basename($file)), self::MUTATIONS_PER_EXAMPLE, $label);
+            if ($this->ours($key, $mutated)[0] !== $this->ours($key, $original)[0]) {
+                $changed[$key] = "{$label} in ".basename($file);
+            }
+        }
+
+        self::assertSame([], array_values(array_diff(RuleFiles::profiles(), array_keys($changed))), 'Profiles whose mutations never change the verdict.');
     }
 
     private function assertParity(string $key, string $xml): void
@@ -264,6 +301,35 @@ final class FacturXConformanceTest extends TestCase
         $id = (new CiiDocument($document))->text('rsm:ExchangedDocumentContext/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID');
 
         return $id === null ? null : FacturXProfile::fromGuidelineId($id)?->ruleProfile();
+    }
+
+    private static function corpusAvailable(): bool
+    {
+        return Fixtures::hasFacturxExamples() && OfficialRules::available();
+    }
+
+    /**
+     * Skips the test when the providers returned their placeholder case.
+     */
+    private static function requireCorpus(): void
+    {
+        Fixtures::facturxExamplesDir();
+        if (! OfficialRules::available()) {
+            self::markTestSkipped('The SaxonC-HE PHP extension is not loaded; run docker/oracle/run.sh.');
+        }
+    }
+
+    /**
+     * The document as DOMDocument serialises it, the form Mutator returns its output in.
+     */
+    private static function serialized(string $xml): string
+    {
+        $document = new DOMDocument;
+        if (! $document->loadXML($xml, LIBXML_NONET)) {
+            throw new RuntimeException('The document is not well-formed XML.');
+        }
+
+        return (string) $document->saveXML();
     }
 
     /**

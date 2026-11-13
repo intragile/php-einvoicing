@@ -33,6 +33,7 @@ use IntrAgile\EInvoicing\Validation\ValidationReport;
 use IntrAgile\EInvoicing\Validation\Validator;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -276,6 +277,10 @@ final class ValidatorTest extends TestCase
         Validator::en16931()->validate($xml);
     }
 
+    /**
+     * Wall-clock bounds flake on a loaded machine, so this runs only with --group performance.
+     */
+    #[Group('performance')]
     public function test_validation_scales_linearly(): void
     {
         $validator = Validator::en16931();

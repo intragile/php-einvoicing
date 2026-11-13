@@ -42,6 +42,9 @@ final class FacturXSources
         'xslt' => '2f81544c9b84b19b0fb53f17c0e514ebe22db78fd99a542055c7bfbd33c3459f',
     ];
 
+    /** Repository folders of the FeRD example files (ZUGFeRD 2.5.2), downloaded for the test suite only. */
+    public const FERD_EXAMPLES = ['library/src/test/resources/ZF252_Beispiele/'];
+
     /** Licence files at the repository root that travel with the copy, with their SHA-256 sums. */
     public const LICENCE_FILES = [
         'LICENSE' => 'ba98dd76bda1e82034791438bb931145f85e5db3975852a015344ad5990fa21b',

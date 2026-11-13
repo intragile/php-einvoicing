@@ -17,6 +17,8 @@ port="${KOSIT_PORT:-8081}"
 php="${PHP:-php}"
 container="php-einvoicing-kosit-$$"
 
+command -v timeout >/dev/null || { echo "timeout not found; on macOS: brew install coreutils" >&2; exit 1; }
+
 if [ ! -f "$root/vendor/autoload.php" ]; then
     echo "vendor/autoload.php is missing; run composer install first." >&2
     exit 1

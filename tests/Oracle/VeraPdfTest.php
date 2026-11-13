@@ -16,6 +16,7 @@ use IntrAgile\EInvoicing\Syntax\FacturX\Xmp;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Pdf\MustangCorpusTest;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
+use IntrAgile\EInvoicing\Tests\Support\Process;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -28,8 +29,9 @@ use RuntimeException;
  *
  * The inputs are the corpus PDFs that declare a PDF/A part and carry no invoice, plus a PDF printed
  * by headless Chrome, which declares no PDF/A part: the writer declares PDF/A-3 without converting
- * the content. Inputs, outputs and the veraPDF report are written to build/verapdf/ and never
- * committed.
+ * the content. That the Chrome output passes proves no conversion; it shows only that this simple
+ * page needed nothing beyond the metadata the writer adds. Inputs, outputs and the veraPDF report
+ * are written to build/verapdf/ and never committed.
  */
 #[Group('verapdf')]
 final class VeraPdfTest extends TestCase
@@ -45,6 +47,34 @@ final class VeraPdfTest extends TestCase
     /** Bound of the Chrome print, in seconds. */
     private const int CHROME_TIMEOUT = 120;
 
+    /** Bound of the veraPDF run: the runner's own default bound (VERAPDF_TIMEOUT) plus a margin. */
+    private const int VERAPDF_TIMEOUT = 1800 + 120;
+
+    /**
+     * The corpus PDFs without an invoice that declare a PDF/A part, in corpus order;
+     * test_inputs_are_the_pdfa_pdfs_without_an_invoice derives the list from the files.
+     */
+    private const array PDFA_INPUTS = [
+        'library/MustangGnuaccountingBeispielRE-20170509_505PDFA3.pdf',
+        'library/MustangGnuaccountingBeispielRE-20170509_505blanko.pdf',
+        'library/MustangGnuaccountingBeispielRE-20171118_506blanko.pdf',
+        'library/MustangGnuaccountingBeispielRE-20190610_507blanko.pdf',
+        'library/MustangGnuaccountingBeispielRE-20201121_508blanko.pdf',
+        'library/MustangGnuaccountingBeispielRE-20201121_508blankoA3.pdf',
+        'library/ORDER-X_EX01_ORDER_FULL_DATA-COMFORT.pdf',
+        'library/veraPDFtestsuite6-7-11-t01-fail-a.pdf',
+        'validator/ORDER-X_EX01_ORDER_FULL_DATA-COMFORT.pdf',
+    ];
+
+    /**
+     * The one rule the output of the failing PDF/A-1 input breaks: the PDF/A-3 counterpart of the
+     * input's own XMP failure (ISO 19005-1 6.7.11-3, a lowercase pdfaid:conformance value).
+     */
+    private const string CARRIED_OVER_FAILURE = 'ISO 19005-3:2012 6.6.4-3';
+
+    /** @var array<string, array{string}>|null */
+    private static ?array $inputs = null;
+
     /** @var array<string, array{compliant: bool, profile: string, failed: list<string>}>|null verdict per file name */
     private static ?array $report = null;
 
@@ -53,6 +83,8 @@ final class VeraPdfTest extends TestCase
 
     /**
      * The corpus PDFs without an invoice that declare a PDF/A part, keyed by a file-name-safe slug.
+     * Nothing is parsed here, because PHPUnit builds every data provider even when the group is
+     * not run.
      *
      * @return array<string, array{string}>
      */
@@ -62,22 +94,31 @@ final class VeraPdfTest extends TestCase
         if (! Fixtures::hasFacturxExamples()) {
             return ['Factur-X examples not downloaded' => ['']];
         }
+        if (self::$inputs === null) {
+            $pdfs = Fixtures::facturxExamplePdfs();
+            self::$inputs = [];
+            foreach (self::PDFA_INPUTS as $name) {
+                self::$inputs[self::slug($name)] = [$pdfs[$name]];
+            }
+        }
+
+        return self::$inputs;
+    }
+
+    public function test_inputs_are_the_pdfa_pdfs_without_an_invoice(): void
+    {
+        Fixtures::facturxExamplesDir();
         $pdfs = Fixtures::facturxExamplePdfs();
-        $inputs = [];
+        $declaring = [];
         foreach (MustangCorpusTest::WITHOUT_INVOICE as $name) {
             $document = PdfDocument::parse(self::contents($pdfs[$name]));
             $metadata = $document->resolve($document->catalog()->get('Metadata'));
             if ($metadata instanceof PdfStream && Xmp::declaredPart($document->decodedStream($metadata)) !== null) {
-                $inputs[self::slug($name)] = [$pdfs[$name]];
+                $declaring[] = $name;
             }
         }
 
-        return $inputs;
-    }
-
-    public function test_input_count(): void
-    {
-        Fixtures::facturxExamplesDir();
+        self::assertSame(self::PDFA_INPUTS, $declaring);
         self::assertCount(9, self::inputs());
     }
 
@@ -99,15 +140,17 @@ final class VeraPdfTest extends TestCase
 
             return;
         }
-        // An input of another PDF/A part is checked against other rules; its own verdict stays a failure.
-        $this->addToAssertionCount(1);
+        // An input of another PDF/A part is checked against other rules: the output must break
+        // only the PDF/A-3 counterpart of the input's failure.
+        self::assertSame([self::CARRIED_OVER_FAILURE], $output['failed'], "{$slug}: the output of a failing {$input['profile']} input");
     }
 
     /**
      * The Chrome print declares no PDF/A part and fails veraPDF. The writer warns that it does not
      * convert the content (C7); it only adds what PDF/A-3 metadata needs (the trailer /ID, the XMP
-     * packet and an sRGB output intent), so the output breaks no rule the input did not, and a page
-     * whose content already conforms, like this one, passes.
+     * packet and an sRGB output intent), so the output breaks no rule the input did not. That this
+     * output passes proves no conversion: the page is simple enough to need nothing more, and a
+     * page whose content breaks a PDF/A rule keeps breaking it.
      */
     public function test_chrome_print_is_not_converted(): void
     {
@@ -159,7 +202,7 @@ final class VeraPdfTest extends TestCase
             self::write("out-{$slug}.pdf", $result->pdf);
         }
 
-        [$status, $output] = self::exec(['bash', self::RUNNER, self::workDir()]);
+        [$status, $output] = self::exec(['bash', self::RUNNER, self::workDir()], self::VERAPDF_TIMEOUT);
         if ($status !== 0) {
             throw new RuntimeException("docker/verapdf/run.sh failed with exit status {$status}:\n{$output}");
         }
@@ -216,13 +259,12 @@ final class VeraPdfTest extends TestCase
 
         // Chrome's own temporary files go to the work folder as well.
         [$status, $output] = self::exec([
-            'env', 'TMPDIR='.self::workDir(),
-            'timeout', (string) self::CHROME_TIMEOUT, self::CHROME,
+            'env', 'TMPDIR='.self::workDir(), self::CHROME,
             '--headless', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--no-pdf-header-footer',
             '--user-data-dir='.self::workDir().'/chrome-profile',
             '--print-to-pdf='.$pdf,
             'file://'.$html,
-        ]);
+        ], self::CHROME_TIMEOUT);
         if ($status !== 0 || ! is_file($pdf)) {
             throw new RuntimeException("Headless Chrome did not print the PDF (exit status {$status}):\n{$output}");
         }
@@ -232,19 +274,13 @@ final class VeraPdfTest extends TestCase
 
     /**
      * @param  list<string>  $command
-     * @return array{int, string} exit status and combined output
+     * @return array{int, string} exit status, and standard output followed by standard error
      */
-    private static function exec(array $command): array
+    private static function exec(array $command, int $timeoutSeconds): array
     {
-        // The shell merges standard error into standard output, so one pipe carries both.
-        $process = proc_open(['sh', '-c', 'exec "$@" 2>&1 </dev/null', 'sh', ...$command], [1 => ['pipe', 'w']], $pipes);
-        if ($process === false) {
-            throw new RuntimeException('Cannot start '.$command[0].'.');
-        }
-        $output = (string) stream_get_contents($pipes[1]);
-        fclose($pipes[1]);
+        $result = Process::run($command, $timeoutSeconds);
 
-        return [proc_close($process), $output];
+        return [$result['status'], $result['stdout'].$result['stderr']];
     }
 
     private static function cleanWorkDir(): void

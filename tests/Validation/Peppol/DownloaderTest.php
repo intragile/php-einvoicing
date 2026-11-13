@@ -53,10 +53,14 @@ final class DownloaderTest extends TestCase
             [['HTTP/1.1 302 Found', 'Location: http://example.com/rules.sch'], ''],
         ]);
 
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('https');
-
-        (new Downloader(opener: $opener))->get('https://example.com/start');
+        try {
+            (new Downloader(opener: $opener))->get('https://example.com/start');
+            self::fail('A redirect to http:// must be refused.');
+        } catch (InvalidArgumentException $exception) {
+            self::assertSame('Only https:// URLs are downloaded; "http://example.com/rules.sch" is not one.', $exception->getMessage());
+        }
+        // The refused target is never opened.
+        self::assertSame(['https://example.com/start'], $opener->urls);
     }
 
     public function test_stops_after_three_redirects(): void

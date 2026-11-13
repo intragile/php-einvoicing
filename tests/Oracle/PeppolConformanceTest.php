@@ -9,13 +9,18 @@ use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\ProcessControl;
+use IntrAgile\EInvoicing\Schematron\RuleSet;
+use IntrAgile\EInvoicing\Schematron\Runner;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
+use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
 use IntrAgile\EInvoicing\Tests\Support\Mutator;
 use IntrAgile\EInvoicing\Tests\Validation\Peppol\InstalledRules;
 use IntrAgile\EInvoicing\Validation\DynamicError;
+use IntrAgile\EInvoicing\Validation\Finding;
+use IntrAgile\EInvoicing\Validation\Peppol\PeppolRules;
 use IntrAgile\EInvoicing\Validation\Validator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -27,12 +32,14 @@ use RuntimeException;
  * verdict of OpenPeppol's Schematron files compiled by the ISO skeleton and run by Saxon-HE (see
  * SkeletonGuardTest for why that pipeline stands in for official stylesheets).
  *
- * Saxon's verdict for a document is the union of its two layers, OpenPeppol's copy of the CEN
- * rules and the Peppol rules; like the validator, it requires a rule of the CEN layer to handle
- * the document element. When either layer stops with a dynamic error, the validator must report a
- * dynamic error with each such code and findings are not compared; otherwise the sorted sets of
- * "<rule id> <flag>" strings must be identical and the validator must report no dynamic error.
- * A mismatch is written to the git-ignored build/conformance/peppol/<key>/ for inspection.
+ * The comparison runs per layer, OpenPeppol's copy of the CEN rules and the Peppol rules, each
+ * against the validator's rule set of that layer; like the validator, Saxon requires a rule of
+ * the CEN layer to handle the document element. When Saxon stops a layer with a dynamic error,
+ * our run of that layer must report a dynamic error with the same code, and that layer's findings
+ * are not compared; the other layer is still compared. For a layer Saxon completes, the sorted
+ * sets of "<rule id> <flag>" strings must be identical and our run must report no dynamic error.
+ * The validator's own report must be the union of its layers. A mismatch is written to the
+ * git-ignored build/conformance/peppol/<key>/ for inspection, with each aborted layer named.
  *
  * Documents whose element is not an invoice or credit note (the UBL Orders the Peppol corpus uses
  * for its syntax-independent rules) are outside the validator's scope: it must refuse them.
@@ -56,6 +63,9 @@ final class PeppolConformanceTest extends TestCase
     ];
 
     private static ?Validator $validator = null;
+
+    /** @var array{ubl: list<RuleSet>, cii: list<RuleSet>}|null the validator's layers, CEN first */
+    private static ?array $layers = null;
 
     /**
      * @return array<string, array{string, string}>
@@ -230,50 +240,105 @@ final class PeppolConformanceTest extends TestCase
     private function assertParity(string $syntax, string $xml): void
     {
         $report = self::validator()->validate($xml);
-        $ours = $report->verdict();
-        $errorCodes = array_values(array_unique(array_map(static fn (DynamicError $error): string => $error->errorCode, $report->dynamicErrors)));
-        sort($errorCodes, SORT_STRING);
+        $document = SafeXml::loadPreservingWhitespace($xml);
+        $layers = self::layers()[$syntax];
 
-        $rules = [];
-        $saxonErrors = [];
-        foreach ([["cen-{$syntax}", true], ["peppol-{$syntax}", false]] as [$layer, $requireRootRule]) {
+        $problems = [];
+        $aborted = [];
+        $saxon = [];
+        $union = [];
+        $unionErrors = [];
+        foreach ([["cen-{$syntax}", true], ["peppol-{$syntax}", false]] as $index => [$layer, $requireRootRule]) {
+            $result = (new Runner)->run($layers[$index], $document);
+            $ours = self::verdict($result->findings);
+            $codes = self::errorCodes($result->dynamicErrors);
+            array_push($union, ...$ours);
+            array_push($unionErrors, ...$codes);
+
             try {
-                array_push($rules, ...OfficialRules::run(SchematronToXslt::compile(Fixtures::peppolSchematron($layer)), $xml, $requireRootRule));
+                $official = OfficialRules::verdict(OfficialRules::run(SchematronToXslt::compile(Fixtures::peppolSchematron($layer)), $xml, $requireRootRule));
             } catch (OracleDynamicError $error) {
-                $saxonErrors[$error->errorCode] = "{$layer}: {$error->getMessage()}";
+                $aborted[$layer] = $error->errorCode;
+                $saxon[] = "{$layer}: error {$error->getMessage()}";
+                if (! in_array($error->errorCode, $codes, true)) {
+                    $problems[] = sprintf('%s: Saxon stopped with %s; our run reported dynamic errors [%s].', $layer, $error->errorCode, implode(', ', $codes));
+                }
+
+                continue;
+            }
+
+            array_push($saxon, ...array_map(static fn (string $rule): string => "{$layer}: {$rule}", $official));
+            if ($official !== $ours) {
+                $problems[] = sprintf(
+                    "%s: verdicts differ.\nOnly Saxon: %s\nOnly ours: %s",
+                    $layer,
+                    implode(', ', array_diff($official, $ours)) ?: '-',
+                    implode(', ', array_diff($ours, $official)) ?: '-',
+                );
+            }
+            if ($result->dynamicErrors !== []) {
+                $problems[] = "{$layer}: Saxon completed, our run reported dynamic errors: ".self::describeErrors($result->dynamicErrors);
             }
         }
 
-        if ($saxonErrors !== []) {
-            $missing = array_diff(array_keys($saxonErrors), $errorCodes);
-            if ($missing !== []) {
-                $this->dump($xml, 'error '.implode("\nerror ", $saxonErrors), $this->describe($ours, $report->dynamicErrors));
-                self::fail(sprintf(
-                    "Saxon stopped with %s; the validator reported dynamic errors [%s].\nSaxon: %s",
-                    implode(', ', array_keys($saxonErrors)),
-                    implode(', ', $errorCodes),
-                    implode("\n", $saxonErrors),
-                ));
-            }
+        $union = array_values(array_unique($union));
+        sort($union, SORT_STRING);
+        $unionErrors = array_values(array_unique($unionErrors));
+        sort($unionErrors, SORT_STRING);
+        if ($report->verdict() !== $union || self::errorCodes($report->dynamicErrors) !== $unionErrors) {
+            $problems[] = 'The validator report is not the union of its layers.';
+        }
+
+        if ($problems === []) {
             $this->addToAssertionCount(1);
 
             return;
         }
 
-        $official = OfficialRules::verdict($rules);
-        if ($official === $ours && $report->dynamicErrors === []) {
-            $this->addToAssertionCount(1);
+        $this->dump($xml, implode("\n", $saxon), $this->describe($report->verdict(), $report->dynamicErrors));
+        self::fail(implode("\n", $problems)
+            ."\nAborted layers: ".(implode(', ', array_map(static fn (string $layer, string $code): string => "{$layer} ({$code})", array_keys($aborted), $aborted)) ?: '-')
+            ."\nOur dynamic errors: ".(self::describeErrors($report->dynamicErrors) ?: '-'));
+    }
 
-            return;
-        }
+    /**
+     * @return array{ubl: list<RuleSet>, cii: list<RuleSet>}
+     */
+    private static function layers(): array
+    {
+        return self::$layers ??= PeppolRules::load(InstalledRules::dir());
+    }
 
-        $this->dump($xml, implode("\n", $official), $this->describe($ours, $report->dynamicErrors));
-        self::fail(sprintf(
-            "Verdicts differ.\nOnly Saxon: %s\nOnly ours: %s\nOur dynamic errors: %s",
-            implode(', ', array_diff($official, $ours)) ?: '-',
-            implode(', ', array_diff($ours, $official)) ?: '-',
-            implode('; ', array_map(static fn (DynamicError $error): string => "{$error->errorCode} {$error->ruleId} at {$error->location}: {$error->message}", $report->dynamicErrors)) ?: '-',
-        ));
+    /**
+     * @param  list<Finding>  $findings
+     * @return list<string>
+     */
+    private static function verdict(array $findings): array
+    {
+        $verdict = array_values(array_unique(array_map(static fn (Finding $finding): string => "{$finding->ruleId} {$finding->severity->value}", $findings)));
+        sort($verdict, SORT_STRING);
+
+        return $verdict;
+    }
+
+    /**
+     * @param  list<DynamicError>  $errors
+     * @return list<string>
+     */
+    private static function errorCodes(array $errors): array
+    {
+        $codes = array_values(array_unique(array_map(static fn (DynamicError $error): string => $error->errorCode, $errors)));
+        sort($codes, SORT_STRING);
+
+        return $codes;
+    }
+
+    /**
+     * @param  list<DynamicError>  $errors
+     */
+    private static function describeErrors(array $errors): string
+    {
+        return implode('; ', array_map(static fn (DynamicError $error): string => "{$error->errorCode} {$error->ruleId} at {$error->location}: {$error->message}", $errors));
     }
 
     private static function validator(): Validator

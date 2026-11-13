@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Docs;
 
+use IntrAgile\EInvoicing\Tests\Support\Process;
 use PHPUnit\Framework\TestCase;
 
 final class ModelDocTest extends TestCase
@@ -39,13 +40,8 @@ final class ModelDocTest extends TestCase
      */
     private function runScript(array $arguments): array
     {
-        $command = array_merge([PHP_BINARY, self::SCRIPT], $arguments);
-        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-        self::assertIsResource($process);
-        $output = (string) stream_get_contents($pipes[1]).(string) stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
+        $result = Process::run([PHP_BINARY, self::SCRIPT, ...$arguments]);
 
-        return [proc_close($process), $output];
+        return [$result['status'], $result['stdout'].$result['stderr']];
     }
 }
