@@ -21,7 +21,7 @@ use IntrAgile\EInvoicing\Validation\Severity;
  * @phpstan-type Instruction list<mixed>
  * @phpstan-type CompiledFunction array{name: string, as: ?string, params: list<array{name: string, as: ?string}>, body: list<Instruction>}
  * @phpstan-type MessagePart string|array{name: true}|array{valueOf: array<mixed>}
- * @phpstan-type RuleAssert array{id: string, severity: Severity, test: string, ast: array<mixed>, message: string, messageParts: ?list<MessagePart>}
+ * @phpstan-type RuleAssert array{id: string, severity: Severity, test: string, ast: array<mixed>, message: string, messageParts: ?list<MessagePart>, report: bool}
  * @phpstan-type Rule array{context: string, match: array<mixed>, lets: list<Let>, asserts: list<RuleAssert>, roots: list<array{string, string}>}
  * @phpstan-type Pattern array{id: string, lets: list<Let>, rules: list<Rule>}
  */
@@ -30,12 +30,13 @@ final class RuleSet
     /**
      * The layout of the compiled array the compiler writes. Files written before the "format" key
      * existed are format 1. Format 3 adds the optional "messageParts" of an assert (name and
-     * value-of in messages) to format 2.
+     * value-of in messages) to format 2. Format 4 adds the optional "report" => true of an assert
+     * compiled from a report element, which fires when its test is true.
      */
-    public const FORMAT = 3;
+    public const FORMAT = 4;
 
-    /** The formats this engine reads: the current one and format 2, which it only extends. */
-    private const READABLE_FORMATS = [2, self::FORMAT];
+    /** The formats this engine reads: the current one and formats 2 and 3, which it only extends. */
+    private const READABLE_FORMATS = [2, 3, self::FORMAT];
 
     /** @var array<string, self> */
     private static array $loaded = [];
@@ -91,7 +92,7 @@ final class RuleSet
         if (! in_array($format, self::READABLE_FORMATS, true)) {
             $format = is_int($format) ? (string) $format : (json_encode($format) ?: get_debug_type($format));
 
-            throw new UnsupportedSchematron("The rule set \"{$id}\" was compiled with format {$format}; this engine reads formats ".implode(' and ', self::READABLE_FORMATS).'. Recompile it.');
+            throw new UnsupportedSchematron("The rule set \"{$id}\" was compiled with format {$format}; this engine reads formats ".implode(', ', array_slice(self::READABLE_FORMATS, 0, -1)).' and '.self::FORMAT.'. Recompile it.');
         }
         $namespaces = [];
         foreach (self::map($compiled['namespaces'] ?? null, 'The namespaces of the rule set') as $prefix => $uri) {
@@ -208,6 +209,7 @@ final class RuleSet
                 'ast' => self::map($assert['ast'] ?? null, "The test of the assert \"{$assertId}\""),
                 'message' => self::string($assert, 'message', "The assert \"{$assertId}\""),
                 'messageParts' => isset($assert['messageParts']) ? self::messageParts($assert['messageParts'], $assertId) : null,
+                'report' => is_bool($assert['report'] ?? false) ? ($assert['report'] ?? false) : throw new UnsupportedSchematron("The assert \"{$assertId}\" is malformed: \"report\" must be a boolean."),
             ];
         }
 

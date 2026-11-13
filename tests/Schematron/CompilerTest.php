@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Tests\Schematron;
 
 use IntrAgile\EInvoicing\Rules\En16931\RuleFiles;
 use IntrAgile\EInvoicing\Schematron\CompiledRuleSetWriter;
+use IntrAgile\EInvoicing\Schematron\CompileOptions;
 use IntrAgile\EInvoicing\Schematron\Compiler;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
 use IntrAgile\EInvoicing\Schematron\RuleSet;
@@ -184,7 +185,7 @@ final class CompilerTest extends TestCase
      */
     public static function unsupportedElements(): iterable
     {
-        yield 'report' => ['<rule context="cbc:ID"><report id="R-1" flag="fatal" test="true()">x</report></rule>', 'report'];
+        yield 'diagnostics in a report' => ['<rule context="cbc:ID"><report id="R-1" flag="fatal" test="true()">x <diagnostic id="d">y</diagnostic></report></rule>', 'diagnostic'];
         yield 'xsl:variable in a rule' => ['<rule context="cbc:ID"><xsl:variable xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="x" select="1"/><assert id="R-1" flag="fatal" test="true()">x</assert></rule>', '{http://www.w3.org/1999/XSL/Transform}variable'];
         yield 'let in an assert' => ['<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x <let name="x" value="1"/></assert></rule>', 'let'];
         yield 'emph in a message' => ['<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x <emph>y</emph></assert></rule>', 'emph'];
@@ -515,6 +516,84 @@ final class CompilerTest extends TestCase
     {
         self::assertSame(realpath(__DIR__.'/../../packages/rules-en16931/rules/en16931-ubl-1.3.17.php'), realpath(RuleFiles::ubl()));
         self::assertSame(realpath(__DIR__.'/../../packages/rules-en16931/rules/en16931-cii-1.3.17.php'), realpath(RuleFiles::cii()));
+    }
+
+    public function test_missing_flag_is_rejected_by_default(): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessageMatches('/Assert "R-1" has no flag \\(tiny\.sch line \d+\)/');
+
+        Compiler::compile(self::writeSchematron('<rule context="cbc:ID"><assert id="R-1" test="true()">x</assert></rule>'), 'tiny', '0.1');
+    }
+
+    public function test_missing_flag_uses_default_flag(): void
+    {
+        $path = self::writeSchematron('<rule context="cbc:ID"><assert id="R-1" test="true()">x</assert><assert id="R-2" flag="warning" test="true()">y</assert>'
+            .'<report id="R-3" test="false()">z</report></rule>');
+
+        $compiled = Compiler::compile($path, 'tiny', '0.1', null, new CompileOptions(defaultFlag: 'fatal'));
+
+        self::assertSame(['R-1' => 'fatal', 'R-2' => 'warning', 'R-3' => 'fatal'], array_column(self::asserts($compiled), 'flag', 'id'));
+    }
+
+    public function test_default_flag_must_be_a_known_flag(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('"error"');
+
+        new CompileOptions(defaultFlag: 'error');
+    }
+
+    public function test_report_compiles_with_the_report_marker(): void
+    {
+        $compiled = Compiler::compile(self::writeSchematron('<rule context="cbc:ID"><assert id="A-1" flag="fatal" test="true()">a</assert>'
+            .'<report id="R-1" flag="warning" test=". = \'x\'">Value <value-of select="."/>.</report></rule>'), 'tiny', '0.1');
+
+        [$assert, $report] = self::asserts($compiled);
+        self::assertArrayNotHasKey('report', $assert);
+        self::assertSame('R-1', $report['id']);
+        self::assertSame('warning', $report['flag']);
+        self::assertSame(". = 'x'", $report['test']);
+        self::assertSame('Value .', $report['message']);
+        self::assertTrue($report['report'] ?? false);
+        self::assertSame(4, $compiled['format']);
+    }
+
+    public function test_missing_id_is_rejected_by_default(): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('Report without an id in the rule with context "cbc:ID"');
+
+        Compiler::compile(self::writeSchematron('<rule context="cbc:ID"><report flag="fatal" test="true()">x</report></rule>'), 'tiny', '0.1');
+    }
+
+    public function test_missing_id_is_synthesized_from_context_and_test(): void
+    {
+        $path = self::writeSchematronDocument('<ns prefix="ram" uri="urn:test:ram"/><pattern id="p">'
+            .'<rule context="//ram:X"><report test="@schemeID">x</report><assert test="@a != \'&lt;&amp;\'">y</assert><assert id="KEPT" flag="warning" test="true()">z</assert></rule>'
+            .'</pattern>');
+
+        $compiled = Compiler::compile($path, 'tiny', '0.1', null, new CompileOptions(defaultFlag: 'fatal', missingIdPrefix: 'FX-REPORT'));
+
+        $ids = array_column(self::asserts($compiled), 'id');
+        self::assertSame([
+            'FX-REPORT-'.substr(hash('sha256', '//ram:X'."\n".'@schemeID'), 0, 10),
+            'FX-REPORT-'.substr(hash('sha256', '//ram:X'."\n"."@a != '<&'"), 0, 10),
+            'KEPT',
+        ], $ids);
+    }
+
+    public function test_nul_in_include_href_is_unsupported_schematron(): void
+    {
+        $dir = self::includeScratch('nul', [
+            'main.sch' => self::includingSchema('<include href="common.sch%00.txt"/>'),
+            'common.sch' => '<pattern xmlns="http://purl.oclc.org/dsdl/schematron" id="v"><let name="x" value="1"/></pattern>',
+        ]);
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('NUL');
+
+        Compiler::compile("{$dir}/main.sch", 'tiny', '0.1');
     }
 
     public function test_include_is_replaced_by_the_included_element(): void

@@ -102,12 +102,41 @@ final class RuleSetTest extends TestCase
         self::assertSame([], $result->dynamicErrors);
     }
 
-    public function test_format_4_is_refused_with_recompile_message(): void
+    /**
+     * A rule set written in format 3 (message parts, no reports) keeps loading and running: format 4
+     * only adds the optional "report" marker of an assert.
+     */
+    public function test_format_3_rule_set_still_loads(): void
+    {
+        $rules = RuleSet::fromArray(['format' => 3, 'id' => 'previous', 'version' => '1', 'namespaces' => ['t' => 'urn:test:previous'], 'lets' => [], 'functions' => [], 'patterns' => [
+            ['id' => 'p', 'lets' => [], 'rules' => [['context' => 't:Item', 'match' => ['path', ['root'], ['path', ['step', 'descendant-or-self', ['node'], []], ['step', 'child', ['name', 'urn:test:previous', 'Item'], []]]], 'lets' => [], 'asserts' => [
+                ['id' => 'P-1', 'flag' => 'fatal', 'test' => 'false()', 'ast' => ['call', 'fn:false', []], 'message' => '[P-1] Bad .', 'messageParts' => ['[P-1] Bad ', ['name' => true], '.']],
+            ]]]],
+        ]]);
+        $result = (new Runner)->run($rules, SafeXml::load('<t:Root xmlns:t="urn:test:previous"><t:Item/></t:Root>'));
+
+        self::assertEquals([new Finding('P-1', Severity::Fatal, '/t:Root[1]/t:Item[1]', '[P-1] Bad t:Item.', 'false()')], $result->findings);
+        self::assertSame([], $result->dynamicErrors);
+    }
+
+    public function test_malformed_report_marker_is_refused(): void
     {
         $this->expectException(UnsupportedSchematron::class);
-        $this->expectExceptionMessage('The rule set "future" was compiled with format 4; this engine reads formats 2 and 3. Recompile it.');
+        $this->expectExceptionMessage('The assert "R-1" is malformed: "report" must be a boolean.');
 
-        RuleSet::fromArray(['format' => 4, 'id' => 'future', 'version' => '1', 'namespaces' => [], 'lets' => [], 'functions' => [], 'patterns' => []]);
+        RuleSet::fromArray(['format' => 4, 'id' => 'r', 'version' => '1', 'namespaces' => [], 'lets' => [], 'functions' => [], 'patterns' => [
+            ['id' => 'p', 'lets' => [], 'rules' => [['context' => 'a', 'match' => ['path'], 'lets' => [], 'asserts' => [
+                ['id' => 'R-1', 'flag' => 'fatal', 'test' => 'true()', 'ast' => ['call', 'fn:true', []], 'message' => 'x', 'report' => 'yes'],
+            ]]]],
+        ]]);
+    }
+
+    public function test_format_5_is_refused_with_recompile_message(): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('The rule set "future" was compiled with format 5; this engine reads formats 2, 3 and 4. Recompile it.');
+
+        RuleSet::fromArray(['format' => 5, 'id' => 'future', 'version' => '1', 'namespaces' => [], 'lets' => [], 'functions' => [], 'patterns' => []]);
     }
 
     /**

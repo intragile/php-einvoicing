@@ -23,7 +23,9 @@ use IntrAgile\EInvoicing\XPath\XPathError;
  * Runs a compiled rule set over a document with the semantics of the ISO Schematron XSLT skeleton:
  * each pattern visits the document node and every element and attribute (apply-templates on
  * "@*|*") in document order, a node is handled by the first rule of the pattern whose context
- * matches it, and every assert of that rule is evaluated with the node as context item.
+ * matches it, and every assert and report of that rule is evaluated with the node as context item.
+ * An assert yields a finding when its test is false, a report when its test is true; both are
+ * otherwise handled alike (messages, dynamic errors).
  *
  * Variables follow the skeleton too: schema and pattern lets are global variables, evaluated with
  * the document node as context; rule lets are evaluated with the handled node as context. Every
@@ -32,8 +34,8 @@ use IntrAgile\EInvoicing\XPath\XPathError;
  * at most once per document. Rule contexts see the global variables; asserts see those and the
  * lets of their rule. XSLT functions see the schema lets.
  *
- * The message of a failed assert with name or value-of elements is built at the failing node, as
- * the skeleton writes it into the report: name gives the qualified name of the node as written in
+ * The message of a failed assert or fired report with name or value-of elements is built at its
+ * node, as the skeleton writes it into the report: name gives the qualified name of the node as written in
  * the document (XPath name()), value-of the string values of the selected items joined by a single
  * space (the xsl:value-of default separator). A message expression that raises an error falls
  * back to the static message and is not reported: messages only feed the report, never the verdict.
@@ -105,7 +107,8 @@ final class Runner
                 $variables = $rule['lets'] === [] ? $globals : self::bind($rule['lets'], $globals, $node, $evaluator);
                 foreach ($rule['asserts'] as $assert) {
                     try {
-                        if ($evaluator->effectiveBoolean($assert['ast'], $node, $variables)) {
+                        // An assert fires when its test is false, a report when it is true.
+                        if ($evaluator->effectiveBoolean($assert['ast'], $node, $variables) !== $assert['report']) {
                             continue;
                         }
                         $findings[] = new Finding($assert['id'], $assert['severity'], LocationPath::of($node, $namespaces), self::message($assert, $node, $variables, $evaluator), $assert['test']);
@@ -168,7 +171,7 @@ final class Runner
     }
 
     /**
-     * The message of a failed assert at the node it failed on.
+     * The message of a failed assert or fired report at its node.
      *
      * @param  RuleAssert  $assert
      * @param  array<string, list<DOMNode|AtomicValue>|Thunk>  $variables

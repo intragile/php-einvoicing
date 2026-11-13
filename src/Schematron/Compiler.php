@@ -30,13 +30,17 @@ use SplObjectStorage;
  * the directory of the top-level schema). Cycles are refused. Errors in an included file name that
  * file, relative to the include root.
  *
- * Only schema, title, ns, let, phase, active, pattern, rule and assert are accepted, plus XSLT
- * functions at schema level and empty name (without path) and value-of elements in assert messages,
- * each with the attributes listed in ATTRIBUTES; anything else (report, other message elements,
- * foreign elements, processing instructions, abstract patterns or rules, attributes such as
- * pattern/@documents or assert/@diagnostics) raises UnsupportedSchematron instead of being ignored,
+ * Only schema, title, ns, let, phase, active, pattern, rule, assert and report are accepted, plus
+ * XSLT functions at schema level and empty name (without path) and value-of elements in assert and
+ * report messages, each with the attributes listed in ATTRIBUTES; anything else (other message
+ * elements, foreign elements, processing instructions, abstract patterns or rules, attributes such
+ * as pattern/@documents or assert/@diagnostics) raises UnsupportedSchematron instead of being ignored,
  * because ignoring it could change a verdict or a message. Phases are not compiled: like the
  * official XSLT without a selected phase, all patterns run.
+ *
+ * A report compiles like an assert with the extra key "report" => true: it fires when its test is
+ * true instead of false. Every assert and report needs an id and a flag unless CompileOptions
+ * supply them (a default flag, an id synthesized from the rule context and the test).
  *
  * The message of an assert is its text with whitespace collapsed. When the message contains name or
  * value-of elements, the assert also carries "messageParts": the text pieces, ['name' => true] for
@@ -63,7 +67,7 @@ use SplObjectStorage;
  * @phpstan-type Instruction list<mixed>
  * @phpstan-type CompiledFunction array{name: string, as: ?string, params: list<CompiledParam>, body: list<Instruction>}
  * @phpstan-type MessagePart string|array{name: true}|array{valueOf: array<mixed>}
- * @phpstan-type CompiledAssert array{id: string, flag: string, test: string, ast: array<mixed>, message: string, messageParts?: list<MessagePart>}
+ * @phpstan-type CompiledAssert array{id: string, flag: string, test: string, ast: array<mixed>, message: string, messageParts?: list<MessagePart>, report?: true}
  * @phpstan-type CompiledRule array{context: string, match: array<mixed>, lets: list<CompiledLet>, asserts: list<CompiledAssert>}
  * @phpstan-type CompiledPattern array{id: string, lets: list<CompiledLet>, rules: list<CompiledRule>}
  * @phpstan-type CompiledRuleSet array{format: int, id: string, version: string, source: string, sha256: string, namespaces: array<string, string>, lets: list<CompiledLet>, functions: array<string, CompiledFunction>, patterns: list<CompiledPattern>}
@@ -74,7 +78,8 @@ final class Compiler
 
     public const XSLT_NAMESPACE = 'http://www.w3.org/1999/XSL/Transform';
 
-    private const FLAGS = ['fatal', 'warning', 'information'];
+    /** The flags an assert or report may carry. */
+    public const FLAGS = ['fatal', 'warning', 'information'];
 
     /** The sequence types accepted in the "as" attribute of XSLT functions, parameters and variables. */
     private const SEQUENCE_TYPES = ['xs:boolean', 'xs:integer', 'xs:decimal', 'xs:string', 'xs:string?'];
@@ -107,6 +112,7 @@ final class Compiler
             'pattern' => ['id'],
             'rule' => ['context', 'flag'],
             'assert' => ['id', 'test', 'flag'],
+            'report' => ['id', 'test', 'flag'],
             'name' => [],
             'value-of' => ['select'],
         ],
@@ -148,6 +154,7 @@ final class Compiler
         private readonly ?string $baseDir = null,
         private readonly ?string $includeRoot = null,
         private readonly ?string $path = null,
+        private readonly CompileOptions $options = new CompileOptions,
     ) {
         $this->parser = new Parser;
         $this->includedFiles = new SplObjectStorage;
@@ -161,14 +168,14 @@ final class Compiler
      *
      * @throws UnsupportedSchematron
      */
-    public static function compile(string $schPath, string $id, string $version, ?string $includeRoot = null): array
+    public static function compile(string $schPath, string $id, string $version, ?string $includeRoot = null, ?CompileOptions $options = null): array
     {
         $xml = is_file($schPath) ? file_get_contents($schPath) : false;
         if ($xml === false) {
             throw new UnsupportedSchematron("Cannot read the Schematron schema \"{$schPath}\".");
         }
 
-        return self::build(new self(basename($schPath), dirname($schPath), $includeRoot ?? dirname($schPath), $schPath), $xml, $id, $version);
+        return self::build(new self(basename($schPath), dirname($schPath), $includeRoot ?? dirname($schPath), $schPath, $options ?? new CompileOptions), $xml, $id, $version);
     }
 
     /**
@@ -180,9 +187,9 @@ final class Compiler
      *
      * @throws UnsupportedSchematron
      */
-    public static function compileString(string $xml, string $source, string $id, string $version, ?string $baseDir = null): array
+    public static function compileString(string $xml, string $source, string $id, string $version, ?string $baseDir = null, ?CompileOptions $options = null): array
     {
-        return self::build(new self($source, $baseDir, $baseDir), $xml, $id, $version);
+        return self::build(new self($source, $baseDir, $baseDir, null, $options ?? new CompileOptions), $xml, $id, $version);
     }
 
     /**
@@ -723,6 +730,7 @@ final class Compiler
                     $scope[] = $child->getAttribute('name');
                     break;
                 case 'assert':
+                case 'report':
                     $asserts[] = $this->assert($child, $context, $scope);
                     break;
                 default:
@@ -734,33 +742,50 @@ final class Compiler
     }
 
     /**
+     * Compiles an assert or a report.
+     *
      * @param  list<string>  $scope  names of the variables in scope
      * @return CompiledAssert
      */
     private function assert(DOMElement $assert, string $context, array $scope): array
     {
+        $kind = $assert->localName === 'report' ? 'report' : 'assert';
+        $what = ucfirst($kind);
         $id = $assert->getAttribute('id');
-        if ($id === '') {
-            throw new UnsupportedSchematron("Assert without an id in the rule with context \"{$context}\" ({$this->line($assert)}).");
+        $synthesize = ! $assert->hasAttribute('id') && $this->options->missingIdPrefix !== null;
+        if ($id === '' && ! $synthesize) {
+            throw new UnsupportedSchematron("{$what} without an id in the rule with context \"{$context}\" ({$this->line($assert)}).");
         }
         $this->checkAttributes($assert);
-        $flag = $assert->getAttribute('flag');
-        if (! in_array($flag, self::FLAGS, true)) {
-            throw new UnsupportedSchematron("Assert \"{$id}\" has the unsupported flag \"{$flag}\" ({$this->line($assert)}).");
-        }
         if (! $assert->hasAttribute('test')) {
-            throw new UnsupportedSchematron("Assert \"{$id}\" has no test ({$this->line($assert)}).");
+            $label = $synthesize ? " without an id in the rule with context \"{$context}\"" : " \"{$id}\"";
+
+            throw new UnsupportedSchematron("{$what}{$label} has no test ({$this->line($assert)}).");
+        }
+        $test = $assert->getAttribute('test');
+        if ($synthesize) {
+            $id = CompileOptions::synthesizedId($this->options->missingIdPrefix, $context, $test);
         }
 
-        $test = $assert->getAttribute('test');
+        if ($assert->hasAttribute('flag')) {
+            $flag = $assert->getAttribute('flag');
+        } elseif ($this->options->defaultFlag !== null) {
+            $flag = $this->options->defaultFlag;
+        } else {
+            throw new UnsupportedSchematron("{$what} \"{$id}\" has no flag ({$this->line($assert)}).");
+        }
+        if (! in_array($flag, self::FLAGS, true)) {
+            throw new UnsupportedSchematron("{$what} \"{$id}\" has the unsupported flag \"{$flag}\" ({$this->line($assert)}).");
+        }
+
         try {
             $ast = $this->parser->parse($test, $this->context($scope));
         } catch (UnsupportedXPath|XPathSyntaxError $exception) {
-            throw new UnsupportedSchematron("Cannot compile the test \"{$test}\" of assert \"{$id}\" ({$this->line($assert)}): {$exception->getMessage()}", 0, $exception);
+            throw new UnsupportedSchematron("Cannot compile the test \"{$test}\" of {$kind} \"{$id}\" ({$this->line($assert)}): {$exception->getMessage()}", 0, $exception);
         }
-        $this->checkRegularExpressions($ast, "assert \"{$id}\"");
+        $this->checkRegularExpressions($ast, "{$kind} \"{$id}\"");
 
-        $parts = $this->messageParts($assert, $id, $scope);
+        $parts = $this->messageParts($assert, "{$kind} \"{$id}\"", $scope);
         $compiled = [
             'id' => $id,
             'flag' => $flag,
@@ -771,18 +796,22 @@ final class Compiler
         if (count(array_filter($parts, is_array(...))) > 0) {
             $compiled['messageParts'] = $parts;
         }
+        if ($kind === 'report') {
+            $compiled['report'] = true;
+        }
 
         return $compiled;
     }
 
     /**
-     * Splits the content of an assert into text pieces (adjacent text and CDATA joined, comments
-     * skipped) and its name and value-of elements, in document order.
+     * Splits the content of an assert or report into text pieces (adjacent text and CDATA joined,
+     * comments skipped) and its name and value-of elements, in document order.
      *
+     * @param  string  $owner  the assert or report, such as 'assert "BR-01"', for messages
      * @param  list<string>  $scope  names of the variables the assert test sees
      * @return list<MessagePart>
      */
-    private function messageParts(DOMElement $assert, string $id, array $scope): array
+    private function messageParts(DOMElement $assert, string $owner, array $scope): array
     {
         /** @var list<MessagePart> $parts */
         $parts = [];
@@ -808,7 +837,7 @@ final class Compiler
                     throw $this->unsupportedElement($child);
                 }
                 if ($child->nodeType !== XML_COMMENT_NODE) {
-                    throw new UnsupportedSchematron("The {$node->localName} element in the message of assert \"{$id}\" ({$this->line($node)}) must be empty.");
+                    throw new UnsupportedSchematron("The {$node->localName} element in the message of {$owner} ({$this->line($node)}) must be empty.");
                 }
             }
             if ($text !== '') {
@@ -818,9 +847,9 @@ final class Compiler
             if ($node->localName === 'name') {
                 $parts[] = ['name' => true];
             } elseif ($node->hasAttribute('select')) {
-                $parts[] = ['valueOf' => $this->expression($node->getAttribute('select'), $scope, "the message of assert \"{$id}\"", $node)];
+                $parts[] = ['valueOf' => $this->expression($node->getAttribute('select'), $scope, "the message of {$owner}", $node)];
             } else {
-                throw new UnsupportedSchematron("A value-of without a select in the message of assert \"{$id}\" ({$this->line($node)}).");
+                throw new UnsupportedSchematron("A value-of without a select in the message of {$owner} ({$this->line($node)}).");
             }
         }
         if ($text !== '') {
@@ -1014,6 +1043,9 @@ final class Compiler
         $href = $include->getAttribute('href');
         if ($href === '') {
             throw new UnsupportedSchematron("The include ({$this->line($include)}) has no href.");
+        }
+        if (str_contains(rawurldecode($href), "\0")) {
+            throw new UnsupportedSchematron("The include \"{$href}\" ({$this->line($include)}) contains a NUL character.");
         }
         if (str_contains($href, '#')) {
             throw new UnsupportedSchematron("The include \"{$href}\" ({$this->line($include)}) has a fragment identifier; only whole files can be included.");

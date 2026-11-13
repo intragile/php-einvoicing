@@ -437,7 +437,7 @@ final class RunnerTest extends TestCase
 
         yield 'no format key' => [$current, 'format 1'];
         yield 'format 1' => [['format' => 1, ...$current], 'format 1'];
-        yield 'format 4' => [['format' => 4, ...$current], 'format 4'];
+        yield 'format 5' => [['format' => 5, ...$current], 'format 5'];
         yield 'format as string' => [['format' => '2', ...$current], 'format "2"'];
     }
 
@@ -448,9 +448,46 @@ final class RunnerTest extends TestCase
     public function test_old_format_asks_to_recompile(array $compiled, string $format): void
     {
         $this->expectException(UnsupportedSchematron::class);
-        $this->expectExceptionMessage("The rule set \"old\" was compiled with {$format}; this engine reads formats 2 and 3. Recompile it.");
+        $this->expectExceptionMessage("The rule set \"old\" was compiled with {$format}; this engine reads formats 2, 3 and 4. Recompile it.");
 
         RuleSet::fromArray($compiled);
+    }
+
+    public function test_report_compiles_and_fires_when_test_is_true(): void
+    {
+        $result = self::runSchematron('<pattern id="p"><rule context="t:Item">'
+            .'<report id="R-1" flag="warning" test="@kind = \'x\'">Kind <value-of select="@kind"/> on <name/>.</report></rule></pattern>');
+
+        self::assertSame([], $result->dynamicErrors);
+        self::assertEquals(
+            [new Finding('R-1', Severity::Warning, '/t:Root[1]/t:Item[1]', 'Kind x on t:Item.', "@kind = 'x'")],
+            $result->findings,
+        );
+    }
+
+    public function test_report_does_not_fire_when_test_is_false(): void
+    {
+        $result = self::runSchematron('<pattern id="p"><rule context="t:Item">'
+            .'<report id="R-1" flag="fatal" test="false()">never</report><report id="R-2" flag="fatal" test="t:Missing">never</report></rule></pattern>');
+
+        self::assertSame([], $result->findings);
+        self::assertSame([], $result->dynamicErrors);
+    }
+
+    public function test_dynamic_error_in_a_report_is_recorded_like_an_assert(): void
+    {
+        $result = self::runSchematron('<pattern id="p"><rule context="t:Amount">'
+            .'<report id="DEC" flag="fatal" test="xs:decimal(.) &gt; 0">positive</report><report id="NEXT" flag="warning" test="true()">next</report></rule></pattern>');
+
+        self::assertCount(1, $result->dynamicErrors);
+        self::assertSame('DEC', $result->dynamicErrors[0]->ruleId);
+        self::assertSame('FORG0001', $result->dynamicErrors[0]->errorCode);
+        self::assertSame('/t:Root[1]/t:Item[2]/t:Amount[1]', $result->dynamicErrors[0]->location);
+        self::assertSame([
+            'DEC /t:Root[1]/t:Item[1]/t:Amount[1]',
+            'NEXT /t:Root[1]/t:Item[1]/t:Amount[1]',
+            'NEXT /t:Root[1]/t:Item[2]/t:Amount[1]',
+        ], self::summary($result));
     }
 
     public function test_name_in_message_is_the_context_node_name(): void

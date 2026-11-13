@@ -7,7 +7,7 @@
 declare(strict_types=1);
 
 return array (
-  'format' => 3,
+  'format' => 4,
   'id' => 'xrechnung-ubl',
   'version' => '2.6.0',
   'source' => 'XRechnung-UBL-validation.sch',

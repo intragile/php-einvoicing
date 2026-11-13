@@ -7,7 +7,7 @@
 declare(strict_types=1);
 
 return array (
-  'format' => 3,
+  'format' => 4,
   'id' => 'en16931-ubl',
   'version' => '1.3.17',
   'source' => 'EN16931-UBL-validation-preprocessed.sch',
