@@ -39,6 +39,7 @@
         "ext-dom": "*",
         "ext-libxml": "*",
         "ext-mbstring": "*",
+        "ext-zlib": "*",
         "brick/math": "^0.14.8",
         "intragile/einvoicing-rules-en16931": "@dev",
         "psr/http-client": "^1.0",

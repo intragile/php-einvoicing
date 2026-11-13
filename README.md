@@ -42,7 +42,7 @@ over Peppol, the ZUGFeRD/Factur-X profile, and a Laravel package.
 
 ## Install
 
-Requires PHP 8.3 or later, `ext-dom`, `ext-libxml` and `ext-mbstring`.
+Requires PHP 8.3 or later, `ext-dom`, `ext-libxml`, `ext-mbstring` and `ext-zlib`.
 
 The package is not published yet. Once it is, installation will be:
 

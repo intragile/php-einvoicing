@@ -43,7 +43,7 @@ valamint Laravel csomag.
 
 ## Telepítés
 
-PHP 8.3 vagy újabb, valamint `ext-dom`, `ext-libxml` és `ext-mbstring` szükséges.
+PHP 8.3 vagy újabb, valamint `ext-dom`, `ext-libxml`, `ext-mbstring` és `ext-zlib` szükséges.
 
 A csomag még nincs publikálva. Publikálás után a telepítés:
 
