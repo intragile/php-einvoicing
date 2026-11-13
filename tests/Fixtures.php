@@ -8,6 +8,7 @@ use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use IntrAgile\EInvoicing\Tests\Support\UnitTestDocument;
+use IntrAgile\EInvoicing\Validation\FacturX\FacturXSources;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use InvalidArgumentException;
 use PHPUnit\Framework\Assert;
@@ -16,8 +17,9 @@ use RuntimeException;
 /**
  * Locates the official test fixtures: the CEN EN 16931 artefacts (validation-1.3.17, plus the
  * 1.3.16 rules the KoSIT configuration builds on), the XRechnung artefacts and corpus, the Peppol
- * BIS Billing rules and test corpus (downloaded only, never committed) and the ISO Schematron
- * skeleton.
+ * BIS Billing rules and test corpus (downloaded only, never committed), the Factur-X 1.09.2
+ * rule sources with the FeRD and Mustang example files (downloaded only, never committed) and the
+ * ISO Schematron skeleton.
  */
 final class Fixtures
 {
@@ -43,6 +45,19 @@ final class Fixtures
     private const ISO_SKELETON = __DIR__.'/fixtures/iso-schematron/iso_svrl_for_xslt2.xsl';
 
     private const CII_SCHEMA = __DIR__.'/fixtures/official/cii-d16b/CrossIndustryInvoice_100pD16B.xsd';
+
+    private const FACTURX_DIR = __DIR__.'/fixtures/official/facturx-'.FacturXSources::VERSION;
+
+    /** Factur-X profiles that have a Schematron rule set, by the names of the ZF_250 files. */
+    private const FACTURX_PROFILES = ['MINIMUM', 'BASIC-WL', 'BASIC', 'EN16931', 'EXTENDED'];
+
+    /** Git-ignored folder filled by bin/fetch-official.php --facturx-examples, laid out by repository path. */
+    private const FACTURX_EXAMPLES_DIR = __DIR__.'/fixtures/facturx-examples';
+
+    private const FACTURX_EXAMPLES_MANIFEST = __DIR__.'/fixtures/facturx-examples.sha256';
+
+    /** Repository folder of the FeRD example files. */
+    private const FERD_EXAMPLES = 'library/src/test/resources/ZF252_Beispiele/';
 
     private const STYLESHEETS = [
         'ubl' => 'EN16931-UBL-validation.xslt',
@@ -296,6 +311,99 @@ final class Fixtures
         ksort($examples, SORT_STRING);
 
         return $examples;
+    }
+
+    /**
+     * Absolute path of the Factur-X 1.09.2 Schematron of a profile ("MINIMUM", "BASIC-WL", "BASIC",
+     * "EN16931" or "EXTENDED"); its code database FACTUR-X_<profile>_codedb.xml is in the same folder.
+     */
+    public static function facturxSchematron(string $profile): string
+    {
+        return self::FACTURX_DIR.'/schematron/FACTUR-X_'.self::facturxProfile($profile).'.sch';
+    }
+
+    /**
+     * Absolute path of the official XSLT compiled from the Factur-X 1.09.2 Schematron of a profile;
+     * its code database is in the same folder.
+     */
+    public static function facturxXslt(string $profile): string
+    {
+        return self::FACTURX_DIR.'/xslt/FACTUR-X_'.self::facturxProfile($profile).'.xslt';
+    }
+
+    /**
+     * Absolute path of the Factur-X 1.09.2 schema folder, with one subfolder per profile (named
+     * like the profile keys; the BASIC WL files themselves are named FACTUR-X_BASICWL*).
+     */
+    public static function facturxSchemaDir(): string
+    {
+        return self::FACTURX_DIR.'/schema';
+    }
+
+    /**
+     * The FeRD example invoices (CII XML): name => absolute path, sorted by name. Skips the test
+     * when the example files have not been downloaded.
+     *
+     * @return array<string, string>
+     */
+    public static function facturxExampleXml(): array
+    {
+        return self::facturxExamples(static fn (string $path): bool => str_starts_with($path, self::FERD_EXAMPLES) && str_ends_with($path, '.xml'));
+    }
+
+    /**
+     * The FeRD example PDFs and the other Mustang test PDFs: name => absolute path, sorted by
+     * name. Skips the test when the example files have not been downloaded.
+     *
+     * @return array<string, string>
+     */
+    public static function facturxExamplePdfs(): array
+    {
+        return self::facturxExamples(static fn (string $path): bool => str_ends_with(strtolower($path), '.pdf'));
+    }
+
+    /**
+     * Absolute path of the downloaded example folder, in which every file sits at its repository
+     * path. Skips the test when the folder is missing.
+     */
+    public static function facturxExamplesDir(): string
+    {
+        if (! is_dir(self::FACTURX_EXAMPLES_DIR)) {
+            Assert::markTestSkipped('Run composer fetch-official -- --facturx-examples');
+        }
+
+        return self::FACTURX_EXAMPLES_DIR;
+    }
+
+    /**
+     * Manifest entries selected by $filter, keyed by a short name: the repository path without
+     * its "src/test/resources/" part, such as "library/ZF252_Beispiele/…" or "validator/….pdf".
+     *
+     * @param  callable(string): bool  $filter
+     * @return array<string, string>
+     */
+    private static function facturxExamples(callable $filter): array
+    {
+        $directory = self::facturxExamplesDir();
+
+        $examples = [];
+        foreach (array_keys(FacturXSources::examples(self::FACTURX_EXAMPLES_MANIFEST)) as $path) {
+            if ($filter($path)) {
+                $examples[str_replace('/src/test/resources/', '/', $path)] = $directory.'/'.$path;
+            }
+        }
+        ksort($examples, SORT_STRING);
+
+        return $examples;
+    }
+
+    private static function facturxProfile(string $profile): string
+    {
+        if (! in_array($profile, self::FACTURX_PROFILES, true)) {
+            throw new InvalidArgumentException("Unknown Factur-X profile \"{$profile}\"; expected one of ".implode(', ', self::FACTURX_PROFILES).'.');
+        }
+
+        return $profile;
     }
 
     /**

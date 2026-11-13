@@ -42,14 +42,29 @@ declare(strict_types=1);
  * flagged there. It also unpacks the examples and preprocessed Schematron of the CEN
  * validation-1.3.16 release, the rule version the KoSIT configuration is built on, into
  * tests/fixtures/official/cen-1.3.16/{ubl,cii}/. The KoSIT validator jar is never downloaded.
+ *
+ * Factur-X is fetched only on request, and then nothing else is:
+ *  --facturx           rebuilds tests/fixtures/official/facturx-<version>/ from the Mustang commit
+ *                      pinned in FacturXSources: the ZF_250 schema, Schematron and XSLT folders
+ *                      (Apache-2.0) and the repository's LICENSE and NOTICE, each file verified
+ *                      against tests/fixtures/official/facturx.sha256.
+ *  --facturx-examples  downloads the FeRD ZF252_Beispiele files and the other Mustang test PDFs
+ *                      into the git-ignored tests/fixtures/facturx-examples/ (by repository path),
+ *                      each verified against tests/fixtures/facturx-examples.sha256. These files
+ *                      carry no licence statement and are never committed.
+ * With --write-manifest, the file list is taken from the GitHub tree of the pinned commit and the
+ * manifest is rewritten; for --facturx the folders must still match the aggregate SHA-256 values
+ * and the licence sums pinned in FacturXSources.
  */
 
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
+use IntrAgile\EInvoicing\Validation\FacturX\FacturXSources;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungSources;
 
+require_once dirname(__DIR__).'/src/Validation/FacturX/FacturXSources.php';
 require_once dirname(__DIR__).'/src/Validation/Peppol/PeppolSources.php';
 require_once dirname(__DIR__).'/src/Validation/XRechnung/XRechnungSources.php';
 require_once dirname(__DIR__).'/src/Exception/UnsafeXml.php';
@@ -144,6 +159,18 @@ const XRECHNUNG_SOURCE_CACHE = [
 const XRECHNUNG_MANIFEST = 'xrechnung.sha256';
 
 /** Folders of the xrechnung/ tree whose XML files form the instance corpus, checked for well-formedness. */
+/** Seconds a single Factur-X file download may stall before it fails. */
+const FACTURX_FILE_TIMEOUT = 60;
+
+/** Repository folder of the FeRD example files. */
+const FERD_EXAMPLES = 'library/src/test/resources/ZF252_Beispiele/';
+
+/** Repository folders whose PDF files belong to the example corpus as well. */
+const MUSTANG_TEST_RESOURCES = ['library/src/test/resources/', 'validator/src/test/resources/'];
+
+/** GitHub API listing of every file at the pinned Mustang commit, used to (re)write the manifests. */
+const MUSTANG_TREE_URL = 'https://api.github.com/repos/ZUGFeRD/mustangproject/git/trees/'.FacturXSources::MUSTANG_COMMIT.'?recursive=1';
+
 const XRECHNUNG_INSTANCE_DIRS = ['testsuite-'.XRechnungSources::CONFIGURATION_VERSION, 'unit-'.XRechnungSources::SCHEMATRON_VERSION, 'configuration-tests-'.XRechnungSources::CONFIGURATION_VERSION];
 
 $root = dirname(__DIR__);
@@ -154,9 +181,24 @@ $ciiSchemaDir = $root.'/tests/fixtures/official/cii-d16b';
 $cenDir = $root.'/tests/fixtures/official/cen-'.XRechnungSources::CEN_VERSION;
 $xrechnungDir = $root.'/tests/fixtures/official/xrechnung';
 $peppolDir = $root.'/tests/fixtures/peppol-'.PeppolSources::VERSION;
-$writeManifest = array_key_exists('write-manifest', getopt('', ['write-manifest']) ?: []);
+$facturxDir = $root.'/tests/fixtures/official/facturx-'.FacturXSources::VERSION;
+$facturxExamplesDir = $root.'/tests/fixtures/facturx-examples';
+$options = getopt('', ['write-manifest', 'facturx', 'facturx-examples']) ?: [];
+$writeManifest = array_key_exists('write-manifest', $options);
 
 try {
+    if (array_key_exists('facturx', $options) || array_key_exists('facturx-examples', $options)) {
+        if (array_key_exists('facturx', $options)) {
+            $count = fetchFacturx($facturxDir, dirname($facturxDir).'/facturx.sha256', $writeManifest);
+            fwrite(STDOUT, 'facturx-'.FacturXSources::VERSION.": {$count} files".($writeManifest ? ', manifest written' : ', manifest verified')."\n");
+        }
+        if (array_key_exists('facturx-examples', $options)) {
+            $count = fetchFacturxExamples($facturxExamplesDir, $facturxExamplesDir.'.sha256', $writeManifest);
+            fwrite(STDOUT, "facturx-examples: {$count} files".($writeManifest ? ', manifest written' : ', manifest verified')."\n");
+        }
+        exit(0);
+    }
+
     if (! class_exists(ZipArchive::class)) {
         throw new RuntimeException('The zip extension is required to unpack the official artefacts.');
     }
@@ -447,12 +489,12 @@ function download(string $url, string $path): void
     }
 }
 
-function httpGet(string $url): string
+function httpGet(string $url, int $timeout = 300): string
 {
     $context = stream_context_create([
         'http' => [
             'user_agent' => USER_AGENT,
-            'timeout' => 300,
+            'timeout' => $timeout,
             'follow_location' => 1,
             'max_redirects' => 5,
         ],
@@ -530,6 +572,199 @@ function unpackPeppol(string $cacheDir, string $target, string $manifestPath, bo
     replaceTree($staging, $target);
 
     return count($actual);
+}
+
+/**
+ * Rebuilds $target from the pinned Mustang commit: every file of the manifest at $manifestPath is
+ * taken from the current tree when it still matches, otherwise downloaded and verified. With
+ * $writeManifest the file list comes from the commit's tree instead, the folders are checked
+ * against the aggregates pinned in FacturXSources, and the manifest is rewritten. Returns the
+ * file count.
+ */
+function fetchFacturx(string $target, string $manifestPath, bool $writeManifest): int
+{
+    if ($writeManifest) {
+        $sources = [];
+        foreach (mustangTree() as $path) {
+            if (isset(FacturXSources::LICENCE_FILES[$path])) {
+                $sources[$path] = $path;
+            }
+            foreach (FacturXSources::FOLDERS as $folder => $repositoryFolder) {
+                if (str_starts_with($path, $repositoryFolder.'/')) {
+                    $sources[$folder.substr($path, strlen($repositoryFolder))] = $path;
+                }
+            }
+        }
+        $expected = null;
+    } else {
+        $expected = readManifest($manifestPath);
+        $sources = [];
+        foreach (array_keys($expected) as $name) {
+            $sources[$name] = facturxRepositoryPath($name);
+        }
+    }
+
+    $staging = $target.'.tmp';
+    $actual = downloadMustangFiles($sources, $expected, $target, $staging);
+
+    if ($expected === null) {
+        $problems = [];
+        foreach (FacturXSources::AGGREGATES as $folder => $aggregate) {
+            if (folderAggregate($actual, $folder) !== $aggregate) {
+                $problems[] = "{$folder}/ does not match its pinned aggregate";
+            }
+        }
+        foreach (FacturXSources::LICENCE_FILES as $file => $sha256) {
+            if (($actual[$file] ?? null) !== $sha256) {
+                $problems[] = "{$file} does not match its pinned checksum";
+            }
+        }
+        if ($problems !== []) {
+            removeTree($staging);
+            throw new RuntimeException('Mustang '.FacturXSources::MUSTANG_COMMIT.":\n  ".implode("\n  ", $problems));
+        }
+        writeManifest($actual, $manifestPath);
+    }
+
+    replaceTree($staging, $target);
+
+    return count($actual);
+}
+
+/**
+ * Fills $target with the example files of the manifest at $manifestPath, each at its repository
+ * path, reusing files that still match and downloading and verifying the others. With
+ * $writeManifest the file list comes from the commit's tree (FeRD ZF252_Beispiele and every PDF of
+ * the Mustang test resources) and the manifest is rewritten. Returns the file count.
+ */
+function fetchFacturxExamples(string $target, string $manifestPath, bool $writeManifest): int
+{
+    if ($writeManifest) {
+        $paths = array_values(array_filter(mustangTree(), static fn (string $path): bool => str_starts_with($path, FERD_EXAMPLES)
+            || (isSelected($path, MUSTANG_TEST_RESOURCES) && str_ends_with(strtolower($path), '.pdf'))));
+        $sources = array_combine($paths, $paths);
+        $expected = null;
+    } else {
+        $expected = FacturXSources::examples($manifestPath);
+        $sources = array_combine(array_keys($expected), array_keys($expected));
+    }
+
+    $staging = $target.'.tmp';
+    $actual = downloadMustangFiles($sources, $expected, $target, $staging);
+
+    if ($expected === null) {
+        writeManifest($actual, $manifestPath);
+    }
+
+    replaceTree($staging, $target);
+
+    return count($actual);
+}
+
+/**
+ * Writes each source (local name => repository path) below $staging. A file is copied from
+ * $current when it already matches its expected sum, otherwise it is downloaded from the pinned
+ * commit; a download that does not match its expected sum aborts the run before it is written.
+ * Returns the SHA-256 sum of every file, keyed by local name and sorted.
+ *
+ * @param  array<string, string>  $sources
+ * @param  array<string, string>|null  $expected  null to accept and record any content
+ * @return array<string, string>
+ */
+function downloadMustangFiles(array $sources, ?array $expected, string $current, string $staging): array
+{
+    removeTree($staging);
+    ensureDirectory($staging);
+
+    $sums = [];
+    foreach ($sources as $name => $path) {
+        if (str_starts_with($name, '/') || str_contains($name, '\\') || in_array('..', explode('/', $name), true)) {
+            removeTree($staging);
+            throw new RuntimeException("Unsafe file name: {$name}");
+        }
+
+        $destination = $staging.'/'.$name;
+        ensureDirectory(dirname($destination));
+
+        if ($expected !== null && is_file($current.'/'.$name) && hash_file('sha256', $current.'/'.$name) === $expected[$name]) {
+            copyFile($current.'/'.$name, $destination);
+            $sums[$name] = $expected[$name];
+
+            continue;
+        }
+
+        $body = httpGet(FacturXSources::url($path), FACTURX_FILE_TIMEOUT);
+        $sum = hash('sha256', $body);
+        if ($expected !== null && $sum !== $expected[$name]) {
+            removeTree($staging);
+            throw new RuntimeException("Checksum mismatch for {$name} ({$path}): expected {$expected[$name]}, got {$sum}");
+        }
+        if (file_put_contents($destination, $body) === false) {
+            throw new RuntimeException("Cannot write {$destination}");
+        }
+        $sums[$name] = $sum;
+    }
+    ksort($sums, SORT_STRING);
+
+    return $sums;
+}
+
+/**
+ * Repository path of a file of the local ZF_250 copy: the licence files sit at the repository
+ * root, everything else in the folder that FacturXSources::FOLDERS maps its first segment to.
+ */
+function facturxRepositoryPath(string $name): string
+{
+    if (isset(FacturXSources::LICENCE_FILES[$name])) {
+        return $name;
+    }
+
+    [$folder, $rest] = array_pad(explode('/', $name, 2), 2, '');
+    if (! isset(FacturXSources::FOLDERS[$folder]) || $rest === '') {
+        throw new RuntimeException("Unexpected entry in the Factur-X manifest: {$name}");
+    }
+
+    return FacturXSources::FOLDERS[$folder].'/'.$rest;
+}
+
+/**
+ * The aggregate SHA-256 of the files below $folder/ (see FacturXSources::AGGREGATES).
+ *
+ * @param  array<string, string>  $sums  local name => SHA-256 sum
+ */
+function folderAggregate(array $sums, string $folder): string
+{
+    $lines = [];
+    foreach ($sums as $name => $sum) {
+        if (str_starts_with($name, $folder.'/')) {
+            $lines[substr($name, strlen($folder) + 1)] = "{$sum}  ./".substr($name, strlen($folder) + 1)."\n";
+        }
+    }
+    ksort($lines, SORT_STRING);
+
+    return hash('sha256', implode('', $lines));
+}
+
+/**
+ * Paths of every file at the pinned Mustang commit.
+ *
+ * @return list<string>
+ */
+function mustangTree(): array
+{
+    $tree = json_decode(httpGet(MUSTANG_TREE_URL, FACTURX_FILE_TIMEOUT), true);
+    if (! is_array($tree) || ! is_array($tree['tree'] ?? null) || ($tree['truncated'] ?? true) !== false) {
+        throw new RuntimeException('Cannot list the Mustang tree (missing or truncated): '.MUSTANG_TREE_URL);
+    }
+
+    $paths = [];
+    foreach ($tree['tree'] as $entry) {
+        if (is_array($entry) && ($entry['type'] ?? null) === 'blob' && is_string($entry['path'] ?? null)) {
+            $paths[] = $entry['path'];
+        }
+    }
+
+    return $paths;
 }
 
 /**

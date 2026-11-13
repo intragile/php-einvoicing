@@ -8,3 +8,5 @@
 /build/
 # OpenPeppol publishes no licence for its rules and test files: downloaded, never committed.
 /tests/fixtures/peppol-*/
+# The FeRD and Mustang example files carry no licence statement: downloaded, never committed.
+/tests/fixtures/facturx-examples/

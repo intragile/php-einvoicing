@@ -259,11 +259,113 @@ Other helpers: `Fixtures::xrechnungSchematron($syntax)` (the KoSIT `.sch` for `u
 `Fixtures::xrechnungConfiguration()` (the folder with `scenarios.xml`). The test suite folder is
 about 20 MB in total.
 
+## Factur-X 1.09.2 and ZUGFeRD (ZF_250)
+
+The files under `facturx-1.09.2/` are unmodified copies of the Factur-X 1.09.2 (ZF_250)
+technical artefacts as shipped by the Mustang project. They are third-party material and are
+**not** covered by this package's MIT licence.
+
+| | |
+|---|---|
+| Project | [ZUGFeRD/mustangproject](https://github.com/ZUGFeRD/mustangproject) |
+| Commit | [`c766bdd2f1b978c329157affc020eba4bcf51688`](https://github.com/ZUGFeRD/mustangproject/tree/c766bdd2f1b978c329157affc020eba4bcf51688) |
+| Release metadata in the files | Factur-X 1.09.2, released 2026-08-04, effective 2026-09-01 |
+| Download | `https://raw.githubusercontent.com/ZUGFeRD/mustangproject/<commit>/<path>`, file by file |
+| Pins | [`src/Validation/FacturX/FacturXSources.php`](../../../src/Validation/FacturX/FacturXSources.php) |
+
+| Local folder | Repository folder | Files | Aggregate SHA-256 (byte order) |
+|---|---|---|---|
+| `schema/` | `validator/src/main/resources/schema/ZF_250` | 20 | `a66ac39854336a759c27a9289319146c4889c1e4acfb5d3e33ea1cc0bcfeba55` |
+| `schematron/` | `validator/src/main/resources/schematron/ZF_250` | 10 | `84b15df7dbddde67134d073dcc0bfc69ed96b11c97997da5f542f44039899184` |
+| `xslt/` | `validator/src/main/resources/xslt/ZF_250` | 10 | `2f81544c9b84b19b0fb53f17c0e514ebe22db78fd99a542055c7bfbd33c3459f` |
+| `LICENSE` | `LICENSE` (Apache-2.0) | 1 | `ba98dd76bda1e82034791438bb931145f85e5db3975852a015344ad5990fa21b` |
+| `NOTICE` | `NOTICE` | 1 | `9225d07c21aa4a404ac53372f04c9945b8e1e0d47f466036d27a09527373c6cf` |
+
+The aggregate is `find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256`,
+run inside the repository folder. The byte order (`LC_ALL=C`) makes it reproducible on every
+platform. Sorted in the macOS `en_US.UTF-8` collation instead, the same files give
+`f52669e4084996a3ff81dc8e0a40fd5a42150936a1db00c2ecc6513df4962400` (schema),
+`9eb9018e32e7725117fe2376aef0b31856b91b96781b550b7d08156312f72875` (schematron) and
+`3b65b3056b7b033f08aeb42ba9d255077e21d4f554c5e849d8d532c576eb93d4` (xslt); both sets were
+checked against a clone at the commit on 2026-11-13.
+
+Content: one schema folder per profile (`MINIMUM`, `BASIC-WL`, `BASIC`, `EN16931`, `EXTENDED`),
+each with `FACTUR-X_<profile>.xsd` and its three imported modules (the BASIC WL files are named
+`FACTUR-X_BASICWL*`). There is one Schematron per profile, `FACTUR-X_<profile>.sch`, with its code
+database `FACTUR-X_<profile>_codedb.xml`. The official XSLT compiled from each Schematron sits in
+`xslt/`, again next to a copy of the code database. There is no rule set for the XRECHNUNG profile.
+Every file is listed with its SHA-256 in [`facturx.sha256`](facturx.sha256), which the fetch script
+verifies and `FixturesTest` re-checks along with the aggregates. Helpers:
+`Fixtures::facturxSchematron($profile)`, `Fixtures::facturxXslt($profile)` and
+`Fixtures::facturxSchemaDir()`.
+
+### Licence
+
+FeRD (Forum elektronische Rechnung Deutschland, the publisher of ZUGFeRD) states on its
+"Disclaimer and rights of use ZUGFeRD" page
+(<https://www.ferd-net.de/en/ueber-uns/ressourcen-1/veroeffentlichungen/disclaimer-and-rights-of-use-zugferd>,
+retrieved 2026-11-13):
+
+> For the use of the ZUGFeRD Technical Artifacts (Schemata and Schematron) the Apache 2.0 license
+> conditions apply. These can be viewed at https://www.apache.org/licenses/LICENSE-2.0.
+
+The German page "Haftungsausschluss und Nutzungsrechte"
+(<https://www.ferd-net.de/ueber-uns/ressourcen-1/veroeffentlichungen/haftungsausschluss-und-nutzungsrechte>,
+retrieved 2026-11-13) says the same:
+
+> Für die Nutzung der Technischen Artefakte (Schemata und Schematron) des ZUGFeRD-Standards gelten
+> die Apache 2.0 Lizenzbedingungen. Diese können unter dem Link
+> https://www.apache.org/licenses/LICENSE-2.0 eingesehen werden.
+
+The statement names no version, so it covers the current release. The XSD files are the
+"Schemata". The `.sch` files and their code databases are the "Schematron". The `.xslt` files are
+that Schematron compiled to XSLT (ISO Schematron SVRL output). Mustang redistributes all three
+under its own Apache-2.0 `LICENSE`; its `NOTICE` (copyright Jochen Staerk, 2014) lists the projects
+Mustang builds on. The ZF_250 files carry no licence header of their own.
+
+Redistribution therefore follows Apache-2.0 section 4, and this folder meets its conditions:
+
+- **Licence travels with the files:** Mustang's `LICENSE` and `NOTICE` sit next to them, unmodified.
+- **Unmodified:** every file is a byte-for-byte copy, verified against `facturx.sha256`.
+
+### Example files (downloaded, not committed)
+
+The FeRD example invoices (`library/src/test/resources/ZF252_Beispiele/` at the same commit: 70 PDF,
+61 XML and 2 PNG, 133 files) and the other 32 Mustang test PDFs (every `*.pdf` below
+`library/src/test/resources/` and `validator/src/test/resources/` outside `ZF252_Beispiele`; 15 and
+17 files) carry no licence statement of their own. Their licence is unknown, so like the Peppol
+files they are **not committed and not redistributed**. They are downloaded at test time into the
+git-ignored `tests/fixtures/facturx-examples/` (`.gitignore`: `/tests/fixtures/facturx-examples/`),
+each file at its repository path. Every file is verified against
+[`../facturx-examples.sha256`](../facturx-examples.sha256), a manifest of our own that holds only
+the repository paths and SHA-256 sums (165 lines).
+
+| Fixture helper | Content |
+|---|---|
+| `Fixtures::facturxExampleXml()` | the 61 FeRD example XML files |
+| `Fixtures::facturxExamplePdfs()` | the 70 FeRD PDFs (including the PDFs in `attachments/` folders) and the 32 other Mustang PDFs |
+| `Fixtures::facturxExamplesDir()` | the download folder |
+
+Names are the repository path without `src/test/resources/`, for example
+`library/ZF252_Beispiele/3. EN16931/E05_Einfach/E05_01_Einfach.xml` or
+`validator/invalidPDF.pdf`. The helpers skip their tests when the folder is missing.
+
+```bash
+composer fetch-official -- --facturx-examples
+```
+
 ## Refreshing
 
 ```bash
 php bin/fetch-official.php
 ```
+
+Factur-X is fetched only on request: `--facturx` rebuilds `facturx-1.09.2/` from the pinned commit
+and `--facturx-examples` downloads the example files. Either flag skips the default
+downloads; adding `--write-manifest` rewrites `facturx.sha256` or `facturx-examples.sha256` from the
+GitHub tree of the commit. For `--facturx`, the rewritten tree must still match the aggregates and
+licence sums pinned in `FacturXSources`. Files that already match are reused, and every downloaded
+file has a 60-second stall timeout.
 
 The script downloads the two release archives, the repository archive, the licence text, the
 UBL 2.1 package, the CII D16B schemas, the CEN 1.3.16 release archives, the KoSIT archives and the

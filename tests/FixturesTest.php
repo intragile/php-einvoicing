@@ -9,6 +9,7 @@ use FilesystemIterator;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
+use IntrAgile\EInvoicing\Validation\FacturX\FacturXSources;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
@@ -218,5 +219,108 @@ final class FixturesTest extends TestCase
         self::assertFileIsReadable(dirname($file).'/iso_schematron_skeleton_for_saxon.xsl');
         self::assertFileIsReadable(dirname($file).'/LICENSE');
         self::assertSame('http://www.w3.org/1999/XSL/Transform', SafeXml::load((string) file_get_contents($file))->documentElement?->namespaceURI);
+    }
+
+    public function test_facturx_fixtures_match_pinned_hashes(): void
+    {
+        $directory = __DIR__.'/fixtures/official/facturx-'.FacturXSources::VERSION;
+        $lines = file(__DIR__.'/fixtures/official/facturx.sha256', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        self::assertNotFalse($lines);
+
+        $listed = [];
+        foreach ($lines as $line) {
+            if (preg_match('/^([0-9a-f]{64})  (.+)$/', $line, $match) !== 1) {
+                self::fail("Malformed manifest line: {$line}");
+            }
+            $listed[$match[2]] = $match[1];
+            self::assertSame($match[1], hash_file('sha256', $directory.'/'.$match[2]), "{$match[2]} does not match its manifest entry.");
+        }
+
+        $found = [];
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS));
+        /** @var SplFileInfo $file */
+        foreach ($files as $file) {
+            $found[] = substr($file->getPathname(), strlen($directory) + 1);
+        }
+        self::assertEqualsCanonicalizing($found, array_keys($listed));
+
+        // Same value as `find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256`
+        // run inside each upstream ZF_250 folder at the pinned commit.
+        $expected = [
+            'schema' => [20, 'a66ac39854336a759c27a9289319146c4889c1e4acfb5d3e33ea1cc0bcfeba55'],
+            'schematron' => [10, '84b15df7dbddde67134d073dcc0bfc69ed96b11c97997da5f542f44039899184'],
+            'xslt' => [10, '2f81544c9b84b19b0fb53f17c0e514ebe22db78fd99a542055c7bfbd33c3459f'],
+        ];
+        self::assertSame(array_map(static fn (array $pin): string => $pin[1], $expected), FacturXSources::AGGREGATES);
+
+        foreach ($expected as $folder => [$count, $aggregate]) {
+            $sums = [];
+            foreach ($listed as $name => $sum) {
+                if (str_starts_with($name, $folder.'/')) {
+                    $sums[substr($name, strlen($folder) + 1)] = $sum;
+                }
+            }
+            ksort($sums, SORT_STRING);
+            $listing = implode('', array_map(static fn (string $name, string $sum): string => "{$sum}  ./{$name}\n", array_keys($sums), $sums));
+
+            self::assertCount($count, $sums, "Unexpected file count in {$folder}/.");
+            self::assertSame($aggregate, hash('sha256', $listing), "The {$folder}/ folder does not match the pinned aggregate.");
+        }
+
+        self::assertSame(FacturXSources::LICENCE_FILES['LICENSE'], $listed['LICENSE'] ?? null);
+        self::assertSame(FacturXSources::LICENCE_FILES['NOTICE'], $listed['NOTICE'] ?? null);
+    }
+
+    public function test_facturx_rule_sources_present(): void
+    {
+        foreach (['MINIMUM', 'BASIC-WL', 'BASIC', 'EN16931', 'EXTENDED'] as $profile) {
+            $schematron = Fixtures::facturxSchematron($profile);
+            self::assertSame("FACTUR-X_{$profile}.sch", basename($schematron));
+            self::assertSame('http://purl.oclc.org/dsdl/schematron', SafeXml::load((string) file_get_contents($schematron))->documentElement?->namespaceURI);
+            self::assertFileIsReadable(dirname($schematron)."/FACTUR-X_{$profile}_codedb.xml");
+
+            $xslt = Fixtures::facturxXslt($profile);
+            self::assertSame("FACTUR-X_{$profile}.xslt", basename($xslt));
+            self::assertSame('http://www.w3.org/1999/XSL/Transform', SafeXml::load((string) file_get_contents($xslt))->documentElement?->namespaceURI);
+            self::assertFileIsReadable(dirname($xslt)."/FACTUR-X_{$profile}_codedb.xml");
+
+            // The BASIC WL schema files are named without the hyphen.
+            $schema = Fixtures::facturxSchemaDir().'/'.$profile.'/FACTUR-X_'.str_replace('-', '', $profile).'.xsd';
+            self::assertSame('http://www.w3.org/2001/XMLSchema', SafeXml::load((string) file_get_contents($schema))->documentElement?->namespaceURI);
+        }
+
+        self::assertFileIsReadable(dirname(Fixtures::facturxSchemaDir()).'/LICENSE');
+        self::assertFileIsReadable(dirname(Fixtures::facturxSchemaDir()).'/NOTICE');
+    }
+
+    public function test_facturx_example_corpus(): void
+    {
+        $xml = Fixtures::facturxExampleXml();
+        $pdfs = Fixtures::facturxExamplePdfs();
+        $ferd = static fn (string $name): bool => str_starts_with($name, 'library/ZF252_Beispiele/');
+
+        self::assertCount(61, array_filter(array_keys($xml), $ferd));
+        self::assertCount(61, $xml);
+        self::assertCount(70, array_filter(array_keys($pdfs), $ferd));
+        self::assertCount(32, array_filter(array_keys($pdfs), static fn (string $name): bool => ! $ferd($name)));
+
+        $manifest = FacturXSources::examples(__DIR__.'/fixtures/facturx-examples.sha256');
+        self::assertCount(165, $manifest);
+
+        $directory = Fixtures::facturxExamplesDir();
+        foreach ($manifest as $path => $sum) {
+            self::assertSame($sum, hash_file('sha256', $directory.'/'.$path), "{$path} does not match its manifest entry.");
+        }
+        foreach ([...$xml, ...$pdfs] as $name => $file) {
+            self::assertArrayHasKey(substr($file, strlen($directory) + 1), $manifest, "{$name} is not listed in the manifest.");
+        }
+    }
+
+    public function test_facturx_examples_are_git_ignored(): void
+    {
+        $command = 'git -C '.escapeshellarg(dirname(__DIR__)).' check-ignore -q tests/fixtures/facturx-examples/library/src/test/resources/zugferd_invoice.pdf';
+        exec($command, $output, $exitCode);
+
+        self::assertSame(0, $exitCode, 'The Factur-X example files must never be committed.');
     }
 }

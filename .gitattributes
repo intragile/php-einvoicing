@@ -5,6 +5,8 @@
 /tests/fixtures/official/cen-1.3.16/** -text -eol
 # The KoSIT artefacts are hashed byte for byte (xrechnung.sha256).
 /tests/fixtures/official/xrechnung/** -text -eol
+# The Factur-X ZF_250 files are hashed byte for byte (facturx.sha256).
+/tests/fixtures/official/facturx-1.09.2/** -text -eol
 # The schemas of the XRechnung rules package are unmodified copies of the KoSIT ones.
 /packages/rules-xrechnung/schemas/** -text -eol
 # The ISO Schematron skeleton is kept byte-for-byte as pinned in its SOURCE.md.
