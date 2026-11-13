@@ -57,8 +57,10 @@ final class Runner
     /**
      * @param  (Closure(string): void)|null  $onGlobal  called with the name of a schema or pattern let
      *                                                  each time its value is computed (for tests and profiling)
+     * @param  (Closure(DOMNode, RuleAssert): void)|null  $onFinding  called with the context node and the
+     *                                                                assert each time one yields a finding
      */
-    public function __construct(private readonly ?Closure $onGlobal = null) {}
+    public function __construct(private readonly ?Closure $onGlobal = null, private readonly ?Closure $onFinding = null) {}
 
     public function run(RuleSet $rules, DOMDocument $document): RunResult
     {
@@ -116,6 +118,7 @@ final class Runner
                         if ($evaluator->effectiveBoolean($assert['ast'], $node, $variables) !== $assert['report']) {
                             continue;
                         }
+                        $this->onFinding?->__invoke($node, $assert);
                         $findings[] = new Finding($assert['id'], $assert['severity'], LocationPath::of($node, $namespaces), self::message($assert, $node, $variables, $evaluator), $assert['test']);
                     } catch (XPathError $error) {
                         $errors[] = new DynamicError($assert['id'], $error->errorCode, LocationPath::of($node, $namespaces), $error->getMessage());

@@ -170,37 +170,28 @@ final class FacturXValidatorTest extends TestCase
     }
 
     /**
-     * Basic, EN 16931 and Extended writer output must be valid. For Minimum and Basic WL the result
-     * is pinned to what the official rules currently give; the oracle comparison against the
-     * official XSLT is the real check there.
+     * Writer output must be valid for every profile.
      */
     #[DataProvider('writerCases')]
-    public function test_writer_output_is_valid_per_profile(Invoice $invoice, FacturXProfile $profile, bool $expectedValid): void
+    public function test_writer_output_is_valid_per_profile(Invoice $invoice, FacturXProfile $profile): void
     {
         $report = self::validator()->validate(self::xml($profile, $invoice));
 
         self::assertSame(
-            $expectedValid,
+            true,
             $report->isValid(),
             json_encode(['schema' => $report->schemaErrors, 'fatal' => $report->fatal(), 'dynamic' => $report->dynamicErrors], JSON_PRETTY_PRINT | JSON_PARTIAL_OUTPUT_ON_ERROR) ?: '',
         );
     }
 
-    private static function expectedValid(FacturXProfile $profile): bool
-    {
-        // The official MINIMUM rules mark the buyer's postal address and tax registration as not
-        // used, which the writer still emits; pinned until the oracle comparison arbitrates.
-        return $profile !== FacturXProfile::Minimum;
-    }
-
     /**
-     * @return iterable<string, array{Invoice, FacturXProfile, bool}>
+     * @return iterable<string, array{Invoice, FacturXProfile}>
      */
     public static function writerCases(): iterable
     {
         foreach (self::invoices() as $name => [$invoice]) {
             foreach (self::factorXProfiles() as [$profile]) {
-                yield "{$name} as {$profile->value}" => [$invoice, $profile, self::expectedValid($profile)];
+                yield "{$name} as {$profile->value}" => [$invoice, $profile];
             }
         }
     }

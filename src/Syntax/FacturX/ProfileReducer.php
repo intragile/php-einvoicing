@@ -518,6 +518,23 @@ final class ProfileReducer
         return '{'.($namespace ?? '').'}'.$localName;
     }
 
+    /**
+     * Path of an element or attribute in the notation of ReducedXml::$removed: element names
+     * without sibling positions, an attribute as the last step.
+     */
+    public static function pathOf(DOMNode $node): string
+    {
+        if ($node instanceof DOMAttr) {
+            return self::pathOf($node->ownerElement ?? throw new InvalidArgumentException('The attribute has no element.')).'/@'.self::attributeName($node);
+        }
+        $steps = [];
+        for (; $node instanceof DOMElement; $node = $node->parentNode) {
+            $steps[] = self::name($node);
+        }
+
+        return '/'.implode('/', array_reverse($steps));
+    }
+
     private static function name(DOMElement $element): string
     {
         return self::qualified($element->namespaceURI, (string) $element->localName);
