@@ -10,6 +10,7 @@ use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Pdf\Exception\EncryptedPdf;
 use IntrAgile\EInvoicing\Pdf\Exception\UnreadablePdf;
 use IntrAgile\EInvoicing\Pdf\IncrementalUpdate;
+use IntrAgile\EInvoicing\Pdf\NameTree;
 use IntrAgile\EInvoicing\Pdf\PdfDictionary;
 use IntrAgile\EInvoicing\Pdf\PdfDocument;
 use IntrAgile\EInvoicing\Pdf\PdfName;
@@ -40,20 +41,6 @@ final class FacturXPdfWriter
     private const string ICC_PROFILE = __DIR__.'/../../../resources/icc/sRGB2014.icc';
 
     private const string OUTPUT_CONDITION = 'sRGB IEC61966-2.1';
-
-    /** Bounds on walking an existing /EmbeddedFiles name tree. */
-    private const int MAX_TREE_DEPTH = 32;
-
-    private const int MAX_TREE_NODES = 10_000;
-
-    /** PDFDocEncoding code points that differ from ISO-8859-1 (ISO 32000-1, Annex D). */
-    private const array PDF_DOC_ENCODING = [
-        0x18 => 0x02D8, 0x19 => 0x02C7, 0x1A => 0x02C6, 0x1B => 0x02D9, 0x1C => 0x02DD, 0x1D => 0x02DB, 0x1E => 0x02DA, 0x1F => 0x02DC,
-        0x80 => 0x2022, 0x81 => 0x2020, 0x82 => 0x2021, 0x83 => 0x2026, 0x84 => 0x2014, 0x85 => 0x2013, 0x86 => 0x0192, 0x87 => 0x2044,
-        0x88 => 0x2039, 0x89 => 0x203A, 0x8A => 0x2212, 0x8B => 0x2030, 0x8C => 0x201E, 0x8D => 0x201C, 0x8E => 0x201D, 0x8F => 0x2018,
-        0x90 => 0x2019, 0x91 => 0x201A, 0x92 => 0x2122, 0x93 => 0xFB01, 0x94 => 0xFB02, 0x95 => 0x0141, 0x96 => 0x0152, 0x97 => 0x0160,
-        0x98 => 0x0178, 0x99 => 0x017D, 0x9A => 0x0131, 0x9B => 0x0142, 0x9C => 0x0153, 0x9D => 0x0161, 0x9E => 0x017E, 0xA0 => 0x20AC,
-    ];
 
     /**
      * @param  string  $pdf  the PDF/A document to embed into (untrusted bytes)
@@ -108,7 +95,7 @@ final class FacturXPdfWriter
         $names = $names instanceof PdfDictionary ? $names : new PdfDictionary;
         $tree = $document->resolve($names->get('EmbeddedFiles'));
         $tree = $tree instanceof PdfDictionary ? $tree : null;
-        $existing = $tree === null ? [] : self::collectNames($document, $tree);
+        $existing = $tree === null ? [] : NameTree::entries($document, $tree);
         self::refuseExistingInvoice($document, $existing, $af);
 
         $existingXmp = self::existingXmp($document, $catalog);
@@ -179,7 +166,7 @@ final class FacturXPdfWriter
     {
         $candidates = [];
         foreach ($existing as [$key, $value]) {
-            $candidates[] = self::text($key);
+            $candidates[] = $key->text();
             $candidates = [...$candidates, ...self::filespecNames($document->resolve($value))];
         }
         foreach ($af as $value) {
@@ -203,51 +190,11 @@ final class FacturXPdfWriter
         foreach (['UF', 'F'] as $key) {
             $value = $filespec->get($key);
             if ($value instanceof PdfString) {
-                $names[] = self::text($value);
+                $names[] = $value->text();
             }
         }
 
         return $names;
-    }
-
-    /**
-     * Every key and value of a name tree, depth-first, with bounded depth and node count.
-     *
-     * @return list<array{PdfString, mixed}>
-     */
-    private static function collectNames(PdfDocument $document, PdfDictionary $root): array
-    {
-        $pairs = [];
-        $nodes = 0;
-        $stack = [[$root, 0]];
-        $visited = [];
-        while ($stack !== []) {
-            [$node, $depth] = array_pop($stack);
-            if (++$nodes > self::MAX_TREE_NODES || $depth > self::MAX_TREE_DEPTH) {
-                throw UnreadablePdf::refused('The /EmbeddedFiles name tree is too large or too deep.');
-            }
-            $names = self::listOf($document->resolve($node->get('Names')));
-            for ($i = 0; $i + 1 < count($names); $i += 2) {
-                if ($names[$i] instanceof PdfString) {
-                    $pairs[] = [$names[$i], $names[$i + 1]];
-                }
-            }
-            $kids = self::listOf($document->resolve($node->get('Kids')));
-            foreach (array_reverse($kids) as $kid) {
-                if ($kid instanceof PdfRef) {
-                    if (isset($visited[$kid->number])) {
-                        throw UnreadablePdf::refused('The /EmbeddedFiles name tree contains a cycle.');
-                    }
-                    $visited[$kid->number] = true;
-                }
-                $child = $document->resolve($kid);
-                if ($child instanceof PdfDictionary) {
-                    $stack[] = [$child, $depth + 1];
-                }
-            }
-        }
-
-        return $pairs;
     }
 
     /**
@@ -349,7 +296,7 @@ final class FacturXPdfWriter
         foreach (['Title', 'Author', 'Subject', 'Keywords', 'Creator', 'Producer'] as $key) {
             $value = $info->get($key);
             if ($value instanceof PdfString) {
-                $text[$key] = self::text($value);
+                $text[$key] = $value->text();
             }
         }
         $created = $info->get('CreationDate');
@@ -358,26 +305,6 @@ final class FacturXPdfWriter
         }
 
         return $text;
-    }
-
-    /** A PDF text string as UTF-8: UTF-16BE or UTF-8 with a byte order mark, PDFDocEncoding otherwise. */
-    private static function text(PdfString $string): string
-    {
-        $bytes = $string->bytes;
-        if (str_starts_with($bytes, "\xFE\xFF")) {
-            return mb_convert_encoding(substr($bytes, 2), 'UTF-8', 'UTF-16BE');
-        }
-        if (str_starts_with($bytes, "\xEF\xBB\xBF")) {
-            return mb_scrub(substr($bytes, 3), 'UTF-8');
-        }
-        $out = '';
-        $length = strlen($bytes);
-        for ($i = 0; $i < $length; $i++) {
-            $byte = ord($bytes[$i]);
-            $out .= mb_chr(self::PDF_DOC_ENCODING[$byte] ?? $byte, 'UTF-8');
-        }
-
-        return $out;
     }
 
     /** A PDF date ("D:YYYYMMDDHHmmSSOHH'mm'", trailing parts optional) as an XMP date, or null. */

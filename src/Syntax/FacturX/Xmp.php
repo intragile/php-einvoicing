@@ -25,6 +25,9 @@ final class Xmp
 {
     public const string FX = 'urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#';
 
+    /** Namespace of the ZUGFeRD 2.0 extension schema, which also carries fx:ConformanceLevel. */
+    public const string ZUGFERD_2 = 'urn:zugferd:pdfa:CrossIndustryDocument:invoice:2p0#';
+
     private const string X = 'adobe:ns:meta/';
 
     private const string RDF = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
@@ -121,20 +124,51 @@ final class Xmp
      */
     public static function declaredPart(?string $xmp): ?int
     {
-        if ($xmp === null) {
+        $part = self::declared($xmp, [self::PDFAID], 'part');
+
+        return $part !== null && ctype_digit($part) ? (int) $part : null;
+    }
+
+    /**
+     * The ConformanceLevel of the Factur-X (or ZUGFeRD 2.0) extension schema, trimmed, or null
+     * when the XMP declares none or cannot be read.
+     *
+     * @throws UnsafeXml when the XMP carries a DOCTYPE declaration
+     */
+    public static function declaredConformanceLevel(?string $xmp): ?string
+    {
+        return self::declared($xmp, [self::FX, self::ZUGFERD_2], 'ConformanceLevel');
+    }
+
+    /**
+     * The trimmed text of the first property $name in one of $namespaces, in element or
+     * attribute form, or null when there is none or the XMP cannot be read. Every rdf:RDF element
+     * is searched: some producers write a second one beside the first.
+     *
+     * @param  list<string>  $namespaces
+     *
+     * @throws UnsafeXml when the XMP carries a DOCTYPE declaration
+     */
+    private static function declared(?string $xmp, array $namespaces, string $name): ?string
+    {
+        if ($xmp === null || trim($xmp) === '') {
             return null;
         }
         try {
-            $value = self::open($xmp)->find(self::PDFAID, 'part');
+            $document = SafeXml::load($xmp);
         } catch (UnsupportedDocument) {
             return null;
         }
-        if ($value === null) {
-            return null;
+        foreach ($namespaces as $namespace) {
+            foreach ($document->getElementsByTagNameNS(self::RDF, 'RDF') as $rdf) {
+                $value = self::findIn($rdf, $namespace, $name);
+                if ($value !== null) {
+                    return trim($value->textContent);
+                }
+            }
         }
-        $part = trim($value->textContent);
 
-        return ctype_digit($part) ? (int) $part : null;
+        return null;
     }
 
     private static function open(?string $existing): self
@@ -177,7 +211,12 @@ final class Xmp
     /** The property as an element or as an attribute (the XMP shorthand form), or null. */
     private function find(string $namespace, string $name): ?DOMNode
     {
-        foreach (self::descriptionsOf($this->rdf) as $description) {
+        return self::findIn($this->rdf, $namespace, $name);
+    }
+
+    private static function findIn(DOMElement $rdf, string $namespace, string $name): ?DOMNode
+    {
+        foreach (self::descriptionsOf($rdf) as $description) {
             $attribute = $description->getAttributeNodeNS($namespace, $name);
             if ($attribute instanceof DOMNode) {
                 return $attribute;

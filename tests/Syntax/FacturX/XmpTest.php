@@ -148,6 +148,21 @@ final class XmpTest extends TestCase
         self::assertNull(Xmp::declaredPart('<x:xmpmeta xmlns:x="adobe:ns:meta/"/>'));
     }
 
+    public function test_declared_conformance_level(): void
+    {
+        self::assertSame('EN 16931', Xmp::declaredConformanceLevel(Xmp::merge(null, FacturXProfile::En16931, 'factur-x.xml', $this->modified(), [])));
+        self::assertNull(Xmp::declaredConformanceLevel(self::EXISTING));
+        self::assertNull(Xmp::declaredConformanceLevel(null));
+        self::assertNull(Xmp::declaredConformanceLevel('not xml'));
+
+        // Attribute form, ZUGFeRD 2.0 namespace, and a second rdf:RDF element as some producers write.
+        $rdf = 'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"';
+        self::assertSame('EXTENDED', Xmp::declaredConformanceLevel('<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+            .'<rdf:RDF '.$rdf.'><rdf:Description rdf:about="" xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/" pdfaid:part="3"/></rdf:RDF>'
+            .'<rdf:RDF '.$rdf.'><rdf:Description rdf:about="" xmlns:zf="urn:zugferd:pdfa:CrossIndustryDocument:invoice:2p0#" zf:ConformanceLevel=" EXTENDED "/></rdf:RDF>'
+            .'</x:xmpmeta>'));
+    }
+
     public function test_doctype_in_existing_xmp_is_refused(): void
     {
         $this->expectException(UnsafeXml::class);
