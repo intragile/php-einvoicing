@@ -16,6 +16,7 @@ use IntrAgile\EInvoicing\Syntax\FacturX\FacturXProfile;
 use IntrAgile\EInvoicing\Syntax\FacturX\ProfileMismatch;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Syntax\Syntax;
+use IntrAgile\EInvoicing\Syntax\XRechnung;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\Exception\UnusableSchema;
 use IntrAgile\EInvoicing\Validation\SchemaValidator;
@@ -147,7 +148,7 @@ final class FacturXValidator
             throw new UnsupportedDocument(sprintf(
                 'The guideline identifier (BT-24) %s is not a Factur-X one. It must be exactly one of: %s.',
                 $id === null ? 'is missing and' : '"'.$id.'"',
-                implode(', ', array_map(static fn (FacturXProfile $p): string => $p->guidelineId(), FacturXProfile::cases())),
+                implode(', ', [...array_map(static fn (FacturXProfile $p): string => $p->guidelineId(), FacturXProfile::cases()), XRechnung::EXTENSION]),
             ));
         }
 

@@ -78,6 +78,7 @@ final class FacturXValidatorTest extends TestCase
             foreach (FacturXProfile::cases() as $profile) {
                 self::assertStringContainsString($profile->guidelineId(), $e->getMessage());
             }
+            self::assertStringContainsString(XRechnung::EXTENSION, $e->getMessage());
             self::assertStringContainsString('urn:example:unknown', $e->getMessage());
         }
     }
