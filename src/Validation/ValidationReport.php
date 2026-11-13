@@ -18,21 +18,26 @@ final readonly class ValidationReport
      *                                   document order
      * @param  list<DynamicError>  $dynamicErrors  asserts that could not be evaluated, such as a
      *                                             non-numeric amount (FORG0001), in rule set order
+     * @param  list<SchemaError>  $schemaErrors  XML Schema violations, in document order
+     * @param  string|null  $scenario  the name of the validation scenario that was applied, when
+     *                                 the validator selects one
      */
     public function __construct(
         public array $ruleSets,
         public Syntax $syntax,
         public array $findings,
         public array $dynamicErrors,
+        public array $schemaErrors = [],
+        public ?string $scenario = null,
     ) {}
 
     /**
-     * True when no fatal assert failed and every assert could be evaluated. Warnings and
-     * information findings do not make a document invalid.
+     * True when the document conforms to its XML Schema, no fatal assert failed and every assert
+     * could be evaluated. Warnings and information findings do not make a document invalid.
      */
     public function isValid(): bool
     {
-        return $this->dynamicErrors === [] && $this->fatal() === [];
+        return $this->schemaErrors === [] && $this->dynamicErrors === [] && $this->fatal() === [];
     }
 
     /**

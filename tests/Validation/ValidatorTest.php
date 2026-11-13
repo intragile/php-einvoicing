@@ -27,6 +27,7 @@ use IntrAgile\EInvoicing\Tests\Support\HostileXml;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
 use IntrAgile\EInvoicing\Validation\DynamicError;
 use IntrAgile\EInvoicing\Validation\Finding;
+use IntrAgile\EInvoicing\Validation\SchemaError;
 use IntrAgile\EInvoicing\Validation\Severity;
 use IntrAgile\EInvoicing\Validation\ValidationReport;
 use IntrAgile\EInvoicing\Validation\Validator;
@@ -96,6 +97,19 @@ final class ValidatorTest extends TestCase
         self::assertSame(['W-1'], array_map(static fn (Finding $f): string => $f->ruleId, $report->warnings()));
         self::assertSame(['F-1'], array_map(static fn (Finding $f): string => $f->ruleId, $report->fatal()));
         self::assertFalse($report->isValid());
+    }
+
+    public function test_report_with_schema_errors_is_invalid(): void
+    {
+        $clean = new ValidationReport(['x 1'], Syntax::Ubl, [], []);
+        $report = new ValidationReport(['x 1'], Syntax::Ubl, [], [], [new SchemaError(8, 5, 'bad date', false)], 'scenario');
+
+        self::assertTrue($clean->isValid());
+        self::assertSame([], $clean->schemaErrors);
+        self::assertNull($clean->scenario);
+        self::assertFalse($report->isValid());
+        self::assertSame([], $report->verdict());
+        self::assertSame('scenario', $report->scenario);
     }
 
     public function test_model_invoice_written_as_cii_is_valid(): void
