@@ -43,6 +43,9 @@ use IntrAgile\EInvoicing\XPath\XPathError;
  * Each rule's match set is computed once per document instead of testing the pattern per node.
  * Unlike the XSLT, a dynamic error does not abort the run: it is recorded and evaluation continues.
  *
+ * fn:document() reads only the documents embedded in the rule set when it was compiled (see
+ * RuleSet::documents()); each is parsed once per rule set and shared by every run.
+ *
  * @internal
  *
  * @phpstan-import-type Let from RuleSet
@@ -60,7 +63,7 @@ final class Runner
     public function run(RuleSet $rules, DOMDocument $document): RunResult
     {
         $index = DocumentIndex::build($document);
-        $evaluator = new Evaluator($index);
+        $evaluator = new Evaluator($index, $rules->documentIndex(...));
         // The global variables capture $evaluator by reference, so they run on the evaluator that
         // knows the functions, which in turn needs the schema lets for the function bodies.
         $schemaLets = $this->bindGlobals($rules->lets(), [], $document, $evaluator);
@@ -93,7 +96,9 @@ final class Runner
                     continue;
                 }
                 foreach ($matches as $node) {
-                    if ($node instanceof DOMElement || $node instanceof DOMAttr || $node instanceof DOMDocument) {
+                    // Only nodes of the validated document are visited; a match inside an embedded
+                    // document (fn:document) is never handled, as apply-templates never reaches it.
+                    if ($node === $document || (($node instanceof DOMElement || $node instanceof DOMAttr) && $node->ownerDocument === $document)) {
                         $handled[$index->order($node)] ??= [$node, $rule];
                     }
                 }

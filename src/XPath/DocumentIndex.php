@@ -9,6 +9,8 @@ use DOMDocument;
 use DOMDocumentType;
 use DOMElement;
 use DOMNode;
+use IntrAgile\EInvoicing\XPath\Value\DoubleValue;
+use IntrAgile\EInvoicing\XPath\Value\UntypedAtomic;
 use InvalidArgumentException;
 
 /**
@@ -36,6 +38,9 @@ final class DocumentIndex
 
     /** @var array<string, list<int>> "uri local" => document-order positions of the same elements */
     private array $positionsByName = [];
+
+    /** @var array<string, array{int, array<string, list<DOMElement>>, ?array<string, list<DOMElement>>}> see childrenByAttribute() */
+    private array $byAttribute = [];
 
     private function __construct(public readonly DOMDocument $document) {}
 
@@ -168,6 +173,63 @@ final class DocumentIndex
         ksort($byOrder);
 
         return array_values($byOrder);
+    }
+
+    /**
+     * The child elements of $parent with the given name, grouped by the value of the given
+     * attribute, for equality lookups: the number of such children, the children that carry the
+     * attribute keyed by its string value, and the same keyed by doubleKey() of the value cast to
+     * xs:double. The double map is null when a value does not cast to xs:double; NaN values are
+     * left out of it, as NaN equals nothing. Built on first use and kept with the index, so the
+     * document must not change while the index lives.
+     *
+     * @return array{int, array<string, list<DOMElement>>, ?array<string, list<DOMElement>>}
+     */
+    public function childrenByAttribute(DOMNode $parent, string $uri, string $local, string $attributeUri, string $attributeLocal): array
+    {
+        $key = spl_object_id($parent)." {$uri} {$local} {$attributeUri} {$attributeLocal}";
+        if (isset($this->byAttribute[$key])) {
+            return $this->byAttribute[$key];
+        }
+
+        $count = 0;
+        $strings = [];
+        $doubles = [];
+        foreach ($parent->childNodes as $child) {
+            if (! $child instanceof DOMElement || ($child->namespaceURI ?? '') !== $uri || ($child->localName ?? $child->nodeName) !== $local) {
+                continue;
+            }
+            $count++;
+            foreach ($child->attributes as $attribute) {
+                if (($attribute->namespaceURI ?? '') !== $attributeUri || ($attribute->localName ?? $attribute->nodeName) !== $attributeLocal) {
+                    continue;
+                }
+                $strings[$attribute->value][] = $child;
+                if ($doubles === null) {
+                    continue;
+                }
+                try {
+                    $double = Atomic::cast(new UntypedAtomic($attribute->value), 'xs:double');
+                } catch (XPathError) {
+                    $doubles = null;
+
+                    continue;
+                }
+                if ($double instanceof DoubleValue && ! is_nan($double->value)) {
+                    $doubles[self::doubleKey($double->value)][] = $child;
+                }
+            }
+        }
+
+        return $this->byAttribute[$key] = [$count, $strings, $doubles];
+    }
+
+    /**
+     * A key that is equal for two doubles exactly when they compare equal (NaN excepted).
+     */
+    public static function doubleKey(float $value): string
+    {
+        return $value == 0.0 ? '0' : sprintf('%.17g', $value);
     }
 
     /**

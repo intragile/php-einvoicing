@@ -47,6 +47,13 @@ use SplObjectStorage;
  * each name and ['valueOf' => AST] for each value-of, whose select is parsed with the variables the
  * test sees. The static "message" then has each element replaced by the empty string.
  *
+ * Every fn:document() call (in a rule context, let, test, message or function body) must have a
+ * string literal argument: a relative path (no scheme, not absolute, no ".." segment, no NUL
+ * character) naming a file inside the directory of the top-level schema, also for a call in an
+ * included file. The file is loaded with SafeXml, so a DOCTYPE is refused, and its XML is embedded
+ * under "documents" (URI as written => XML), with its SHA-256 under "documentSha256". The runtime
+ * reads only these embedded copies. A schema without such calls compiles without both keys.
+ *
  * Variables are scoped the way the ISO Schematron skeleton and SchXslt turn them into XSLT
  * variables: schema and pattern lets become global variables (so their names must be unique,
  * XTSE0630), rule lets become local variables of the rule template. The compiled array therefore
@@ -70,7 +77,7 @@ use SplObjectStorage;
  * @phpstan-type CompiledAssert array{id: string, flag: string, test: string, ast: array<mixed>, message: string, messageParts?: list<MessagePart>, report?: true}
  * @phpstan-type CompiledRule array{context: string, match: array<mixed>, lets: list<CompiledLet>, asserts: list<CompiledAssert>}
  * @phpstan-type CompiledPattern array{id: string, lets: list<CompiledLet>, rules: list<CompiledRule>}
- * @phpstan-type CompiledRuleSet array{format: int, id: string, version: string, source: string, sha256: string, namespaces: array<string, string>, lets: list<CompiledLet>, functions: array<string, CompiledFunction>, patterns: list<CompiledPattern>}
+ * @phpstan-type CompiledRuleSet array{format: int, id: string, version: string, source: string, sha256: string, documentSha256?: array<string, string>, namespaces: array<string, string>, lets: list<CompiledLet>, functions: array<string, CompiledFunction>, patterns: list<CompiledPattern>, documents?: array<string, string>}
  */
 final class Compiler
 {
@@ -141,6 +148,9 @@ final class Compiler
     /** @var array<string, string> name of each global let => where it is declared */
     private array $globals = [];
 
+    /** @var array<string, string> URI as written in a document() call => XML of the file it names */
+    private array $documents = [];
+
     /** @var SplObjectStorage<DOMElement, string> document element of each included file => its name in messages */
     private SplObjectStorage $includedFiles;
 
@@ -197,14 +207,24 @@ final class Compiler
      */
     private static function build(self $compiler, string $xml, string $id, string $version): array
     {
-        return [
+        $schema = $compiler->schema($xml);
+        $compiled = [
             'format' => RuleSet::FORMAT,
             'id' => $id,
             'version' => $version,
             'source' => $compiler->source,
             'sha256' => hash('sha256', $xml),
-            ...$compiler->schema($xml),
         ];
+        // Left out when empty, so a schema without document() compiles to the same bytes as before.
+        if ($compiler->documents !== []) {
+            $compiled['documentSha256'] = array_map(static fn (string $document): string => hash('sha256', $document), $compiler->documents);
+        }
+        $compiled = [...$compiled, ...$schema];
+        if ($compiler->documents !== []) {
+            $compiled['documents'] = $compiler->documents;
+        }
+
+        return $compiled;
     }
 
     /**
@@ -655,7 +675,7 @@ final class Compiler
         } catch (UnsupportedXPath|XPathSyntaxError $exception) {
             throw new UnsupportedSchematron("Cannot compile the expression \"{$expression}\" of {$owner} ({$this->line($element)}): {$exception->getMessage()}", 0, $exception);
         }
-        $this->checkRegularExpressions($ast, $owner);
+        $this->checkCalls($ast, $owner);
 
         return $ast;
     }
@@ -719,7 +739,7 @@ final class Compiler
         } catch (UnsupportedXPath|XPathSyntaxError $exception) {
             throw new UnsupportedSchematron("Cannot compile the context \"{$context}\" of the rule ({$this->line($rule)}): {$exception->getMessage()}", 0, $exception);
         }
-        $this->checkRegularExpressions($match, "the rule with context \"{$context}\"");
+        $this->checkCalls($match, "the rule with context \"{$context}\"");
 
         $lets = [];
         $asserts = [];
@@ -783,7 +803,7 @@ final class Compiler
         } catch (UnsupportedXPath|XPathSyntaxError $exception) {
             throw new UnsupportedSchematron("Cannot compile the test \"{$test}\" of {$kind} \"{$id}\" ({$this->line($assert)}): {$exception->getMessage()}", 0, $exception);
         }
-        $this->checkRegularExpressions($ast, "{$kind} \"{$id}\"");
+        $this->checkCalls($ast, "{$kind} \"{$id}\"");
 
         $parts = $this->messageParts($assert, "{$kind} \"{$id}\"", $scope);
         $compiled = [
@@ -869,12 +889,20 @@ final class Compiler
 
     /**
      * Translates every fn:matches pattern given as a literal now, so that a regular expression the
-     * runtime cannot handle fails the build instead of a validation.
+     * runtime cannot handle fails the build instead of a validation, and embeds the file of every
+     * fn:document() call.
      *
      * @param  array<mixed>  $node
      */
-    private function checkRegularExpressions(array $node, string $owner): void
+    private function checkCalls(array $node, string $owner): void
     {
+        if (($node[0] ?? null) === Op::CALL && ($node[1] ?? null) === 'fn:document') {
+            $uri = is_array($node[2] ?? null) ? self::stringLiteral($node[2][0] ?? null) : null;
+            if ($uri === null) {
+                throw new UnsupportedSchematron("The document() argument must be a string literal in {$owner}, since documents are embedded when the rule set is compiled.");
+            }
+            $this->embedDocument($uri, $owner);
+        }
         if (($node[0] ?? null) === Op::CALL && ($node[1] ?? null) === 'fn:matches' && is_array($node[2] ?? null)) {
             $regex = self::stringLiteral($node[2][1] ?? null);
             $flags = array_key_exists(2, $node[2]) ? self::stringLiteral($node[2][2]) : '';
@@ -889,9 +917,52 @@ final class Compiler
 
         foreach ($node as $child) {
             if (is_array($child)) {
-                $this->checkRegularExpressions($child, $owner);
+                $this->checkCalls($child, $owner);
             }
         }
+    }
+
+    /**
+     * Loads the file a document() URI names, relative to the directory of the top-level schema,
+     * and keeps its XML for the compiled "documents".
+     */
+    private function embedDocument(string $uri, string $owner): void
+    {
+        if (isset($this->documents[$uri])) {
+            return;
+        }
+        $what = "The document \"{$uri}\" read in {$owner}";
+        $problem = match (true) {
+            $uri === '' => 'is empty',
+            str_contains($uri, "\0") => 'contains a NUL character',
+            preg_match('~^[A-Za-z][A-Za-z0-9+.\-]*:~', $uri) === 1 => 'has a URI scheme; only a relative path to a file next to the schema is allowed',
+            preg_match('~^[/\\\\]~', $uri) === 1 => 'is an absolute path; only a relative path to a file next to the schema is allowed',
+            in_array('..', preg_split('~[/\\\\]~', $uri) ?: [], true) => 'has a ".." segment; only files inside the schema directory are allowed',
+            $this->baseDir === null => 'cannot be resolved: document() needs a base directory; use compile()',
+            default => null,
+        };
+        if ($problem !== null) {
+            throw new UnsupportedSchematron("{$what} {$problem}.");
+        }
+
+        $root = $this->realDirectory((string) $this->baseDir);
+        $real = realpath($root.'/'.$uri);
+        if ($real === false || ! is_file($real)) {
+            throw new UnsupportedSchematron("{$what} does not exist as a file in {$root}.");
+        }
+        if (! self::isInside($real, $root)) {
+            throw new UnsupportedSchematron("{$what} resolves to {$real}, outside {$root}.");
+        }
+        $xml = file_get_contents($real);
+        if ($xml === false) {
+            throw new UnsupportedSchematron("{$what} cannot be read.");
+        }
+        try {
+            SafeXml::load($xml);
+        } catch (UnsupportedDocument|UnsafeXml $exception) {
+            throw new UnsupportedSchematron("{$what} cannot be loaded: {$exception->getMessage()}", 0, $exception);
+        }
+        $this->documents[$uri] = $xml;
     }
 
     private static function stringLiteral(mixed $node): ?string

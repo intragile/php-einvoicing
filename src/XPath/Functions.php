@@ -194,7 +194,7 @@ final class Functions
      *
      * @param  list<DOMNode|AtomicValue>  $items
      */
-    private static function requiredString(array $items, string $function): string
+    public static function requiredString(array $items, string $function): string
     {
         if ($items === []) {
             throw new XPathError('XPTY0004', "{$function}() does not accept an empty sequence as a string argument.");

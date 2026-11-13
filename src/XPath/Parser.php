@@ -25,6 +25,7 @@ final class Parser
         'fn:contains' => [2, 2],
         'fn:count' => [1, 1],
         'fn:distinct-values' => [1, 1],
+        'fn:document' => [1, 1],
         'fn:empty' => [1, 1],
         'fn:ends-with' => [2, 2],
         'fn:exists' => [1, 1],

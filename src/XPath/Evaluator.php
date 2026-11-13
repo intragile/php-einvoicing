@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\XPath;
 
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
+use Closure;
 use DOMAttr;
 use DOMDocument;
 use DOMDocumentType;
@@ -25,6 +26,11 @@ use LogicException;
 /**
  * Evaluates the array AST of Parser over one indexed DOM document with XPath 2.0 semantics
  * (no schema: element and attribute values atomize to xs:untypedAtomic).
+ *
+ * fn:document() reaches further documents only through the given resolver, which maps a URI to
+ * an indexed document or null; nothing is ever read from the file system or the network. Nodes of
+ * different documents sort by document (the evaluated document first, then the others in the
+ * order they were first returned) and by document order within each.
  *
  * @internal
  */
@@ -69,7 +75,13 @@ final class Evaluator
      */
     private ?XPathError $recursionError = null;
 
-    public function __construct(private readonly DocumentIndex $index) {}
+    /** @var array<int, DocumentIndex> the documents fn:document() returned, by spl_object_id of their document node */
+    private array $documents = [];
+
+    /**
+     * @param  (Closure(string): ?DocumentIndex)|null  $resolver  the documents fn:document() can return, by URI
+     */
+    public function __construct(private readonly DocumentIndex $index, private readonly ?Closure $resolver = null) {}
 
     /**
      * An evaluator for the same document that can call the given user functions; their bodies see
@@ -240,7 +252,68 @@ final class Evaluator
             throw new XPathError('XPDY0050', 'The context item for "/" is not a node.');
         }
 
-        return [$item instanceof DOMDocument ? $item : $this->index->document];
+        if ($item instanceof DOMDocument) {
+            return [$item];
+        }
+
+        return [$this->documents === [] ? $this->index->document : $this->indexOf($item)->document];
+    }
+
+    /**
+     * The document node of an embedded document (fn:document); a URI the resolver does not know
+     * raises FODC0002.
+     */
+    private function document(string $uri): DOMDocument
+    {
+        $index = $this->resolver !== null ? ($this->resolver)($uri) : null;
+        if ($index === null) {
+            throw new XPathError('FODC0002', "The document \"{$uri}\" is not available; only documents embedded when the rule set was compiled can be read.");
+        }
+        $this->documents[spl_object_id($index->document)] = $index;
+
+        return $index->document;
+    }
+
+    /**
+     * The index of the document a node belongs to.
+     */
+    private function indexOf(DOMNode $node): DocumentIndex
+    {
+        if ($this->documents === []) {
+            return $this->index;
+        }
+        $document = $node instanceof DOMDocument ? $node : $node->ownerDocument;
+
+        return $document === null || $document === $this->index->document ? $this->index : ($this->documents[spl_object_id($document)] ?? $this->index);
+    }
+
+    /**
+     * Sorts nodes into document order and removes duplicates; nodes of different documents are
+     * grouped by document, the evaluated document first.
+     *
+     * @param  list<DOMNode>  $nodes
+     * @return list<DOMNode>
+     */
+    private function sort(array $nodes): array
+    {
+        if ($this->documents === [] || $nodes === []) {
+            return $this->index->sort($nodes);
+        }
+        $groups = [];
+        foreach ($nodes as $node) {
+            $groups[spl_object_id($this->indexOf($node)->document)][] = $node;
+        }
+        if (count($groups) === 1) {
+            return $this->indexOf($nodes[0])->sort($nodes);
+        }
+        $sorted = $this->index->sort($groups[spl_object_id($this->index->document)] ?? []);
+        foreach ($this->documents as $id => $index) {
+            if (isset($groups[$id])) {
+                $sorted = [...$sorted, ...$index->sort($groups[$id])];
+            }
+        }
+
+        return $sorted;
     }
 
     /**
@@ -263,6 +336,9 @@ final class Evaluator
     {
         if ($ast[1] === 'fn:last') {
             return [new IntegerValue(BigDecimal::of($this->size ?? throw new UnsupportedXPath('fn:last() outside a predicate or a path step', 'last()', 0)))];
+        }
+        if ($ast[1] === 'fn:document') {
+            return [$this->document(Functions::requiredString($this->eval(self::subList($ast, 2)[0], $item, $variables), 'fn:document'))];
         }
         $arguments = [];
         foreach (self::subList($ast, 2) as $argument) {
@@ -412,7 +488,7 @@ final class Evaluator
 
             if ($descendants !== null) {
                 foreach ($descendants as [$uri, $local, $predicates]) {
-                    foreach ($this->index->descendantsOfNamed($context, $uri, $local) as $candidate) {
+                    foreach ($this->indexOf($context)->descendantsOfNamed($context, $uri, $local) as $candidate) {
                         if ($this->allPredicatesHold($candidate, $predicates, $variables)) {
                             $nodes[] = $candidate;
                         }
@@ -441,7 +517,7 @@ final class Evaluator
             throw new XPathError('XPTY0018', 'The result of a path expression mixes nodes and atomic values.');
         }
 
-        return $atomics !== [] ? $atomics : $this->index->sort($nodes);
+        return $atomics !== [] ? $atomics : $this->sort($nodes);
     }
 
     /**
@@ -580,6 +656,12 @@ final class Evaluator
         if (! $item instanceof DOMNode) {
             throw new XPathError('XPTY0020', "The context item of the {$axis} axis is not a node.");
         }
+        if ($axis === 'child' && $test[0] === 'name' && count($predicates) === 1 && $this->documents !== [] && ! $this->matchingPattern) {
+            $indexed = $this->indexedChildren($item, self::text($test, 1), self::text($test, 2), $predicates[0], $variables);
+            if ($indexed !== null) {
+                return $indexed;
+            }
+        }
 
         $candidates = $this->axis($axis, $test, $item);
         $selected = [];
@@ -594,6 +676,77 @@ final class Evaluator
         }
 
         return in_array($axis, self::REVERSE_AXES, true) ? array_reverse($selected) : $selected;
+    }
+
+    /**
+     * The result of a step "name[@attribute = value]" from a node of an embedded document (code
+     * lists read through fn:document), looked up in the attribute index of that document instead
+     * of testing the predicate on every child. The value must not depend on the focus; it is
+     * evaluated once, and only when there is at least one child of that name, as the predicate
+     * would be. Returns null, so the step is evaluated as usual, for any other shape, for a node
+     * of the evaluated document, and for values whose comparison the index cannot reproduce:
+     * values other than strings, untyped values or numbers, strings mixed with numbers, and
+     * numbers when an attribute value does not cast to xs:double (the predicate raises FORG0001).
+     *
+     * @param  array<mixed>  $predicate
+     * @param  array<string, list<DOMNode|AtomicValue>|Thunk>  $variables
+     * @return list<DOMNode>|null
+     */
+    private function indexedChildren(DOMNode $parent, string $uri, string $local, array $predicate, array $variables): ?array
+    {
+        if ($predicate[0] !== Op::GCMP || $predicate[1] !== '=') {
+            return null;
+        }
+        $index = $this->indexOf($parent);
+        if ($index === $this->index) {
+            return null;
+        }
+        $left = self::sub($predicate, 2);
+        $right = self::sub($predicate, 3);
+        [$attribute, $operand] = self::isAttributeStep($left) ? [$left, $right] : (self::isAttributeStep($right) ? [$right, $left] : [null, null]);
+        if ($attribute === null || $operand === null || ! self::isFocusFree($operand)) {
+            return null;
+        }
+        $name = self::sub($attribute, 2);
+        [$count, $byString, $byDouble] = $index->childrenByAttribute($parent, $uri, $local, self::text($name, 1), self::text($name, 2));
+        if ($count === 0) {
+            return [];
+        }
+
+        $strings = [];
+        $doubles = [];
+        foreach (Functions::data($this->eval($operand, $parent, $variables)) as $value) {
+            if ($value instanceof StringValue || $value instanceof UntypedAtomic) {
+                $strings[] = $value->value;
+            } elseif (($value instanceof IntegerValue || $value instanceof DecimalValue || $value instanceof DoubleValue) && ($double = Atomic::cast($value, 'xs:double')) instanceof DoubleValue) {
+                $doubles[] = $double->value;
+            } else {
+                return null;
+            }
+        }
+        if (($strings !== [] && $doubles !== []) || ($doubles !== [] && $byDouble === null)) {
+            return null;
+        }
+
+        $selected = [];
+        foreach ($strings as $string) {
+            array_push($selected, ...$byString[$string] ?? []);
+        }
+        foreach ($doubles as $double) {
+            array_push($selected, ...$byDouble[DocumentIndex::doubleKey($double)] ?? []);
+        }
+
+        return count($strings) + count($doubles) > 1 ? $index->sort($selected) : $selected;
+    }
+
+    /**
+     * Whether an AST is an attribute step with a name test and no predicates, such as "@id".
+     *
+     * @param  array<mixed>  $ast
+     */
+    private static function isAttributeStep(array $ast): bool
+    {
+        return ($ast[0] ?? null) === Op::STEP && ($ast[1] ?? null) === 'attribute' && is_array($ast[2] ?? null) && ($ast[2][0] ?? null) === 'name' && ($ast[3] ?? null) === [];
     }
 
     /**
@@ -640,14 +793,14 @@ final class Evaluator
             case 'descendant':
             case 'descendant-or-self':
                 if ($test[0] === 'name' && ! $node instanceof DOMAttr) {
-                    $named = $this->index->descendantsOfNamed($node, self::text($test, 1), self::text($test, 2));
+                    $named = $this->indexOf($node)->descendantsOfNamed($node, self::text($test, 1), self::text($test, 2));
 
                     return $axis === 'descendant-or-self' && self::matches($node, $test, $axis) ? [$node, ...$named] : $named;
                 }
                 if ($node instanceof DOMAttr) {
                     return $axis === 'descendant-or-self' ? [$node] : [];
                 }
-                $descendants = $this->index->descendantsOrSelf($node);
+                $descendants = $this->indexOf($node)->descendantsOrSelf($node);
 
                 return $axis === 'descendant' ? array_slice($descendants, 1) : $descendants;
             case 'following-sibling':
@@ -666,8 +819,8 @@ final class Evaluator
                 return $siblings;
             case 'preceding':
                 return $test[0] === 'name'
-                    ? $this->index->precedingNamed($node, self::text($test, 1), self::text($test, 2))
-                    : $this->index->preceding($node);
+                    ? $this->indexOf($node)->precedingNamed($node, self::text($test, 1), self::text($test, 2))
+                    : $this->indexOf($node)->preceding($node);
         }
 
         throw new LogicException("Unknown axis {$axis}.");
@@ -870,7 +1023,7 @@ final class Evaluator
             $nodes[] = $item;
         }
 
-        return $this->index->sort($nodes);
+        return $this->sort($nodes);
     }
 
     /**

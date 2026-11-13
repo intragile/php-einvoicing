@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Schematron;
 
+use IntrAgile\EInvoicing\Exception\UnsafeXml;
+use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
+use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Validation\Severity;
+use IntrAgile\EInvoicing\XPath\DocumentIndex;
 
 /**
  * A compiled Schematron rule set (the array a compiled rule file returns), with its shape checked.
@@ -31,7 +35,10 @@ final class RuleSet
      * The layout of the compiled array the compiler writes. Files written before the "format" key
      * existed are format 1. Format 3 adds the optional "messageParts" of an assert (name and
      * value-of in messages) to format 2. Format 4 adds the optional "report" => true of an assert
-     * compiled from a report element, which fires when its test is true.
+     * compiled from a report element, which fires when its test is true, and the optional
+     * "documents" (URI => XML) of the files fn:document() reads, embedded at compile time, with
+     * "documentSha256" (URI => SHA-256 of that XML) next to "sha256". Both are left out when the
+     * schema reads no document, so such a rule set compiles to the same bytes as before.
      */
     public const FORMAT = 4;
 
@@ -41,11 +48,16 @@ final class RuleSet
     /** @var array<string, self> */
     private static array $loaded = [];
 
+    /** @var array<string, DocumentIndex> the embedded documents parsed so far, by URI */
+    private array $documentIndexes = [];
+
     /**
      * @param  array<string, string>  $namespaces  prefix => namespace URI
      * @param  list<Let>  $lets
      * @param  array<string, CompiledFunction>  $functions
      * @param  list<Pattern>  $patterns
+     * @param  array<string, string>  $documents  URI => XML
+     * @param  array<string, string>  $documentSha256  URI => SHA-256 of the XML
      */
     private function __construct(
         private readonly string $id,
@@ -55,6 +67,8 @@ final class RuleSet
         private readonly array $lets,
         private readonly array $functions,
         private readonly array $patterns,
+        private readonly array $documents = [],
+        private readonly array $documentSha256 = [],
     ) {}
 
     /**
@@ -121,6 +135,8 @@ final class RuleSet
             $patterns[] = ['id' => $patternId, 'lets' => self::checkLets($pattern['lets'] ?? null, "The lets of pattern \"{$patternId}\""), 'rules' => $rules];
         }
 
+        $documents = self::stringMap($compiled['documents'] ?? [], "The documents of \"{$id}\"");
+
         return new self(
             $id,
             self::string($compiled, 'version', "The rule set \"{$id}\""),
@@ -129,6 +145,8 @@ final class RuleSet
             self::checkLets($compiled['lets'] ?? null, "The lets of \"{$id}\""),
             $functions,
             $patterns,
+            $documents,
+            self::documentHashes($compiled['documentSha256'] ?? [], $documents, $id),
         );
     }
 
@@ -184,6 +202,51 @@ final class RuleSet
     public function patterns(): array
     {
         return $this->patterns;
+    }
+
+    /**
+     * The documents fn:document() reads, embedded when the rule set was compiled.
+     *
+     * @return array<string, string> URI as written in the schema => XML
+     */
+    public function documents(): array
+    {
+        return $this->documents;
+    }
+
+    /**
+     * The SHA-256 of each embedded document, as recorded by the compiler.
+     *
+     * @return array<string, string> URI => SHA-256
+     */
+    public function documentSha256(): array
+    {
+        return $this->documentSha256;
+    }
+
+    /**
+     * The indexed document node of an embedded document, parsed on first use and kept for the
+     * lifetime of the rule set; null for a URI that is not embedded.
+     *
+     * @internal
+     *
+     * @throws UnsupportedSchematron when the embedded XML cannot be loaded
+     */
+    public function documentIndex(string $uri): ?DocumentIndex
+    {
+        if (isset($this->documentIndexes[$uri])) {
+            return $this->documentIndexes[$uri];
+        }
+        if (! isset($this->documents[$uri])) {
+            return null;
+        }
+        try {
+            $document = SafeXml::load($this->documents[$uri]);
+        } catch (UnsupportedDocument|UnsafeXml $exception) {
+            throw new UnsupportedSchematron("The embedded document \"{$uri}\" of the rule set \"{$this->id}\" cannot be loaded: {$exception->getMessage()}", 0, $exception);
+        }
+
+        return $this->documentIndexes[$uri] = DocumentIndex::build($document);
     }
 
     /**
@@ -375,6 +438,39 @@ final class RuleSet
         }
 
         return $roots;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function stringMap(mixed $value, string $what): array
+    {
+        $result = [];
+        foreach (self::map($value, $what) as $key => $item) {
+            if (! is_string($key) || ! is_string($item)) {
+                throw new UnsupportedSchematron("{$what} is malformed: a map of strings is expected.");
+            }
+            $result[$key] = $item;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Checks "documentSha256": a string per embedded document, for no other URI.
+     *
+     * @param  array<string, string>  $documents
+     * @return array<string, string>
+     */
+    private static function documentHashes(mixed $value, array $documents, string $id): array
+    {
+        $what = "The documentSha256 of \"{$id}\"";
+        $hashes = self::stringMap($value, $what);
+        if (array_diff_key($hashes, $documents) !== []) {
+            throw new UnsupportedSchematron("{$what} is malformed: it names a document that is not embedded.");
+        }
+
+        return $hashes;
     }
 
     /**
