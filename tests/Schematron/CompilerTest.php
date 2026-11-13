@@ -811,6 +811,60 @@ final class CompilerTest extends TestCase
         self::assertSame(['b', 'c'], array_column($compiled['patterns'], 'id'));
     }
 
+    /**
+     * A textual include would declare the lets of a file twice, which XSLT refuses (XTSE0630), so
+     * a file with global lets may be reached only once, through a diamond or through siblings.
+     *
+     * @return iterable<string, array{array<string, string>, string}>
+     */
+    public static function repeatedGlobalLets(): iterable
+    {
+        $pattern = static fn (string $id, string $include): string => "<pattern xmlns=\"http://purl.oclc.org/dsdl/schematron\" id=\"{$id}\">{$include}</pattern>";
+        $lets = '<pattern xmlns="http://purl.oclc.org/dsdl/schematron" id="d"><let name="x" value="1"/></pattern>';
+        yield 'diamond' => [[
+            'a.sch' => self::includingSchema('<include href="b.sch"/><include href="c.sch"/>'),
+            'b.sch' => $pattern('b', '<include href="d.sch"/>'),
+            'c.sch' => $pattern('c', '<include href="d.sch"/>'),
+            'd.sch' => '<let xmlns="http://purl.oclc.org/dsdl/schematron" name="x" value="1"/>',
+        ], 'The include "d.sch" (c.sch line 1) includes d.sch a second time'];
+        yield 'siblings' => [[
+            'a.sch' => self::includingSchema('<include href="d.sch"/><include href="d.sch"/>'),
+            'd.sch' => $lets,
+        ], 'The include "d.sch" (a.sch line 5) includes d.sch a second time'];
+        yield 'lets in a nested include' => [[
+            'a.sch' => self::includingSchema('<include href="b.sch"/><include href="b.sch"/>'),
+            'b.sch' => $pattern('b', '<include href="d.sch"/>'),
+            'd.sch' => '<let xmlns="http://purl.oclc.org/dsdl/schematron" name="x" value="1"/>',
+        ], 'The include "b.sch" (a.sch line 5) includes b.sch a second time'];
+    }
+
+    /**
+     * @param  array<string, string>  $files
+     */
+    #[DataProvider('repeatedGlobalLets')]
+    public function test_repeated_include_of_a_file_with_global_lets_is_refused(array $files, string $message): void
+    {
+        $dir = self::includeScratch('repeated-lets-'.md5(serialize($files)), $files);
+
+        try {
+            Compiler::compile("{$dir}/a.sch", 'tiny', '0.1');
+            self::fail('A file with global lets was included twice.');
+        } catch (UnsupportedSchematron $exception) {
+            self::assertStringContainsString($message, $exception->getMessage());
+            self::assertStringContainsString('XTSE0630', $exception->getMessage());
+        }
+    }
+
+    public function test_repeated_include_of_a_file_with_rule_lets_only_is_inlined_once(): void
+    {
+        $dir = self::includeScratch('repeated-rule-lets', [
+            'a.sch' => self::includingSchema('<pattern id="p"><include href="d.sch"/><include href="d.sch"/></pattern>'),
+            'd.sch' => '<rule xmlns="http://purl.oclc.org/dsdl/schematron" context="cbc:ID"><let name="v" value="string(.)"/><assert id="D-1" flag="fatal" test="$v != \'\'">d</assert></rule>',
+        ]);
+
+        self::assertSame(['D-1'], array_column(self::asserts(Compiler::compile("{$dir}/a.sch", 'tiny', '0.1')), 'id'));
+    }
+
     public function test_include_symlink_escaping_root_is_refused(): void
     {
         $dir = self::includeScratch('symlink', [

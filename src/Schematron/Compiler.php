@@ -29,8 +29,10 @@ use SplObjectStorage;
  * against the directory of the including file and must stay inside the include root (by default
  * the directory of the top-level schema), also after symbolic links are resolved. Paths are
  * compared with "/" as the separator, and a Windows drive letter in any case. A file that is
- * reached a second time through another include (a diamond) is inlined only at its first include,
- * by real path; the later include elements are removed. A file that includes itself, directly or
+ * reached a second time through another include (a diamond, or a sibling include) is inlined only
+ * at its first include, by real path; the later include elements are removed. A file reached a
+ * second time that declares global lets (schema or pattern lets, also through its own includes) is
+ * refused, as the duplicate global variables of a textual include are in XSLT (XTSE0630). A file that includes itself, directly or
  * through other files, is refused. Errors in an included file name that file, relative to the
  * include root.
  *
@@ -160,7 +162,7 @@ final class Compiler
     /** @var array<string, string> URI as written in a document() call => XML of the file it names */
     private array $documents = [];
 
-    /** @var array<string, true> real paths of the top-level schema and of every file inlined so far */
+    /** @var array<string, DOMElement|true> real path of every file inlined so far => its inlined element; true for the top-level schema */
     private array $inlined = [];
 
     /** @var SplObjectStorage<DOMElement, string> document element of each included file => its name in messages */
@@ -1158,11 +1160,16 @@ final class Compiler
             throw new UnsupportedSchematron("The include \"{$href}\" ({$this->line($include)}) includes itself: ".implode(' -> ', array_map(fn (string $path): string => $this->relativeName($path, $root), [...$stack, $real])).'.');
         }
         if (isset($this->inlined[$real])) {
+            $first = $this->inlined[$real];
+            if ($first instanceof DOMElement && (self::declaresGlobalLet($first, $first->parentNode) || self::declaresGlobalLet($first, $include->parentNode))) {
+                $name = $this->relativeName($real, $root);
+
+                throw new UnsupportedSchematron("The include \"{$href}\" ({$this->line($include)}) includes {$name} a second time, and that file declares global variables (schema or pattern lets); a textual include would declare them twice, which XSLT refuses (XTSE0630, duplicate global variable).");
+            }
             $include->parentNode?->removeChild($include);
 
             return null;
         }
-        $this->inlined[$real] = true;
 
         $name = $this->relativeName($real, $root);
         try {
@@ -1181,8 +1188,33 @@ final class Compiler
         }
         $parent->replaceChild($imported, $include);
         $this->includedFiles[$imported] = $name;
+        $this->inlined[$real] = $imported;
 
         return [$imported, dirname($real), [...$stack, $real]];
+    }
+
+    /**
+     * Whether an inlined file, placed under $parent, declares a global variable: a let (its own
+     * includes already resolved) that is not inside a rule, neither within the file nor, for a
+     * file whose document element is a let, above it.
+     */
+    private static function declaresGlobalLet(DOMElement $element, ?DOMNode $parent): bool
+    {
+        $lets = $element->localName === 'let' ? [$element] : iterator_to_array($element->getElementsByTagNameNS(self::SCHEMATRON_NAMESPACE, 'let'));
+        foreach ($lets as $let) {
+            $inRule = false;
+            for ($ancestor = $let === $element ? $parent : $let->parentNode; $ancestor instanceof DOMElement; $ancestor = $ancestor === $element ? null : $ancestor->parentNode) {
+                if ($ancestor->namespaceURI === self::SCHEMATRON_NAMESPACE && $ancestor->localName === 'rule') {
+                    $inRule = true;
+                    break;
+                }
+            }
+            if (! $inRule) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

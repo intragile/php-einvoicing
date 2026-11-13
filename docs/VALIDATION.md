@@ -104,8 +104,11 @@ XRechnung 2.6.0 schemas use, so they compile as published:
   fragment; it resolves against the including file and must stay inside the include root (the
   directory of the top-level schema unless the caller passes a wider one), also after symbolic
   links are resolved. Paths are compared with `/` as the separator, so Windows paths and drive
-  letters work too. A file reached through two includes (a diamond) is inlined once, at its first
-  include. Cycles are refused.
+  letters work too. A file included more than once (through a diamond or sibling includes) is
+  inlined once, at its first include, so a rule file included into several patterns runs in the
+  first only: the finding count can then be lower than a textual-inclusion processor's, the verdict
+  is the same, and a file with global lets included twice is refused (as XSLT refuses the
+  duplicate variables, `XTSE0630`). Cycles are refused.
 - **Global pattern lets.** A `let` of a pattern is a global variable, as in the ISO skeleton and
   SchXslt: every rule, let and XSLT function of every pattern sees it, and its name must be unique
   among the schema and pattern lets (`XTSE0630`).
