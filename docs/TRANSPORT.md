@@ -294,7 +294,9 @@ return response('', 204);
   when its body is not valid JSON, is not a JSON object, or has no non-empty `eventType` or
   `documentId` (for example a company verification event). Answer it with 2xx anyway, or the
   sender will keep retrying it; log `$e->bodyExcerpt` if you want to see what was ignored.
-- A status event whose `deliveryStatus` is `null` gives `DeliveryState::Unknown`.
+- A status event whose `deliveryStatus` is `null` gives `DeliveryState::Unknown`. This differs
+  from `send()` and `status()`, where a missing or `null` `deliveryStatus` gives
+  `DeliveryState::Pending`: the document was accepted and its delivery is not yet known.
 - `verify($rawBody, $signatureHeader)` returns the signature check alone as a boolean.
 
 ## The SBDH envelope

@@ -15,6 +15,7 @@ use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamFactoryInterface;
+use Psr\Http\Message\StreamInterface;
 use RuntimeException;
 use SensitiveParameter;
 use Throwable;
@@ -250,7 +251,7 @@ final class HttpClient
 
         $declared = $response->getHeaderLine('Content-Length');
         if (ctype_digit($declared) && (int) $declared > $cap) {
-            throw $this->tooLarge($request, $response, $cap, $stream->read(UnexpectedResponse::EXCERPT_BYTES + $this->longestSecret($request)));
+            throw $this->tooLarge($request, $response, $cap, self::readUpTo($stream, UnexpectedResponse::EXCERPT_BYTES + $this->longestSecret($request)));
         }
 
         $body = '';
@@ -273,6 +274,29 @@ final class HttpClient
         }
 
         return $body;
+    }
+
+    /**
+     * Up to $bytes bytes from the stream, read until that many have arrived, the stream ends or a
+     * read fails or returns nothing. A single read may return fewer bytes than asked for, and a
+     * secret cut by such a short read could not be redacted.
+     */
+    private static function readUpTo(StreamInterface $stream, int $bytes): string
+    {
+        $data = '';
+        try {
+            while (strlen($data) < $bytes && ! $stream->eof()) {
+                $chunk = $stream->read($bytes - strlen($data));
+                if ($chunk === '') {
+                    break;
+                }
+                $data .= $chunk;
+            }
+        } catch (RuntimeException) {
+            // The body is refused for its size anyway; the excerpt keeps what was read.
+        }
+
+        return $data;
     }
 
     /**

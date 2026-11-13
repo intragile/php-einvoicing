@@ -139,6 +139,20 @@ final class HttpClientTest extends TestCase
         }
     }
 
+    public function test_secret_straddling_the_cut_is_redacted_when_the_stream_returns_short_reads(): void
+    {
+        $body = str_repeat('x', 495).self::SECRET.str_repeat('y', 600);
+        $chunks = str_split($body, 7);
+        $response = (new Response(200, ['Content-Length' => (string) strlen($body)]))
+            ->withBody(self::brokenStream(null, $chunks, eofAfterEmptyRead: true));
+
+        $exception = self::capture(fn () => (new HttpClient(new RecordingHttpClient($response), new Psr17Factory, new Psr17Factory, 1_000, [self::SECRET]))
+            ->send('GET', 'https://ap.example/api'));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertSame(str_repeat('x', 495).'[reda', $exception->bodyExcerpt);
+    }
+
     public function test_encoded_secret_variants_are_redacted(): void
     {
         $secret = 'p@ss/w0rd+s3cret value';

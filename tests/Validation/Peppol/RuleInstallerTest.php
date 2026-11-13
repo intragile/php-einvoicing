@@ -14,8 +14,10 @@ use IntrAgile\EInvoicing\Validation\Peppol\PeppolRules;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use IntrAgile\EInvoicing\Validation\Peppol\RuleInstaller;
 use IntrAgile\EInvoicing\Validation\Validator;
+use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Throwable;
 
 final class RuleInstallerTest extends TestCase
 {
@@ -170,15 +172,10 @@ final class RuleInstallerTest extends TestCase
         // A non-empty folder under the third file's name makes its rename fail after two succeeded.
         mkdir($target.'/peppol-ubl-3.0.22.php/blocker', 0775, true);
 
-        try {
-            (new RuleInstaller)->install($target, self::sourceDir());
-            self::fail('The blocked rename must fail.');
-        } catch (PartialInstall $exception) {
-            self::fail('A successful rollback must not report a partial install.');
-        } catch (RuntimeException $exception) {
-            self::assertStringContainsString('peppol-ubl-3.0.22.php', $exception->getMessage());
-            self::assertStringContainsString('nothing was changed', $exception->getMessage());
-        }
+        $exception = self::capture(fn () => (new RuleInstaller)->install($target, self::sourceDir()));
+
+        self::assertRolledBack($exception);
+        self::assertStringContainsString('peppol-ubl-3.0.22.php', $exception->getMessage());
         self::assertSame(['peppol-ubl-3.0.22.php'], array_values(array_diff(scandir($target) ?: [], ['.', '..'])));
     }
 
@@ -196,14 +193,7 @@ final class RuleInstallerTest extends TestCase
         unlink($blocked);
         mkdir($blocked.'/blocker', 0775, true);
 
-        try {
-            (new RuleInstaller)->install($target, self::sourceDir());
-            self::fail('The blocked rename must fail.');
-        } catch (PartialInstall $exception) {
-            self::fail('A successful rollback must not report a partial install.');
-        } catch (RuntimeException $exception) {
-            self::assertStringContainsString('nothing was changed', $exception->getMessage());
-        }
+        self::assertRolledBack(self::capture(fn () => (new RuleInstaller)->install($target, self::sourceDir())));
 
         self::assertSame($before[0], file_get_contents($first[0]));
         self::assertSame($before[1], file_get_contents($first[1]));
@@ -237,10 +227,15 @@ final class RuleInstallerTest extends TestCase
         $before = array_map(static fn (string $path): string => (string) file_get_contents($path), $first);
         $moves = 0;
         $calls = 0;
-        $rename = function (string $from, string $to) use ($first, &$moves, &$calls): bool {
+        $missing = [];
+        // Violations are recorded and asserted after install(): an assertion thrown inside the
+        // seam would be a RuntimeException, which the installer catches and rolls back from.
+        $rename = function (string $from, string $to) use ($first, &$moves, &$calls, &$missing): bool {
             $calls++;
             foreach ($first as $path) {
-                self::assertFileExists($path, "Rename #{$calls} ({$from} -> {$to}) found a target missing.");
+                if (! is_file($path)) {
+                    $missing[] = "rename #{$calls} ({$from} -> {$to}) found {$path} missing";
+                }
             }
             // The third compiled file fails to move into place, after two already did.
             if (str_contains($from, '.tmp-') && ++$moves === 3) {
@@ -250,15 +245,10 @@ final class RuleInstallerTest extends TestCase
             return rename($from, $to);
         };
 
-        try {
-            (new RuleInstaller(rename: $rename))->install($target, self::sourceDir());
-            self::fail('The failed move must be reported.');
-        } catch (PartialInstall) {
-            self::fail('A successful rollback must not report a partial install.');
-        } catch (RuntimeException $exception) {
-            self::assertStringContainsString('nothing was changed', $exception->getMessage());
-        }
+        $exception = self::capture(fn () => (new RuleInstaller(rename: $rename))->install($target, self::sourceDir()));
 
+        self::assertSame([], $missing, 'A target must exist at every rename.');
+        self::assertRolledBack($exception);
         self::assertGreaterThan(3, $calls, 'The restore renames are checked as well.');
         foreach ($first as $index => $path) {
             self::assertSame($before[$index], file_get_contents($path));
@@ -284,21 +274,18 @@ final class RuleInstallerTest extends TestCase
             return rename($from, $to);
         };
 
-        try {
-            (new RuleInstaller(rename: $rename))->install($target, self::sourceDir());
-            self::fail('The failed restore must be reported.');
-        } catch (PartialInstall $exception) {
-            $leftover = glob($target.'/*.bak-*') ?: [];
-            sort($leftover);
-            $reported = $exception->backupPaths;
-            sort($reported);
+        $exception = self::capture(fn () => (new RuleInstaller(rename: $rename))->install($target, self::sourceDir()));
 
-            self::assertCount(2, $leftover, 'The backups of the two files already replaced stay.');
-            self::assertSame($leftover, $reported);
-            self::assertSame([$first[0], $first[1]], $exception->writtenPaths);
-            foreach ($leftover as $backup) {
-                self::assertStringContainsString($backup, $exception->getMessage());
-            }
+        self::assertInstanceOf(PartialInstall::class, $exception);
+        $leftover = glob($target.'/*.bak-*') ?: [];
+        sort($leftover);
+        $reported = $exception->backupPaths;
+        sort($reported);
+        self::assertCount(2, $leftover, 'The backups of the two files already replaced stay.');
+        self::assertSame($leftover, $reported);
+        self::assertSame([$first[0], $first[1]], $exception->writtenPaths);
+        foreach ($leftover as $backup) {
+            self::assertStringContainsString($backup, $exception->getMessage());
         }
     }
 
@@ -312,19 +299,43 @@ final class RuleInstallerTest extends TestCase
         };
         $unlink = static fn (string $path): bool => str_contains($path, '.bak-') ? false : unlink($path);
 
-        try {
-            (new RuleInstaller(rename: $rename, unlink: $unlink))->install($target, self::sourceDir());
-            self::fail('The failed move must be reported.');
-        } catch (PartialInstall) {
-            self::fail('Every target was restored, so the install is not partial.');
-        } catch (RuntimeException $exception) {
-            $leftover = glob($target.'/*.bak-*') ?: [];
-            self::assertCount(5, $leftover);
-            foreach ($leftover as $backup) {
-                self::assertStringContainsString($backup, $exception->getMessage());
-            }
-            self::assertStringContainsString('nothing was changed', $exception->getMessage());
+        $exception = self::capture(fn () => (new RuleInstaller(rename: $rename, unlink: $unlink))->install($target, self::sourceDir()));
+
+        self::assertRolledBack($exception);
+        $leftover = glob($target.'/*.bak-*') ?: [];
+        self::assertCount(5, $leftover);
+        foreach ($leftover as $backup) {
+            self::assertStringContainsString($backup, $exception->getMessage());
         }
+    }
+
+    /**
+     * The exception the action threw, or null when it returned. Caught outside the code under
+     * test's own catch blocks, so a PHPUnit assertion failure is never mistaken for one.
+     */
+    private static function capture(callable $action): ?Throwable
+    {
+        try {
+            $action();
+        } catch (Throwable $exception) {
+            return $exception;
+        }
+
+        return null;
+    }
+
+    /**
+     * Asserts that the install failed and reported a complete rollback.
+     *
+     * @phpstan-assert Throwable $exception
+     */
+    private static function assertRolledBack(?Throwable $exception): void
+    {
+        self::assertNotNull($exception, 'The failed move must be reported.');
+        self::assertNotInstanceOf(PartialInstall::class, $exception, 'A successful rollback must not report a partial install.');
+        self::assertNotInstanceOf(AssertionFailedError::class, $exception);
+        self::assertSame(RuntimeException::class, $exception::class, $exception->getMessage());
+        self::assertStringContainsString('nothing was changed', $exception->getMessage());
     }
 
     /**
