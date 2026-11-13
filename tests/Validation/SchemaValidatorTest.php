@@ -7,8 +7,8 @@ namespace IntrAgile\EInvoicing\Tests\Validation;
 use DOMDocument;
 use IntrAgile\EInvoicing\Rules\XRechnung\RuleFiles;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
+use IntrAgile\EInvoicing\Validation\Exception\UnusableSchema;
 use IntrAgile\EInvoicing\Validation\SchemaValidator;
-use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -17,6 +17,23 @@ final class SchemaValidatorTest extends TestCase
     private const UBL_INVOICE_XSD = 'ubl/2.1/xsd/maindoc/UBL-Invoice-2.1.xsd';
 
     private const XSI = 'http://www.w3.org/2001/XMLSchema-instance';
+
+    /** Per-test scratch folder inside the repository's ignored build/ folder. */
+    private string $scratch;
+
+    protected function setUp(): void
+    {
+        $this->scratch = dirname(__DIR__, 2).'/build/schema-validator-test-'.bin2hex(random_bytes(4));
+        self::assertTrue(mkdir($this->scratch, 0o777, true));
+    }
+
+    protected function tearDown(): void
+    {
+        foreach (glob($this->scratch.'/*') ?: [] as $file) {
+            unlink($file);
+        }
+        rmdir($this->scratch);
+    }
 
     /**
      * @return iterable<string, array{string, string}>
@@ -91,8 +108,7 @@ final class SchemaValidatorTest extends TestCase
      */
     public function test_instance_schema_location_is_ignored(): void
     {
-        $dir = self::scratchDir();
-        $rejecting = $dir.'/rejecting.xsd';
+        $rejecting = $this->scratch.'/rejecting.xsd';
         file_put_contents($rejecting, <<<'XSD'
             <?xml version="1.0" encoding="UTF-8"?>
             <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
@@ -101,7 +117,7 @@ final class SchemaValidatorTest extends TestCase
               <xs:element name="Invoice"><xs:complexType/></xs:element>
             </xs:schema>
             XSD);
-        $permissive = $dir.'/permissive.xsd';
+        $permissive = $this->scratch.'/permissive.xsd';
         file_put_contents($permissive, <<<'XSD'
             <?xml version="1.0" encoding="UTF-8"?>
             <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
@@ -113,20 +129,14 @@ final class SchemaValidatorTest extends TestCase
             </xs:schema>
             XSD);
 
-        try {
-            $valid = self::withSchemaLocation(self::ublInvoice(), $rejecting);
-            self::assertSame([], (new SchemaValidator)->validate($valid, self::xsd(self::UBL_INVOICE_XSD)));
+        $valid = self::withSchemaLocation(self::ublInvoice(), $rejecting);
+        self::assertSame([], (new SchemaValidator)->validate($valid, self::xsd(self::UBL_INVOICE_XSD)));
 
-            $invalidXml = str_replace('2016-04-04</cbc:IssueDate>', '2026-13-45</cbc:IssueDate>', self::ublInvoice());
-            $baseline = (new SchemaValidator)->validate(SafeXml::loadPreservingWhitespace($invalidXml), self::xsd(self::UBL_INVOICE_XSD));
-            $hinted = (new SchemaValidator)->validate(self::withSchemaLocation($invalidXml, $permissive), self::xsd(self::UBL_INVOICE_XSD));
-            self::assertCount(1, $baseline);
-            self::assertEquals($baseline, $hinted);
-        } finally {
-            @unlink($rejecting);
-            @unlink($permissive);
-            @rmdir($dir);
-        }
+        $invalidXml = str_replace('2016-04-04</cbc:IssueDate>', '2026-13-45</cbc:IssueDate>', self::ublInvoice());
+        $baseline = (new SchemaValidator)->validate(SafeXml::loadPreservingWhitespace($invalidXml), self::xsd(self::UBL_INVOICE_XSD));
+        $hinted = (new SchemaValidator)->validate(self::withSchemaLocation($invalidXml, $permissive), self::xsd(self::UBL_INVOICE_XSD));
+        self::assertCount(1, $baseline);
+        self::assertEquals($baseline, $hinted);
     }
 
     /**
@@ -137,7 +147,7 @@ final class SchemaValidatorTest extends TestCase
     public function test_no_network_during_schema_validation(): void
     {
         $xsd = self::xsd(self::UBL_INVOICE_XSD);
-        $missing = 'file:///Volumes/KINGSTON/does-not-exist-'.bin2hex(random_bytes(4)).'/x.xsd';
+        $missing = 'file://'.$this->scratch.'/does-not-exist/x.xsd';
         $hints = [
             'none' => SafeXml::loadPreservingWhitespace(self::ublInvoice()),
             'http' => self::withSchemaLocation(self::ublInvoice(), 'http://evil.example/x.xsd'),
@@ -164,8 +174,6 @@ final class SchemaValidatorTest extends TestCase
             libxml_set_external_entity_loader($previousLoader);
         }
 
-        $schemaRoot = realpath(RuleFiles::schemaDir());
-        self::assertIsString($schemaRoot);
         self::assertNotSame([], $loads['none']);
         foreach ($loads as $name => $requested) {
             self::assertSame([], $results[$name], $name);
@@ -202,9 +210,53 @@ final class SchemaValidatorTest extends TestCase
 
     public function test_missing_schema_file_is_refused(): void
     {
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(UnusableSchema::class);
 
-        (new SchemaValidator)->validate(SafeXml::loadPreservingWhitespace(self::ublInvoice()), '/Volumes/KINGSTON/no-such-schema.xsd');
+        (new SchemaValidator)->validate(SafeXml::loadPreservingWhitespace(self::ublInvoice()), $this->scratch.'/no-such-schema.xsd');
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function unusableSchemas(): iterable
+    {
+        yield 'not XML' => ['this is not an XML Schema', 'Start tag expected'];
+        yield 'unresolved type' => [
+            '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:t="urn:x" targetNamespace="urn:x">'
+            .'<xs:element name="Invoice" type="t:Missing"/></xs:schema>',
+            'does not resolve to a(n) type definition',
+        ];
+        yield 'missing include' => [
+            '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:x">'
+            .'<xs:include schemaLocation="missing.xsd"/><xs:element name="Invoice"/></xs:schema>',
+            'missing.xsd',
+        ];
+    }
+
+    /**
+     * A schema that cannot be parsed or compiled is a configuration fault, never a finding about
+     * the document, and it leaves the caller's libxml state as it was.
+     */
+    #[DataProvider('unusableSchemas')]
+    public function test_unusable_schema_throws_instead_of_reporting_schema_errors(string $schema, string $detail): void
+    {
+        $xsd = $this->scratch.'/unusable.xsd';
+        file_put_contents($xsd, $schema);
+        $document = SafeXml::loadPreservingWhitespace(self::ublInvoice());
+
+        $original = libxml_use_internal_errors(false);
+        try {
+            (new SchemaValidator)->validate($document, $xsd);
+            self::fail('No exception was thrown for an unusable schema.');
+        } catch (UnusableSchema $exception) {
+            self::assertStringContainsString($xsd, $exception->getMessage());
+            self::assertStringContainsString($detail, $exception->getMessage());
+            self::assertFalse(libxml_use_internal_errors(), 'internal errors were left enabled');
+            self::assertSame([], libxml_get_errors(), 'schema errors leaked into the libxml buffer');
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($original);
+        }
     }
 
     private static function xsd(string $relative): string
@@ -240,13 +292,5 @@ final class SchemaValidatorTest extends TestCase
         }
 
         return $document;
-    }
-
-    private static function scratchDir(): string
-    {
-        $dir = '/Volumes/KINGSTON/tmp-plan04/schema-test-'.bin2hex(random_bytes(4));
-        self::assertTrue(mkdir($dir, 0o777, true));
-
-        return $dir;
     }
 }
