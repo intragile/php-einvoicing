@@ -101,6 +101,17 @@ final class PdfDocument
         return $this->parser->xref()->highest() + 1;
     }
 
+    /**
+     * The generation of object $number in the newest index entry: what an update that replaces
+     * the object writes. Objects inside object streams, and unlisted objects, have generation 0.
+     */
+    public function generation(int $number): int
+    {
+        $entry = $this->parser->xref()->entry($number);
+
+        return $entry !== null && $entry[0] === CrossReference::IN_FILE ? $entry[2] : 0;
+    }
+
     public function bytes(): string
     {
         return $this->bytes;

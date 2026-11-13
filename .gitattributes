@@ -1,5 +1,6 @@
 * text=auto eol=lf
 *.zip binary
+*.icc binary
 # Official CEN artefacts are kept byte-for-byte as published.
 /tests/fixtures/official/cen-1.3.17/** -text -eol
 /tests/fixtures/official/cen-1.3.16/** -text -eol
