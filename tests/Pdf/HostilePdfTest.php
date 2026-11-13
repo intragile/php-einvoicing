@@ -11,11 +11,14 @@ use IntrAgile\EInvoicing\Pdf\PdfDocument;
 use IntrAgile\EInvoicing\Pdf\PdfParser;
 use IntrAgile\EInvoicing\Pdf\PdfStream;
 use IntrAgile\EInvoicing\Tests\Support\PdfBuilder;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 
 /**
  * Inputs built to exhaust time or memory. Each must end in UnreadablePdf within a second, without
- * a PHP warning.
+ * a PHP warning. Tests marked to run in a separate process lower memory_limit to PHP's stock 128M
+ * first, so exceeding it fails the test; the suite itself runs at 512M and may already use more
+ * than 128M by the time they run.
  */
 final class HostilePdfTest extends TestCase
 {
@@ -35,8 +38,10 @@ final class HostilePdfTest extends TestCase
         restore_error_handler();
     }
 
+    #[RunInSeparateProcess]
     public function test_flate_bomb_is_refused(): void
     {
+        self::limitMemory();
         $bomb = self::flateBomb(PdfParser::MAX_STREAM_BYTES + 1024 * 1024);
         self::assertLessThan(1024, strlen($bomb));
         $pdf = (new PdfBuilder)
@@ -168,6 +173,125 @@ final class HostilePdfTest extends TestCase
         $huge = (string) preg_replace('/\/Index \[[^\]]*\] \/Size 7/', '/Size 4294967296', $stream);
         self::assertNotSame($stream, $huge);
         $this->assertRefusedQuickly(static fn () => PdfDocument::parse($huge), '/Size');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_huge_predictor_row_is_clamped_to_the_data(): void
+    {
+        self::limitMemory();
+        // 2^24 columns of 32 colours at 16 bits declare a 1 GiB row for three bytes of data.
+        $data = (string) gzcompress("\x02abc");
+        $pdf = (new PdfBuilder)
+            ->object(1, self::CATALOG)
+            ->object(2, self::PAGES)
+            ->object(3, '<< /Filter /FlateDecode /DecodeParms << /Predictor 12 /Colors 32 /BitsPerComponent 16 /Columns 16777216 >> /Length '.strlen($data)." >>\nstream\n".$data."\nendstream")
+            ->trailer('/Root 1 0 R')
+            ->classic();
+        $before = memory_get_usage();
+        memory_reset_peak_usage();
+        $started = hrtime(true);
+
+        $document = PdfDocument::parse($pdf);
+        $stream = $document->object(3);
+        self::assertInstanceOf(PdfStream::class, $stream);
+
+        self::assertSame('abc', $document->decodedStream($stream));
+        self::assertLessThan(1.0, (hrtime(true) - $started) / 1e9);
+        self::assertLessThan(8 * 1024 * 1024, memory_get_peak_usage() - $before);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_predictor_work_is_bounded(): void
+    {
+        self::limitMemory();
+        $data = (string) gzcompress(str_repeat("\x02".str_repeat("\x01", 99), intdiv(PdfParser::MAX_PREDICTOR_BYTES, 100) + 1));
+        $pdf = (new PdfBuilder)
+            ->object(1, self::CATALOG)
+            ->object(2, self::PAGES)
+            ->object(3, '<< /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 99 >> /Length '.strlen($data)." >>\nstream\n".$data."\nendstream")
+            ->trailer('/Root 1 0 R')
+            ->classic();
+        $document = PdfDocument::parse($pdf);
+        $stream = $document->object(3);
+        self::assertInstanceOf(PdfStream::class, $stream);
+
+        $this->assertRefusedQuickly(static fn () => $document->decodedStream($stream), 'Predictor');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_xref_stream_claiming_millions_of_rows_is_refused(): void
+    {
+        self::limitMemory();
+        foreach (["\x00", "\x02", "\x03"] as $type) {
+            // 8 MiB of one-byte rows deflate to about 8 KiB.
+            $data = (string) gzcompress(str_repeat($type, PdfParser::MAX_OBJECTS + 1), 9);
+            $pdf = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n";
+            $start = strlen($pdf);
+            $pdf .= '2 0 obj'."\n".'<< /Type /XRef /Size '.(PdfParser::MAX_OBJECTS + 1).' /W [1 0 0] /Root 1 0 R /Filter /FlateDecode /Length '.strlen($data)." >>\nstream\n"
+                .$data."\nendstream\nendobj\nstartxref\n".$start."\n%%EOF\n";
+            self::assertLessThan(16 * 1024, strlen($pdf));
+
+            $this->assertRefusedQuickly(static fn () => PdfDocument::parse($pdf), 'more objects than the PDF can hold');
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_object_stream_claiming_millions_of_members_is_refused(): void
+    {
+        self::limitMemory();
+        foreach ([1_000_000, 4_000_000] as $count) {
+            $header = str_repeat('1 0 ', $count);
+            $data = (string) gzcompress($header.'<< /Type /Catalog >>', 9);
+            // No cross-reference section: reconstruction decodes every object stream it finds.
+            $pdf = "%PDF-1.7\n2 0 obj\n<< /Type /ObjStm /N ".$count.' /First '.strlen($header).' /Filter /FlateDecode /Length '.strlen($data)." >>\nstream\n"
+                .$data."\nendstream\nendobj\n%%EOF\n";
+            unset($header);
+
+            $this->assertRefusedQuickly(static fn () => PdfDocument::parse($pdf), 'more than the PDF can hold');
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_indirect_length_chain_is_bounded(): void
+    {
+        self::limitMemory();
+        // Each stream's /Length points at the next stream, 50 000 deep.
+        $builder = (new PdfBuilder)->object(1, '<< /Type /Catalog /Pages 2 0 R >>')->object(2, self::PAGES);
+        $last = 50_000;
+        for ($n = 3; $n < $last; $n++) {
+            $builder->object($n, '<< /Length '.($n + 1)." 0 R >>\nstream\nx\nendstream");
+        }
+        $pdf = $builder->object($last, '1')->trailer('/Root 1 0 R')->classic();
+        $before = memory_get_usage();
+        memory_reset_peak_usage();
+        $started = hrtime(true);
+
+        $stream = PdfDocument::parse($pdf)->object(3);
+
+        self::assertInstanceOf(PdfStream::class, $stream);
+        self::assertSame('x', $stream->raw);
+        self::assertLessThan(1.0, (hrtime(true) - $started) / 1e9);
+        self::assertLessThan(16 * 1024 * 1024, memory_get_peak_usage() - $before);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_unterminated_streams_and_strings_do_not_make_reconstruction_quadratic(): void
+    {
+        self::limitMemory();
+        $streams = "%PDF-1.7\n".str_repeat("1 0 obj<<>>stream\n", 80_000);
+        $this->assertRefusedQuickly(static fn () => PdfDocument::parse($streams));
+
+        $strings = "%PDF-1.7\n".str_repeat('1 0 obj(', 80_000);
+        $this->assertRefusedQuickly(static fn () => PdfDocument::parse($strings));
+
+        $hex = "%PDF-1.7\n".str_repeat('1 0 obj<', 80_000);
+        $this->assertRefusedQuickly(static fn () => PdfDocument::parse($hex));
+    }
+
+    /** Lowers memory_limit to PHP's default, which only works in a fresh process. */
+    private static function limitMemory(): void
+    {
+        self::assertNotFalse(ini_set('memory_limit', '128M'), 'memory_limit could not be lowered to 128M');
     }
 
     /**

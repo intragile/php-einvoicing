@@ -239,6 +239,34 @@ final class PdfParserTest extends TestCase
         self::assertEquals(new PdfString('packed'), $document->object(3));
     }
 
+    public function test_offsets_outside_the_file_fall_back_to_reconstruction(): void
+    {
+        foreach (['/Prev', '/XRefStm'] as $key) {
+            $pdf = $this->minimal(new PdfBuilder)->object(3, '(data)')->trailer('/Root 1 0 R '.$key.' -99999999')->classic();
+
+            $document = PdfDocument::parse($pdf);
+
+            self::assertTrue($document->reconstructed(), $key);
+            self::assertEquals(new PdfString('data'), $document->object(3));
+        }
+    }
+
+    public function test_indirect_filter_on_xref_stream_falls_back_to_reconstruction(): void
+    {
+        $pdf = (new PdfBuilder('1.5'))
+            ->objectStream(5, [1 => self::CATALOG, 2 => self::PAGES, 3 => '(packed)'])
+            ->trailer('/Root 1 0 R')
+            ->xrefStream();
+        $start = (int) strrpos($pdf, '/Type /XRef');
+        $broken = substr($pdf, 0, $start).str_replace('/Filter /FlateDecode /DecodeParms', '/Filter 3 0 R /DecodeParms', substr($pdf, $start));
+        self::assertNotSame($pdf, $broken);
+
+        $document = PdfDocument::parse($broken);
+
+        self::assertTrue($document->reconstructed());
+        self::assertEquals(new PdfString('packed'), $document->object(3));
+    }
+
     public function test_reconstruction_finds_catalog_without_trailer(): void
     {
         $pdf = $this->minimal(new PdfBuilder)->trailer('/Root 1 0 R')->classic();

@@ -10,8 +10,8 @@ use IntrAgile\EInvoicing\Pdf\Exception\UnsupportedPdfFeature;
 
 /**
  * Stream filters (ISO 32000-1 §7.4): FlateDecode with the PNG and TIFF predictors. Inflation
- * runs in chunks and stops as soon as the output passes the caller's byte limit, so a
- * decompression bomb is refused before it is expanded.
+ * runs in chunks and is first measured without keeping the output, so a decompression bomb is
+ * refused as soon as it passes the caller's byte limit and is never held in memory.
  *
  * @internal
  */
@@ -21,11 +21,13 @@ final class Filters
 
     /**
      * Applies the stream's /Filter chain. $resolve follows indirect references in /Filter and
-     * /DecodeParms.
+     * /DecodeParms. Inflation stops beyond $maxBytes of output, and predictors refuse more than
+     * $maxPredictorBytes of input. $inflated and $predicted grow by the work done, failed attempts
+     * included, so the caller can hold a whole document to a budget.
      *
      * @param  Closure(mixed): mixed  $resolve
      */
-    public static function decode(PdfStream $stream, Closure $resolve, int $maxBytes): string
+    public static function decode(PdfStream $stream, Closure $resolve, int $maxBytes, int $maxPredictorBytes, int &$inflated, int &$predicted): string
     {
         $dictionary = $stream->dictionary;
         $filters = $resolve($dictionary->get('Filter'));
@@ -45,45 +47,43 @@ final class Filters
                 throw new UnsupportedPdfFeature('The PDF stream filter /'.$filter->name.' is not supported.');
             }
             $parms = $resolve($parameters[$i] ?? null);
-            $data = self::predict(self::inflate($data, $maxBytes), $parms instanceof PdfDictionary ? $parms : null);
+            $data = self::inflate($data, $maxBytes, $inflated);
+            $data = self::predict($data, $parms instanceof PdfDictionary ? $parms : null, $maxPredictorBytes, $predicted);
         }
 
         return $data;
     }
 
-    private static function inflate(string $data, int $maxBytes): string
+    private static function inflate(string $data, int $maxBytes, int &$inflated): string
     {
         try {
-            return self::inflateWith(ZLIB_ENCODING_DEFLATE, $data, $maxBytes);
+            return self::inflateWith(ZLIB_ENCODING_DEFLATE, $data, $maxBytes, $inflated);
         } catch (UnreadablePdf $e) {
             if ($e->getCode() !== UnreadablePdf::MALFORMED) {
                 throw $e;
             }
 
             // Some writers emit raw deflate data without the zlib header.
-            return self::inflateWith(ZLIB_ENCODING_RAW, $data, $maxBytes);
+            return self::inflateWith(ZLIB_ENCODING_RAW, $data, $maxBytes, $inflated);
         }
     }
 
-    private static function inflateWith(int $encoding, string $data, int $maxBytes): string
+    /**
+     * Inflates in two passes. The first only measures the output and discards it, so data that
+     * would exceed $maxBytes is refused with a few megabytes in use; the second, run only for
+     * output within the limit, keeps it.
+     */
+    private static function inflateWith(int $encoding, string $data, int $maxBytes, int &$inflated): string
     {
         set_error_handler(static function (int $severity, string $message): never {
             throw UnreadablePdf::malformed('Corrupt FlateDecode data: '.$message);
         });
         try {
-            $context = inflate_init($encoding);
-            if ($context === false) {
-                throw UnreadablePdf::malformed('Cannot initialise FlateDecode.');
-            }
-            $out = '';
-            $length = strlen($data);
-            for ($pos = 0; $pos < $length; $pos += self::CHUNK) {
-                $chunk = inflate_add($context, substr($data, $pos, self::CHUNK), ZLIB_SYNC_FLUSH);
-                if ($chunk === false) {
-                    throw UnreadablePdf::malformed('Corrupt FlateDecode data.');
-                }
-                $out .= $chunk;
-                if (strlen($out) > $maxBytes) {
+            $size = 0;
+            self::inflateChunks($encoding, $data, static function (string $chunk) use (&$size, &$inflated, $maxBytes): void {
+                $size += strlen($chunk);
+                $inflated += strlen($chunk);
+                if ($size > $maxBytes) {
                     throw UnreadablePdf::refused(sprintf(
                         'Decoded stream data exceeds the limit of %d bytes (%d MiB per stream, %d MiB per document).',
                         $maxBytes,
@@ -91,10 +91,11 @@ final class Filters
                         PdfParser::MAX_TOTAL_DECODED_BYTES >> 20,
                     ));
                 }
-                if (inflate_get_status($context) === ZLIB_STREAM_END) {
-                    break;
-                }
-            }
+            });
+            $out = '';
+            self::inflateChunks($encoding, $data, static function (string $chunk) use (&$out): void {
+                $out .= $chunk;
+            });
 
             // A truncated stream yields what could be inflated, as common readers do.
             return $out;
@@ -103,11 +104,39 @@ final class Filters
         }
     }
 
-    private static function predict(string $data, ?PdfDictionary $parms): string
+    /** @param Closure(string): void $sink */
+    private static function inflateChunks(int $encoding, string $data, Closure $sink): void
+    {
+        $context = inflate_init($encoding);
+        if ($context === false) {
+            throw UnreadablePdf::malformed('Cannot initialise FlateDecode.');
+        }
+        $length = strlen($data);
+        for ($pos = 0; $pos < $length; $pos += self::CHUNK) {
+            $chunk = inflate_add($context, substr($data, $pos, self::CHUNK), ZLIB_SYNC_FLUSH);
+            if ($chunk === false) {
+                throw UnreadablePdf::malformed('Corrupt FlateDecode data.');
+            }
+            $sink($chunk);
+            if (inflate_get_status($context) === ZLIB_STREAM_END) {
+                break;
+            }
+        }
+    }
+
+    private static function predict(string $data, ?PdfDictionary $parms, int $maxBytes, int &$predicted): string
     {
         $predictor = $parms?->get('Predictor') ?? 1;
         if ($predictor === 1) {
             return $data;
+        }
+        // Predictors run byte by byte in PHP, so their input gets its own, smaller budget.
+        $predicted += strlen($data);
+        if (strlen($data) > $maxBytes) {
+            throw UnreadablePdf::refused(sprintf(
+                'Predictor input exceeds the limit of %d MiB per document.',
+                PdfParser::MAX_PREDICTOR_BYTES >> 20,
+            ));
         }
         $colors = self::intParam($parms, 'Colors', 1, 1, 32);
         $bits = self::intParam($parms, 'BitsPerComponent', 8, 1, 16);
@@ -141,9 +170,13 @@ final class Filters
     /** Reverses the PNG row filters (RFC 2083 §6), each row prefixed with its filter type. */
     private static function png(string $data, int $rowLength, int $pixelBytes): string
     {
+        $length = strlen($data);
+        // A row longer than the data is one partial row: work on what is there, never allocate
+        // the declared width.
+        $rowLength = min($rowLength, max(1, $length - 1));
+        $pixelBytes = min($pixelBytes, $rowLength);
         $out = '';
         $previous = str_repeat("\0", $rowLength);
-        $length = strlen($data);
         for ($p = 0; $p < $length; $p += $rowLength + 1) {
             $type = ord($data[$p]);
             $row = substr($data, $p + 1, $rowLength);
@@ -199,6 +232,7 @@ final class Filters
         }
         $out = '';
         $length = strlen($data);
+        $rowLength = min($rowLength, max(1, $length));
         $sampleBytes = $bits >> 3;
         $step = $colors * $sampleBytes;
         for ($p = 0; $p < $length; $p += $rowLength) {

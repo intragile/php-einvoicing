@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Pdf;
 
-use ArithmeticError;
 use Closure;
+use Error;
 use IntrAgile\EInvoicing\Pdf\Exception\EncryptedPdf;
 use IntrAgile\EInvoicing\Pdf\Exception\UnreadablePdf;
 use IntrAgile\EInvoicing\Pdf\Exception\UnsupportedPdfFeature;
-use ValueError;
 
 /**
  * A parsed PDF, read from untrusted bytes without any PDF library.
@@ -98,9 +97,8 @@ final class PdfDocument
         if (is_int($size)) {
             return $size;
         }
-        $entries = $this->parser->xref()->entries;
 
-        return $entries === [] ? 1 : max(array_keys($entries)) + 1;
+        return $this->parser->xref()->highest() + 1;
     }
 
     public function bytes(): string
@@ -115,8 +113,8 @@ final class PdfDocument
     }
 
     /**
-     * Runs $action with PHP warnings and engine errors turned into UnreadablePdf, so no damaged
-     * input can surface as a PHP diagnostic.
+     * Runs $action with PHP warnings and engine errors (ValueError, ArithmeticError, TypeError
+     * and the like) turned into UnreadablePdf, so no damaged input can surface as a PHP diagnostic.
      *
      * @template T
      *
@@ -130,7 +128,7 @@ final class PdfDocument
         });
         try {
             return $action();
-        } catch (ValueError|ArithmeticError $e) {
+        } catch (Error $e) {
             throw new UnreadablePdf('Unreadable PDF: '.$e->getMessage(), 0, $e);
         } finally {
             restore_error_handler();

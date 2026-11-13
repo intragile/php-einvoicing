@@ -24,9 +24,18 @@ final class Lexer
 
     private readonly int $length;
 
+    /** Bytes the long scans (strings, stream ends) may cover in total: a multiple of the data. */
+    private readonly int $scanBudget;
+
+    private int $scanned = 0;
+
+    /** @var array{int, int|false}|null The last "endstream" search: where it started and its result. */
+    private ?array $endstreamSearch = null;
+
     public function __construct(private readonly string $data)
     {
         $this->length = strlen($data);
+        $this->scanBudget = 16 * $this->length + (1 << 20);
     }
 
     public function data(): string
@@ -37,6 +46,9 @@ final class Lexer
     /** The position of the next token at or after $pos, past whitespace and comments. */
     public function skip(int $pos): int
     {
+        if ($pos < 0) {
+            throw UnreadablePdf::malformed('Negative offset '.$pos.'.');
+        }
         while ($pos < $this->length) {
             $pos += strspn($this->data, self::WHITESPACE, $pos);
             if ($pos < $this->length && $this->data[$pos] === '%') {
@@ -55,7 +67,7 @@ final class Lexer
     {
         $end = $pos + strlen($keyword);
 
-        return substr($this->data, $pos, strlen($keyword)) === $keyword
+        return $pos >= 0 && substr($this->data, $pos, strlen($keyword)) === $keyword
             && ($end >= $this->length || ! $this->isRegular($this->data[$end]));
     }
 
@@ -76,30 +88,38 @@ final class Lexer
 
     /**
      * Opens an object stream (ISO 32000-1 §7.5.7) from its dictionary and decoded data: a lexer
-     * over the data, the offset of the first object, and the object number and relative offset of
-     * each member.
+     * over the data, the offset of the first object, and the members as a flat list of object
+     * number and relative offset pairs. A stream claiming more than $maxMembers members is refused.
      *
-     * @return array{self, int, list<array{int, int}>}
+     * @param  Closure(PdfStream): string  $decode
+     * @return array{self, int, list<int>}
      */
-    public static function objectStream(PdfStream $stream, string $decoded): array
+    public static function objectStream(PdfStream $stream, Closure $decode, int $maxMembers): array
     {
         $count = $stream->dictionary->get('N');
         $first = $stream->dictionary->get('First');
-        $length = strlen($decoded);
-        // Each member needs at least four header bytes ("1 0 "), which bounds a hostile /N.
-        if (! is_int($count) || ! is_int($first) || $count < 0 || $first < 0 || $first > $length || $count * 4 > $first) {
+        if (! is_int($count) || ! is_int($first) || $count < 0 || $first < 0) {
             throw UnreadablePdf::malformed('Invalid object stream /N or /First.');
         }
-        $lexer = new self($decoded);
+        if ($count > $maxMembers) {
+            throw UnreadablePdf::refused('An object stream claims '.$count.' objects, more than the PDF can hold.');
+        }
+        // The decoded data stays local, so an exception trace never holds it.
+        $lexer = new self($decode($stream));
+        // Each member needs at least four header bytes ("1 0 "), which bounds /N by /First.
+        if ($first > $lexer->length || $count * 4 > $first) {
+            throw UnreadablePdf::malformed('Invalid object stream /N or /First.');
+        }
         $members = [];
         $pos = 0;
         for ($i = 0; $i < $count; $i++) {
             $number = $lexer->value($pos);
             $offset = $lexer->value($pos);
-            if (! is_int($number) || ! is_int($offset) || $number < 0 || $offset < 0 || $first + $offset > $length) {
+            if (! is_int($number) || ! is_int($offset) || $number < 0 || $offset < 0 || $first + $offset > $lexer->length) {
                 throw UnreadablePdf::malformed('Invalid object stream header.');
             }
-            $members[] = [$number, $offset];
+            $members[] = $number;
+            $members[] = $offset;
         }
 
         return [$lexer, $first, $members];
@@ -179,7 +199,7 @@ final class Lexer
                 return [substr($this->data, $pos, $length), $next];
             }
         }
-        $found = strpos($this->data, 'endstream', $pos);
+        $found = $this->findEndstream($pos);
         if ($found === false) {
             throw UnreadablePdf::malformed('The stream of object '.$number.' has no endstream.');
         }
@@ -192,6 +212,34 @@ final class Lexer
         }
 
         return [substr($this->data, $pos, $end - $pos), $found + 9];
+    }
+
+    /**
+     * The next "endstream" at or after $pos. Scans run forward, so the last result answers any
+     * later start up to the hit (or every later start when there was none) without rescanning.
+     */
+    private function findEndstream(int $pos): int|false
+    {
+        if ($this->endstreamSearch !== null) {
+            [$from, $found] = $this->endstreamSearch;
+            if ($pos >= $from && ($found === false || $pos <= $found)) {
+                return $found;
+            }
+        }
+        $found = strpos($this->data, 'endstream', $pos);
+        $this->charge(($found === false ? $this->length : $found) - $pos);
+        $this->endstreamSearch = [$pos, $found];
+
+        return $found;
+    }
+
+    /** Counts bytes covered by a long scan and refuses input that makes scans repeat without end. */
+    private function charge(int $bytes): void
+    {
+        $this->scanned += $bytes;
+        if ($this->scanned > $this->scanBudget) {
+            throw UnreadablePdf::refused('Reading the PDF rescans its data too often; it is damaged beyond recovery or hostile.');
+        }
     }
 
     private function name(int &$pos): PdfName
@@ -214,6 +262,7 @@ final class Lexer
         $out = '';
         while (true) {
             if ($p >= $this->length) {
+                $this->charge($p - $pos);
                 throw UnreadablePdf::malformed('Unterminated string at offset '.$pos.'.');
             }
             $run = strcspn($this->data, "()\\\r", $p);
@@ -241,6 +290,7 @@ final class Lexer
                 $out .= $this->escape($p);
             }
         }
+        $this->charge($p - $pos);
         $pos = $p;
 
         return new PdfString($out);
@@ -282,6 +332,7 @@ final class Lexer
     private function hexString(int &$pos): PdfString
     {
         $end = strpos($this->data, '>', $pos + 1);
+        $this->charge(($end === false ? $this->length : $end) - $pos);
         if ($end === false) {
             throw UnreadablePdf::malformed('Unterminated hex string at offset '.$pos.'.');
         }
