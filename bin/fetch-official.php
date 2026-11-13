@@ -33,11 +33,28 @@ declare(strict_types=1);
  * that folder is git-ignored and never committed; the per-file SHA-256 sums of the unpacked
  * archive entries are kept in tests/fixtures/peppol-<version>.sha256 (relative paths and sums
  * only), which --write-manifest also recreates.
+ *
+ * It also downloads the XRechnung artefacts pinned in XRechnungSources (KoSIT Schematron, validator
+ * configuration, test suite and the two KoSIT source archives, all Apache-2.0) and unpacks them
+ * unmodified into tests/fixtures/official/xrechnung/, with an upstream LICENSE beside each part.
+ * Every file of that tree is listed with its SHA-256 sum in tests/fixtures/official/xrechnung.sha256
+ * (--write-manifest recreates it); XML instances that carry a DOCTYPE or are not well-formed are
+ * flagged there. It also unpacks the examples and preprocessed Schematron of the CEN
+ * validation-1.3.16 release, the rule version the KoSIT configuration is built on, into
+ * tests/fixtures/official/cen-1.3.16/{ubl,cii}/. The KoSIT validator jar is never downloaded.
  */
 
+use IntrAgile\EInvoicing\Exception\UnsafeXml;
+use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
+use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungSources;
 
 require_once dirname(__DIR__).'/src/Validation/Peppol/PeppolSources.php';
+require_once dirname(__DIR__).'/src/Validation/XRechnung/XRechnungSources.php';
+require_once dirname(__DIR__).'/src/Exception/UnsafeXml.php';
+require_once dirname(__DIR__).'/src/Exception/UnsupportedDocument.php';
+require_once dirname(__DIR__).'/src/Syntax/SafeXml.php';
 
 const TAG = 'validation-1.3.17';
 const RELEASE_URL = 'https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/'.TAG.'/';
@@ -107,11 +124,35 @@ const PEPPOL_ARCHIVE = [
  */
 const PEPPOL_PREFIXES = ['unit-UBL-', 'unit-CII-', 'unit-SBDH/', 'examples/', 'snippets/'];
 
+/** Raw URL of the CEN 1.3.16 licence text; the file is the same as for 1.3.17. */
+const CEN_1316_LICENCE_URL = 'https://raw.githubusercontent.com/ConnectingEurope/eInvoicing-EN16931/validation-'.XRechnungSources::CEN_VERSION.'/LICENSE.txt';
+
+/** The Apache-2.0 text of the KoSIT test suite repository, which its release zip does not contain. */
+const TESTSUITE_LICENCE = [
+    'https://raw.githubusercontent.com/itplr-kosit/xrechnung-testsuite/v'.XRechnungSources::CONFIGURATION_VERSION.'/LICENSE',
+    'xrechnung-testsuite-LICENSE',
+    'c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4',
+];
+
+/** Cache file names of the KoSIT source archives, whose URLs end in a bare tag name. */
+const XRECHNUNG_SOURCE_CACHE = [
+    'schematron-source' => 'xrechnung-schematron-v'.XRechnungSources::SCHEMATRON_VERSION.'.tar.gz',
+    'configuration-source' => 'validator-configuration-xrechnung-v'.XRechnungSources::CONFIGURATION_VERSION.'.tar.gz',
+];
+
+/** Name of the manifest of the xrechnung/ tree, next to that folder. */
+const XRECHNUNG_MANIFEST = 'xrechnung.sha256';
+
+/** Folders of the xrechnung/ tree whose XML files form the instance corpus, checked for well-formedness. */
+const XRECHNUNG_INSTANCE_DIRS = ['testsuite-'.XRechnungSources::CONFIGURATION_VERSION, 'unit-'.XRechnungSources::SCHEMATRON_VERSION, 'configuration-tests-'.XRechnungSources::CONFIGURATION_VERSION];
+
 $root = dirname(__DIR__);
 $cacheDir = $root.'/.cache/official';
 $targetDir = $root.'/tests/fixtures/official/cen-1.3.17';
 $schemaDir = $root.'/tests/fixtures/official/ubl-2.1';
 $ciiSchemaDir = $root.'/tests/fixtures/official/cii-d16b';
+$cenDir = $root.'/tests/fixtures/official/cen-'.XRechnungSources::CEN_VERSION;
+$xrechnungDir = $root.'/tests/fixtures/official/xrechnung';
 $peppolDir = $root.'/tests/fixtures/peppol-'.PeppolSources::VERSION;
 $writeManifest = array_key_exists('write-manifest', getopt('', ['write-manifest']) ?: []);
 
@@ -161,12 +202,212 @@ try {
     }
     fwrite(STDOUT, 'cii-d16b: copied '.count(CII_SCHEMAS)." schema files\n");
 
+    unpackCen1316($cacheDir, $cenDir);
+    fwrite(STDOUT, 'cen-'.XRechnungSources::CEN_VERSION.": unpacked both release archives with LICENSE.txt\n");
+
+    $rejected = unpackXrechnung($cacheDir, $xrechnungDir, dirname($xrechnungDir).'/'.XRECHNUNG_MANIFEST, $writeManifest);
+    fwrite(STDOUT, 'xrechnung: unpacked the KoSIT artefacts'.($writeManifest ? ', manifest written' : ', manifest verified').'; '.count($rejected)." instance(s) flagged as unparseable or carrying a DOCTYPE\n");
+    foreach ($rejected as $name => $flag) {
+        fwrite(STDOUT, "  {$flag}: {$name}\n");
+    }
+
     $peppolCount = unpackPeppol($cacheDir, $peppolDir, $peppolDir.'.sha256', $writeManifest);
     fwrite(STDOUT, 'peppol-'.PeppolSources::VERSION.': copied '.count(PeppolSources::all())." rule files, unpacked {$peppolCount} files"
         .($writeManifest ? ', manifest written' : ', manifest verified')."\n");
 } catch (RuntimeException $e) {
     fwrite(STDERR, 'fetch-official: '.$e->getMessage()."\n");
     exit(1);
+}
+
+/**
+ * Replaces $target with the examples and the preprocessed Schematron of both CEN 1.3.16 release
+ * archives (per syntax) and the licence text.
+ */
+function unpackCen1316(string $cacheDir, string $target): void
+{
+    $staging = $target.'.tmp';
+    removeTree($staging);
+    ensureDirectory($staging);
+
+    $archives = XRechnungSources::archives();
+    foreach (['ubl' => 'cen-ubl', 'cii' => 'cen-cii'] as $syntax => $key) {
+        $archive = fetchVerified($archives[$key]['url'], $cacheDir.'/'.basename($archives[$key]['url']), $archives[$key]['sha256']);
+        extractEntries($archive, $staging.'/'.$syntax, ['examples/', 'schematron/preprocessed/']);
+    }
+
+    copyFile(fetchVerified(CEN_1316_LICENCE_URL, $cacheDir.'/LICENSE-cen-'.XRechnungSources::CEN_VERSION.'.txt', LICENCE[1]), $staging.'/LICENSE.txt');
+    replaceTree($staging, $target);
+}
+
+/**
+ * Replaces $target with the KoSIT artefacts, unmodified, and checks the tree against the manifest
+ * at $manifestPath or writes that manifest. Returns the flagged instances (name => flag).
+ *
+ * @return array<string, string>
+ */
+function unpackXrechnung(string $cacheDir, string $target, string $manifestPath, bool $writeManifest): array
+{
+    $expected = $writeManifest ? null : readXrechnungManifest($manifestPath);
+
+    $archives = XRechnungSources::archives();
+    $path = static function (string $key) use ($archives, $cacheDir): string {
+        $cacheName = XRECHNUNG_SOURCE_CACHE[$key] ?? basename($archives[$key]['url']);
+
+        return fetchVerified($archives[$key]['url'], $cacheDir.'/'.$cacheName, $archives[$key]['sha256']);
+    };
+
+    $schematronVersion = XRechnungSources::SCHEMATRON_VERSION;
+    $configurationVersion = XRechnungSources::CONFIGURATION_VERSION;
+
+    $staging = $target.'.tmp';
+    removeTree($staging);
+    ensureDirectory($staging);
+
+    // The Schematron release: schematron/ is the folder, the licence sits beside it.
+    extractEntries($path('schematron'), $staging.'/schematron-'.$schematronVersion, ['schematron/', 'LICENSE'], 'schematron/');
+
+    // The validator configuration release; the zip has no licence, the source archive does.
+    $configurationSource = $path('configuration-source');
+    $configurationRoot = 'validator-configuration-xrechnung-'.$configurationVersion.'/';
+    extractEntries($path('configuration'), $staging.'/configuration-'.$configurationVersion, ['']);
+    extractTarEntries($configurationSource, $staging.'/configuration-'.$configurationVersion, [$configurationRoot.'LICENSE', $configurationRoot.'NOTICE'], $configurationRoot);
+
+    // The KoSIT test suite; its release zip has no licence either.
+    extractEntries($path('testsuite'), $staging.'/testsuite-'.$configurationVersion, ['instances/']);
+    copyFile(fetchVerified(TESTSUITE_LICENCE[0], $cacheDir.'/'.TESTSUITE_LICENCE[1], TESTSUITE_LICENCE[2]), $staging.'/testsuite-'.$configurationVersion.'/LICENSE');
+
+    // The Schematron unit-test instances.
+    $schematronRoot = 'xrechnung-schematron-'.$schematronVersion.'/';
+    extractTarEntries($path('schematron-source'), $staging.'/unit-'.$schematronVersion, [$schematronRoot.'test/instances/', $schematronRoot.'LICENSE'], $schematronRoot.'test/instances/', $schematronRoot);
+
+    // The configuration's own test files: every XML file below src/test/.
+    extractTarEntries($configurationSource, $staging.'/configuration-tests-'.$configurationVersion, [$configurationRoot.'src/test/', $configurationRoot.'LICENSE'], $configurationRoot.'src/test/', $configurationRoot, '.xml');
+
+    $actual = hashTree($staging);
+    $flags = [];
+    foreach ($actual as $name => $sum) {
+        $folder = explode('/', $name, 2)[0];
+        if (in_array($folder, XRECHNUNG_INSTANCE_DIRS, true) && str_ends_with($name, '.xml')) {
+            $flag = instanceFlag($staging.'/'.$name);
+            if ($flag !== '') {
+                $flags[$name] = $flag;
+            }
+        }
+    }
+
+    if ($expected === null) {
+        writeXrechnungManifest($actual, $flags, $manifestPath);
+    } else {
+        checkManifest($expected['sums'], $actual, $staging, "XRechnung artefacts do not match {$manifestPath}");
+        if ($expected['flags'] !== $flags) {
+            removeTree($staging);
+            throw new RuntimeException("Instance flags differ from {$manifestPath}; rerun with --write-manifest if the sources were intentionally changed.");
+        }
+    }
+
+    replaceTree($staging, $target);
+
+    return $flags;
+}
+
+/**
+ * 'doctype' for an XML file with a DOCTYPE declaration, 'unparseable' for one that is not
+ * well-formed (or empty), otherwise an empty string.
+ */
+function instanceFlag(string $path): string
+{
+    try {
+        SafeXml::loadPreservingWhitespace((string) file_get_contents($path));
+    } catch (UnsafeXml) {
+        return 'doctype';
+    } catch (UnsupportedDocument) {
+        return 'unparseable';
+    }
+
+    return '';
+}
+
+/**
+ * Writes "<sum>  <relative path>" per file, with a tab and the flag after the path for flagged files.
+ *
+ * @param  array<string, string>  $sums
+ * @param  array<string, string>  $flags
+ */
+function writeXrechnungManifest(array $sums, array $flags, string $path): void
+{
+    $lines = [];
+    foreach ($sums as $name => $sum) {
+        $lines[] = "{$sum}  {$name}".(isset($flags[$name]) ? "\t{$flags[$name]}" : '')."\n";
+    }
+    if (file_put_contents($path, implode('', $lines)) === false) {
+        throw new RuntimeException("Cannot write {$path}");
+    }
+}
+
+/**
+ * @return array{sums: array<string, string>, flags: array<string, string>}
+ */
+function readXrechnungManifest(string $path): array
+{
+    $lines = is_file($path) ? file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : false;
+    if ($lines === false || $lines === []) {
+        throw new RuntimeException("Cannot read {$path}; run with --write-manifest to create it.");
+    }
+
+    $sums = [];
+    $flags = [];
+    foreach ($lines as $line) {
+        if (preg_match('/^([0-9a-f]{64})  ([^\t]+)(?:\t(doctype|unparseable))?$/', $line, $match) !== 1) {
+            throw new RuntimeException("Malformed line in {$path}: {$line}");
+        }
+        $sums[$match[2]] = $match[1];
+        if (isset($match[3])) {
+            $flags[$match[2]] = $match[3];
+        }
+    }
+
+    return ['sums' => $sums, 'flags' => $flags];
+}
+
+/**
+ * Writes the files of a tar archive (plain or gzip-compressed) whose names start with one of the
+ * prefixes below $destinationDir, with $strip removed from the start of each name. $stripAlt is
+ * a second prefix that is removed when $strip does not apply (for entries outside the folder
+ * that $strip names). With $suffix, only files with that ending are written.
+ *
+ * @param  list<string>  $prefixes
+ */
+function extractTarEntries(string $archive, string $destinationDir, array $prefixes, string $strip, string $stripAlt = '', string $suffix = ''): void
+{
+    try {
+        $tar = new PharData($archive);
+    } catch (Exception $e) {
+        throw new RuntimeException("Cannot open {$archive}: ".$e->getMessage());
+    }
+
+    $base = 'phar://'.$archive.'/';
+    /** @var SplFileInfo $entry */
+    foreach (new RecursiveIteratorIterator($tar) as $entry) {
+        $name = substr($entry->getPathname(), strlen($base));
+        if (! isSelected($name, $prefixes) || ($suffix !== '' && ! str_ends_with($name, $suffix) && ! str_ends_with($name, '/LICENSE'))) {
+            continue;
+        }
+        if (str_starts_with($name, '/') || str_contains($name, '\\') || in_array('..', explode('/', $name), true)) {
+            throw new RuntimeException("Unsafe entry name in {$archive}: {$name}");
+        }
+
+        $contents = file_get_contents($entry->getPathname());
+        if ($contents === false) {
+            throw new RuntimeException("Cannot read {$name} from {$archive}");
+        }
+
+        $relative = str_starts_with($name, $strip) ? substr($name, strlen($strip)) : (str_starts_with($name, $stripAlt) ? substr($name, strlen($stripAlt)) : $name);
+        $destination = $destinationDir.'/'.$relative;
+        ensureDirectory(dirname($destination));
+        if (file_put_contents($destination, $contents) === false) {
+            throw new RuntimeException("Cannot write {$destination}");
+        }
+    }
 }
 
 /**

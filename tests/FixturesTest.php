@@ -5,9 +5,15 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests;
 
 use DOMDocument;
+use FilesystemIterator;
+use IntrAgile\EInvoicing\Exception\UnsafeXml;
+use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use PHPUnit\Framework\TestCase;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 
 final class FixturesTest extends TestCase
 {
@@ -126,6 +132,82 @@ final class FixturesTest extends TestCase
         exec($command, $output, $exitCode);
 
         self::assertSame(0, $exitCode, 'The Peppol fixtures must never be committed.');
+    }
+
+    public function test_xrechnung_fixtures_match_pinned_hashes(): void
+    {
+        $directory = __DIR__.'/fixtures/official/xrechnung';
+        $lines = file(__DIR__.'/fixtures/official/xrechnung.sha256', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        self::assertNotFalse($lines);
+
+        $listed = [];
+        foreach ($lines as $line) {
+            if (preg_match('/^([0-9a-f]{64})  ([^\t]+)(?:\t(doctype|unparseable))?$/', $line, $match) !== 1) {
+                self::fail("Malformed manifest line: {$line}");
+            }
+            $listed[$match[2]] = true;
+            self::assertSame($match[1], hash_file('sha256', $directory.'/'.$match[2]), "{$match[2]} does not match its manifest entry.");
+        }
+
+        $found = [];
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS));
+        /** @var SplFileInfo $file */
+        foreach ($files as $file) {
+            $found[substr($file->getPathname(), strlen($directory) + 1)] = true;
+        }
+
+        self::assertEqualsCanonicalizing(array_keys($found), array_keys($listed));
+    }
+
+    public function test_xrechnung_corpus_size(): void
+    {
+        $corpus = Fixtures::xrechnungCorpus();
+
+        self::assertGreaterThanOrEqual(500, count($corpus));
+        self::assertSame(array_keys($corpus), array_values(array_unique(array_keys($corpus))));
+        $sorted = array_keys($corpus);
+        sort($sorted, SORT_STRING);
+        self::assertSame($sorted, array_keys($corpus), 'The corpus is not sorted by name.');
+
+        foreach ($corpus as $name => $path) {
+            self::assertFileIsReadable($path);
+            self::assertNotNull(SafeXml::loadPreservingWhitespace((string) file_get_contents($path))->documentElement, $name);
+        }
+
+        foreach (Fixtures::xrechnungRejectedCorpus() as $name => $path) {
+            self::assertArrayNotHasKey($name, $corpus);
+            try {
+                SafeXml::loadPreservingWhitespace((string) file_get_contents($path));
+                self::fail("{$name} is flagged in the manifest but loads.");
+            } catch (UnsafeXml|UnsupportedDocument) {
+                // Expected: the file carries a DOCTYPE or is not well-formed.
+            }
+        }
+    }
+
+    public function test_xrechnung_schematron_and_configuration_present(): void
+    {
+        foreach (['ubl', 'cii'] as $syntax) {
+            self::assertFileIsReadable(Fixtures::xrechnungSchematron($syntax));
+        }
+        self::assertFileIsReadable(Fixtures::xrechnungConfiguration().'/scenarios.xml');
+        self::assertFileIsReadable(Fixtures::xrechnungConfiguration().'/LICENSE');
+    }
+
+    public function test_cen_1316_sources_present(): void
+    {
+        $source = (string) file_get_contents(__DIR__.'/fixtures/official/SOURCE.md');
+
+        foreach (['ubl', 'cii'] as $syntax) {
+            $file = Fixtures::cen1316($syntax);
+
+            self::assertFileIsReadable($file);
+            self::assertStringContainsString('`'.basename($file).'`', $source);
+            self::assertStringContainsString('`'.hash_file('sha256', $file).'`', $source, "{$file} does not match the value in SOURCE.md.");
+        }
+
+        self::assertFileIsReadable(dirname(__DIR__).'/tests/fixtures/official/cen-1.3.16/LICENSE.txt');
+        self::assertGreaterThanOrEqual(20, count(Fixtures::cen1316Examples()));
     }
 
     public function test_iso_schematron_skeleton_present(): void

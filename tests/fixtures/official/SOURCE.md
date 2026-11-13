@@ -201,6 +201,64 @@ Order documents rather than invoices.
 | `Fixtures::peppolEnvelopeTests()` | the 14 Standard Business Documents of `unit-SBDH/BR-SBDH.xml` (VEFA test set expanded), named `peppol/unit-SBDH/BR-SBDH.xml#<index>`; the syntax is that of the enveloped invoice |
 | `Fixtures::peppolExamples()` | the 26 files of `examples/` and `snippets/`, keyed `examples/<file>` or `snippets/<file>` |
 
+## CEN 1.3.16
+
+The files under `cen-1.3.16/` are unmodified copies of the CEN/TC 434 validation artefacts of
+release `validation-1.3.16`, the rule version the KoSIT XRechnung configuration is built on. The
+licence is the same as for 1.3.17 (EUPL-1.2, the `LICENSE.txt` at the tag has SHA-256
+`fc22ec1dcd8bee4636a395fb332e2308cde870fb3fdc71a2e260b919877cdef5`, identical to the 1.3.17 one) and
+travels with the files in [`cen-1.3.16/LICENSE.txt`](cen-1.3.16/LICENSE.txt); the conditions listed
+above apply unchanged.
+
+| | |
+|---|---|
+| Release | [`validation-1.3.16`](https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/tag/validation-1.3.16) |
+| UBL archive | `en16931-ubl-1.3.16.zip`, SHA-256 `bafada015efbc5248bf5e05ad2191e1d9833ef96e9dd5f4bce420a747342da85` |
+| CII archive | `en16931-cii-1.3.16.zip`, SHA-256 `1cd53cb8a84d38aedc82c0caede217da983a7934dd663f793a092fd66443c561` |
+| UBL rules | `EN16931-UBL-validation-preprocessed.sch`, SHA-256 `268d4f7a2688676695e6c69cba6fba69a6802604fee12cb544a6b30ff09555a3` |
+| CII rules | `EN16931-CII-validation-preprocessed.sch`, SHA-256 `54e0dc6d06cd7f17d268bb9696ff56f58d386ee28961c9bbef0a56718c400c89` |
+
+Only `schematron/preprocessed/` and `examples/` of each archive are kept. The two `.sch` files
+have the same SHA-256 as OpenPeppol's `CEN-EN16931-UBL.sch` and `CEN-EN16931-CII.sch` at
+`peppol-bis-invoice-3` 3.0.22. Helpers: `Fixtures::cen1316($syntax)` (the preprocessed `.sch`) and
+`Fixtures::cen1316Examples()` (both syntaxes, keyed `<syntax>/<file>`).
+
+## XRechnung (KoSIT)
+
+The files under `xrechnung/` are unmodified copies of the artefacts of the Coordination Office for
+IT Standards (KoSIT), XRechnung 3.0.2. They are third-party material and are **not** covered by this
+package's MIT licence. All repositories are licensed under **Apache-2.0**; the licence text sits
+beside each part (`LICENSE`, and `NOTICE` where the repository has one), so the redistribution
+conditions of Apache-2.0 section 4 are met: the licence travels with the files, nothing is modified,
+and the KoSIT copyright notices stay in place. The validator jar (`itplr-kosit/validator` v1.6.3,
+SHA-256 `799e64befca97d4080e03608c80b85dd5a5ecc5f4ae4f35d1116ec2855b9a7c9`) is listed in
+`XRechnungSources` as the reference implementation of the conformance run but is never downloaded by
+`bin/fetch-official.php` and never committed.
+
+| Folder | Origin | Archive SHA-256 | Kept |
+|---|---|---|---|
+| `schematron-2.6.0/` | [`xrechnung-schematron`](https://github.com/itplr-kosit/xrechnung-schematron) release `v2.6.0`, `xrechnung-3.0.2-schematron-2.6.0.zip` | `ca5e07afd04e72cd283d581590ffff3a15f4aac9d2f40c993345d78e67ea22b4` | the zip's `schematron/` (`ubl/`, `cii/`, `common.sch`) and `LICENSE` |
+| `configuration-2026-08-31/` | [`validator-configuration-xrechnung`](https://github.com/itplr-kosit/validator-configuration-xrechnung) release `v2026-08-31`, `xrechnung-3.0.2-validator-configuration-2026-08-31.zip` | `2530cd107c414511c5d0462ec10f886910395abfca820db82e83d70bf01221a8` | the whole zip (`scenarios.xml`, `resources/`, docs); `LICENSE` and `NOTICE` from the source archive below, because the zip has none |
+| `testsuite-2026-08-31/` | [`xrechnung-testsuite`](https://github.com/itplr-kosit/xrechnung-testsuite) release `v2026-08-31`, `xrechnung-3.0.2-testsuite-2026-08-31.zip` | `1e81ef7563e0fa04c0e0b0631318a7e0843a3c0beb57d83ef95ac0c4a095e3d7` | `instances/` (86 files); `LICENSE` from the repository at the tag (SHA-256 `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4`), because the zip has none |
+| `unit-2.6.0/` | `xrechnung-schematron` source archive at `v2.6.0` (`https://codeload.github.com/itplr-kosit/xrechnung-schematron/tar.gz/refs/tags/v2.6.0`) | `895872383bd380c9edcbe4c4ff973645df68102e3a797b84cd6b80280a3dd7f9` | `test/instances/{ubl-inv,ubl-cn,cii}` (354 files) and `LICENSE` |
+| `configuration-tests-2026-08-31/` | `validator-configuration-xrechnung` source archive at `v2026-08-31` (`https://codeload.github.com/itplr-kosit/validator-configuration-xrechnung/tar.gz/refs/tags/v2026-08-31`) | `e4a8f51f2c691a612fcf76f3ccadc5ea933da958e196dc732b35aa97623be9e1` | every `.xml` below `src/test/` (64 files: `instances/`, `integration/`, `cen-unit-test/`, `unexpected/`, `svrl/`, assertions) and `LICENSE` |
+
+The two codeload archives hashed the same on two downloads (2026-11-13), so they are pinned by
+archive checksum like the release assets. If GitHub ever changes their bytes, the fetch script
+stops with a checksum mismatch.
+
+Every file of the tree is listed with its SHA-256 in [`xrechnung.sha256`](xrechnung.sha256), which the
+fetch script verifies and `FixturesTest` re-checks. The 504 XML instances (86 test suite, 354
+Schematron unit tests, 64 configuration tests) are exposed, minus the two flagged ones (502), by `Fixtures::xrechnungCorpus()`,
+names `<folder>/<relative path>`. Two files are flagged in the manifest and excluded: they
+are the processing-error samples `instances/processing-error/bin001.xml` and `ubl007.xml` of the
+configuration tests, which are not well-formed XML (`unparseable`; a file with a DOCTYPE would be
+flagged `doctype`). They are listed by `Fixtures::xrechnungRejectedCorpus()`.
+
+Other helpers: `Fixtures::xrechnungSchematron($syntax)` (the KoSIT `.sch` for `ubl` or `cii`) and
+`Fixtures::xrechnungConfiguration()` (the folder with `scenarios.xml`). The test suite folder is
+about 20 MB in total.
+
 ## Refreshing
 
 ```bash
@@ -208,10 +266,11 @@ php bin/fetch-official.php
 ```
 
 The script downloads the two release archives, the repository archive, the licence text, the
-UBL 2.1 package, the CII D16B schemas and the Peppol rule files and repository archive, verifies
-each against the SHA-256 sums above (the CEN unit tests file by file against `MANIFEST.sha256`,
-the Peppol corpus against `peppol-3.0.22.sha256`), and rebuilds `cen-1.3.17/`, `ubl-2.1/`,
-`cii-d16b/` and `../peppol-3.0.22/`. `php bin/fetch-official.php --write-manifest` recreates both
+UBL 2.1 package, the CII D16B schemas, the CEN 1.3.16 release archives, the KoSIT archives and the
+Peppol rule files and repository archive, verifies each against the SHA-256 sums above (the CEN unit
+tests file by file against `MANIFEST.sha256`, the XRechnung tree against `xrechnung.sha256`, the
+Peppol corpus against `peppol-3.0.22.sha256`), and rebuilds `cen-1.3.17/`, `cen-1.3.16/`,
+`xrechnung/`, `ubl-2.1/`, `cii-d16b/` and `../peppol-3.0.22/`. `php bin/fetch-official.php --write-manifest` recreates the
 manifests from the archives instead of verifying against them; use it only when moving to a new
 tag. CI runs `composer fetch-official` before the test suite.
 Verified downloads are cached in the git-ignored `.cache/official/`, so repeated runs work

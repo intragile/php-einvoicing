@@ -14,7 +14,8 @@ use PHPUnit\Framework\Assert;
 use RuntimeException;
 
 /**
- * Locates the official test fixtures: the CEN EN 16931 artefacts (validation-1.3.17), the Peppol
+ * Locates the official test fixtures: the CEN EN 16931 artefacts (validation-1.3.17, plus the
+ * 1.3.16 rules the KoSIT configuration builds on), the XRechnung artefacts and corpus, the Peppol
  * BIS Billing rules and test corpus (downloaded only, never committed) and the ISO Schematron
  * skeleton.
  */
@@ -29,6 +30,15 @@ final class Fixtures
 
     /** Folders of the Peppol corpus that hold plain example invoices, in listing order. */
     private const PEPPOL_EXAMPLE_DIRS = ['examples', 'snippets'];
+
+    private const CEN_1316_DIR = __DIR__.'/fixtures/official/cen-1.3.16';
+
+    private const XRECHNUNG_DIR = __DIR__.'/fixtures/official/xrechnung';
+
+    private const XRECHNUNG_MANIFEST = __DIR__.'/fixtures/official/xrechnung.sha256';
+
+    /** Folders of the xrechnung tree whose XML files are instance documents. */
+    private const XRECHNUNG_INSTANCE_DIRS = ['testsuite-2026-08-31', 'unit-2.6.0', 'configuration-tests-2026-08-31'];
 
     private const ISO_SKELETON = __DIR__.'/fixtures/iso-schematron/iso_svrl_for_xslt2.xsl';
 
@@ -196,6 +206,120 @@ final class Fixtures
     public static function isoSkeleton(): string
     {
         return self::ISO_SKELETON;
+    }
+
+    /**
+     * The XRechnung instance corpus: name ("<folder>/<relative path>") => absolute path of every
+     * XML instance of the KoSIT test suite, the XRechnung Schematron unit tests and the validator
+     * configuration tests, sorted by name. Files flagged in the manifest as not well-formed or as
+     * carrying a DOCTYPE are left out; see xrechnungRejectedCorpus().
+     *
+     * @return array<string, string>
+     */
+    public static function xrechnungCorpus(): array
+    {
+        $corpus = [];
+        foreach (self::xrechnungManifest() as $name => $flag) {
+            if ($flag === '' && self::isXrechnungInstance($name)) {
+                $corpus[$name] = self::XRECHNUNG_DIR.'/'.$name;
+            }
+        }
+        ksort($corpus, SORT_STRING);
+
+        return $corpus;
+    }
+
+    /**
+     * XRechnung instances that are not well-formed or carry a DOCTYPE: name => absolute path,
+     * sorted by name. They are expected to be refused by the engine.
+     *
+     * @return array<string, string>
+     */
+    public static function xrechnungRejectedCorpus(): array
+    {
+        $rejected = [];
+        foreach (self::xrechnungManifest() as $name => $flag) {
+            if ($flag !== '' && self::isXrechnungInstance($name)) {
+                $rejected[$name] = self::XRECHNUNG_DIR.'/'.$name;
+            }
+        }
+        ksort($rejected, SORT_STRING);
+
+        return $rejected;
+    }
+
+    /**
+     * Absolute path of the KoSIT XRechnung Schematron for a syntax ("ubl" or "cii").
+     */
+    public static function xrechnungSchematron(string $syntax): string
+    {
+        return match ($syntax) {
+            'ubl' => self::XRECHNUNG_DIR.'/schematron-2.6.0/ubl/XRechnung-UBL-validation.sch',
+            'cii' => self::XRECHNUNG_DIR.'/schematron-2.6.0/cii/XRechnung-CII-validation.sch',
+            default => throw new InvalidArgumentException("Unknown syntax \"{$syntax}\"; expected \"ubl\" or \"cii\"."),
+        };
+    }
+
+    /**
+     * Absolute path of the folder of the unpacked KoSIT validator configuration release.
+     */
+    public static function xrechnungConfiguration(): string
+    {
+        return self::XRECHNUNG_DIR.'/configuration-2026-08-31';
+    }
+
+    /**
+     * Absolute path of the preprocessed CEN 1.3.16 Schematron for a syntax ("ubl" or "cii").
+     */
+    public static function cen1316(string $syntax): string
+    {
+        if (! in_array($syntax, ['ubl', 'cii'], true)) {
+            throw new InvalidArgumentException("Unknown syntax \"{$syntax}\"; expected \"ubl\" or \"cii\".");
+        }
+
+        return self::CEN_1316_DIR.'/'.$syntax.'/schematron/preprocessed/EN16931-'.strtoupper($syntax).'-validation-preprocessed.sch';
+    }
+
+    /**
+     * The CEN 1.3.16 example invoices of both syntaxes: name ("<syntax>/<file>") => absolute path.
+     *
+     * @return array<string, string>
+     */
+    public static function cen1316Examples(): array
+    {
+        $examples = [];
+        foreach (['cii', 'ubl'] as $syntax) {
+            foreach (glob(self::CEN_1316_DIR.'/'.$syntax.'/examples/*.xml') ?: [] as $file) {
+                $examples[$syntax.'/'.basename($file)] = $file;
+            }
+        }
+        ksort($examples, SORT_STRING);
+
+        return $examples;
+    }
+
+    /**
+     * Flag per file of the xrechnung tree: '' for a plain file, 'doctype' or 'unparseable'.
+     *
+     * @return array<string, string>
+     */
+    private static function xrechnungManifest(): array
+    {
+        $lines = file(self::XRECHNUNG_MANIFEST, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES)
+            ?: throw new RuntimeException('Cannot read '.self::XRECHNUNG_MANIFEST);
+
+        $files = [];
+        foreach ($lines as $line) {
+            [$entry, $flag] = array_pad(explode("\t", $line, 2), 2, '');
+            $files[substr($entry, 66)] = $flag;
+        }
+
+        return $files;
+    }
+
+    private static function isXrechnungInstance(string $name): bool
+    {
+        return str_ends_with($name, '.xml') && in_array(explode('/', $name, 2)[0], self::XRECHNUNG_INSTANCE_DIRS, true);
     }
 
     private static function peppolDir(): string
