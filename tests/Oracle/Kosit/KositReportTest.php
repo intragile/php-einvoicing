@@ -84,6 +84,52 @@ final class KositReportTest extends TestCase
         KositReport::fromXml(self::fixture('valid'), 406);
     }
 
+    public function test_custom_level_is_a_token_list(): void
+    {
+        $xml = self::edited('custom-level', '<s:customLevel level="warning">BR-CL-23</s:customLevel>', "<s:customLevel level=\"warning\">BR-CL-99\n BR-CL-23</s:customLevel>");
+
+        self::assertSame(['BR-CL-23 warning', 'BR-DE-TMP-32 information'], KositReport::fromXml($xml, 200)->verdict);
+    }
+
+    public function test_code_with_two_custom_levels_throws(): void
+    {
+        $xml = self::edited('custom-level', '<s:customLevel level="warning">BR-CL-23</s:customLevel>', '<s:customLevel level="warning">BR-CL-23</s:customLevel><s:customLevel level="information">BR-CL-99 BR-CL-23</s:customLevel>');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('BR-CL-23');
+
+        KositReport::fromXml($xml, 200);
+    }
+
+    public function test_accepted_report_with_a_fatal_verdict_throws(): void
+    {
+        $xml = self::edited('valid', 'level="information"', 'level="error"');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('BR-DE-TMP-32 fatal');
+
+        KositReport::fromXml($xml, 200);
+    }
+
+    public function test_rejected_schema_valid_report_without_a_fatal_verdict_throws(): void
+    {
+        $xml = self::edited('valid', '<rep:accept>', '<rep:reject>');
+        $xml = str_replace('</rep:accept>', '</rep:reject>', $xml);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('reject');
+
+        KositReport::fromXml($xml, 406);
+    }
+
+    private static function edited(string $name, string $search, string $replace): string
+    {
+        $xml = self::fixture($name);
+        self::assertSame(1, substr_count($xml, $search));
+
+        return str_replace($search, $replace, $xml);
+    }
+
     private static function fixture(string $name): string
     {
         $xml = file_get_contents(__DIR__.'/../../fixtures/kosit-reports/'.$name.'.xml');

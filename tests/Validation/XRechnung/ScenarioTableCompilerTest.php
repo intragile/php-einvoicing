@@ -129,6 +129,7 @@ final class ScenarioTableCompilerTest extends TestCase
         yield 'unmodelled scenario element' => [self::scenarios(extra: '<validateWithXQuery/>'), 'validateWithXQuery'];
         yield 'unknown custom level' => [self::scenarios(customLevels: '<customLevel level="fatal">BR-01</customLevel>'), 'fatal'];
         yield 'duplicate custom level' => [self::scenarios(customLevels: '<customLevel level="warning">BR-01</customLevel><customLevel level="information">BR-01</customLevel>'), 'BR-01'];
+        yield 'duplicate code in custom level token lists' => [self::scenarios(customLevels: '<customLevel level="warning">BR-01 BR-02</customLevel><customLevel level="information">BR-03'."\n".'BR-02</customLevel>'), 'BR-02'];
         yield 'not a scenarios document' => ['<scenarios xmlns="urn:other"/>', 'scenarios'];
     }
 

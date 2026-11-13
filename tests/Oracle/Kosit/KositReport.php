@@ -41,7 +41,8 @@ final readonly class KositReport
      * @param  int  $httpStatus  the status the daemon answered with: 200 when accepted, 406 when
      *                           rejected, 422 when the input is not well-formed
      *
-     * @throws RuntimeException when the report is not a VARL report or contradicts the status
+     * @throws RuntimeException when the report is not a VARL report, gives one code two custom
+     *                          levels, or its acceptance contradicts the status or the verdict
      */
     public static function fromXml(string $reportXml, int $httpStatus): self
     {
@@ -60,9 +61,15 @@ final readonly class KositReport
 
         $scenario = self::firstText($xpath, '/rep:report/rep:scenarioMatched/s:scenario/s:name');
 
+        // A customLevel names a whitespace-separated list of codes (s:Tokens in scenarios.xsd).
         $customLevels = [];
         foreach (self::elements($xpath, '/rep:report/rep:scenarioMatched/s:scenario//s:customLevel') as $level) {
-            $customLevels[trim($level->textContent)] = $level->getAttribute('level');
+            foreach (preg_split('/\s+/', trim($level->textContent), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $code) {
+                if (isset($customLevels[$code])) {
+                    throw new RuntimeException(sprintf('The KoSIT scenario "%s" gives code "%s" more than one custom level.', $scenario ?? '', $code));
+                }
+                $customLevels[$code] = $level->getAttribute('level');
+            }
         }
 
         $steps = '/rep:report/rep:scenarioMatched/rep:validationStepResult';
@@ -86,6 +93,17 @@ final readonly class KositReport
                 'The KoSIT report says %s but the daemon answered HTTP %d.',
                 $accepted ? 'accept' : 'reject',
                 $httpStatus,
+            ));
+        }
+
+        // With a matched scenario and a valid schema, the scenarios of this configuration accept
+        // exactly the documents without an error-level Schematron message after custom levels.
+        $fatal = array_values(array_filter($verdict, static fn (string $entry): bool => str_ends_with($entry, ' fatal')));
+        if ($scenario !== null && $schemaValid && $accepted !== ($fatal === [])) {
+            throw new RuntimeException(sprintf(
+                'The KoSIT report says %s but the derived verdict has %s.',
+                $accepted ? 'accept' : 'reject',
+                $fatal === [] ? 'no fatal entry' : 'the fatal entries '.implode(', ', $fatal),
             ));
         }
 
