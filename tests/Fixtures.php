@@ -363,12 +363,21 @@ final class Fixtures
     }
 
     /**
+     * Whether the FeRD examples and Mustang test PDFs have been downloaded. Data providers check
+     * it, because a skip raised inside a data provider is reported as an error.
+     */
+    public static function hasFacturxExamples(): bool
+    {
+        return is_dir(self::FACTURX_EXAMPLES_DIR);
+    }
+
+    /**
      * Absolute path of the downloaded example folder, in which every file sits at its repository
      * path. Skips the test when the folder is missing.
      */
     public static function facturxExamplesDir(): string
     {
-        if (! is_dir(self::FACTURX_EXAMPLES_DIR)) {
+        if (! self::hasFacturxExamples()) {
             Assert::markTestSkipped('Run composer fetch-official -- --facturx-examples');
         }
 

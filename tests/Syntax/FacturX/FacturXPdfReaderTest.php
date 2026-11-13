@@ -123,7 +123,7 @@ final class FacturXPdfReaderTest extends TestCase
     ];
 
     /** The FeRD example folders' supporting documents, which carry no invoice. */
-    private const array FERD_EXCLUDED = [
+    public const array FERD_EXCLUDED = [
         'library/ZF252_Beispiele/3. EN16931/E08_Elektron_Anlage_XML/attachments/Aufmass.pdf',
         'library/ZF252_Beispiele/4. EXTENDED/X01_Dauermietrechnung_u_Nebenkostenabrechnung/attachments/Mietvertrag.pdf',
         'library/ZF252_Beispiele/4. EXTENDED/X01_Dauermietrechnung_u_Nebenkostenabrechnung/attachments/NKD_2026.pdf',

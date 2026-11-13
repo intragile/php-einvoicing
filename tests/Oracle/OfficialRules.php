@@ -53,11 +53,17 @@ final class OfficialRules
      * @param  bool  $requireRootRule  whether a rule on the document element must have fired; false
      *                                 for a second rule layer, such as the Peppol rules, whose
      *                                 relative contexts never match the document element itself
+     * @param  string|null  $defaultFlag  the flag of an entry the stylesheet reports without one;
+     *                                    null keeps the empty flag
+     * @param  string|null  $missingIdPrefix  when given, an entry without an id gets the id the
+     *                                        Schematron compiler synthesizes from the context of
+     *                                        the rule that fired it and its test; when null, such
+     *                                        an entry is an error
      * @return list<FiredRule>
      *
      * @throws OracleDynamicError when Saxon stops the stylesheet with a dynamic error
      */
-    public static function run(string $xsltPath, string $xml, bool $requireRootRule = true): array
+    public static function run(string $xsltPath, string $xml, bool $requireRootRule = true, ?string $defaultFlag = null, ?string $missingIdPrefix = null): array
     {
         $processor = self::processor();
         $executable = self::$executables[$xsltPath] ??= $processor->newXslt30Processor()->compileFromString(self::wrapper($xsltPath));
@@ -65,7 +71,7 @@ final class OfficialRules
         $report = self::transform($processor, $executable, $xsltPath, $xml);
         self::throwDynamicError($report);
 
-        return self::firedRules($report, $requireRootRule ? self::rootElement($xml) : null);
+        return self::firedRules($report, $requireRootRule ? self::rootElement($xml) : null, $defaultFlag, $missingIdPrefix);
     }
 
     /**
@@ -228,9 +234,11 @@ final class OfficialRules
      *
      * @param  array{string, string}|null  $root  Namespace URI and local name of the validated document
      *                                            element, or null when no rule on it needs to fire.
+     * @param  string|null  $defaultFlag  flag of an entry without one
+     * @param  string|null  $missingIdPrefix  prefix of the synthesized id of an entry without one
      * @return list<FiredRule>
      */
-    private static function firedRules(string $report, ?array $root): array
+    private static function firedRules(string $report, ?array $root, ?string $defaultFlag = null, ?string $missingIdPrefix = null): array
     {
         $document = new DOMDocument;
         if (! $document->loadXML($report, LIBXML_NONET)) {
@@ -247,20 +255,35 @@ final class OfficialRules
         }
 
         $rules = [];
-        foreach ($xpath->query('//svrl:failed-assert | //svrl:successful-report') ?: [] as $assert) {
-            if (! $assert instanceof DOMElement) {
+        // The SVRL writes each fired rule before the entries it reports, so the nearest preceding
+        // fired-rule carries the context of an entry.
+        $context = null;
+        foreach ($xpath->query('//svrl:fired-rule | //svrl:failed-assert | //svrl:successful-report') ?: [] as $entry) {
+            if (! $entry instanceof DOMElement) {
                 continue;
             }
-            if ($assert->getAttribute('id') === '') {
-                throw new RuntimeException('The SVRL report contains a '.$assert->localName.' without a rule id.');
+            if ($entry->localName === 'fired-rule') {
+                $context = $entry->getAttribute('context');
+
+                continue;
             }
-            $text = $xpath->evaluate('normalize-space(svrl:text)', $assert);
-            $rules[] = new FiredRule(
-                $assert->getAttribute('id'),
-                $assert->getAttribute('flag'),
-                $assert->getAttribute('location'),
-                is_string($text) ? $text : '',
-            );
+            $id = $entry->getAttribute('id');
+            if (! $entry->hasAttribute('id') && $missingIdPrefix !== null) {
+                if ($context === null) {
+                    throw new RuntimeException('The SVRL report contains a '.$entry->localName.' without a rule id before any fired rule.');
+                }
+                // The formula of the Schematron compiler, restated so the oracle does not share its code.
+                $id = "{$missingIdPrefix}-".substr(hash('sha256', $context."\n".$entry->getAttribute('test')), 0, 10);
+            }
+            if ($id === '') {
+                throw new RuntimeException('The SVRL report contains a '.$entry->localName.' without a rule id.');
+            }
+            $flag = $entry->getAttribute('flag');
+            if (! $entry->hasAttribute('flag') && $defaultFlag !== null) {
+                $flag = $defaultFlag;
+            }
+            $text = $xpath->evaluate('normalize-space(svrl:text)', $entry);
+            $rules[] = new FiredRule($id, $flag, $entry->getAttribute('location'), is_string($text) ? $text : '');
         }
 
         return $rules;

@@ -10,11 +10,12 @@
         <testsuite name="EInvoicing"><directory>tests</directory></testsuite>
     </testsuites>
     <!-- The oracle group needs SaxonC, the kosit-oracle group needs the KoSIT validator daemon
-         (docker/kosit/run.sh), the network group reaches the internet, the recommand-live
+         (docker/kosit/run.sh), the verapdf group needs Docker and the veraPDF image
+         (docker/verapdf/run.sh), the network group reaches the internet, the recommand-live
          group needs Recommand API credentials and the performance group asserts wall-clock bounds
          that can flake on a loaded machine; run them explicitly with the group option of PHPUnit. -->
     <groups>
-        <exclude><group>oracle</group><group>kosit-oracle</group><group>network</group><group>recommand-live</group><group>performance</group></exclude>
+        <exclude><group>oracle</group><group>kosit-oracle</group><group>verapdf</group><group>network</group><group>recommand-live</group><group>performance</group></exclude>
     </groups>
     <!-- The suite needs about 160 MB on PHP 8.3, above the stock 128M limit of PHP images. -->
     <php>
