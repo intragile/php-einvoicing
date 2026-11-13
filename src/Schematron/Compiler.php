@@ -18,10 +18,17 @@ use IntrAgile\EInvoicing\XPath\Regex;
 use IntrAgile\EInvoicing\XPath\StaticContext;
 use IntrAgile\EInvoicing\XPath\XPathError;
 use InvalidArgumentException;
+use SplObjectStorage;
 
 /**
- * Compiles a preprocessed ISO Schematron schema (includes and abstract patterns resolved, XSLT 2.0
- * query binding) into a plain array with every rule context and assert test parsed to an XPath AST.
+ * Compiles a preprocessed ISO Schematron schema (abstract patterns resolved, XSLT 2.0 query
+ * binding) into a plain array with every rule context and assert test parsed to an XPath AST.
+ *
+ * An include element is replaced by the document element of the file it names, recursively, before
+ * anything else is compiled. Its href must be a relative path without a fragment; it resolves
+ * against the directory of the including file and must stay inside the include root (by default
+ * the directory of the top-level schema). Cycles are refused. Errors in an included file name that
+ * file, relative to the include root.
  *
  * Only schema, title, ns, let, phase, active, pattern, rule and assert are accepted, plus XSLT
  * functions at schema level, each with the attributes listed in ATTRIBUTES; anything else (report,
@@ -30,13 +37,14 @@ use InvalidArgumentException;
  * instead of being ignored, because ignoring it could change a verdict or a message. Phases are
  * not compiled: like the official XSLT without a selected phase, all patterns run.
  *
- * Variables are scoped statically, in document order, the way the ISO Schematron skeleton turns
- * them into XSLT variables: schema and pattern lets become global variables (so their names must
- * be unique), rule lets become local variables of the rule template. A schema let sees the
- * earlier schema lets; a pattern let sees every schema let and the earlier lets of its pattern; a
- * rule context sees the same; a rule let or an assert sees those plus the earlier lets of its
- * rule. A function body sees its parameters, its earlier local variables and every schema let,
- * never a pattern or rule let. Functions may call each other, and themselves, in any order.
+ * Variables are scoped the way the ISO Schematron skeleton and SchXslt turn them into XSLT
+ * variables: schema and pattern lets become global variables (so their names must be unique,
+ * XTSE0630), rule lets become local variables of the rule template. The compiled array therefore
+ * lists the pattern lets after the schema lets, in document order, as schema-level lets, and
+ * leaves the lets of every pattern empty. A global let sees the global lets before it in that
+ * order. A rule context sees every global let; a rule let or an assert sees those plus the
+ * earlier lets of its rule. A function body sees its parameters, its earlier local variables and
+ * every global let, never a rule let. Functions may call each other, and themselves, in any order.
  *
  * A function body is a list of local variables followed by exactly one result: an xsl:sequence or
  * an xsl:choose whose every branch (an xsl:otherwise is required) is again such a body. Its
@@ -85,6 +93,7 @@ final class Compiler
             'schema' => ['schemaVersion', 'queryBinding'],
             'title' => [],
             'ns' => ['uri', 'prefix'],
+            'include' => ['href'],
             'let' => ['name', 'value'],
             'phase' => ['id'],
             'active' => ['pattern'],
@@ -111,48 +120,74 @@ final class Compiler
     /** @var array<string, true> keys of the declared functions, see StaticContext::functionKey() */
     private array $functions = [];
 
-    /** @var list<string> names of the schema lets */
-    private array $schemaLets = [];
+    /** @var list<string> names of the global lets (schema and pattern lets), in document order */
+    private array $globalLets = [];
 
-    /** @var array<string, true> names of the schema and pattern lets, which become global variables */
+    /** @var array<string, string> name of each global let => where it is declared */
     private array $globals = [];
 
-    private function __construct(private readonly string $source)
-    {
+    /** @var SplObjectStorage<DOMElement, string> document element of each included file => its name in messages */
+    private SplObjectStorage $includedFiles;
+
+    /**
+     * @param  ?string  $baseDir  directory the includes of the top-level schema resolve against
+     * @param  ?string  $includeRoot  directory tree every included file must stay inside
+     * @param  ?string  $path  the top-level schema file, when it is one
+     */
+    private function __construct(
+        private readonly string $source,
+        private readonly ?string $baseDir = null,
+        private readonly ?string $includeRoot = null,
+        private readonly ?string $path = null,
+    ) {
         $this->parser = new Parser;
+        $this->includedFiles = new SplObjectStorage;
     }
 
     /**
+     * Compiles a schema file. Its includes resolve against its directory and must stay inside
+     * $includeRoot, by default that same directory.
+     *
      * @return CompiledRuleSet
      *
      * @throws UnsupportedSchematron
      */
-    public static function compile(string $schPath, string $id, string $version): array
+    public static function compile(string $schPath, string $id, string $version, ?string $includeRoot = null): array
     {
         $xml = is_file($schPath) ? file_get_contents($schPath) : false;
         if ($xml === false) {
             throw new UnsupportedSchematron("Cannot read the Schematron schema \"{$schPath}\".");
         }
 
-        return self::compileString($xml, basename($schPath), $id, $version);
+        return self::build(new self(basename($schPath), dirname($schPath), $includeRoot ?? dirname($schPath), $schPath), $xml, $id, $version);
     }
 
     /**
      * Compiles a schema given as a string; $source names it in the compiled array and in errors.
+     * Its includes resolve against $baseDir and must stay inside it; without $baseDir an include
+     * is refused.
      *
      * @return CompiledRuleSet
      *
      * @throws UnsupportedSchematron
      */
-    public static function compileString(string $xml, string $source, string $id, string $version): array
+    public static function compileString(string $xml, string $source, string $id, string $version, ?string $baseDir = null): array
+    {
+        return self::build(new self($source, $baseDir, $baseDir), $xml, $id, $version);
+    }
+
+    /**
+     * @return CompiledRuleSet
+     */
+    private static function build(self $compiler, string $xml, string $id, string $version): array
     {
         return [
             'format' => RuleSet::FORMAT,
             'id' => $id,
             'version' => $version,
-            'source' => $source,
+            'source' => $compiler->source,
             'sha256' => hash('sha256', $xml),
-            ...(new self($source))->schema($xml),
+            ...$compiler->schema($xml),
         ];
     }
 
@@ -176,6 +211,7 @@ final class Compiler
             throw new UnsupportedSchematron("{$this->source} selects a default phase; only schemas that run all patterns are supported.");
         }
         $this->checkAttributes($schema);
+        $this->resolveIncludes($schema);
 
         $letElements = [];
         $functionElements = [];
@@ -235,8 +271,18 @@ final class Compiler
 
         $lets = [];
         foreach ($letElements as $let) {
-            $lets[] = $this->let($let, $this->schemaLets, global: true);
-            $this->schemaLets[] = $let->getAttribute('name');
+            $lets[] = $this->let($let, $this->globalLets, global: true);
+            $this->globalLets[] = $let->getAttribute('name');
+        }
+        // Pattern lets are global variables too; they follow the schema lets in document order.
+        foreach ($patternElements as $pattern) {
+            $this->checkPattern($pattern);
+            foreach ($this->children($pattern) as $child) {
+                if ($child->localName === 'let') {
+                    $lets[] = $this->let($child, $this->globalLets, global: true);
+                    $this->globalLets[] = $child->getAttribute('name');
+                }
+            }
         }
 
         return [
@@ -294,7 +340,7 @@ final class Compiler
         [$children] = $this->xsltChildren($function, $owner);
 
         $params = [];
-        $scope = $this->schemaLets;
+        $scope = $this->globalLets;
         $parameterNames = [];
         while ($children !== [] && $children[0]->localName === 'param') {
             $param = array_shift($children);
@@ -502,9 +548,9 @@ final class Compiler
         }
         if ($global) {
             if (isset($this->globals[$name])) {
-                throw new UnsupportedSchematron("The global variable \"{$name}\" is declared twice ({$this->line($let)}).");
+                throw new UnsupportedSchematron("The global variable \"{$name}\" is declared twice ({$this->globals[$name]} and {$this->line($let)}; XTSE0630).");
             }
-            $this->globals[$name] = true;
+            $this->globals[$name] = $this->line($let);
         }
 
         $value = $let->getAttribute('value');
@@ -606,39 +652,39 @@ final class Compiler
         return new StaticContext($this->namespaces, array_values(array_unique($scope)), $this->functions);
     }
 
+    private function checkPattern(DOMElement $pattern): void
+    {
+        if ($pattern->getAttribute('abstract') === 'true' || $pattern->hasAttribute('is-a')) {
+            throw new UnsupportedSchematron("Pattern \"{$pattern->getAttribute('id')}\" ({$this->line($pattern)}) is or instantiates an abstract pattern; compile the preprocessed schema instead.");
+        }
+        $this->checkAttributes($pattern);
+    }
+
     /**
+     * Compiles the rules of a pattern; its lets are already compiled as global lets.
+     *
      * @return CompiledPattern
      */
     private function pattern(DOMElement $pattern): array
     {
-        $id = $pattern->getAttribute('id');
-        if ($pattern->getAttribute('abstract') === 'true' || $pattern->hasAttribute('is-a')) {
-            throw new UnsupportedSchematron("Pattern \"{$id}\" ({$this->line($pattern)}) is or instantiates an abstract pattern; compile the preprocessed schema instead.");
-        }
-        $this->checkAttributes($pattern);
-
-        $scope = $this->schemaLets;
-        $lets = [];
         $rules = [];
         foreach ($this->children($pattern) as $child) {
             switch ($child->localName) {
                 case 'let':
-                    $lets[] = $this->let($child, $scope, global: true);
-                    $scope[] = $child->getAttribute('name');
                     break;
                 case 'rule':
-                    $rules[] = $this->rule($child, $scope);
+                    $rules[] = $this->rule($child, $this->globalLets);
                     break;
                 default:
                     throw $this->unsupportedElement($child);
             }
         }
 
-        return ['id' => $id, 'lets' => $lets, 'rules' => $rules];
+        return ['id' => $pattern->getAttribute('id'), 'lets' => [], 'rules' => $rules];
     }
 
     /**
-     * @param  list<string>  $scope  the schema lets and the earlier lets of the pattern
+     * @param  list<string>  $scope  the global lets
      * @return CompiledRule
      */
     private function rule(DOMElement $rule, array $scope): array
@@ -841,8 +887,145 @@ final class Compiler
         return $element->namespaceURI === self::SCHEMATRON_NAMESPACE ? $localName : '{'.$element->namespaceURI.'}'.$localName;
     }
 
+    /**
+     * Where a node is: the top-level source or the included file it comes from, and its line.
+     */
     private function line(DOMNode $node): string
     {
-        return "{$this->source} line {$node->getLineNo()}";
+        $source = $this->source;
+        for ($ancestor = $node; $ancestor !== null; $ancestor = $ancestor->parentNode) {
+            if ($ancestor instanceof DOMElement && isset($this->includedFiles[$ancestor])) {
+                $source = $this->includedFiles[$ancestor];
+                break;
+            }
+        }
+
+        return "{$source} line {$node->getLineNo()}";
+    }
+
+    /**
+     * Replaces every include element below $element by the document element of the file it names,
+     * recursively.
+     *
+     * @param  list<string>  $stack  real paths of the files being included, outermost first
+     */
+    private function resolveIncludes(DOMElement $element, ?string $dir = null, array $stack = []): void
+    {
+        if ($dir === null && $this->baseDir !== null) {
+            $dir = $this->realDirectory($this->baseDir);
+            if ($this->path !== null && ($top = realpath($this->path)) !== false) {
+                $stack = [$top];
+            }
+        }
+        foreach (iterator_to_array($element->childNodes) as $child) {
+            if (! $child instanceof DOMElement) {
+                continue;
+            }
+            if ($child->namespaceURI === self::SCHEMATRON_NAMESPACE && $child->localName === 'include') {
+                [$child, $childDir, $childStack] = $this->includeFile($child, $dir, $stack);
+                $this->resolveIncludes($child, $childDir, $childStack);
+            } else {
+                $this->resolveIncludes($child, $dir, $stack);
+            }
+        }
+    }
+
+    /**
+     * Replaces one include element by the document element of the file it names.
+     *
+     * @param  list<string>  $stack
+     * @return array{DOMElement, string, list<string>} the included element, its directory and the extended stack
+     */
+    private function includeFile(DOMElement $include, ?string $dir, array $stack): array
+    {
+        $this->checkAttributes($include);
+        if ($dir === null || $this->includeRoot === null) {
+            throw new UnsupportedSchematron("The include ({$this->line($include)}) cannot be resolved: an include needs a base directory; use compile().");
+        }
+        $href = $include->getAttribute('href');
+        if ($href === '') {
+            throw new UnsupportedSchematron("The include ({$this->line($include)}) has no href.");
+        }
+        if (str_contains($href, '#')) {
+            throw new UnsupportedSchematron("The include \"{$href}\" ({$this->line($include)}) has a fragment identifier; only whole files can be included.");
+        }
+        if (preg_match('~^[A-Za-z][A-Za-z0-9+.\-]*:|^[/\\\\]|[?\\\\]~', $href) === 1) {
+            throw new UnsupportedSchematron("The include \"{$href}\" ({$this->line($include)}) must be a relative path to a local file.");
+        }
+
+        $root = $this->realDirectory($this->includeRoot);
+        $target = self::normalizePath($dir.'/'.rawurldecode($href));
+        $real = realpath($target);
+        if (! self::isInside($target, $root) || ($real !== false && ! self::isInside($real, $root))) {
+            throw new UnsupportedSchematron("The include \"{$href}\" ({$this->line($include)}) points outside {$root}.");
+        }
+        $xml = $real !== false && is_file($real) ? file_get_contents($real) : false;
+        if ($real === false || $xml === false) {
+            throw new UnsupportedSchematron("Cannot read the included Schematron \"{$href}\" ({$this->line($include)}).");
+        }
+        if (in_array($real, $stack, true)) {
+            throw new UnsupportedSchematron("The include \"{$href}\" ({$this->line($include)}) includes itself: ".implode(' -> ', array_map(fn (string $path): string => $this->relativeName($path, $root), [...$stack, $real])).'.');
+        }
+
+        $name = $this->relativeName($real, $root);
+        try {
+            $included = SafeXml::load($xml)->documentElement;
+        } catch (UnsupportedDocument|UnsafeXml $exception) {
+            throw new UnsupportedSchematron("The included Schematron {$name} cannot be loaded: {$exception->getMessage()}", 0, $exception);
+        }
+        $document = $include->ownerDocument;
+        $parent = $include->parentNode;
+        if ($included === null || $document === null || $parent === null) {
+            throw new UnsupportedSchematron("The included Schematron {$name} has no document element.");
+        }
+        $imported = $document->importNode($included, true);
+        if (! $imported instanceof DOMElement) {
+            throw new UnsupportedSchematron("The included Schematron {$name} cannot be imported.");
+        }
+        $parent->replaceChild($imported, $include);
+        $this->includedFiles[$imported] = $name;
+
+        return [$imported, dirname($real), [...$stack, $real]];
+    }
+
+    private function realDirectory(string $directory): string
+    {
+        $real = realpath($directory);
+        if ($real === false || ! is_dir($real)) {
+            throw new UnsupportedSchematron("The include directory \"{$directory}\" does not exist.");
+        }
+
+        return $real;
+    }
+
+    private function relativeName(string $path, string $root): string
+    {
+        return self::isInside($path, $root) ? substr($path, strlen(rtrim($root, '/')) + 1) : $path;
+    }
+
+    /**
+     * Resolves "." and ".." segments of an absolute path without touching the file system.
+     */
+    private static function normalizePath(string $path): string
+    {
+        $segments = [];
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                array_pop($segments);
+
+                continue;
+            }
+            $segments[] = $segment;
+        }
+
+        return '/'.implode('/', $segments);
+    }
+
+    private static function isInside(string $path, string $root): bool
+    {
+        return str_starts_with($path, rtrim($root, '/').'/');
     }
 }

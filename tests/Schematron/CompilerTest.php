@@ -9,7 +9,10 @@ use IntrAgile\EInvoicing\Schematron\CompiledRuleSetWriter;
 use IntrAgile\EInvoicing\Schematron\Compiler;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
 use IntrAgile\EInvoicing\Schematron\RuleSet;
+use IntrAgile\EInvoicing\Schematron\Runner;
+use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Tests\Fixtures;
+use IntrAgile\EInvoicing\Validation\Finding;
 use IntrAgile\EInvoicing\XPath\Op;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -21,6 +24,8 @@ use PHPUnit\Framework\TestCase;
 final class CompilerTest extends TestCase
 {
     private const SCRATCH = __DIR__.'/../../.cache/tests/schematron';
+
+    private const INCLUDE_DIR = __DIR__.'/../fixtures/schematron/include';
 
     private const CBC = 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2';
 
@@ -199,14 +204,16 @@ final class CompilerTest extends TestCase
 
     /**
      * The Peppol BIS Billing 3.0.22 rule files: patterns, rules, asserts, fatal and warning
-     * asserts, schema, pattern and rule lets, and XSLT functions, as counted in the DOM.
+     * asserts, global (schema and pattern) lets, lets left in patterns (none: they become global),
+     * rule lets, and XSLT functions. The DOM holds 10 + 22 (UBL) and 4 + 13 (CII) schema and
+     * pattern lets.
      *
      * @return iterable<string, array{string, list<int>}>
      */
     public static function peppolScope(): iterable
     {
-        yield 'ubl' => ['peppol-ubl', [13, 99, 165, 139, 26, 10, 22, 17, 13]];
-        yield 'cii' => ['peppol-cii', [7, 63, 91, 74, 17, 4, 13, 6, 12]];
+        yield 'ubl' => ['peppol-ubl', [13, 99, 165, 139, 26, 32, 0, 17, 13]];
+        yield 'cii' => ['peppol-cii', [7, 63, 91, 74, 17, 17, 0, 6, 12]];
     }
 
     /**
@@ -298,10 +305,10 @@ final class CompilerTest extends TestCase
             </xsl:function>
             XML), 'tiny', '0.1');
 
-        self::assertSame(['a', 'b'], array_column($compiled['lets'], 'name'));
+        self::assertSame(['a', 'b', 'c'], array_column($compiled['lets'], 'name'));
         self::assertSame(['name' => 'b', 'value' => '$a + 1'], array_diff_key($compiled['lets'][1], ['ast' => true]));
         self::assertSame([Op::VAR, 'a'], $compiled['lets'][1]['ast'][2]);
-        self::assertSame(['c'], array_column($compiled['patterns'][0]['lets'], 'name'));
+        self::assertSame([], $compiled['patterns'][0]['lets']);
         self::assertSame(['d', 'e'], array_column($compiled['patterns'][0]['rules'][0]['lets'], 'name'));
         self::assertSame(['{utils}twice#1'], array_keys($compiled['functions']));
     }
@@ -321,11 +328,9 @@ final class CompilerTest extends TestCase
         yield 'rule let using a later rule let' => [$rule('<let name="a" value="$b"/><let name="b" value="1"/>'), '$b'];
         yield 'assert using a later rule let' => ['<pattern id="p"><rule context="cbc:ID"><assert id="R-1" flag="fatal" test="$a">x</assert><let name="a" value="1"/></rule></pattern>', '$a'];
         yield 'rule context using a rule let' => ['<pattern id="p"><rule context="cbc:ID[$a]"><let name="a" value="1"/><assert id="R-1" flag="fatal" test="true()">x</assert></rule></pattern>', '$a'];
-        yield 'pattern let of another pattern' => ['<pattern id="p"><let name="a" value="1"/></pattern>'.$rule('<let name="b" value="$a"/>'), '$a'];
         yield 'duplicate schema let' => ['<let name="a" value="1"/><let name="a" value="2"/>'.$rule(''), 'variable "a" is declared twice'];
         yield 'pattern let named like a schema let' => ['<let name="a" value="1"/><pattern id="q"><let name="a" value="2"/></pattern>'.$rule(''), 'variable "a" is declared twice'];
         yield 'let without a value' => [$rule('<let name="a">1</let>'), 'without a value'];
-        yield 'function using a pattern let' => [$function('<xsl:sequence select="$c"/>').'<pattern id="q"><let name="c" value="1"/></pattern>', '$c'];
         yield 'function using a rule let' => [str_replace('test="u:f(.)"', 'test="u:f($c)"', $function('<xsl:sequence select="$c"/>')), '$c'];
         yield 'duplicate function signature' => [$function('<xsl:sequence select="true()"/>').'<xsl:function name="u:f" as="xs:boolean"><xsl:param name="w"/><xsl:sequence select="false()"/></xsl:function>', 'u:f is declared twice'];
         yield 'for-each in a function' => [$function('<xsl:for-each select="1"><xsl:sequence select="true()"/></xsl:for-each>'), '{http://www.w3.org/1999/XSL/Transform}for-each'];
@@ -440,6 +445,212 @@ final class CompilerTest extends TestCase
         self::assertSame(realpath(__DIR__.'/../../packages/rules-en16931/rules/en16931-cii-1.3.17.php'), realpath(RuleFiles::cii()));
     }
 
+    public function test_include_is_replaced_by_the_included_element(): void
+    {
+        $included = Compiler::compile(self::INCLUDE_DIR.'/main.sch', 'tiny', '0.1');
+        $cbc = self::CBC;
+        $inlined = Compiler::compileString(<<<XML
+            <?xml version="1.0" encoding="UTF-8"?>
+            <schema xmlns="http://purl.oclc.org/dsdl/schematron" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" queryBinding="xslt2">
+              <ns prefix="cbc" uri="{$cbc}"/>
+              <ns prefix="u" uri="utils"/>
+              <let name="base" value="10"/>
+              <xsl:function name="u:limit" as="xs:integer">
+                <xsl:sequence select="\$LIMIT"/>
+              </xsl:function>
+              <pattern id="variables">
+                <let name="LIMIT" value="\$base + 5"/>
+                <let name="CODES" value="' A B C '"/>
+              </pattern>
+              <pattern id="rules">
+                <rule context="cbc:ID[contains(\$CODES, concat(' ', ., ' '))]">
+                  <assert id="R-1" flag="fatal" test="string-length(.) le u:limit()">The ID is too long.</assert>
+                </rule>
+              </pattern>
+            </schema>
+            XML, 'inlined.sch', 'tiny', '0.1');
+
+        self::assertSame('main.sch', $included['source']);
+        self::assertSame(['base', 'LIMIT', 'CODES'], array_column($included['lets'], 'name'));
+        self::assertSame(['variables', 'rules'], array_column($included['patterns'], 'id'));
+        foreach (['namespaces', 'lets', 'functions', 'patterns'] as $key) {
+            self::assertSame($inlined[$key], $included[$key], $key);
+        }
+    }
+
+    public function test_include_resolves_with_a_base_directory(): void
+    {
+        $xml = (string) file_get_contents(self::INCLUDE_DIR.'/main.sch');
+
+        $compiled = Compiler::compileString($xml, 'main.sch', 'tiny', '0.1', self::INCLUDE_DIR);
+
+        self::assertSame(Compiler::compile(self::INCLUDE_DIR.'/main.sch', 'tiny', '0.1'), $compiled);
+    }
+
+    public function test_include_needs_a_base_directory(): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('include needs a base directory; use compile()');
+
+        Compiler::compileString((string) file_get_contents(self::INCLUDE_DIR.'/main.sch'), 'main.sch', 'tiny', '0.1');
+    }
+
+    public function test_pattern_let_is_visible_in_xsl_function(): void
+    {
+        $compiled = Compiler::compile(self::writeSchematronDocument(<<<'XML'
+            <xsl:function name="u:greeting" as="xs:string">
+              <xsl:sequence select="concat($salutation, '!')"/>
+            </xsl:function>
+            <pattern id="p">
+              <rule context="cbc:ID">
+                <assert id="R-1" flag="fatal" test="u:greeting() = 'hello!'">x</assert>
+                <assert id="R-2" flag="fatal" test="u:greeting() = 'bye!'">x</assert>
+              </rule>
+            </pattern>
+            <pattern id="variables">
+              <let name="salutation" value="'hello'"/>
+            </pattern>
+            XML), 'tiny', '0.1');
+        $cbc = self::CBC;
+        $document = SafeXml::load("<r xmlns:cbc=\"{$cbc}\"><cbc:ID>1</cbc:ID></r>");
+
+        $result = (new Runner)->run(RuleSet::fromArray($compiled), $document);
+
+        self::assertSame(['salutation'], array_column($compiled['lets'], 'name'));
+        self::assertSame([], $result->dynamicErrors);
+        self::assertSame(['R-2'], array_map(static fn (Finding $finding): string => $finding->ruleId, $result->findings));
+    }
+
+    public function test_rules_and_lets_see_the_lets_of_every_pattern(): void
+    {
+        $compiled = Compiler::compile(self::writeSchematronDocument(<<<'XML'
+            <let name="a" value="1"/>
+            <pattern id="p">
+              <let name="b" value="$a + 1"/>
+              <rule context="cbc:ID[$c = 3]">
+                <let name="d" value="$c + $b"/>
+                <assert id="R-1" flag="fatal" test="$d = 5">x</assert>
+              </rule>
+            </pattern>
+            <pattern id="q">
+              <let name="c" value="$b + 1"/>
+            </pattern>
+            XML), 'tiny', '0.1');
+
+        self::assertSame(['a', 'b', 'c'], array_column($compiled['lets'], 'name'));
+        self::assertSame([[], []], array_column($compiled['patterns'], 'lets'));
+        self::assertSame(['d'], array_column($compiled['patterns'][0]['rules'][0]['lets'], 'name'));
+    }
+
+    public function test_pattern_let_still_sees_only_earlier_globals(): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('$c');
+
+        Compiler::compile(self::writeSchematronDocument(<<<'XML'
+            <pattern id="p"><let name="b" value="$c"/></pattern>
+            <pattern id="q"><let name="c" value="1"/></pattern>
+            XML), 'tiny', '0.1');
+    }
+
+    public function test_duplicate_global_let_is_rejected(): void
+    {
+        $path = self::writeSchematronDocument(<<<'XML'
+            <pattern id="p">
+              <let name="a" value="1"/>
+            </pattern>
+            <pattern id="q">
+              <let name="a" value="2"/>
+            </pattern>
+            XML);
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('The global variable "a" is declared twice (tiny.sch line 6 and tiny.sch line 9; XTSE0630).');
+
+        Compiler::compile($path, 'tiny', '0.1');
+    }
+
+    public function test_error_in_an_included_file_names_that_file(): void
+    {
+        $dir = self::includeScratch('named', [
+            'main.sch' => self::includingSchema('<include href="sub/rules.sch"/>'),
+            'sub/rules.sch' => "<pattern xmlns=\"http://purl.oclc.org/dsdl/schematron\" id=\"p\">\n<report test=\"true()\">x</report>\n</pattern>",
+        ]);
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('Unsupported Schematron element "report" (sub/rules.sch line 2)');
+
+        Compiler::compile("{$dir}/main.sch", 'tiny', '0.1');
+    }
+
+    public function test_include_cycle_is_rejected(): void
+    {
+        $dir = self::includeScratch('cycle', [
+            'a.sch' => self::includingSchema('<pattern id="p"><include href="b.sch"/></pattern>'),
+            'b.sch' => '<rule xmlns="http://purl.oclc.org/dsdl/schematron" context="cbc:ID"><include href="a.sch"/></rule>',
+        ]);
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('includes itself');
+
+        Compiler::compile("{$dir}/a.sch", 'tiny', '0.1');
+    }
+
+    public function test_include_outside_base_is_rejected(): void
+    {
+        $dir = self::includeScratch('outside', [
+            'main.sch' => self::includingSchema('<include href="../../etc/x.sch"/>'),
+        ]);
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('outside');
+
+        Compiler::compile("{$dir}/main.sch", 'tiny', '0.1');
+    }
+
+    public function test_include_root_widens_the_allowed_tree(): void
+    {
+        $dir = self::includeScratch('root', [
+            'shared.sch' => '<pattern xmlns="http://purl.oclc.org/dsdl/schematron" id="v"><let name="x" value="1"/></pattern>',
+            'sub/main.sch' => self::includingSchema('<include href="../shared.sch"/>'),
+        ]);
+
+        self::assertSame(['x'], array_column(Compiler::compile("{$dir}/sub/main.sch", 'tiny', '0.1', $dir)['lets'], 'name'));
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('outside');
+
+        Compiler::compile("{$dir}/sub/main.sch", 'tiny', '0.1');
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function invalidIncludes(): iterable
+    {
+        yield 'absolute path' => ['<include href="/etc/x.sch"/>', 'relative'];
+        yield 'URI scheme' => ['<include href="file:///etc/x.sch"/>', 'relative'];
+        yield 'remote URI' => ['<include href="https://example.com/x.sch"/>', 'relative'];
+        yield 'fragment' => ['<include href="common.sch#v"/>', 'fragment'];
+        yield 'empty href' => ['<include href=""/>', 'href'];
+        yield 'missing file' => ['<include href="missing.sch"/>', 'Cannot read'];
+        yield 'foreign attribute' => ['<include href="common.sch" parse="text"/>', 'Unsupported attribute "parse"'];
+    }
+
+    #[DataProvider('invalidIncludes')]
+    public function test_rejects_invalid_includes(string $include, string $message): void
+    {
+        $dir = self::includeScratch('invalid', [
+            'main.sch' => self::includingSchema($include),
+            'common.sch' => '<pattern xmlns="http://purl.oclc.org/dsdl/schematron" id="v"><let name="x" value="1"/></pattern>',
+        ]);
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage($message);
+
+        Compiler::compile("{$dir}/main.sch", 'tiny', '0.1');
+    }
+
     /**
      * @return iterable<string, array{string}>
      */
@@ -545,6 +756,41 @@ final class CompilerTest extends TestCase
             XML);
 
         return $path;
+    }
+
+    /**
+     * A schema with the cbc and u prefixes bound and the given children, as a string.
+     */
+    private static function includingSchema(string $children): string
+    {
+        $cbc = self::CBC;
+
+        return <<<XML
+            <?xml version="1.0" encoding="UTF-8"?>
+            <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
+              <ns prefix="cbc" uri="{$cbc}"/>
+              <ns prefix="u" uri="utils"/>
+              {$children}
+            </schema>
+            XML;
+    }
+
+    /**
+     * Writes the given files (relative path => contents) into a fresh scratch directory.
+     *
+     * @param  array<string, string>  $files
+     */
+    private static function includeScratch(string $name, array $files): string
+    {
+        $dir = self::SCRATCH."/include-{$name}";
+        foreach ($files as $path => $contents) {
+            if (! is_dir(dirname("{$dir}/{$path}"))) {
+                mkdir(dirname("{$dir}/{$path}"), 0777, true);
+            }
+            file_put_contents("{$dir}/{$path}", $contents);
+        }
+
+        return (string) realpath($dir);
     }
 
     private static function scratch(): void
