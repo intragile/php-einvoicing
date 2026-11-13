@@ -140,9 +140,8 @@ final class SchemaValidatorTest extends TestCase
     }
 
     /**
-     * Hints to an unreachable host and to a missing local file are never loaded: every resource
-     * libxml asks for is one of the pinned schema files, exactly as without a hint, and the
-     * result is identical.
+     * Hints to an unreachable host and to a missing local file are never loaded: the result is
+     * identical to the one without a hint.
      */
     public function test_no_network_during_schema_validation(): void
     {
@@ -155,33 +154,42 @@ final class SchemaValidatorTest extends TestCase
             'file' => self::withSchemaLocation(self::ublInvoice(), $missing),
         ];
 
-        $previousLoader = libxml_get_external_entity_loader();
-        $results = [];
-        $loads = [];
-        try {
-            foreach ($hints as $name => $document) {
-                $requested = [];
-                libxml_set_external_entity_loader(static function (?string $public, string $system) use (&$requested): ?string {
-                    $requested[] = $system;
-                    $path = str_starts_with($system, 'file://') ? substr($system, 7) : $system;
-
-                    return str_contains($path, '://') ? null : $path;
-                });
-                $results[$name] = (new SchemaValidator)->validate($document, $xsd);
-                $loads[$name] = $requested;
-            }
-        } finally {
-            libxml_set_external_entity_loader($previousLoader);
+        foreach ($hints as $name => $document) {
+            self::assertSame([], (new SchemaValidator)->validate($document, $xsd), $name);
         }
+    }
 
-        self::assertNotSame([], $loads['none']);
-        foreach ($loads as $name => $requested) {
-            self::assertSame([], $results[$name], $name);
-            self::assertSame($loads['none'], $requested, $name);
-            foreach ($requested as $system) {
-                self::assertStringNotContainsString('evil.example', $system, $name);
-                self::assertStringNotContainsString('does-not-exist', $system, $name);
-            }
+    public function test_network_schema_import_is_refused_before_any_io(): void
+    {
+        $uri = 'http://127.0.0.1:1/x.xsd';
+        $xsd = $this->scratch.'/importing.xsd';
+        file_put_contents($xsd, '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">'
+            .'<xs:import namespace="urn:remote" schemaLocation="'.$uri.'"/>'
+            .'<xs:element name="a" type="xs:string"/></xs:schema>');
+        $document = new DOMDocument;
+        $document->loadXML('<a>x</a>');
+
+        try {
+            (new SchemaValidator)->validate($document, $xsd);
+            self::fail('A network import must be refused.');
+        } catch (UnusableSchema $e) {
+            self::assertStringContainsString($uri, $e->getMessage());
+        }
+    }
+
+    public function test_previous_entity_loader_is_restored(): void
+    {
+        $sentinel = static fn (?string $public, string $system): ?string => null;
+        $previous = libxml_get_external_entity_loader();
+        libxml_set_external_entity_loader($sentinel);
+        try {
+            (new SchemaValidator)->validate(
+                SafeXml::loadPreservingWhitespace(self::ublInvoice()),
+                self::xsd(self::UBL_INVOICE_XSD),
+            );
+            self::assertSame($sentinel, libxml_get_external_entity_loader());
+        } finally {
+            libxml_set_external_entity_loader($previous);
         }
     }
 

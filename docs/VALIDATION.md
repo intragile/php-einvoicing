@@ -57,7 +57,7 @@ errors in that order; `UnsupportedDocument` depends only on the first rule set. 
 takes, per syntax, one `IntrAgile\EInvoicing\Schematron\RuleSet` or a list of them; a compiled rule
 file (as `composer compile-rules` or `einvoicing-rules install` writes it) is loaded with
 `RuleSet::fromFile($path)`, which caches each file per path for the life of the process. `isValid()`
-is true only when no fatal assert failed and no assert raised a dynamic error. Warnings do not make
+is true only when no fatal assert failed, no assert raised a dynamic error and no XML Schema error was reported. Warnings do not make
 an invoice invalid.
 
 A document the rule set does not cover is refused, never reported as valid: an unknown document
@@ -396,7 +396,7 @@ steps still run, and the daemon answers HTTP 422 with a rejection. The engine re
 it could evaluate plus the dynamic errors, so on such a document the test requires a processing
 error on KoSIT's side exactly when the engine reports dynamic errors, and compares KoSIT's messages
 with the engine's verdict minus the entries of the rule sets that raised a dynamic error. None
-of the 579 documents of the first group raises one; only the 2 dynamic-error documents do.
+of the 579 corpus documents raises one; only the 2 dynamic-error documents do.
 
 ## Regenerating the rules for a new CEN release
 

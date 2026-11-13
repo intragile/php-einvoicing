@@ -108,7 +108,7 @@ All notable changes to this project are documented here. The format follows
   (`RuleFiles::ubl('1.3.16')`, `RuleFiles::cii('1.3.16')`, `RuleFiles::VERSIONS`), the release
   KoSIT pins.
 - `SchemaValidator`: XML Schema validation against a pinned XSD only, ignoring the instance's
-  schema location hints, with no network access, returning `SchemaError`s in document order; a
+  schema location hints, with no network access (an import or include that is not a local file is refused), returning `SchemaError`s in document order; a
   missing, unreadable or uncompilable schema throws `UnusableSchema`, never a finding.
 - Schematron engine: `include` (confined to an include root, `Compiler::compile()` takes it as an
   optional argument), pattern `let`s as global variables visible to `xsl:function`s (a let that
@@ -138,17 +138,16 @@ All notable changes to this project are documented here. The format follows
   sets that ran as `"<id> <version>"`. The classes under `IntrAgile\EInvoicing\Schematron` and
   `IntrAgile\EInvoicing\XPath` are marked `@internal`, apart from their exceptions and
   `RuleSet`, which is public.
-- Compiled rule files carry a `format` key (format 2); a rule file of another format is refused
-  with `UnsupportedSchematron` asking to recompile it. `CompiledRuleSetWriter` takes the origin
-  named in the file header.
+- Compiled rule files carry a `format` key and are written in format 3, which adds the optional
+  message parts of an assert (`name`, `value-of`) to format 2. Formats 2 and 3 are both read, so
+  Peppol rules installed by an earlier version need no reinstall; a rule file of any other format
+  is refused with `UnsupportedSchematron` asking to recompile it. `CompiledRuleSetWriter` takes
+  the origin named in the file header.
 - The Schematron compiler refuses attributes outside those the CEN and Peppol schemas use (for
   example `pattern/@documents` or `assert/@diagnostics`) and processing instructions inside an
   assert, instead of ignoring them.
 - Requires `brick/math` ^0.14.8 (previously ^0.12 or ^0.13): the first release with every
   method the core uses, and within the range Laravel 13 installs.
-- Compiled rule files are written in format 3, which adds the optional message parts of an
-  assert (`name`, `value-of`) to format 2. Format 2 files, such as Peppol rules installed by an
-  earlier version, are still read, so no reinstall is needed.
 
 ### Fixed
 
