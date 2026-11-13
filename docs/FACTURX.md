@@ -78,7 +78,8 @@ the PDF/A-3 identification and the Factur-X extension schema (`fx:DocumentType`,
 has; a trailer `/ID` when there is none; an sRGB `OutputIntent` when the PDF has none; and a copy
 of the Info dictionary with a synchronised `/ModDate`.
 
-What it refuses, each with an exception that extends `UnsupportedDocument`:
+What it refuses, each with an exception that extends `UnsupportedDocument`, except `UnsafeXml`,
+which is a `RuntimeException`; catch it too (`catch (UnsafeXml | UnsupportedDocument $e)`):
 
 | Case | Exception |
 |---|---|
@@ -89,6 +90,7 @@ What it refuses, each with an exception that extends `UnsupportedDocument`:
 | The input declares no PDF/A and `$strict` is true | `NotPdfA` |
 | The XML is not CII, or declares no known profile | `UnsupportedDocument` |
 | The XML declares another profile than `$profile` | `ProfileMismatch` |
+| The PDF's XMP metadata is not well-formed XML, or has no `rdf:RDF` element | `UnsupportedDocument` |
 | The XML or the XMP carries a DOCTYPE | `UnsafeXml` |
 
 ### PDF/A input
@@ -185,8 +187,13 @@ Format verified offline; nothing is verified in live exchanges.
   with 0 differences. The corpus is the 57 FeRD example invoices, the XML read from their 57
   PDFs, the writer's output for three test invoices in each of the five profiles, and 570
   mutations of the examples. Per document, the sorted set of rule ids with their levels is equal.
-- PDF/A was checked with veraPDF 1.30.3 on every input and output pair of the corpus (10 pairs).
-  Every input that passed veraPDF passed after embedding, and the update broke no rule.
+- PDF/A was checked with veraPDF 1.30.3 on 10 input and output pairs: the 9 Mustang corpus PDFs
+  that carry no invoice and declare a PDF/A part, plus one headless Chrome print. The other corpus
+  PDFs already carry an invoice or have an index that had to be reconstructed, so the writer
+  refuses them, and one declares no PDF/A. Every input that passed veraPDF passed after embedding,
+  and the update broke no rule. One input fails before and after: its `pdfaid:conformance` is a
+  lowercase `a`, which the writer carries over unchanged. The Chrome print, which declares no
+  PDF/A, passes PDF/A-3b after embedding.
 - All 102 PDFs of the Mustang corpus parse, and the invoices of all 61 FeRD example invoice PDFs
   are read.
 

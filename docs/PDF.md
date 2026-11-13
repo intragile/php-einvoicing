@@ -9,7 +9,11 @@ It is not a general PDF library. It cannot render, edit pages or extract text.
 
 A PDF from a customer or supplier is untrusted input. The parser never uses `eval`, never follows
 an external reference and never touches a file or the network. Damaged or hostile input raises
-`UnreadablePdf`, never a PHP error or warning.
+`UnreadablePdf`, never a PHP error or warning, provided PHP's `memory_limit` leaves room for what
+a document needs: about the size of the PDF, plus up to about 30 MiB while the cross-reference
+index is built or rebuilt, plus the decoded streams being read (one at most 64 MiB, all of them at
+most 256 MiB, see [Limits](#limits)). Building the index holds at most one decoded stream at a time.
+The hostile-input tests run at PHP's default `memory_limit` of 128M.
 
 ## What the parser reads
 
@@ -30,9 +34,11 @@ an external reference and never touches a file or the network. Damaged or hostil
 | Writing into a file whose index had to be reconstructed | `UnreadablePdf` |
 
 `EncryptedPdf` and `UnsupportedPdfFeature` extend `UnreadablePdf`, which extends
-`UnsupportedDocument`, so one `catch (UnsupportedDocument $e)` covers every refusal of the Factur-X
-reader and writer. Decryption is not supported; PDF/A forbids encryption anyway, so a conforming input is never
-encrypted.
+`UnsupportedDocument`, so one `catch (UnsupportedDocument $e)` covers every refusal of the PDF
+layer. The Factur-X reader and writer also throw `UnsafeXml` for XML or XMP that carries a DOCTYPE;
+it is a `RuntimeException`, not an `UnsupportedDocument`, so catch both
+(`catch (UnsafeXml | UnsupportedDocument $e)`). Decryption is not supported; PDF/A forbids
+encryption anyway, so a conforming input is never encrypted.
 
 ## Limits
 
@@ -47,11 +53,11 @@ file, such as a decompression bomb or a cross-reference table that claims millio
 | `/Prev` links followed | 64 |
 | Object count | 8 388 607 (the PDF limit) |
 | Predictor-coded data of a document | 4 MiB |
-| Cross-reference entries | one per 8 bytes of file, at least 4096 |
+| Cross-reference entries | one per 8 bytes of file, at least 4096, at most 524 288 |
 
 Inflation runs in chunks and is stopped as soon as it passes the limit, so a bomb is never held in
-memory. A cross-reference index larger than the file could hold is not read; the file is
-reconstructed instead.
+memory. A cross-reference index larger than these bounds is not read; the file is reconstructed
+instead. A reconstruction that finds more than 524 288 objects is refused with `UnreadablePdf`.
 
 ## Incremental update, and why
 
@@ -64,7 +70,8 @@ of the result.
   or rewritten, so their PDF/A conformance cannot get worse by being re-serialised.
 - **Signatures survive.** A signature covers a byte range; appending after it leaves that range
   untouched.
-- **It is fast and predictable.** The cost depends on the size of the invoice, not of the PDF.
+- **It is fast and predictable.** Nothing in the PDF is re-encoded: pages and their content are
+  never parsed, and only the new and replaced objects are written.
 - **It is reproducible.** The same input, XML and modification date give the same bytes.
 
 The update is a cross-reference stream when the original's newest section is one, and a classic
