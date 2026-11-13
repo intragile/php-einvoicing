@@ -543,9 +543,12 @@ final class Xmp
         return '<?xpacket begin="'."\u{FEFF}".'" id="'.self::PACKET_ID.'"?>'."\n".$xml."\n".'<?xpacket end="w"?>';
     }
 
-    /** Valid UTF-8 without the control characters XML 1.0 forbids. */
+    /**
+     * Valid UTF-8 without the control characters XML 1.0 forbids. Whitespace is kept: PDF/A
+     * requires the XMP to match the Info dictionary exactly.
+     */
     private static function clean(string $value): string
     {
-        return trim((string) preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', mb_scrub($value, 'UTF-8')));
+        return (string) preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', mb_scrub($value, 'UTF-8'));
     }
 }

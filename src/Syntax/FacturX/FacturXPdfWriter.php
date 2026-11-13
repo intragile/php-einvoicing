@@ -53,7 +53,8 @@ final class FacturXPdfWriter
      * @param  bool  $strict  refuse an input that declares no PDF/A conformance instead of warning
      *
      * @throws ProfileMismatch when the XML declares another profile than $profile
-     * @throws UnsupportedDocument when the XML is not CII or declares no known profile
+     * @throws UnsupportedDocument when the XML is not CII or declares no known profile, or the
+     *                             PDF's XMP metadata is not well-formed or has no rdf:RDF element
      * @throws UnsafeXml when the XML or the PDF's XMP metadata carries a DOCTYPE declaration
      * @throws EncryptedPdf when the PDF is encrypted
      * @throws UnreadablePdf when the PDF cannot be read, or its cross-reference index had to be
@@ -125,7 +126,7 @@ final class FacturXPdfWriter
         $metadata = $update->add(new PdfStream(new PdfDictionary([
             'Type' => new PdfName('Metadata'),
             'Subtype' => new PdfName('XML'),
-        ]), Xmp::merge($existingXmp, $profile, $name, $modified, $info === null ? [] : self::infoText($info))));
+        ]), Xmp::merge($existingXmp, $profile, $name, $modified, $info === null ? [] : self::infoText($document, $info))));
 
         $catalog = $catalog
             ->with('AF', [...$af, $filespec])
@@ -291,17 +292,22 @@ final class FacturXPdfWriter
         return $warnings;
     }
 
-    /** @return array<string, string> */
-    private static function infoText(PdfDictionary $info): array
+    /**
+     * The Info text entries that PDF/A requires to be mirrored in the XMP. Values may be indirect;
+     * they are resolved so that the XMP carries what the Info dictionary carries.
+     *
+     * @return array<string, string>
+     */
+    private static function infoText(PdfDocument $document, PdfDictionary $info): array
     {
         $text = [];
         foreach (['Title', 'Author', 'Subject', 'Keywords', 'Creator', 'Producer'] as $key) {
-            $value = $info->get($key);
+            $value = $document->resolve($info->get($key));
             if ($value instanceof PdfString) {
                 $text[$key] = $value->text();
             }
         }
-        $created = $info->get('CreationDate');
+        $created = $document->resolve($info->get('CreationDate'));
         if ($created instanceof PdfString && ($iso = self::isoDate($created->bytes)) !== null) {
             $text['CreationDate'] = $iso;
         }

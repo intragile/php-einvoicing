@@ -409,6 +409,23 @@ final class PdfParserTest extends TestCase
         self::assertEquals(new PdfString('data'), $document->object(3));
     }
 
+    public function test_number_too_large_for_a_float_is_unreadable(): void
+    {
+        foreach ([str_repeat('9', 400), '-'.str_repeat('9', 400), str_repeat('9', 400).'.5'] as $number) {
+            $pdf = (new PdfBuilder)
+                ->object(1, '<< /Type /Catalog /Pages 2 0 R /Junk '.$number.' >>')
+                ->object(2, self::PAGES)
+                ->trailer('/Root 1 0 R')
+                ->classic();
+            try {
+                PdfDocument::parse($pdf);
+                self::fail('Expected UnreadablePdf for '.substr($number, 0, 5).'...');
+            } catch (UnreadablePdf $e) {
+                self::assertSame(UnreadablePdf::MALFORMED, $e->getCode());
+            }
+        }
+    }
+
     public function test_not_a_pdf_is_unreadable(): void
     {
         $this->expectException(UnreadablePdf::class);

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Syntax\FacturX;
 
 use DateTimeImmutable;
+use DOMDocument;
+use DOMXPath;
 use ErrorException;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
@@ -266,6 +268,30 @@ final class FacturXPdfWriterTest extends TestCase
         self::assertEquals(new PdfString('Base title'), $info->get('Title'));
     }
 
+    public function test_indirect_info_values_are_mirrored_into_xmp_exactly(): void
+    {
+        $pdf = $this->basePdf(objects: [
+            4 => '<< /Title 20 0 R /Author 21 0 R /CreationDate 22 0 R >>',
+            20 => '(Invoice 42 )',
+            21 => '(  Jane Doe)',
+            22 => '(D:20260101120000Z)',
+        ]);
+
+        $out = $this->reparse($pdf, (new FacturXPdfWriter)->embed($pdf, self::xml(FacturXProfile::En16931), modified: $this->modified()));
+
+        $metadata = $out->resolve($out->catalog()->get('Metadata'));
+        self::assertInstanceOf(PdfStream::class, $metadata);
+        $dom = new DOMDocument;
+        self::assertTrue($dom->loadXML($out->decodedStream($metadata)));
+        $xpath = new DOMXPath($dom);
+        $xpath->registerNamespace('dc', 'http://purl.org/dc/elements/1.1/');
+        $xpath->registerNamespace('rdf', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#');
+        $xpath->registerNamespace('xmp', 'http://ns.adobe.com/xap/1.0/');
+        self::assertSame('Invoice 42 ', $xpath->evaluate('string(//dc:title/rdf:Alt/rdf:li)'));
+        self::assertSame('  Jane Doe', $xpath->evaluate('string(//dc:creator/rdf:Seq/rdf:li)'));
+        self::assertSame('2026-01-01T12:00:00Z', $xpath->evaluate('string(//xmp:CreateDate)'));
+    }
+
     public function test_second_invoice_is_refused(): void
     {
         $pdf = $this->basePdf();
@@ -299,6 +325,15 @@ final class FacturXPdfWriterTest extends TestCase
         $pdf = $this->basePdf(trailer: '/Encrypt << /Filter /Standard /V 1 /R 2 >>');
 
         $this->expectException(EncryptedPdf::class);
+
+        (new FacturXPdfWriter)->embed($pdf, self::xml(FacturXProfile::En16931), modified: $this->modified());
+    }
+
+    public function test_number_too_large_for_a_float_is_refused(): void
+    {
+        $pdf = $this->basePdf(catalog: '/Junk '.str_repeat('9', 400));
+
+        $this->expectException(UnsupportedDocument::class);
 
         (new FacturXPdfWriter)->embed($pdf, self::xml(FacturXProfile::En16931), modified: $this->modified());
     }

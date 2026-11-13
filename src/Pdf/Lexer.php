@@ -410,14 +410,14 @@ final class Lexer
         $pos = $p;
         $text = substr($this->data, $start, $p - $start);
         if ($isReal) {
-            return (float) $text;
+            return self::finite((float) $text, $start);
         }
         if ($digits === 0) {
             // A lone sign is read as zero, as common readers do.
             return 0;
         }
         if ($digits > 18) {
-            return (float) $text;
+            return self::finite((float) $text, $start);
         }
         $int = (int) $text;
         if ($int >= 0 && ($ref = $this->reference($int, $pos)) !== null) {
@@ -425,6 +425,16 @@ final class Lexer
         }
 
         return $int;
+    }
+
+    /** A number too large for a float (it would read as INF) is damage, not a value. */
+    private static function finite(float $value, int $pos): float
+    {
+        if (! is_finite($value)) {
+            throw UnreadablePdf::malformed('Number out of range at offset '.$pos.'.');
+        }
+
+        return $value;
     }
 
     /** Recognises "G R" after an object number ending at $p; moves $pos past it. */
