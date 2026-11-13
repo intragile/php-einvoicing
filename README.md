@@ -272,6 +272,11 @@ possible. To report a vulnerability, see [SECURITY.md](SECURITY.md).
   checks the Peppol verdicts ([details](docs/PEPPOL.md#how-the-verdicts-are-verified)).
   `docker/oracle/run.sh 8.5` builds the image and runs the group; it needs Docker and `vendor/`
   installed. This is development tooling only and is not part of the installed package.
+- A second optional group, `kosit-oracle`, runs the KoSIT validator 1.6.3 (Java) with the
+  XRechnung configuration 2026-08-31 in Docker and compares the XRechnung verdicts with it
+  ([details](docs/VALIDATION.md#the-kosit-validator-as-the-xrechnung-oracle)).
+  `docker/kosit/run.sh` builds the image, starts the KoSIT daemon and runs the group; it is not
+  part of CI.
 - CI runs PHPUnit and PHPStan (level max) on PHP 8.3, 8.4 and 8.5, plus Pint, the oracle and a
   check that the compiled rules match the official Schematron.
 

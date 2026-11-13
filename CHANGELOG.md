@@ -89,6 +89,39 @@ All notable changes to this project are documented here. The format follows
   `PeppolBIS-Envelope-Rules.sch`, with verdicts checked equal to SaxonC on 24 envelopes.
 - `docs/TRANSPORT.md`: sending, HTTP client setup, errors, lookup, Directory, receiving and
   webhooks, the SBDH envelope, what is verified and the known limitations.
+- XRechnung 3.0.2 validation: `XRechnungValidator` reproduces the KoSIT validator 1.6.3 with the
+  XRechnung validator configuration 2026-08-31. The first scenario whose match holds is applied
+  (XRechnung CIUS, Extension and CVD, plain EN 16931; UBL Invoice, UBL CreditNote and CII), the
+  document is checked against the scenario's XML Schema and, only when schema valid, against CEN
+  1.3.16 and XRechnung 2.6.0; the scenario's custom levels then replace rule flags. A
+  specification identifier that matches no scenario throws `UnsupportedDocument` listing the
+  accepted ones. `ValidationReport` gains `schemaErrors` and `scenario`.
+- `XRechnung::processControl()` and the identifiers `XRechnung::CIUS`, `EXTENSION`, `CVD` and
+  `PEPPOL_PROFILE` for writing XRechnung from the model.
+- The compiled XRechnung rule sets, the scenario table (generated from KoSIT's `scenarios.xml`)
+  and KoSIT's copies of the UBL 2.1 and CII D16B schemas as the Apache-2.0 package
+  `intragile/einvoicing-rules-xrechnung` (`packages/rules-xrechnung`, with `NOTICE` and
+  `SOURCE.md`). It is a `suggest` of the core; `XRechnungValidator::create()` throws
+  `RulesNotInstalled` naming the package when it is missing. `composer compile-rules -- --check`
+  covers both rule packages.
+- A compiled CEN 1.3.16 build beside 1.3.17 in `intragile/einvoicing-rules-en16931`
+  (`RuleFiles::ubl('1.3.16')`, `RuleFiles::cii('1.3.16')`, `RuleFiles::VERSIONS`), the release
+  KoSIT pins.
+- `SchemaValidator`: XML Schema validation against a pinned XSD only, ignoring the instance's
+  schema location hints, with no network access, returning `SchemaError`s in document order; a
+  missing, unreadable or uncompilable schema throws `UnusableSchema`, never a finding.
+- Schematron engine: `include` (confined to an include root, `Compiler::compile()` takes it as an
+  optional argument), pattern `let`s as global variables visible to `xsl:function`s (a let that
+  refers to a later one is a compile error), `name` and `value-of` in assert messages, and union
+  rule contexts such as `(A | B)/C`.
+- A KoSIT oracle (`docker/kosit/run.sh`, test group `kosit-oracle`): the KoSIT validator 1.6.3
+  daemon in Docker; probe tests pin its behaviour, and the conformance test checks the scenario,
+  XML Schema validity, verdict and acceptance equal to KoSIT on 584 documents (the KoSIT test
+  suite, the XRechnung Schematron unit tests, the configuration tests, the CEN 1.3.16 examples,
+  mutations, dynamic-error and refused files).
+- `composer fetch-official` also downloads the pinned KoSIT releases (Schematron, validator
+  configuration, test suite) and the CEN 1.3.16 release, verifies their SHA-256 checksums and
+  checks every unpacked KoSIT file against a manifest. The KoSIT jar is never downloaded.
 
 ### Changed
 
@@ -113,6 +146,9 @@ All notable changes to this project are documented here. The format follows
   assert, instead of ignoring them.
 - Requires `brick/math` ^0.14.8 (previously ^0.12 or ^0.13): the first release with every
   method the core uses, and within the range Laravel 13 installs.
+- Compiled rule files are written in format 3, which adds the optional message parts of an
+  assert (`name`, `value-of`) to format 2. Format 2 files, such as Peppol rules installed by an
+  earlier version, are still read, so no reinstall is needed.
 
 ### Fixed
 
@@ -125,6 +161,8 @@ All notable changes to this project are documented here. The format follows
 - Both writers check every text of the model before writing and refuse invalid UTF-8 or
   characters outside XML 1.0 with the model path and the business term (for example
   `notes[0].text (BT-22)`), instead of only the element name.
+- The UBL writer writes the payment means text (BT-82) only on the first `cac:PaymentMeans`,
+  not again on the one of each further credit transfer, which broke UBL-SR-46.
 
 ---
 

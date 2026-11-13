@@ -288,6 +288,11 @@ entitás-kibontásos támadás (billion laughs) így nem lehetséges. Sérülék
   ellenőrzi a Peppol-eredményeket ([részletek](docs/PEPPOL.md#how-the-verdicts-are-verified),
   angolul). A `docker/oracle/run.sh 8.5` felépíti a képet és lefuttatja a csoportot; Docker és
   telepített `vendor/` kell hozzá. Ez csak fejlesztői eszköz, nem része a telepített csomagnak.
+- Egy második opcionális csoport, a `kosit-oracle`, a KoSIT validator 1.6.3-at (Java) futtatja
+  az XRechnung 2026-08-31-es konfigurációjával Dockerben, és azzal veti össze az
+  XRechnung-eredményeket ([részletek](docs/VALIDATION.md#the-kosit-validator-as-the-xrechnung-oracle),
+  angolul). A `docker/kosit/run.sh` felépíti a képet, elindítja a KoSIT-démont és lefuttatja a
+  csoportot; a CI nem futtatja.
 - A CI PHPUnitot és PHPStant (max szint) futtat PHP 8.3, 8.4 és 8.5 alatt, továbbá Pintet, az
   oracle-csoportot, és ellenőrzi, hogy a lefordított szabályok egyeznek a hivatalos Schematronnal.
 

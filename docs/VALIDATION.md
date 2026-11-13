@@ -284,7 +284,9 @@ validity, the sorted set of `"<rule id> <level>"` strings and the acceptance equ
 validator reports. The conformance test against the KoSIT validator itself is described in the
 next section ([The KoSIT conformance run](#the-kosit-conformance-run)): 579 documents give
 exactly KoSIT's verdict, 2 more give it after the documented dynamic-error rule, and 3 files that
-are not well-formed or carry a DOCTYPE are refused by both. To write XRechnung, give the invoice `XRechnung::processControl()` (or
+are not well-formed or carry a DOCTYPE are refused by both.
+
+To write XRechnung, give the invoice `XRechnung::processControl()` (or
 `XRechnung::processControl(XRechnung::EXTENSION)`), which sets BT-24 and the Peppol billing
 profile as BT-23.
 
@@ -393,8 +395,8 @@ XSLT transformation of its Schematron step, which then reports no message at all
 steps still run, and the daemon answers HTTP 422 with a rejection. The engine reports every assert
 it could evaluate plus the dynamic errors, so on such a document the test requires a processing
 error on KoSIT's side exactly when the engine reports dynamic errors, and compares KoSIT's messages
-with the engine's verdict minus the entries of the rule sets that raised a dynamic error. No
-corpus document raises one.
+with the engine's verdict minus the entries of the rule sets that raised a dynamic error. None
+of the 579 documents of the first group raises one; only the 2 dynamic-error documents do.
 
 ## Regenerating the rules for a new CEN release
 
