@@ -60,9 +60,9 @@ final class FacturXProfileTest extends TestCase
     {
         self::assertSame(AfRelationship::Data, FacturXProfile::Minimum->defaultRelationship());
         self::assertSame(AfRelationship::Data, FacturXProfile::BasicWl->defaultRelationship());
-        self::assertSame(AfRelationship::Alternative, FacturXProfile::Basic->defaultRelationship());
-        self::assertSame(AfRelationship::Alternative, FacturXProfile::En16931->defaultRelationship());
-        self::assertSame(AfRelationship::Alternative, FacturXProfile::Extended->defaultRelationship());
+        self::assertSame(AfRelationship::Data, FacturXProfile::Basic->defaultRelationship());
+        self::assertSame(AfRelationship::Data, FacturXProfile::En16931->defaultRelationship());
+        self::assertSame(AfRelationship::Data, FacturXProfile::Extended->defaultRelationship());
         self::assertSame(AfRelationship::Alternative, FacturXProfile::XRechnung->defaultRelationship());
         self::assertSame(['Data', 'Alternative', 'Source'], array_map(static fn (AfRelationship $r): string => $r->value, AfRelationship::cases()));
     }

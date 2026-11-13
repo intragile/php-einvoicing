@@ -11,6 +11,7 @@ use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Pdf\Exception\EncryptedPdf;
 use IntrAgile\EInvoicing\Pdf\Exception\UnreadablePdf;
 use IntrAgile\EInvoicing\Pdf\Exception\UnsupportedPdfFeature;
+use IntrAgile\EInvoicing\Pdf\PdfParser;
 use IntrAgile\EInvoicing\Syntax\FacturX\AfRelationship;
 use IntrAgile\EInvoicing\Syntax\FacturX\FacturXPdfReader;
 use IntrAgile\EInvoicing\Syntax\FacturX\FacturXPdfWriter;
@@ -121,6 +122,19 @@ final class FacturXPdfReaderTest extends TestCase
         'library/ZF252_Beispiele/5. XRECHNUNG/XRECHNUNG_Reisekostenabrechnung/XRECHNUNG_Reisekostenabrechnung_fx.pdf' => ['XRECHNUNG', 'Alternative', 'XRECHNUNG'],
     ];
 
+    /** The FeRD example folders' supporting documents, which carry no invoice. */
+    private const array FERD_EXCLUDED = [
+        'library/ZF252_Beispiele/3. EN16931/E08_Elektron_Anlage_XML/attachments/Aufmass.pdf',
+        'library/ZF252_Beispiele/4. EXTENDED/X01_Dauermietrechnung_u_Nebenkostenabrechnung/attachments/Mietvertrag.pdf',
+        'library/ZF252_Beispiele/4. EXTENDED/X01_Dauermietrechnung_u_Nebenkostenabrechnung/attachments/NKD_2026.pdf',
+        'library/ZF252_Beispiele/4. EXTENDED/X01_Dauermietrechnung_u_Nebenkostenabrechnung/attachments/VIP_2026.pdf',
+        'library/ZF252_Beispiele/4. EXTENDED/X05_Bau_Rechnungen Abschlag_SchlussRechnung/attachments/Zahlungsaufstellung.pdf',
+        'library/ZF252_Beispiele/5. XRECHNUNG/XRECHNUNG_Betriebskostenabrechnung/attachments/Betriebskostenabrechnung.pdf',
+        'library/ZF252_Beispiele/5. XRECHNUNG/XRECHNUNG_Elektron/attachments/ElektronRapport.pdf',
+        'library/ZF252_Beispiele/5. XRECHNUNG/XRECHNUNG_Reisekostenabrechnung/attachments/Hotelrechnung-Immo.pdf',
+        'library/ZF252_Beispiele/5. XRECHNUNG/XRECHNUNG_Reisekostenabrechnung/attachments/Taxi-Nue-und-Berlin.pdf',
+    ];
+
     /** @var array<string, string> */
     private static array $xml = [];
 
@@ -147,7 +161,7 @@ final class FacturXPdfReaderTest extends TestCase
             self::assertSame($xml, $document->xml, $profile->name);
             self::assertSame($profile->attachmentName(), $document->attachmentName, $profile->name);
             self::assertSame($profile, $document->profile, $profile->name);
-            self::assertSame($profile->defaultRelationship(), $document->relationship, $profile->name);
+            self::assertSame($profile === FacturXProfile::XRechnung ? AfRelationship::Alternative : AfRelationship::Data, $document->relationship, $profile->name);
             self::assertSame($profile->value, $document->xmpConformanceLevel, $profile->name);
             self::assertSame(3, $document->pdfaPart, $profile->name);
             self::assertSame([], $document->warnings, $profile->name);
@@ -221,6 +235,82 @@ final class FacturXPdfReaderTest extends TestCase
         self::assertSame(FacturXProfile::XRechnung, $document->profile);
         self::assertSame(3, $document->pdfaPart);
         self::assertContains('The XMP metadata declares no fx:ConformanceLevel.', $document->warnings);
+    }
+
+    public function test_af_beats_the_name_tree_for_the_same_name(): void
+    {
+        $af = self::xml(FacturXProfile::En16931);
+        $tree = self::xml(FacturXProfile::Extended);
+
+        foreach (['/UF (factur-x.xml)', '/F (factur-x.xml)'] as $afName) {
+            // The tree's filespec has the stronger /UF match, but /AF is searched first.
+            $document = (new FacturXPdfReader)->read($this->attachedPdf(
+                $af,
+                filespec: $afName.' /AFRelationship /Data',
+                catalog: '/AF [6 0 R] /Names << /EmbeddedFiles << /Names [(factur-x.xml) 12 0 R] >> >>',
+                objects: [12 => '<< /Type /Filespec /UF (factur-x.xml) /AFRelationship /Alternative /EF << /F 13 0 R >> >>'],
+                streams: [13 => $tree],
+            ));
+
+            self::assertSame($af, $document->xml, $afName);
+            self::assertSame(AfRelationship::Data, $document->relationship, $afName);
+        }
+
+        // Within one location, /UF beats /F.
+        $document = (new FacturXPdfReader)->read($this->attachedPdf(
+            $af,
+            filespec: '/F (factur-x.xml)',
+            catalog: '/AF [6 0 R 12 0 R]',
+            objects: [12 => '<< /Type /Filespec /UF (factur-x.xml) /AFRelationship /Alternative /EF << /F 13 0 R >> >>'],
+            streams: [13 => $tree],
+        ));
+        self::assertSame($tree, $document->xml);
+    }
+
+    public function test_indirect_names_and_relationship_are_resolved(): void
+    {
+        $xml = self::xml(FacturXProfile::En16931);
+        $document = (new FacturXPdfReader)->read($this->attachedPdf(
+            $xml,
+            filespec: '/UF 12 0 R /AFRelationship 13 0 R',
+            catalog: '/AF [6 0 R]',
+            objects: [12 => '(factur-x.xml)', 13 => '/Alternative'],
+        ));
+
+        self::assertSame($xml, $document->xml);
+        self::assertSame('factur-x.xml', $document->attachmentName);
+        self::assertSame(AfRelationship::Alternative, $document->relationship);
+    }
+
+    public function test_corrupt_xmp_warns_and_a_breached_limit_throws(): void
+    {
+        $xml = self::xml(FacturXProfile::En16931);
+        $corrupt = "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF";
+        $document = (new FacturXPdfReader)->read($this->attachedPdf(
+            $xml,
+            filespec: '/UF (factur-x.xml) /AFRelationship /Data',
+            catalog: '/AF [6 0 R] /Metadata 14 0 R',
+            objects: [14 => '<< /Type /Metadata /Subtype /XML /Filter /FlateDecode /Length '.strlen($corrupt)." >>\nstream\n".$corrupt."\nendstream"],
+        ));
+
+        self::assertSame($xml, $document->xml, 'the invoice is still returned');
+        self::assertNull($document->pdfaPart);
+        self::assertCount(1, $document->warnings);
+        self::assertStringStartsWith('The XMP metadata was ignored because it cannot be read: Corrupt FlateDecode data', $document->warnings[0]);
+
+        $bomb = self::flateBomb(PdfParser::MAX_STREAM_BYTES + 1024 * 1024);
+        $pdf = $this->attachedPdf(
+            $xml,
+            filespec: '/UF (factur-x.xml) /AFRelationship /Data',
+            catalog: '/AF [6 0 R] /Metadata 14 0 R',
+            objects: [14 => '<< /Type /Metadata /Subtype /XML /Filter [/FlateDecode /FlateDecode] /Length '.strlen($bomb)." >>\nstream\n".$bomb."\nendstream"],
+        );
+        try {
+            (new FacturXPdfReader)->read($pdf);
+            self::fail('A metadata stream beyond the decoding limit is refused.');
+        } catch (UnreadablePdf $e) {
+            self::assertSame(UnreadablePdf::REFUSED, $e->getCode());
+        }
     }
 
     public function test_zugferd1_is_unsupported(): void
@@ -336,7 +426,7 @@ final class FacturXPdfReaderTest extends TestCase
             $table[$name] = [$document->profile?->value, $document->relationship?->value, $document->xmpConformanceLevel];
         }
 
-        self::assertCount(9, $excluded);
+        self::assertSame(self::FERD_EXCLUDED, $excluded);
         self::assertCount(61, $table);
         self::assertSame(self::FERD_TABLE, $table);
     }
@@ -359,9 +449,10 @@ final class FacturXPdfReaderTest extends TestCase
     /**
      * A one-page PDF with one filespec (object 6) whose embedded file (object 7) holds $data.
      *
-     * @param  array<int, string>  $objects
+     * @param  array<int, string>  $objects  object number => body
+     * @param  array<int, string>  $streams  object number => embedded file data
      */
-    private function attachedPdf(string $data, string $filespec, string $catalog, array $objects = [], ?string $xmp = null): string
+    private function attachedPdf(string $data, string $filespec, string $catalog, array $objects = [], ?string $xmp = null, array $streams = []): string
     {
         $builder = (new PdfBuilder('1.7'))
             ->object(1, '<< /Type /Catalog /Pages 2 0 R'.($xmp !== null ? ' /Metadata 5 0 R' : '').' '.$catalog.' >>')
@@ -374,6 +465,9 @@ final class FacturXPdfReaderTest extends TestCase
         }
         foreach ($objects as $number => $body) {
             $builder->object($number, $body);
+        }
+        foreach ($streams as $number => $stream) {
+            $builder->stream($number, '/Type /EmbeddedFile', $stream, flate: true);
         }
 
         return $builder->trailer('/Root 1 0 R')->classic();
@@ -388,6 +482,20 @@ final class FacturXPdfReaderTest extends TestCase
             ->stream(5, '/Type /Metadata /Subtype /XML', self::XMP_PDFA3)
             ->trailer('/Root 1 0 R')
             ->classic();
+    }
+
+    /** Deflated twice, so a few hundred bytes decode to $size zero bytes. */
+    private static function flateBomb(int $size): string
+    {
+        $context = deflate_init(ZLIB_ENCODING_DEFLATE, ['level' => 9]);
+        self::assertNotFalse($context);
+        $chunk = str_repeat("\0", 1024 * 1024);
+        $inner = '';
+        for ($written = 0; $written < $size; $written += strlen($chunk)) {
+            $inner .= deflate_add($context, $chunk, ZLIB_NO_FLUSH);
+        }
+
+        return (string) gzcompress($inner.deflate_add($context, '', ZLIB_FINISH), 9);
     }
 
     private static function xml(FacturXProfile $profile): string

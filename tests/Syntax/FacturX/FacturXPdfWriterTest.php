@@ -62,7 +62,7 @@ final class FacturXPdfWriterTest extends TestCase
     public function test_attachment_name_and_relationship_per_profile(): void
     {
         $cases = [
-            [FacturXProfile::En16931, null, 'factur-x.xml', 'Alternative', 'Factur-X Invoice'],
+            [FacturXProfile::En16931, null, 'factur-x.xml', 'Data', 'Factur-X Invoice'],
             [FacturXProfile::Minimum, null, 'factur-x.xml', 'Data', 'Factur-X Invoice'],
             [FacturXProfile::XRechnung, null, 'xrechnung.xml', 'Alternative', 'XRechnung Invoice'],
             [FacturXProfile::En16931, AfRelationship::Source, 'factur-x.xml', 'Source', 'Factur-X Invoice'],
@@ -217,6 +217,27 @@ final class FacturXPdfWriterTest extends TestCase
         self::assertSame(['factur-x.xml'], array_column($this->embeddedFiles($out), 0));
     }
 
+    public function test_conflicting_xmp_properties_warn(): void
+    {
+        $xmp = str_replace(
+            '</rdf:RDF></x:xmpmeta>',
+            '</rdf:RDF><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:custom="urn:example:custom"><custom:Thing>other</custom:Thing><custom:Extra>second block</custom:Extra></rdf:Description></rdf:RDF></x:xmpmeta>',
+            self::XMP_PDFA3,
+        );
+        $pdf = $this->basePdf(xmp: $xmp);
+
+        $result = (new FacturXPdfWriter)->embed($pdf, self::xml(FacturXProfile::En16931), modified: $this->modified());
+
+        self::assertSame(['The existing XMP metadata declares custom:Thing more than once with different values; the first ("kept") was kept.'], $result->warnings);
+        $out = $this->reparse($pdf, $result);
+        $metadata = $out->resolve($out->catalog()->get('Metadata'));
+        self::assertInstanceOf(PdfStream::class, $metadata);
+        $merged = $out->decodedStream($metadata);
+        self::assertStringContainsString('<custom:Thing>kept</custom:Thing>', $merged);
+        self::assertStringNotContainsString('other', $merged);
+        self::assertStringContainsString('<custom:Extra>second block</custom:Extra>', $merged);
+    }
+
     public function test_existing_xmp_properties_are_kept(): void
     {
         $pdf = $this->basePdf();
@@ -266,6 +287,11 @@ final class FacturXPdfWriterTest extends TestCase
                 self::assertStringContainsString($name, $e->getMessage());
             }
         }
+
+        // A /UF given as an indirect object is resolved.
+        $indirect = $this->basePdf(catalog: '/AF [20 0 R]', objects: [20 => '<< /Type /Filespec /UF 21 0 R >>', 21 => '(factur-x.xml)']);
+        $this->expectException(InvoiceAlreadyEmbedded::class);
+        (new FacturXPdfWriter)->embed($indirect, self::xml(FacturXProfile::En16931), modified: $this->modified());
     }
 
     public function test_encrypted_input_is_refused(): void

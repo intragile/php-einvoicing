@@ -148,6 +148,49 @@ final class XmpTest extends TestCase
         self::assertNull(Xmp::declaredPart('<x:xmpmeta xmlns:x="adobe:ns:meta/"/>'));
     }
 
+    public function test_xmp_merge_keeps_properties_of_every_rdf_block(): void
+    {
+        // The shape of the FeRD E04/E14 examples: a second rdf:RDF with the fx properties and the
+        // extension schemas, plus caller properties in both blocks.
+        $existing = '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+            .'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:pdf="http://ns.adobe.com/pdf/1.3/" xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/" xmlns:custom="urn:example:custom">'
+            .'<rdf:Description rdf:about="" pdfaid:part="3" pdfaid:conformance="U"/>'
+            .'<rdf:Description rdf:about="" pdf:Producer="WeasyPrint 69.0"/>'
+            .'<rdf:Description rdf:about=""><custom:Thing>first</custom:Thing></rdf:Description>'
+            .'</rdf:RDF>'
+            .'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:fx="urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#" xmlns:pdf="http://ns.adobe.com/pdf/1.3/" xmlns:custom="urn:example:custom" xmlns:other="urn:example:other"'
+            .' xmlns:pdfaExtension="http://www.aiim.org/pdfa/ns/extension/" xmlns:pdfaSchema="http://www.aiim.org/pdfa/ns/schema#">'
+            .'<rdf:Description rdf:about=""><fx:ConformanceLevel>EN16931</fx:ConformanceLevel><fx:DocumentType>INVOICE</fx:DocumentType>'
+            .'<pdf:Producer>WeasyPrint 69.0</pdf:Producer><custom:Thing>second</custom:Thing><other:Kept>from the second block</other:Kept></rdf:Description>'
+            .'<rdf:Description rdf:about=""><pdfaExtension:schemas><rdf:Bag>'
+            .'<rdf:li rdf:parseType="Resource"><pdfaSchema:namespaceURI>urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#</pdfaSchema:namespaceURI></rdf:li>'
+            .'<rdf:li rdf:parseType="Resource"><pdfaSchema:namespaceURI>urn:example:other</pdfaSchema:namespaceURI></rdf:li>'
+            .'</rdf:Bag></pdfaExtension:schemas></rdf:Description>'
+            .'</rdf:RDF></x:xmpmeta>';
+
+        $x = $this->xpath(Xmp::merge($existing, FacturXProfile::En16931, 'factur-x.xml', $this->modified(), []));
+        $x->registerNamespace('other', 'urn:example:other');
+        $x->registerNamespace('pdf', 'http://ns.adobe.com/pdf/1.3/');
+        $x->registerNamespace('pdfaSchema', 'http://www.aiim.org/pdfa/ns/schema#');
+
+        self::assertSame(1.0, $x->evaluate('count(//rdf:RDF)'));
+        self::assertSame('from the second block', $x->evaluate('string(//other:Kept)'));
+        self::assertSame(1.0, $x->evaluate('count(//custom:Thing)'));
+        self::assertSame('first', $x->evaluate('string(//custom:Thing)'));
+        self::assertSame(1.0, $x->evaluate('count(//pdf:Producer | //@pdf:Producer)'));
+        self::assertSame(1.0, $x->evaluate('count(//fx:ConformanceLevel | //@fx:ConformanceLevel)'));
+        self::assertSame('EN 16931', $x->evaluate('string(//fx:ConformanceLevel)'));
+        self::assertSame(1.0, $x->evaluate('count(//pdfaSchema:namespaceURI[. = "urn:example:other"])'), 'a caller extension schema is kept');
+        self::assertSame(1.0, $x->evaluate('count(//pdfaSchema:namespaceURI[. = "urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#"])'));
+
+        self::assertSame(
+            ['The existing XMP metadata declares custom:Thing more than once with different values; the first ("first") was kept.'],
+            Xmp::conflicts($existing),
+        );
+        self::assertSame([], Xmp::conflicts(self::EXISTING));
+        self::assertSame([], Xmp::conflicts(null));
+    }
+
     public function test_declared_conformance_level(): void
     {
         self::assertSame('EN 16931', Xmp::declaredConformanceLevel(Xmp::merge(null, FacturXProfile::En16931, 'factur-x.xml', $this->modified(), [])));

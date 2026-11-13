@@ -46,7 +46,8 @@ final class FacturXPdfWriter
      * @param  string  $pdf  the PDF/A document to embed into (untrusted bytes)
      * @param  string  $xml  the CII invoice
      * @param  FacturXProfile|null  $profile  the expected profile; null takes the one the XML declares
-     * @param  AfRelationship|null  $relationship  null takes the profile's default
+     * @param  AfRelationship|null  $relationship  Data, Alternative or Source; null takes the
+     *                                             profile's default (Data, or Alternative for XRechnung)
      * @param  DateTimeImmutable|null  $modified  the modification date written to the PDF; fixing
      *                                            it makes the output reproducible
      * @param  bool  $strict  refuse an input that declares no PDF/A conformance instead of warning
@@ -100,6 +101,7 @@ final class FacturXPdfWriter
 
         $existingXmp = self::existingXmp($document, $catalog);
         $warnings = self::warnings($document, $catalog, Xmp::declaredPart($existingXmp), $strict);
+        $warnings = [...$warnings, ...Xmp::conflicts($existingXmp)];
 
         $info = $document->resolve($document->trailer()->get('Info'));
         $info = $info instanceof PdfDictionary ? $info : null;
@@ -167,10 +169,10 @@ final class FacturXPdfWriter
         $candidates = [];
         foreach ($existing as [$key, $value]) {
             $candidates[] = $key->text();
-            $candidates = [...$candidates, ...self::filespecNames($document->resolve($value))];
+            $candidates = [...$candidates, ...self::filespecNames($document, $document->resolve($value))];
         }
         foreach ($af as $value) {
-            $candidates = [...$candidates, ...self::filespecNames($document->resolve($value))];
+            $candidates = [...$candidates, ...self::filespecNames($document, $document->resolve($value))];
         }
         $invoiceNames = array_map(strtolower(...), self::INVOICE_NAMES);
         foreach ($candidates as $candidate) {
@@ -181,14 +183,14 @@ final class FacturXPdfWriter
     }
 
     /** @return list<string> */
-    private static function filespecNames(mixed $filespec): array
+    private static function filespecNames(PdfDocument $document, mixed $filespec): array
     {
         if (! $filespec instanceof PdfDictionary) {
             return [];
         }
         $names = [];
         foreach (['UF', 'F'] as $key) {
-            $value = $filespec->get($key);
+            $value = $document->resolve($filespec->get($key));
             if ($value instanceof PdfString) {
                 $names[] = $value->text();
             }

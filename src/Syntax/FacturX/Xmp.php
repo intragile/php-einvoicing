@@ -70,8 +70,18 @@ final class Xmp
 
     private const string PACKET_ID = 'W5M0MpCehiHzreSzNTczkc9d';
 
+    /** @var array<string, list<string>> namespace => properties merge() replaces */
+    private const array REPLACED = [
+        self::PDFAID => ['part'],
+        self::FX => ['DocumentType', 'DocumentFileName', 'Version', 'ConformanceLevel'],
+        self::XMP => ['ModifyDate', 'MetadataDate'],
+    ];
+
     /** @var array<string, DOMElement> namespace => description created for it */
     private array $descriptions = [];
+
+    /** @var list<string> */
+    private array $conflicts = [];
 
     private function __construct(private readonly DOMDocument $document, private readonly DOMElement $rdf, private readonly string $about) {}
 
@@ -171,6 +181,27 @@ final class Xmp
         return null;
     }
 
+    /**
+     * Conflicts in the existing XMP that merge() resolves by keeping the first value: a property
+     * declared more than once, in one or several rdf:RDF blocks, with different values. Properties
+     * that merge() replaces anyway are not reported.
+     *
+     * @return list<string>
+     *
+     * @throws UnsafeXml when the existing XMP carries a DOCTYPE declaration
+     * @throws UnsupportedDocument when the existing XMP is not well-formed or not XMP
+     */
+    public static function conflicts(?string $existingXmp): array
+    {
+        return self::open($existingXmp)->conflicts;
+    }
+
+    /**
+     * The existing packet's properties gathered into one rdf:RDF: the descriptions of every
+     * rdf:RDF block are kept (some producers write more than one), and a property declared again
+     * is dropped after its first occurrence. Extension schema descriptions are merged into the
+     * first pdfaExtension:schemas bag instead.
+     */
     private static function open(?string $existing): self
     {
         $document = new DOMDocument('1.0', 'UTF-8');
@@ -178,13 +209,28 @@ final class Xmp
         $meta = $document->createElementNS(self::X, 'x:xmpmeta');
         $document->appendChild($meta);
 
-        $source = $existing === null || trim($existing) === '' ? null : SafeXml::load($existing)->getElementsByTagNameNS(self::RDF, 'RDF')->item(0);
-        if ($existing !== null && trim($existing) !== '' && $source === null) {
-            throw new UnsupportedDocument('The existing XMP metadata has no rdf:RDF element.');
+        $sources = [];
+        if ($existing !== null && trim($existing) !== '') {
+            foreach (SafeXml::load($existing)->getElementsByTagNameNS(self::RDF, 'RDF') as $candidate) {
+                if (! self::insideRdf($candidate)) {
+                    $sources[] = $candidate;
+                }
+            }
+            if ($sources === []) {
+                throw new UnsupportedDocument('The existing XMP metadata has no rdf:RDF element.');
+            }
         }
-        $rdf = $source !== null ? $document->importNode($source, true) : $document->createElementNS(self::RDF, 'rdf:RDF');
+        $first = array_shift($sources);
+        $rdf = $first !== null ? $document->importNode($first, true) : $document->createElementNS(self::RDF, 'rdf:RDF');
         assert($rdf instanceof DOMElement);
         $meta->appendChild($rdf);
+        foreach ($sources as $source) {
+            foreach ($source->childNodes as $child) {
+                if ($child instanceof DOMElement) {
+                    $rdf->appendChild($document->importNode($child, true));
+                }
+            }
+        }
 
         $about = '';
         foreach (self::descriptionsOf($rdf) as $description) {
@@ -192,7 +238,123 @@ final class Xmp
             break;
         }
 
-        return new self($document, $rdf, $about);
+        $xmp = new self($document, $rdf, $about);
+        $xmp->deduplicate();
+
+        return $xmp;
+    }
+
+    private static function insideRdf(DOMElement $element): bool
+    {
+        for ($parent = $element->parentNode; $parent instanceof DOMElement; $parent = $parent->parentNode) {
+            if ($parent->namespaceURI === self::RDF && $parent->localName === 'RDF') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Keeps the first occurrence of every property and records conflicting later values. */
+    private function deduplicate(): void
+    {
+        /** @var array<string, DOMNode> $seen */
+        $seen = [];
+        foreach (self::descriptionsOf($this->rdf) as $description) {
+            foreach (iterator_to_array($description->attributes) as $attribute) {
+                if (in_array($attribute->namespaceURI, [null, '', self::RDF, self::XML], true)) {
+                    continue;
+                }
+                $key = $attribute->namespaceURI.' '.$attribute->localName;
+                if (isset($seen[$key])) {
+                    $this->recordConflict($seen[$key], $attribute);
+                    $description->removeAttributeNode($attribute);
+                } else {
+                    $seen[$key] = $attribute;
+                }
+            }
+            foreach (iterator_to_array($description->childNodes) as $child) {
+                if (! $child instanceof DOMElement) {
+                    continue;
+                }
+                $key = $child->namespaceURI.' '.$child->localName;
+                if (! isset($seen[$key])) {
+                    $seen[$key] = $child;
+
+                    continue;
+                }
+                $kept = $seen[$key];
+                if ($child->namespaceURI === self::EXTENSION && $child->localName === 'schemas' && $kept instanceof DOMElement) {
+                    $this->mergeSchemas($kept, $child);
+                } else {
+                    $this->recordConflict($kept, $child);
+                }
+                $description->removeChild($child);
+            }
+        }
+    }
+
+    /** Moves the schema descriptions of a later pdfaExtension:schemas into the kept one's bag. */
+    private function mergeSchemas(DOMElement $kept, DOMElement $later): void
+    {
+        $bag = null;
+        foreach ($kept->childNodes as $child) {
+            if ($child instanceof DOMElement && $child->namespaceURI === self::RDF && $child->localName === 'Bag') {
+                $bag = $child;
+                break;
+            }
+        }
+        if ($bag === null) {
+            $bag = $kept->appendChild($this->element(self::RDF, 'rdf:Bag'));
+        }
+        foreach ($later->childNodes as $container) {
+            if ($container instanceof DOMElement && $container->namespaceURI === self::RDF && $container->localName === 'Bag') {
+                foreach (iterator_to_array($container->childNodes) as $item) {
+                    if ($item instanceof DOMElement) {
+                        $bag->appendChild($item);
+                    }
+                }
+            }
+        }
+    }
+
+    private function recordConflict(DOMNode $kept, DOMNode $dropped): void
+    {
+        $namespace = (string) $kept->namespaceURI;
+        $name = (string) $kept->localName;
+        if (in_array($name, self::REPLACED[$namespace] ?? [], true)) {
+            return;
+        }
+        $keptValue = self::valueOf($kept);
+        if ($keptValue === self::valueOf($dropped)) {
+            return;
+        }
+        $this->conflicts[] = sprintf(
+            'The existing XMP metadata declares %s more than once with different values; the first ("%s") was kept.',
+            (self::PREFIXES[$namespace] ?? (string) $kept->prefix).':'.$name,
+            mb_strimwidth($keptValue, 0, 80, '…', 'UTF-8'),
+        );
+    }
+
+    /**
+     * A property value for comparison: the text of an attribute or simple element, the exclusive
+     * canonical form of a structured element's content.
+     */
+    private static function valueOf(DOMNode $node): string
+    {
+        if (! $node instanceof DOMElement) {
+            return trim((string) $node->nodeValue);
+        }
+        $value = '';
+        $structured = false;
+        foreach ($node->childNodes as $child) {
+            if ($child instanceof DOMElement) {
+                $structured = true;
+                $value .= $child->C14N(true);
+            }
+        }
+
+        return $structured ? $value : trim($node->textContent);
     }
 
     /** @return list<DOMElement> */

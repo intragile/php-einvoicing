@@ -21,10 +21,14 @@ use IntrAgile\EInvoicing\Syntax\SafeXml;
 /**
  * Extracts the CII invoice embedded in a Factur-X / ZUGFeRD 2.x hybrid PDF and identifies it.
  *
- * The embedded files are looked up in the catalog's /AF array first, then in the /EmbeddedFiles
- * name tree. Among them the invoice is the first file named factur-x.xml, then xrechnung.xml,
- * then zugferd-invoice.xml (compared case-insensitively), matched on the file specification's
- * /UF and then its /F name. ZUGFeRD 1.0 documents use another CII version and are refused.
+ * The invoice is chosen in this order of precedence:
+ * 1. the file name: factur-x.xml, then xrechnung.xml, then zugferd-invoice.xml (compared
+ *    case-insensitively);
+ * 2. the location: a file specification in the catalog's /AF array before one in the
+ *    /EmbeddedFiles name tree;
+ * 3. the name entry: a match on /UF before a match on /F;
+ * 4. the order within the /AF array or the name tree.
+ * ZUGFeRD 1.0 documents use another CII version and are refused.
  */
 final class FacturXPdfReader
 {
@@ -73,7 +77,7 @@ final class FacturXPdfReader
         }
 
         $relationship = null;
-        $value = $filespec->get('AFRelationship');
+        $value = $document->resolve($filespec->get('AFRelationship'));
         if (! $value instanceof PdfName) {
             $warnings[] = sprintf('The embedded invoice "%s" has no /AFRelationship.', $name);
         } elseif (($relationship = AfRelationship::tryFrom($value->name)) === null) {
@@ -86,41 +90,42 @@ final class FacturXPdfReader
     }
 
     /**
-     * The file specifications of the catalog's /AF array, then those of the /EmbeddedFiles name
-     * tree, each with the names it is known by (/UF, /F, and the tree key).
+     * The file specifications of the catalog's /AF array and of the /EmbeddedFiles name tree,
+     * each with the names it is known by (/UF, /F, and the tree key).
      *
-     * @return list<array{PdfDictionary, array{UF: ?string, F: ?string, key: ?string}}>
+     * @return array{list<array{PdfDictionary, array{UF: ?string, F: ?string, key: ?string}}>, list<array{PdfDictionary, array{UF: ?string, F: ?string, key: ?string}}>}
      */
     private static function filespecs(PdfDocument $document, PdfDictionary $catalog): array
     {
-        $found = [];
-        $af = $document->resolve($catalog->get('AF'));
-        foreach (is_array($af) ? $af : [] as $value) {
+        $af = [];
+        $list = $document->resolve($catalog->get('AF'));
+        foreach (is_array($list) ? $list : [] as $value) {
             $filespec = $document->resolve($value);
             if ($filespec instanceof PdfDictionary) {
-                $found[] = [$filespec, self::namesOf($filespec, null)];
+                $af[] = [$filespec, self::namesOf($document, $filespec, null)];
             }
         }
+        $inTree = [];
         $names = $document->resolve($catalog->get('Names'));
         $tree = $names instanceof PdfDictionary ? $document->resolve($names->get('EmbeddedFiles')) : null;
         if ($tree instanceof PdfDictionary) {
             foreach (NameTree::entries($document, $tree) as [$key, $value]) {
                 $filespec = $document->resolve($value);
                 if ($filespec instanceof PdfDictionary) {
-                    $found[] = [$filespec, self::namesOf($filespec, $key->text())];
+                    $inTree[] = [$filespec, self::namesOf($document, $filespec, $key->text())];
                 }
             }
         }
 
-        return $found;
+        return [$af, $inTree];
     }
 
     /** @return array{UF: ?string, F: ?string, key: ?string} */
-    private static function namesOf(PdfDictionary $filespec, ?string $key): array
+    private static function namesOf(PdfDocument $document, PdfDictionary $filespec, ?string $key): array
     {
         $names = ['UF' => null, 'F' => null, 'key' => $key];
         foreach (['UF', 'F'] as $entry) {
-            $value = $filespec->get($entry);
+            $value = $document->resolve($filespec->get($entry));
             if ($value instanceof PdfString) {
                 $names[$entry] = trim($value->text());
             }
@@ -130,25 +135,27 @@ final class FacturXPdfReader
     }
 
     /**
-     * @param  list<array{PdfDictionary, array{UF: ?string, F: ?string, key: ?string}}>  $filespecs
+     * @param  array{list<array{PdfDictionary, array{UF: ?string, F: ?string, key: ?string}}>, list<array{PdfDictionary, array{UF: ?string, F: ?string, key: ?string}}>}  $locations
      * @return array{PdfDictionary, string}
      *
      * @throws UnsupportedDocument
      */
-    private static function invoiceFilespec(array $filespecs): array
+    private static function invoiceFilespec(array $locations): array
     {
         foreach (self::NAMES as $wanted) {
-            foreach (['UF', 'F'] as $entry) {
-                foreach ($filespecs as [$filespec, $names]) {
-                    if ($names[$entry] !== null && strtolower($names[$entry]) === $wanted) {
-                        return [$filespec, $names[$entry]];
+            foreach ($locations as $filespecs) {
+                foreach (['UF', 'F'] as $entry) {
+                    foreach ($filespecs as [$filespec, $names]) {
+                        if ($names[$entry] !== null && strtolower($names[$entry]) === $wanted) {
+                            return [$filespec, $names[$entry]];
+                        }
                     }
                 }
             }
         }
 
         $seen = [];
-        foreach ($filespecs as [, $names]) {
+        foreach ([...$locations[0], ...$locations[1]] as [, $names]) {
             foreach ($names as $name) {
                 if ($name !== null && $name !== '') {
                     $seen[$name] = true;
@@ -185,22 +192,32 @@ final class FacturXPdfReader
     }
 
     /**
-     * The XMP conformance level and PDF/A part, with the warnings about them.
+     * The XMP conformance level and PDF/A part, with the warnings about them. Damaged or unsafe
+     * metadata is reported as a warning, since the invoice does not depend on it.
      *
      * @return array{?string, ?int, list<string>}
+     *
+     * @throws UnreadablePdf when reading the metadata breaches a safety limit
      */
     private static function xmp(PdfDocument $document, PdfDictionary $catalog, ?FacturXProfile $profile): array
     {
-        $metadata = $document->resolve($catalog->get('Metadata'));
-        if (! $metadata instanceof PdfStream) {
-            return [null, null, ['The PDF has no XMP metadata, so it declares neither its PDF/A conformance nor a Factur-X conformance level.']];
-        }
         try {
+            $metadata = $document->resolve($catalog->get('Metadata'));
+            if (! $metadata instanceof PdfStream) {
+                return [null, null, ['The PDF has no XMP metadata, so it declares neither its PDF/A conformance nor a Factur-X conformance level.']];
+            }
             $xmp = $document->decodedStream($metadata);
             $level = Xmp::declaredConformanceLevel($xmp);
             $part = Xmp::declaredPart($xmp);
         } catch (UnsafeXml|UnsupportedPdfFeature $e) {
             return [null, null, ['The XMP metadata was ignored: '.$e->getMessage()]];
+        } catch (UnreadablePdf $e) {
+            // A breached safety limit is never tolerated; damaged metadata only loses its data.
+            if ($e->getCode() !== UnreadablePdf::MALFORMED) {
+                throw $e;
+            }
+
+            return [null, null, ['The XMP metadata was ignored because it cannot be read: '.$e->getMessage()]];
         }
 
         $warnings = [];

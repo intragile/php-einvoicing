@@ -64,14 +64,14 @@ enum FacturXProfile: string
     }
 
     /**
-     * The /AFRelationship of the embedded XML when the caller does not choose one.
+     * The /AFRelationship of the embedded XML when the caller does not choose one: Data for the
+     * Factur-X profiles and Alternative for XRechnung, as the official FeRD ZUGFeRD 2.5.2 example
+     * PDFs do (Data in all 61 non-XRechnung example invoices, Alternative in the XRechnung ones).
+     * The caller may pass Data, Alternative or Source instead.
      */
     public function defaultRelationship(): AfRelationship
     {
-        return match ($this) {
-            self::Minimum, self::BasicWl => AfRelationship::Data,
-            self::Basic, self::En16931, self::Extended, self::XRechnung => AfRelationship::Alternative,
-        };
+        return $this === self::XRechnung ? AfRelationship::Alternative : AfRelationship::Data;
     }
 
     /**
