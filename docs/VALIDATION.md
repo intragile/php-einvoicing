@@ -272,6 +272,36 @@ transformation after one. The oracle therefore wraps the official stylesheet in 
 `xsl:apply-imports`. A guard test checks that the wrapped and the plain official stylesheet give
 the same verdict on every document of the corpus Saxon does not abort on (1,757 documents).
 
+### The KoSIT validator as the XRechnung oracle
+
+For XRechnung the judge is the KoSIT validator 1.6.3 itself (Java), run with the XRechnung
+validator configuration 2026-08-31 in the test group `kosit-oracle`. It is excluded from the
+default run; `docker/kosit/run.sh [PHPUnit arguments]` (Docker, `curl` and `vendor/` needed):
+
+1. builds the image `php-einvoicing-kosit:1.6.3` from `docker/kosit/Dockerfile`: an
+   `eclipse-temurin` 21 JRE pinned by tag and digest, the validator jar and the configuration
+   zip downloaded from their release URLs and checked against the SHA-256 sums of
+   `XRechnungSources` (a unit test keeps the two in sync), running as a non-root user;
+2. starts the KoSIT daemon (`-s scenarios.xml -r <configuration> -D -G -H 0.0.0.0 -P 8080`) on
+   `127.0.0.1:${KOSIT_PORT:-8081}` and waits up to 120 seconds for it to answer;
+3. runs the host PHPUnit with `--group kosit-oracle --fail-on-skipped` and
+   `KOSIT_ORACLE_URL` pointing at the daemon, then removes the container on any exit.
+
+`KOSIT_SKIP_BUILD=1` reuses the image; `KOSIT_BUILD_TIMEOUT` and `KOSIT_RUN_TIMEOUT` (seconds,
+900 each) bound the build and the run; `PHP` selects the PHP binary. Without `KOSIT_ORACLE_URL`
+the tests of the group are skipped.
+
+A document is POSTed to the daemon, which answers with its VARL report: HTTP 200 when it accepts
+the document, 406 when it rejects it (Schematron error, XML Schema failure or no matching
+scenario) and 422 when the body is not well-formed XML. The comparison reads from the report the
+matched scenario name, the validity of the XML Schema step, the sorted distinct
+`"<rule id> <level>"` strings of the Schematron steps (KoSIT `error` read as `fatal`) and the
+acceptance. KoSIT writes the assert's flag into each message and applies the scenario's custom
+levels only to the acceptance, so the custom levels embedded in the report's copy of the scenario
+are applied when the verdict is read. KoSIT runs no Schematron once the XML Schema step has
+failed, and a document that matches no scenario has no scenario name. `KositProbeTest` pins this
+behaviour, so a KoSIT upgrade that changes it fails there first.
+
 ## Regenerating the rules for a new CEN release
 
 1. Update the release tag and the pinned SHA-256 sums in `bin/fetch-official.php`, then run
