@@ -28,13 +28,17 @@ Jelenleg tartalmazza:
   fájlokból a saját gépeden fordít le a csomag; az eredmény egyezését a Saxonéval 1611
   dokumentumból álló korpuszon ellenőriztük ([Peppol BIS 3](docs/PEPPOL.md), angolul). A
   Peppol-boríték (SBDH) szabályait ugyanígy lefordítja és ellenőrzi.
+- XRechnung 3.0.2 ellenőrzés, amely a KoSIT validátor 1.6.3 működését követi a 2026-08-31-es
+  konfigurációval (forgatókönyvek, XML Schema, egyedi szintek), az opcionális, Apache-2.0 licencű
+  `intragile/einvoicing-rules-xrechnung` szabálycsomaggal ([XRechnung](#xrechnung)), valamint
+  XRechnung írása a modellből.
 - Peppol-átvitel: küldés és fogadás hozzáférési ponton keresztül (Recommand-meghajtó), résztvevő
   keresése az SML-ben és az SMP-ben, keresés a Peppol Directoryban, webhookok ellenőrzése, valamint
   SBDH-boríték írása és olvasása ([Peppol-átvitel](docs/TRANSPORT.md), angolul). Az éles küldést a
   Recommandon keresztül még nem ellenőriztük.
 
 Későbbi kiadásokra tervezett, jelenleg nincs benne: további hozzáférésipont-meghajtók, CII- és
-önszámlázó (self-billing) számlák küldése Peppolon, az XRechnung és a ZUGFeRD/Factur-X profilok,
+önszámlázó (self-billing) számlák küldése Peppolon, a ZUGFeRD/Factur-X profil,
 valamint Laravel csomag.
 
 ## Telepítés
@@ -178,6 +182,35 @@ csomagban vannak (`intragile/einvoicing-rules-en16931`, ebben a tárolóban a
 `packages/rules-en16931` mappa), amelyet ez a csomag függőségként behúz; maga a motor MIT licencű
 marad. Egyik csomag sincs még publikálva.
 
+## XRechnung
+
+Az `XRechnungValidator` úgy ellenőrzi az XRechnung 3.0.2 számlákat, ahogy a KoSIT validátor
+1.6.3 a 2026-08-31-es XRechnung-konfigurációval. Ehhez a külön szabálycsomag kell, amelyet ez a
+csomag csak javasol, nem húz be:
+
+```bash
+composer require intragile/einvoicing-rules-xrechnung
+```
+
+```php
+use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungValidator;
+
+$report = XRechnungValidator::create()->validate($xml);
+$report->scenario;   // "EN16931 XRechnung (UBL Invoice)"
+$report->isValid();  // false XML Schema-hibánál vagy bármely fatal eredménynél
+```
+
+Az első olyan KoSIT-forgatókönyv fut le, amelynek a feltétele teljesül: XRechnung CIUS,
+Extension vagy CVD UBL számlára, UBL jóváírásra (CIUS és CVD) vagy CII-re, illetve a sima
+EN 16931. A dokumentumot a forgatókönyv XML Schemája szerint ellenőrzi, és csak ha az rendben
+van, a CEN 1.3.16 és az XRechnung 2.6.0 Schematron szerint; ezután a forgatókönyv egyedi szintjei
+felülírják a szabályok besorolását (a `CII-SR-465` XRechnung CII-nél fatal). Ha a dokumentum
+specifikáció-azonosítója (BT-24) egyik forgatókönyvvel sem egyezik pontosan, kivételt kapsz,
+amely felsorolja az elfogadott azonosítókat. XRechnung írásához tedd a számlára az
+`XRechnung::processControl()` értékét. A cél a KoSIT-tal azonos eredmény: forgatókönyv, XML
+Schema-érvényesség, a szabályazonosítók szintjükkel, és az elfogadás; tesztoracle-ként maga a
+KoSIT validátor fut ([docs/VALIDATION.md](docs/VALIDATION.md), angolul). A szabálycsomag
+Apache-2.0 licencű, mint a KoSIT-anyagok, amelyekből fordul.
 ## Peppol BIS 3
 
 A `Validator::peppol($dir)` a Peppol BIS Billing 3.0.22 szabályai szerint ellenőriz: az
@@ -270,7 +303,10 @@ EUPL v1.2 licenc alatt áll, nem része a telepített csomagnak, leírása:
 A `src/CodeList/` kódlistaértékei ebből származnak; a forrásmegjelölést lásd:
 [src/CodeList/SOURCE.md](src/CodeList/SOURCE.md). A `packages/rules-en16931` mappában lévő
 lefordított validációs szabályok EUPL-1.2 licencűek; lásd:
-[packages/rules-en16931/SOURCE.md](packages/rules-en16931/SOURCE.md). A Peppol BIS szabályait a
+[packages/rules-en16931/SOURCE.md](packages/rules-en16931/SOURCE.md). A `packages/rules-xrechnung`
+mappa opcionális XRechnung-szabályai, forgatókönyv-táblája és sémái Apache-2.0 licencűek, mint a
+KoSIT-anyagok, amelyekből származnak; lásd:
+[packages/rules-xrechnung/SOURCE.md](packages/rules-xrechnung/SOURCE.md). A Peppol BIS szabályait a
 csomag nem terjeszti: szerzői joguk az OpenPeppol AISBL-é, ezért a saját gépeden töltődnek le és
 fordulnak le ([miért](docs/PEPPOL.md#why-the-rules-are-compiled-on-your-machine), angolul).
 

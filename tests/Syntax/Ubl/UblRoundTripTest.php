@@ -233,6 +233,26 @@ final class UblRoundTripTest extends TestCase
         self::assertEquals($creditNote, $read);
     }
 
+    public function test_payment_means_text_is_written_once_with_several_credit_transfers(): void
+    {
+        // UBL-SR-46: the payment means text (BT-82) occurs at most once.
+        $invoice = TotalsCalculator::complete(InvoiceFactory::mixedVat())->withPayment(new PaymentInstructions(
+            meansCode: PaymentMeansCode::C_58,
+            meansText: 'SEPA credit transfer',
+            remittanceInformation: 'REF-1',
+            creditTransfers: [
+                new CreditTransfer(accountIdentifier: 'DE75512108001245126199'),
+                new CreditTransfer(accountIdentifier: 'HU42117730161111101800000000'),
+            ],
+        ));
+
+        $xml = (new UblWriter)->write($invoice);
+
+        self::assertSame(2, substr_count($xml, '<cac:PaymentMeans>'));
+        self::assertSame(1, substr_count($xml, 'name="SEPA credit transfer"'));
+        self::assertEquals($invoice, (new UblReader)->read($xml)->invoice);
+    }
+
     public function test_amounts_keep_their_scale_and_currency(): void
     {
         $invoice = TotalsCalculator::complete(InvoiceFactory::mixedVat());

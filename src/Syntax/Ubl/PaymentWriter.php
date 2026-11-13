@@ -14,7 +14,8 @@ use IntrAgile\EInvoicing\Model\PaymentInstructions;
  *
  * The first cac:PaymentMeans carries the means code, the remittance information, the card, the
  * mandate and the first payee account. Each further credit transfer (BG-17) gets its own
- * cac:PaymentMeans with the same means code and remittance information.
+ * cac:PaymentMeans with the same means code and remittance information, without the payment means
+ * text (BT-82), which may occur only once (UBL-SR-46).
  *
  * A credit note keeps its due date (BT-9) in cac:PaymentMeans; without payment instructions it is
  * written in a cac:PaymentMeans that holds only means code 1 and the due date.
@@ -74,16 +75,16 @@ final class PaymentWriter
         }
 
         foreach ($transfers as $transfer) {
-            $further = $this->means($root, $payment);
+            $further = $this->means($root, $payment, withText: false);
             $out->text($further, 'cbc:PaymentID', $payment->remittanceInformation);
             $this->account($further, $transfer);
         }
     }
 
-    private function means(DOMElement $root, PaymentInstructions $payment): DOMElement
+    private function means(DOMElement $root, PaymentInstructions $payment, bool $withText = true): DOMElement
     {
         $means = $this->out->add($root, 'cac:PaymentMeans');
-        $this->out->text($means, 'cbc:PaymentMeansCode', $payment->meansCode->value, ['name' => $payment->meansText]);
+        $this->out->text($means, 'cbc:PaymentMeansCode', $payment->meansCode->value, ['name' => $withText ? $payment->meansText : null]);
 
         return $means;
     }

@@ -28,13 +28,17 @@ Included today:
   official OpenPeppol files, with verdicts checked equal to Saxon on a corpus of 1,611 documents
   ([Peppol BIS 3](docs/PEPPOL.md)). The Peppol envelope (SBDH) rules are compiled and checked
   the same way.
+- XRechnung 3.0.2 validation that follows the KoSIT validator 1.6.3 with its configuration
+  2026-08-31 (scenarios, XML Schema, custom levels), with the optional Apache-2.0 rules package
+  `intragile/einvoicing-rules-xrechnung` ([XRechnung](#xrechnung)), and writing XRechnung from the
+  model.
 - Peppol transport: sending and receiving through an access point (Recommand driver), SML and
   SMP participant lookup, Peppol Directory search, webhook verification, and an SBDH envelope
   writer and reader ([Peppol transport](docs/TRANSPORT.md)). Live transmission through Recommand
   is not verified yet.
 
 Not included yet, planned for later releases: other access point drivers, CII and self-billing
-over Peppol, the XRechnung and ZUGFeRD/Factur-X profiles, and a Laravel package.
+over Peppol, the ZUGFeRD/Factur-X profile, and a Laravel package.
 
 ## Install
 
@@ -168,6 +172,34 @@ They are in a separate package, `intragile/einvoicing-rules-en16931` (`packages/
 in this repository), which this package requires; the engine itself stays MIT. Neither package is
 published yet.
 
+## XRechnung
+
+`XRechnungValidator` validates XRechnung 3.0.2 invoices the way the KoSIT validator 1.6.3 does
+with its XRechnung configuration 2026-08-31. It needs the separate rules package, which is a
+suggestion of this package, not a requirement:
+
+```bash
+composer require intragile/einvoicing-rules-xrechnung
+```
+
+```php
+use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungValidator;
+
+$report = XRechnungValidator::create()->validate($xml);
+$report->scenario;   // "EN16931 XRechnung (UBL Invoice)"
+$report->isValid();  // false on an XML Schema violation or any fatal finding
+```
+
+The first KoSIT scenario whose match holds is applied: XRechnung CIUS, Extension or CVD for a UBL
+Invoice, a UBL CreditNote (CIUS and CVD) or CII, or plain EN 16931. The document is checked
+against that scenario's XML Schema and, only when it is schema valid, against CEN 1.3.16 and the
+XRechnung 2.6.0 Schematron; the scenario's custom levels then replace rule flags (`CII-SR-465` is
+fatal in XRechnung CII). A document whose specification identifier (BT-24) matches no scenario
+exactly is refused with an exception that lists the accepted identifiers. To write XRechnung, put
+`XRechnung::processControl()` on the invoice. The design goal is the same verdict as KoSIT:
+scenario, XML Schema validity, the set of rule ids with their levels, and acceptance; the KoSIT
+validator itself runs as the test oracle ([docs/VALIDATION.md](docs/VALIDATION.md)). The rules
+package is Apache-2.0, like the KoSIT artefacts it is compiled from.
 ## Peppol BIS 3
 
 `Validator::peppol($dir)` validates against Peppol BIS Billing 3.0.22: OpenPeppol's copy of the
@@ -255,7 +287,10 @@ are licensed under the EUPL v1.2, are not part of the installed package, and are
 The code-list values in `src/CodeList/` are derived from those artefacts; see
 [src/CodeList/SOURCE.md](src/CodeList/SOURCE.md) for the attribution. The compiled validation
 rules in `packages/rules-en16931` are licensed under the EUPL-1.2; see
-[packages/rules-en16931/SOURCE.md](packages/rules-en16931/SOURCE.md). The Peppol BIS rules are
+[packages/rules-en16931/SOURCE.md](packages/rules-en16931/SOURCE.md). The optional XRechnung rules,
+scenario table and schemas in `packages/rules-xrechnung` are licensed under the Apache-2.0, like
+the KoSIT artefacts they come from; see
+[packages/rules-xrechnung/SOURCE.md](packages/rules-xrechnung/SOURCE.md). The Peppol BIS rules are
 not distributed: OpenPeppol AISBL holds their copyright, and they are downloaded and compiled on
 your machine ([why](docs/PEPPOL.md#why-the-rules-are-compiled-on-your-machine)).
 

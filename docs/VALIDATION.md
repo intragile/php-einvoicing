@@ -238,6 +238,53 @@ so on input that reaches one the engine reports an error where Saxon would answe
 CEN or Peppol rule comes near them: the deepest Peppol recursion is about a dozen calls, and the
 test suite validates a Peppol invoice with a 50,000-digit identifier in under 2 seconds.
 
+## XRechnung validation
+
+`IntrAgile\EInvoicing\Validation\XRechnung\XRechnungValidator` reproduces the KoSIT validator
+1.6.3 with the XRechnung validator configuration 2026-08-31. It needs the package
+`intragile/einvoicing-rules-xrechnung` (Apache-2.0), a `suggest` of the core;
+`XRechnungValidator::create()` throws `RulesNotInstalled` naming
+`composer require intragile/einvoicing-rules-xrechnung` when it is missing.
+
+```php
+$report = XRechnungValidator::create()->validate($xml);
+```
+
+`validate()` follows KoSIT step by step:
+
+1. The document is parsed like every other input (a DOCTYPE raises `UnsafeXml`).
+2. The scenarios of the configuration are tried in order and the first whose match expression
+   holds is applied. The match expressions are compiled from `scenarios.xml` by
+   `composer compile-rules`, evaluated by the engine's own XPath evaluator with the scenario's
+   namespace bindings, as an effective boolean value with the document node as context. They
+   compare the specification identifier (BT-24) exactly, without whitespace normalisation, as
+   KoSIT does. When no scenario matches, `UnsupportedDocument` lists the accepted identifiers
+   (`XRechnung::CIUS`, `XRechnung::EXTENSION`, `XRechnung::CVD` and the EN 16931 one); there is
+   no fallback to a weaker scenario.
+3. The document is validated against the scenario's XML Schema, KoSIT's copy of UBL 2.1 or
+   CII D16B, shipped in the rules package (`SchemaValidator`, no network access, instance schema
+   hints ignored).
+4. Only when the document is schema valid, the scenario's Schematron rule sets run in order: CEN
+   1.3.16 (the release KoSIT pins, not the default 1.3.17), then XRechnung 2.6.0 for the
+   XRechnung scenarios. After an XML Schema failure KoSIT runs no Schematron, so the report then
+   has the scenario name, the schema errors, no findings and no rule sets, and is not valid.
+5. The scenario's custom levels replace the flag of each matching finding (`error` → `fatal`,
+   `warning`, `information`); id, location and message are kept. They differ per scenario: for
+   example `UBL-CR-646` is an error in the XRechnung CIUS and CVD invoice scenarios and
+   information in the Extension scenario.
+
+The report names the scenario (`$report->scenario`) and the rule sets that ran. It is valid when
+the document is schema valid and no finding is fatal after custom levels, which is KoSIT's
+acceptance. Information findings (such as `BR-DE-TMP-32`) are reported, as KoSIT reports them.
+
+The scenario table, the compiled XRechnung rule sets and the schemas live in
+`packages/rules-xrechnung` and are generated from the pinned KoSIT releases, never edited by
+hand. "Validated like KoSIT" means that, per document, the scenario name, the XML Schema
+validity, the sorted set of `"<rule id> <level>"` strings and the acceptance equal what the KoSIT
+validator reports; the conformance test against the KoSIT validator itself is described in the
+next section. To write XRechnung, give the invoice `XRechnung::processControl()` (or
+`XRechnung::processControl(XRechnung::EXTENSION)`), which sets BT-24 and the Peppol billing
+profile as BT-23.
 ## How verdict equality is checked
 
 The test group `oracle` runs the official CEN XSLT through SaxonC-HE in Docker as the judge
@@ -329,6 +376,11 @@ fails when a generated file differs from what the compiler writes.
   under the EUPL-1.2; origin, checksums and the licence conditions are in its
   [SOURCE.md](../packages/rules-en16931/SOURCE.md). The engine requires that package, so an
   application using the validator ships EUPL-1.2 material in its vendor directory.
+- The XRechnung rule sets, the scenario table and the KoSIT copies of the UBL and CII schemas are
+  in `packages/rules-xrechnung/` (package `intragile/einvoicing-rules-xrechnung`) under the
+  Apache-2.0 licence of the KoSIT artefacts, with their `NOTICE`; origin and checksums are in its
+  [SOURCE.md](../packages/rules-xrechnung/SOURCE.md). It is optional: only
+  `XRechnungValidator` needs it.
 
 Neither package is published yet. Before the first release the rules package moves to its own
 repository.
