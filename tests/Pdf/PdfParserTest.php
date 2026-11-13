@@ -11,6 +11,7 @@ use IntrAgile\EInvoicing\Pdf\Exception\UnsupportedPdfFeature;
 use IntrAgile\EInvoicing\Pdf\PdfDictionary;
 use IntrAgile\EInvoicing\Pdf\PdfDocument;
 use IntrAgile\EInvoicing\Pdf\PdfName;
+use IntrAgile\EInvoicing\Pdf\PdfParser;
 use IntrAgile\EInvoicing\Pdf\PdfRef;
 use IntrAgile\EInvoicing\Pdf\PdfStream;
 use IntrAgile\EInvoicing\Pdf\PdfString;
@@ -267,6 +268,48 @@ final class PdfParserTest extends TestCase
         self::assertEquals(new PdfString('packed'), $document->object(3));
     }
 
+    public function test_sparse_xref_stream_falls_back_to_reconstruction(): void
+    {
+        // A full save that keeps the original object numbers: a small file whose xref stream lists
+        // /Size rows, nearly all free. More rows than the file could hold are not read as an index.
+        foreach ([5000, 60000] as $size) {
+            $pdf = self::sparseXrefStream($size, padding: 0);
+            self::assertLessThan(1024, strlen($pdf));
+
+            $document = PdfDocument::parse($pdf);
+
+            self::assertTrue($document->reconstructed(), 'Size '.$size);
+            self::assertTrue($document->catalog()->isName('Type', 'Catalog'));
+            $pages = $document->resolve($document->catalog()->get('Pages'));
+            self::assertInstanceOf(PdfDictionary::class, $pages);
+            self::assertSame(0, $pages->get('Count'));
+        }
+    }
+
+    public function test_sparse_xref_stream_within_the_entry_budget_is_read(): void
+    {
+        $document = PdfDocument::parse(self::sparseXrefStream(5000, padding: 5000 * PdfParser::BYTES_PER_ENTRY));
+
+        self::assertFalse($document->reconstructed());
+        self::assertSame(5000, $document->size());
+        self::assertTrue($document->catalog()->isName('Type', 'Catalog'));
+    }
+
+    public function test_predictor_budget_while_indexing_falls_back_to_reconstruction(): void
+    {
+        // 700 000 seven-byte rows pass the entry budget of the padded file but exceed the
+        // predictor budget of 4 MiB; the index is then rebuilt by scanning.
+        $rows = intdiv(PdfParser::MAX_PREDICTOR_BYTES, 7) + 100_000;
+        $pdf = self::sparseXrefStream($rows, padding: $rows * PdfParser::BYTES_PER_ENTRY, width: 4);
+        $started = hrtime(true);
+
+        $document = PdfDocument::parse($pdf);
+
+        self::assertLessThan(1.0, (hrtime(true) - $started) / 1e9);
+        self::assertTrue($document->reconstructed());
+        self::assertTrue($document->catalog()->isName('Type', 'Catalog'));
+    }
+
     public function test_reconstruction_finds_catalog_without_trailer(): void
     {
         $pdf = $this->minimal(new PdfBuilder)->trailer('/Root 1 0 R')->classic();
@@ -427,6 +470,42 @@ final class PdfParserTest extends TestCase
         self::assertInstanceOf(PdfStream::class, $stream);
 
         self::assertSame($raw, $document->decodedStream($stream));
+    }
+
+    /**
+     * A catalog, a page tree and an xref stream of $size rows (W [1 $width 2], PNG Up) whose rows
+     * between the page tree and the stream itself are free, after $padding bytes of comment.
+     */
+    private static function sparseXrefStream(int $size, int $padding, int $width = 2): string
+    {
+        $pdf = "%PDF-1.7\n".($padding > 0 ? '%'.str_repeat('x', $padding)."\n" : '');
+        $catalog = strlen($pdf);
+        $pdf .= "1 0 obj\n".self::CATALOG."\nendobj\n";
+        $pages = strlen($pdf);
+        $pdf .= "2 0 obj\n".self::PAGES."\nendobj\n";
+        $start = strlen($pdf);
+        $row = static fn (int $type, int $field2, int $field3): string => pack('C', $type).substr(pack('J', $field2), 8 - $width).pack('n', $field3);
+        $raw = [$row(0, 0, 65535), $row(1, $catalog, 0), $row(1, $pages, 0), $row(0, 0, 1)];
+        $previous = str_repeat("\0", 3 + $width);
+        $encoded = '';
+        foreach ($raw as $r) {
+            $encoded .= "\x02";
+            for ($i = 0; $i < 3 + $width; $i++) {
+                $encoded .= chr((ord($r[$i]) - ord($previous[$i])) & 0xFF);
+            }
+            $previous = $r;
+        }
+        // Further free rows equal the previous one, so Up encodes them as zeros.
+        $encoded .= str_repeat("\x02".str_repeat("\0", 3 + $width), $size - 5);
+        $last = $row(1, $start, 0);
+        $encoded .= "\x02";
+        for ($i = 0; $i < 3 + $width; $i++) {
+            $encoded .= chr((ord($last[$i]) - ord($previous[$i])) & 0xFF);
+        }
+        $data = (string) gzcompress($encoded, 9);
+
+        return $pdf.($size - 1)." 0 obj\n<< /Type /XRef /Size ".$size.' /W [1 '.$width.' 2] /Root 1 0 R /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns '.(3 + $width).' >> /Length '.strlen($data)." >>\nstream\n"
+            .$data."\nendstream\nendobj\nstartxref\n".$start."\n%%EOF\n";
     }
 
     private function minimal(PdfBuilder $builder): PdfBuilder

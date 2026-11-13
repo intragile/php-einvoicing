@@ -219,19 +219,28 @@ final class HostilePdfTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_xref_stream_claiming_millions_of_rows_is_refused(): void
+    public function test_xref_stream_claiming_millions_of_rows_is_not_read(): void
     {
         self::limitMemory();
         foreach (["\x00", "\x02", "\x03"] as $type) {
-            // 8 MiB of one-byte rows deflate to about 8 KiB.
-            $data = (string) gzcompress(str_repeat($type, PdfParser::MAX_OBJECTS + 1), 9);
-            $pdf = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n";
-            $start = strlen($pdf);
-            $pdf .= '2 0 obj'."\n".'<< /Type /XRef /Size '.(PdfParser::MAX_OBJECTS + 1).' /W [1 0 0] /Root 1 0 R /Filter /FlateDecode /Length '.strlen($data)." >>\nstream\n"
-                .$data."\nendstream\nendobj\nstartxref\n".$start."\n%%EOF\n";
+            // 8 MiB of one-byte rows deflate to about 8 KiB. The index is not read; reconstruction
+            // indexes only the two objects that exist.
+            $pdf = self::claimingXrefStream($type, withCatalog: true);
             self::assertLessThan(16 * 1024, strlen($pdf));
+            memory_reset_peak_usage();
+            $before = memory_get_usage();
+            $started = hrtime(true);
 
-            $this->assertRefusedQuickly(static fn () => PdfDocument::parse($pdf), 'more objects than the PDF can hold');
+            $document = PdfDocument::parse($pdf);
+
+            self::assertLessThan(1.0, (hrtime(true) - $started) / 1e9);
+            self::assertLessThan(32 * 1024 * 1024, memory_get_peak_usage() - $before);
+            self::assertTrue($document->reconstructed());
+            self::assertTrue($document->catalog()->isName('Type', 'Catalog'));
+
+            // Without a catalog object there is nothing to reconstruct.
+            $empty = self::claimingXrefStream($type, withCatalog: false);
+            $this->assertRefusedQuickly(static fn () => PdfDocument::parse($empty), 'catalog');
         }
     }
 
@@ -286,6 +295,17 @@ final class HostilePdfTest extends TestCase
 
         $hex = "%PDF-1.7\n".str_repeat('1 0 obj<', 80_000);
         $this->assertRefusedQuickly(static fn () => PdfDocument::parse($hex));
+    }
+
+    /** A file whose xref stream claims MAX_OBJECTS + 1 one-byte rows of the given type. */
+    private static function claimingXrefStream(string $type, bool $withCatalog): string
+    {
+        $data = (string) gzcompress(str_repeat($type, PdfParser::MAX_OBJECTS + 1), 9);
+        $pdf = "%PDF-1.7\n".($withCatalog ? "1 0 obj\n<< /Type /Catalog >>\nendobj\n" : '');
+        $start = strlen($pdf);
+
+        return $pdf.'2 0 obj'."\n".'<< /Type /XRef /Size '.(PdfParser::MAX_OBJECTS + 1).' /W [1 0 0] /Root 1 0 R /Filter /FlateDecode /Length '.strlen($data)." >>\nstream\n"
+            .$data."\nendstream\nendobj\nstartxref\n".$start."\n%%EOF\n";
     }
 
     /** Lowers memory_limit to PHP's default, which only works in a fresh process. */

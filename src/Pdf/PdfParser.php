@@ -39,9 +39,10 @@ final class PdfParser
     public const int MAX_PREDICTOR_BYTES = 4 * 1024 * 1024;
 
     /**
-     * An index may list at most one object per this many bytes of file (or ENTRY_FLOOR objects in
-     * a small file). Real files use well over a hundred bytes per object; the bound keeps a tiny
-     * file from claiming millions of objects.
+     * A cross-reference index may list at most one entry per this many bytes of file (or
+     * ENTRY_FLOOR entries in a small file); a larger index is not read and the file is
+     * reconstructed instead. Object streams claiming more members are refused. Real files use
+     * well over a hundred bytes per object; the bound keeps a tiny file from claiming millions.
      */
     public const int BYTES_PER_ENTRY = 8;
 
@@ -85,14 +86,15 @@ final class PdfParser
         $this->maxEntries = min(self::MAX_OBJECTS + 1, max(self::ENTRY_FLOOR, intdiv(strlen($bytes), self::BYTES_PER_ENTRY)));
         $startXref = self::startXrefOf($bytes);
         // Before the index exists nothing can be resolved: an indirect /Filter or /DecodeParms on
-        // an xref stream (where the standard forbids them) is damage.
+        // an xref stream (where the standard forbids them) is damage. So is a predictor over its
+        // budget there, which reconstruction can get past without the xref stream.
         $decodeDirect = fn (PdfStream $stream): string => $this->decodeWith($stream, static function (mixed $value): mixed {
             if ($value instanceof PdfRef) {
                 throw UnreadablePdf::malformed('An xref or object stream refers to its filter indirectly.');
             }
 
             return $value;
-        });
+        }, true);
         try {
             if ($startXref === null) {
                 throw UnreadablePdf::malformed('The PDF has no startxref.');
@@ -173,7 +175,7 @@ final class PdfParser
     }
 
     /** @param Closure(mixed): mixed $resolve */
-    private function decodeWith(PdfStream $stream, Closure $resolve): string
+    private function decodeWith(PdfStream $stream, Closure $resolve, bool $indexing = false): string
     {
         if ($stream->dictionary->get('Filter') === null) {
             return $stream->raw;
@@ -187,7 +189,7 @@ final class PdfParser
         $inflated = 0;
         $predicted = 0;
         try {
-            return Filters::decode($stream, $resolve, $limit, self::MAX_PREDICTOR_BYTES - $this->predicted, $inflated, $predicted);
+            return Filters::decode($stream, $resolve, $limit, self::MAX_PREDICTOR_BYTES - $this->predicted, $inflated, $predicted, $indexing);
         } catch (UnreadablePdf $e) {
             // A fresh exception: the original's trace may hold up to 64 MiB of decoded data.
             throw self::fresh($e);

@@ -373,14 +373,16 @@ final class CrossReference
     }
 
     /**
-     * Takes $count entries from the document's entry budget, refusing an index that lists more
-     * objects than the file could physically hold.
+     * Takes $count entries from the document's entry budget. An index listing more entries than
+     * the file could physically hold is not read; it is treated as damage, so reconstruction,
+     * which indexes only the objects actually present, takes over. A full save that keeps
+     * sparse original object numbers lists mostly free rows and lands here legitimately.
      */
     private static function spend(int &$budget, int $count): void
     {
         $budget -= $count;
         if ($budget < 0) {
-            throw UnreadablePdf::refused('The cross-reference index lists more objects than the PDF can hold.');
+            throw UnreadablePdf::malformed('The cross-reference index lists more entries than the PDF can hold.');
         }
     }
 

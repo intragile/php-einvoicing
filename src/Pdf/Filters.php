@@ -23,11 +23,13 @@ final class Filters
      * Applies the stream's /Filter chain. $resolve follows indirect references in /Filter and
      * /DecodeParms. Inflation stops beyond $maxBytes of output, and predictors refuse more than
      * $maxPredictorBytes of input. $inflated and $predicted grow by the work done, failed attempts
-     * included, so the caller can hold a whole document to a budget.
+     * included, so the caller can hold a whole document to a budget. With $predictorLimitIsDamage
+     * a predictor over its budget is reported as MALFORMED instead of REFUSED, so that a reader
+     * still building the index can fall back to reconstruction.
      *
      * @param  Closure(mixed): mixed  $resolve
      */
-    public static function decode(PdfStream $stream, Closure $resolve, int $maxBytes, int $maxPredictorBytes, int &$inflated, int &$predicted): string
+    public static function decode(PdfStream $stream, Closure $resolve, int $maxBytes, int $maxPredictorBytes, int &$inflated, int &$predicted, bool $predictorLimitIsDamage = false): string
     {
         $dictionary = $stream->dictionary;
         $filters = $resolve($dictionary->get('Filter'));
@@ -48,7 +50,7 @@ final class Filters
             }
             $parms = $resolve($parameters[$i] ?? null);
             $data = self::inflate($data, $maxBytes, $inflated);
-            $data = self::predict($data, $parms instanceof PdfDictionary ? $parms : null, $maxPredictorBytes, $predicted);
+            $data = self::predict($data, $parms instanceof PdfDictionary ? $parms : null, $maxPredictorBytes, $predicted, $predictorLimitIsDamage);
         }
 
         return $data;
@@ -124,7 +126,7 @@ final class Filters
         }
     }
 
-    private static function predict(string $data, ?PdfDictionary $parms, int $maxBytes, int &$predicted): string
+    private static function predict(string $data, ?PdfDictionary $parms, int $maxBytes, int &$predicted, bool $limitIsDamage): string
     {
         $predictor = $parms?->get('Predictor') ?? 1;
         if ($predictor === 1) {
@@ -133,10 +135,9 @@ final class Filters
         // Predictors run byte by byte in PHP, so their input gets its own, smaller budget.
         $predicted += strlen($data);
         if (strlen($data) > $maxBytes) {
-            throw UnreadablePdf::refused(sprintf(
-                'Predictor input exceeds the limit of %d MiB per document.',
-                PdfParser::MAX_PREDICTOR_BYTES >> 20,
-            ));
+            $message = sprintf('Predictor input exceeds the limit of %d MiB per document.', PdfParser::MAX_PREDICTOR_BYTES >> 20);
+
+            throw $limitIsDamage ? UnreadablePdf::malformed($message) : UnreadablePdf::refused($message);
         }
         $colors = self::intParam($parms, 'Colors', 1, 1, 32);
         $bits = self::intParam($parms, 'BitsPerComponent', 8, 1, 16);
