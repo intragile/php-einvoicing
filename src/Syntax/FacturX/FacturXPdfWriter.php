@@ -72,6 +72,7 @@ final class FacturXPdfWriter
      *                       reconstructed so an incremental update would be unsafe
      * @throws InvoiceAlreadyEmbedded when the PDF already carries an invoice
      * @throws NotPdfA in strict mode, when the PDF declares no PDF/A conformance
+     * @throws UnsupportedPdfAPart when the PDF declares PDF/A-4 or a later part
      */
     public function embed(
         string $pdf,
@@ -309,6 +310,7 @@ final class FacturXPdfWriter
      * @return list<string>
      *
      * @throws NotPdfA
+     * @throws UnsupportedPdfAPart
      */
     private static function warnings(PdfDocument $document, PdfDictionary $catalog, ?int $part, bool $strict): array
     {
@@ -321,6 +323,11 @@ final class FacturXPdfWriter
                 throw new NotPdfA('The input PDF declares no PDF/A conformance (no pdfaid:part in its XMP metadata); supply a PDF/A document.');
             }
             $warnings[] = $message;
+        } elseif ($part > 3) {
+            throw new UnsupportedPdfAPart(sprintf(
+                'The input PDF declares PDF/A-%d. A PDF/A-4 or later document cannot be lowered to PDF/A-3, which Factur-X requires; supply a PDF/A-3 (or PDF/A-1 or PDF/A-2) document.',
+                $part,
+            ));
         } elseif ($part !== 3) {
             $warnings[] = sprintf('The input PDF declared PDF/A-%d; the declaration was changed to PDF/A-3, which embedded files require. Validate the result.', $part);
         }

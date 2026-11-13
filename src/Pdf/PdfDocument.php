@@ -90,15 +90,17 @@ final class PdfDocument
         return $this->parser->xref()->xrefStream;
     }
 
-    /** The trailer /Size of the newest section: the next free object number. */
+    /**
+     * The next free object number: the trailer /Size, or one more than the highest object
+     * number the index lists when that is larger (some producers write a /Size that is too small,
+     * and allocating from it would overwrite existing objects).
+     */
     public function size(): int
     {
         $size = $this->trailer()->get('Size');
-        if (is_int($size)) {
-            return $size;
-        }
+        $listed = $this->parser->xref()->highest() + 1;
 
-        return $this->parser->xref()->highest() + 1;
+        return is_int($size) ? max($size, $listed) : $listed;
     }
 
     /**

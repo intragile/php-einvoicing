@@ -267,6 +267,12 @@ final class Xmp
                 }
             }
         }
+        $empty = $this->rdf->getElementsByTagNameNS(self::EXTENSION, 'schemas')->item(0);
+        if ($bag === null && $empty instanceof DOMElement) {
+            // An existing pdfaExtension:schemas without a bag gets one, not a second property.
+            $bag = $this->element(self::RDF, 'rdf:Bag');
+            $empty->appendChild($bag);
+        }
         if ($bag === null) {
             $schemas = $this->append(self::EXTENSION, 'schemas', null);
             $description = $schemas->parentNode;

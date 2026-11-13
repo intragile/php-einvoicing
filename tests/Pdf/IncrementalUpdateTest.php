@@ -166,6 +166,29 @@ final class IncrementalUpdateTest extends TestCase
         self::assertEquals($info, $document->trailer()->get('Info'));
     }
 
+    public function test_too_small_trailer_size_does_not_overwrite_objects(): void
+    {
+        $pdf = str_replace('/Size 5 ', '/Size 2 ', $this->classicPdf());
+        $base = PdfDocument::parse($pdf);
+        self::assertFalse($base->reconstructed());
+        self::assertSame(2, $base->trailer()->get('Size'));
+        self::assertSame(5, $base->size());
+        $update = new IncrementalUpdate($base);
+
+        $added = $update->add(new PdfString('new'));
+        $update->replace(1, $base->catalog()->with('Note', $added));
+        $out = PdfDocument::parse($update->toBytes());
+
+        self::assertSame(5, $added->number);
+        self::assertSame(6, $out->trailer()->get('Size'));
+        self::assertFalse($out->reconstructed());
+        $pages = $out->resolve($out->catalog()->get('Pages'));
+        self::assertInstanceOf(PdfDictionary::class, $pages);
+        self::assertEquals(new PdfName('Pages'), $pages->get('Type'));
+        self::assertEquals(new PdfString('unused'), $out->object(3));
+        self::assertEquals(new PdfString('new'), $out->resolve($out->catalog()->get('Note')));
+    }
+
     public function test_reconstructed_input_is_refused_for_update(): void
     {
         $pdf = $this->classicPdf();

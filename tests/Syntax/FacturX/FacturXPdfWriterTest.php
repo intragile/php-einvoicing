@@ -23,6 +23,7 @@ use IntrAgile\EInvoicing\Syntax\FacturX\FacturXXmlWriter;
 use IntrAgile\EInvoicing\Syntax\FacturX\InvoiceAlreadyEmbedded;
 use IntrAgile\EInvoicing\Syntax\FacturX\NotPdfA;
 use IntrAgile\EInvoicing\Syntax\FacturX\ProfileMismatch;
+use IntrAgile\EInvoicing\Syntax\FacturX\UnsupportedPdfAPart;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
 use IntrAgile\EInvoicing\Tests\Support\PdfBuilder;
 use PHPUnit\Framework\TestCase;
@@ -324,6 +325,20 @@ final class FacturXPdfWriterTest extends TestCase
         $metadata = $out->resolve($out->catalog()->get('Metadata'));
         self::assertInstanceOf(PdfStream::class, $metadata);
         self::assertStringContainsString('<pdfaid:part>3</pdfaid:part>', $out->decodedStream($metadata));
+    }
+
+    public function test_pdfa4_input_is_refused(): void
+    {
+        $pdf = $this->basePdf(version: '2.0', xmp: str_replace(
+            ['<pdfaid:part>1</pdfaid:part><pdfaid:conformance>B</pdfaid:conformance>'],
+            ['<pdfaid:part>4</pdfaid:part><pdfaid:rev>2020</pdfaid:rev>'],
+            self::XMP_PDFA1,
+        ));
+
+        $this->expectException(UnsupportedPdfAPart::class);
+        $this->expectExceptionMessageMatches('/PDF\/A-4 or later .*cannot be lowered to PDF\/A-3/');
+
+        (new FacturXPdfWriter)->embed($pdf, self::xml(FacturXProfile::En16931), modified: $this->modified());
     }
 
     public function test_profile_mismatch_is_refused(): void

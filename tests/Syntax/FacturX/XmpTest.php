@@ -105,6 +105,19 @@ final class XmpTest extends TestCase
         self::assertSame(1.0, $x->evaluate('count(//pdfaExtension:schemas/rdf:Bag/rdf:li)'));
     }
 
+    public function test_empty_extension_schemas_gets_a_bag_not_a_second_property(): void
+    {
+        $existing = '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+            .'<rdf:Description rdf:about="" xmlns:pdfaExtension="http://www.aiim.org/pdfa/ns/extension/"><pdfaExtension:schemas/></rdf:Description>'
+            .'</rdf:RDF></x:xmpmeta>';
+
+        $x = $this->xpath(Xmp::merge($existing, FacturXProfile::En16931, 'factur-x.xml', $this->modified(), []));
+
+        self::assertSame(1.0, $x->evaluate('count(//pdfaExtension:schemas)'));
+        self::assertSame(1.0, $x->evaluate('count(//pdfaExtension:schemas/rdf:Bag/rdf:li)'));
+        self::assertSame('fx', $x->evaluate('string(//pdfaExtension:schemas/rdf:Bag/rdf:li/pdfaSchema:prefix)'));
+    }
+
     public function test_info_entries_fill_missing_properties(): void
     {
         $xmp = Xmp::merge(null, FacturXProfile::En16931, 'factur-x.xml', $this->modified(), [
