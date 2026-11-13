@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Pdf;
 
 use Closure;
 use IntrAgile\EInvoicing\Pdf\Exception\UnreadablePdf;
+use IntrAgile\EInvoicing\Pdf\Exception\UnsupportedPdfFeature;
 
 /**
  * The cross-reference index of a PDF (ISO 32000-1 §7.5.4–7.5.8): where each object lives, and
@@ -33,11 +34,16 @@ final class CrossReference
 
     private const int FIELD3_MAX = 0xFFFFFF;
 
+    /** How many references reconstruction follows to reach an object stream's /Filter value. */
+    private const int MAX_FILTER_HOPS = 8;
+
     /**
      * Entries are packed into one int each (see pack()), which keeps a large index small.
      *
      * @param  array<int, int>  $entries  object number => packed entry
      * @param  int  $highest  the highest object number in $entries, or 0
+     * @param  int  $skippedObjectStreams  object streams reconstruction could not decode, whose
+     *                                     members are therefore not indexed; 0 after read()
      */
     private function __construct(
         private readonly array $entries,
@@ -46,6 +52,7 @@ final class CrossReference
         public readonly int $startXref,
         public readonly bool $xrefStream,
         public readonly bool $reconstructed,
+        public readonly int $skippedObjectStreams = 0,
     ) {}
 
     /**
@@ -84,9 +91,10 @@ final class CrossReference
     /**
      * Reads the sections from $startXref back along /Prev. Damage throws UnreadablePdf with code
      * MALFORMED; a /Prev loop, an overlong chain, an oversized /Size or more than $maxEntries
-     * entries in all throws code REFUSED.
+     * entries in all throws code REFUSED. $decode is called without a resolver, so an indirect
+     * /Filter on an xref stream is damage.
      *
-     * @param  Closure(PdfStream): string  $decode
+     * @param  Closure(PdfStream, (Closure(mixed): mixed)|null=): string  $decode
      */
     public static function read(Lexer $lexer, int $startXref, Closure $decode, int $maxEntries): self
     {
@@ -147,7 +155,13 @@ final class CrossReference
      * dictionaries found in the file; later definitions win. More than $maxEntries distinct
      * objects throws UnreadablePdf with code REFUSED.
      *
-     * @param  Closure(PdfStream): string  $decode
+     * An object stream's indirect /Filter or /DecodeParms is resolved against the objects found
+     * outside object streams. An object stream that cannot be decoded (it is damaged, its filter
+     * cannot be resolved or is not supported) is skipped and counted in $skippedObjectStreams;
+     * a breached safety limit still ends the read. The trailer /Size is set to one more than the
+     * highest object number found, whatever the damaged file's trailers say.
+     *
+     * @param  Closure(PdfStream, (Closure(mixed): mixed)|null=): string  $decode
      */
     public static function reconstruct(Lexer $lexer, int $startXref, Closure $decode, int $maxEntries): self
     {
@@ -197,13 +211,21 @@ final class CrossReference
             throw UnreadablePdf::malformed('The PDF contains no readable objects.');
         }
 
+        $resolve = self::fileResolver($lexer, $entries);
+        $decodeResolved = static fn (PdfStream $stream): string => $decode($stream, $resolve);
+        $skipped = 0;
         foreach ($objectStreams as $streamNumber => [$start, $stream]) {
             try {
-                [$streamLexer, $first, $members] = Lexer::objectStream($stream, $decode, $maxEntries - count($entries));
+                [$streamLexer, $first, $members] = Lexer::objectStream($stream, $decodeResolved, $maxEntries - count($entries));
+            } catch (UnsupportedPdfFeature) {
+                $skipped++;
+
+                continue;
             } catch (UnreadablePdf $e) {
                 if ($e->getCode() !== UnreadablePdf::MALFORMED) {
                     throw $e;
                 }
+                $skipped++;
 
                 continue;
             }
@@ -261,11 +283,33 @@ final class CrossReference
         if (! $merged->get('Root') instanceof PdfRef && $catalog !== null) {
             $merged = $merged->with('Root', new PdfRef($catalog, 0));
         }
-        $size = $merged->get('Size');
-        $next = $highest + 1;
-        $merged = $merged->with('Size', is_int($size) && $size > $next ? $size : $next);
+        $merged = $merged->with('Size', $highest + 1);
 
-        return new self($entries, $highest, $merged, $startXref, $newestIsStream, true);
+        return new self($entries, $highest, $merged, $startXref, $newestIsStream, true, $skipped);
+    }
+
+    /**
+     * Resolves references through the objects found outside object streams, at most
+     * MAX_FILTER_HOPS deep. A reference to anything else is damage: the object stream it belongs
+     * to is then skipped rather than decoded with a guessed filter. The index is shared by
+     * reference, so adding the object stream members does not copy it.
+     *
+     * @param  array<int, int>  $entries
+     * @return Closure(mixed): mixed
+     */
+    private static function fileResolver(Lexer $lexer, array &$entries): Closure
+    {
+        return static function (mixed $value) use ($lexer, &$entries): mixed {
+            for ($hops = 0; $value instanceof PdfRef; $hops++) {
+                $packed = $entries[$value->number] ?? null;
+                if ($hops >= self::MAX_FILTER_HOPS || $packed === null || ($packed & 3) !== self::IN_FILE) {
+                    throw UnreadablePdf::malformed('An object stream refers to its filter through object '.$value->number.', which cannot be resolved.');
+                }
+                [, , $value] = $lexer->indirectObject($packed >> 26);
+            }
+
+            return $value;
+        };
     }
 
     /**

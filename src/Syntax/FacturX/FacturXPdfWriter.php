@@ -30,8 +30,9 @@ use RuntimeException;
  * Factur-X extension schema, an sRGB OutputIntent when the PDF has none, and a copy of the Info
  * dictionary with a synchronised /ModDate.
  *
- * The PDF itself is not converted to PDF/A: an input that declares no PDF/A conformance is
- * embedded into with a warning, or refused in strict mode.
+ * The PDF itself is not converted to PDF/A: an input that declares no PDF/A conformance, or that
+ * is PDF 2.0 (by its header or its catalog /Version), is embedded into with a warning, or refused
+ * in strict mode.
  */
 final class FacturXPdfWriter
 {
@@ -50,7 +51,8 @@ final class FacturXPdfWriter
      *                                             profile's default (Data, or Alternative for XRechnung)
      * @param  DateTimeImmutable|null  $modified  the modification date written to the PDF; fixing
      *                                            it makes the output reproducible
-     * @param  bool  $strict  refuse an input that declares no PDF/A conformance instead of warning
+     * @param  bool  $strict  refuse an input that declares no PDF/A conformance, or is PDF 2.0,
+     *                        instead of warning
      *
      * @throws ProfileMismatch when the XML declares another profile than $profile
      * @throws UnsupportedDocument when the XML is not CII or declares no known profile, or the
@@ -60,7 +62,7 @@ final class FacturXPdfWriter
      * @throws UnreadablePdf when the PDF cannot be read, or its cross-reference index had to be
      *                       reconstructed so an incremental update would be unsafe
      * @throws InvoiceAlreadyEmbedded when the PDF already carries an invoice
-     * @throws NotPdfA in strict mode, when the PDF declares no PDF/A conformance
+     * @throws NotPdfA in strict mode, when the PDF declares no PDF/A conformance or is PDF 2.0
      * @throws UnsupportedPdfAPart when the PDF declares PDF/A-4 or a later part
      */
     public function embed(
@@ -101,8 +103,12 @@ final class FacturXPdfWriter
         self::refuseExistingInvoice($document, $existing, $af);
 
         $existingXmp = self::existingXmp($document, $catalog);
-        $warnings = self::warnings($document, $catalog, Xmp::declaredPart($existingXmp), $strict);
-        $warnings = [...$warnings, ...Xmp::conflicts($existingXmp)];
+        $version = $document->resolve($catalog->get('Version'));
+        $effective = $version instanceof PdfName && version_compare($version->name, $document->version(), '>') ? $version->name : $document->version();
+        $warnings = self::warnings($document, $catalog, Xmp::declaredPart($existingXmp), $effective, $strict);
+        // One parse of the existing packet serves both the conflict warnings and the merge.
+        $xmp = Xmp::read($existingXmp);
+        $warnings = [...$warnings, ...$xmp->conflictWarnings()];
 
         $info = $document->resolve($document->trailer()->get('Info'));
         $info = $info instanceof PdfDictionary ? $info : null;
@@ -126,7 +132,7 @@ final class FacturXPdfWriter
         $metadata = $update->add(new PdfStream(new PdfDictionary([
             'Type' => new PdfName('Metadata'),
             'Subtype' => new PdfName('XML'),
-        ]), Xmp::merge($existingXmp, $profile, $name, $modified, $info === null ? [] : self::infoText($document, $info))));
+        ]), $xmp->merged($profile, $name, $modified, $info === null ? [] : self::infoText($document, $info))));
 
         $catalog = $catalog
             ->with('AF', [...$af, $filespec])
@@ -135,8 +141,6 @@ final class FacturXPdfWriter
         if (! $catalog->has('OutputIntents')) {
             $catalog = $catalog->with('OutputIntents', [$this->outputIntent($update)]);
         }
-        $version = $catalog->get('Version');
-        $effective = $version instanceof PdfName && version_compare($version->name, $document->version(), '>') ? $version->name : $document->version();
         if (version_compare($effective, '1.7', '<')) {
             $catalog = $catalog->with('Version', new PdfName('1.7'));
         }
@@ -262,7 +266,7 @@ final class FacturXPdfWriter
      * @throws NotPdfA
      * @throws UnsupportedPdfAPart
      */
-    private static function warnings(PdfDocument $document, PdfDictionary $catalog, ?int $part, bool $strict): array
+    private static function warnings(PdfDocument $document, PdfDictionary $catalog, ?int $part, string $version, bool $strict): array
     {
         $warnings = [];
         if ($part === null) {
@@ -280,6 +284,12 @@ final class FacturXPdfWriter
             ));
         } elseif ($part !== 3) {
             $warnings[] = sprintf('The input PDF declared PDF/A-%d; the declaration was changed to PDF/A-3, which embedded files require. Validate the result.', $part);
+        }
+        if (version_compare($version, '2.0', '>=')) {
+            if ($strict) {
+                throw new NotPdfA('The input is PDF 2.0; PDF/A-3 is based on PDF 1.7, so the result would not be a valid PDF/A-3. Supply a PDF 1.7 (or earlier) PDF/A document.');
+            }
+            $warnings[] = 'The input is PDF 2.0; PDF/A-3 is based on PDF 1.7, so the result is not a valid PDF/A-3.';
         }
 
         $form = $document->resolve($catalog->get('AcroForm'));

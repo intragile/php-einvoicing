@@ -18,12 +18,12 @@ final class NameTree
     public const int MAX_NODES = 10_000;
 
     /**
-     * Every key and value of the tree, depth-first in key order. Keys that are not strings are
-     * skipped; values are returned unresolved.
+     * Every key and value of the tree, depth-first in key order. Values are returned unresolved.
      *
      * @return list<array{PdfString, mixed}>
      *
-     * @throws UnreadablePdf when the tree is too deep, too large or contains a cycle
+     * @throws UnreadablePdf with code MALFORMED when a key is not a string, and with code REFUSED
+     *                       when the tree is too deep, too large or contains a cycle
      */
     public static function entries(PdfDocument $document, PdfDictionary $root): array
     {
@@ -38,9 +38,11 @@ final class NameTree
             }
             $names = self::listOf($document->resolve($node->get('Names')));
             for ($i = 0; $i + 1 < count($names); $i += 2) {
-                if ($names[$i] instanceof PdfString) {
-                    $pairs[] = [$names[$i], $names[$i + 1]];
+                // A skipped key would hide its value, which may be the very file a caller looks for.
+                if (! $names[$i] instanceof PdfString) {
+                    throw UnreadablePdf::malformed('A name tree key is not a string.');
                 }
+                $pairs[] = [$names[$i], $names[$i + 1]];
             }
             $kids = self::listOf($document->resolve($node->get('Kids')));
             foreach (array_reverse($kids) as $kid) {

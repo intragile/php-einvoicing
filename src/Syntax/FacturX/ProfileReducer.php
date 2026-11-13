@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Syntax\FacturX;
 
 use DOMAttr;
+use DOMComment;
 use DOMDocument;
 use DOMElement;
 use DOMNode;
@@ -30,7 +31,9 @@ use RuntimeException;
  * Only the XML Schema constructs the Factur-X 1.09.2 profile schemas use are supported:
  * - xs:schema with targetNamespace, elementFormDefault="qualified" and optionally
  *   attributeFormDefault="unqualified";
- * - xs:import with namespace and schemaLocation, resolved next to the importing file;
+ * - xs:import with namespace and schemaLocation, resolved next to the importing file; the location
+ *   must be a relative path without a scheme that stays inside the directory of the schema
+ *   passed to reduce();
  * - global xs:element with name and type;
  * - local xs:element with name, minOccurs, maxOccurs and either type or an anonymous
  *   xs:complexType;
@@ -45,7 +48,10 @@ use RuntimeException;
  * paths, with the same file-only entity loader as SchemaValidator.
  *
  * Paths use the conventional CII prefixes (rsm, ram, udt, qdt) and carry no sibling positions,
- * so a repeated element that is removed is listed once.
+ * so a repeated element that is removed is listed once. An element whose child elements were all
+ * removed also loses its whitespace and comments.
+ *
+ * Compiled schemas are cached per instance by the real path of the schema file.
  */
 final class ProfileReducer
 {
@@ -79,7 +85,7 @@ final class ProfileReducer
     ];
 
     /**
-     * Compiled schemas by top-level schema path.
+     * Compiled schemas by the real path of the top-level schema file.
      *
      * @var array<string, array{elements: array<string, string>, types: array<string, array{children: array<string, string>, attributes: array<string, true>}>}>
      */
@@ -105,7 +111,8 @@ final class ProfileReducer
      */
     public function reduce(string $ciiXml, string $xsdPath): ReducedXml
     {
-        $schema = $this->schemas[$xsdPath] ??= $this->compile($xsdPath);
+        $real = realpath($xsdPath);
+        $schema = $real === false ? $this->compile($xsdPath) : ($this->schemas[$real] ??= $this->compile($real));
 
         $document = SafeXml::loadPreservingWhitespace($ciiXml);
         $root = $document->documentElement;
@@ -165,13 +172,24 @@ final class ProfileReducer
         }
 
         // An element whose children were all removed keeps no indentation, because a type with
-        // empty content allows no character content at all, not even whitespace.
+        // empty content allows no character content at all, not even whitespace. Its comments
+        // described the removed content, so they go too.
         if ($emptied && $element->firstElementChild === null) {
-            for ($node = $element->firstChild; $node !== null; $node = $nextNode) {
-                $nextNode = $node->nextSibling;
-                if ($node instanceof DOMText && trim($node->data) === '') {
-                    $node->remove();
-                }
+            self::clearEmptied($element);
+        }
+    }
+
+    /**
+     * Removes the whitespace and comments of an element left without child elements.
+     *
+     * @internal Shared with ProhibitionPruner.
+     */
+    public static function clearEmptied(DOMElement $element): void
+    {
+        for ($node = $element->firstChild; $node !== null; $node = $next) {
+            $next = $node->nextSibling;
+            if ($node instanceof DOMComment || ($node instanceof DOMText && trim($node->data) === '')) {
+                $node->remove();
             }
         }
     }
@@ -194,7 +212,7 @@ final class ProfileReducer
     private function compile(string $xsdPath): array
     {
         $this->reset();
-        $this->collect($xsdPath, []);
+        $this->collect($xsdPath, [], dirname($xsdPath));
 
         foreach ($this->simpleTypes as $declaration) {
             $this->checkSimpleType($declaration);
@@ -220,12 +238,12 @@ final class ProfileReducer
     }
 
     /**
-     * Reads a schema file and, recursively, the files it imports.
+     * Reads a schema file and, recursively, the files it imports, which must lie inside $root.
      *
      * @param  array<string, true>  $seen
      * @return array<string, true>
      */
-    private function collect(string $path, array $seen): array
+    private function collect(string $path, array $seen, string $root): array
     {
         $real = realpath($path);
         if ($real === false || ! is_file($real) || ! is_readable($real)) {
@@ -250,11 +268,7 @@ final class ProfileReducer
             switch ($child->localName) {
                 case 'import':
                     self::expect($child, 'import', 'import', false);
-                    $location = $child->getAttribute('schemaLocation');
-                    if ($location === '' || preg_match('~^[a-z][a-z0-9+.-]+:~i', $location) === 1) {
-                        self::unsupported($child, "xs:import with schemaLocation \"{$location}\"");
-                    }
-                    $seen = $this->collect(dirname($real).'/'.$location, $seen);
+                    $seen = $this->collect(self::importedPath($child, $real, $root), $seen, $root);
                     break;
                 case 'element':
                     self::expect($child, 'element', 'global element', false);
@@ -272,6 +286,26 @@ final class ProfileReducer
         }
 
         return $seen;
+    }
+
+    /**
+     * The file an xs:import names: a relative path without a scheme, resolved next to the
+     * importing file, that stays inside $root once ".." steps and links are resolved.
+     */
+    private static function importedPath(DOMElement $import, string $importing, string $root): string
+    {
+        $location = $import->getAttribute('schemaLocation');
+        $path = dirname($importing).'/'.$location;
+        $real = realpath($path);
+        $base = realpath($root);
+        // A scheme, a drive letter ("C:"), a root ("/" or "\") or an empty location is refused,
+        // and so is a file outside $root. A missing file is reported when it is read.
+        if ($location === '' || preg_match('~^([a-z][a-z0-9+.-]*:|[/\\\\])~i', $location) === 1
+            || ($real !== false && ($base === false || ! str_starts_with($real, rtrim($base, '/\\').DIRECTORY_SEPARATOR)))) {
+            self::unsupported($import, "xs:import schemaLocation \"{$location}\", which must be a relative path inside the schema directory");
+        }
+
+        return $path;
     }
 
     private static function load(string $path): DOMElement

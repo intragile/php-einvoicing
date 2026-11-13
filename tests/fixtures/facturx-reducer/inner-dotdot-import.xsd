@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"
+    targetNamespace="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"
+    elementFormDefault="qualified">
+  <xs:import namespace="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" schemaLocation="nested/../small-ram.xsd"/>
+  <xs:element name="CrossIndustryInvoice" type="xs:string"/>
+</xs:schema>

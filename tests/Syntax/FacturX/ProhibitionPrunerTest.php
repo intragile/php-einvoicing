@@ -91,6 +91,18 @@ final class ProhibitionPrunerTest extends TestCase
         self::assertSame(1, $document->getElementsByTagNameNS(self::NS, 'keep')->length);
     }
 
+    public function test_comments_in_a_parent_left_empty_are_removed(): void
+    {
+        $document = self::doc("<t:keep><!-- stays --><t:x/></t:keep><t:parent>\n    <!-- about drop -->\n    <t:drop/>\n  </t:parent>");
+
+        (new ProhibitionPruner)->prune(self::rules(self::report('t:drop', 'true()')), $document);
+
+        $xml = (string) $document->saveXML($document->documentElement);
+        self::assertStringContainsString('<t:parent/>', $xml);
+        self::assertStringNotContainsString('about drop', $xml);
+        self::assertStringContainsString('<!-- stays -->', $xml);
+    }
+
     public function test_non_converging_rules_throw(): void
     {
         // Every round removes one more t:n, and there are more than the round cap.

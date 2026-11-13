@@ -13,6 +13,7 @@ use IntrAgile\EInvoicing\Pdf\PdfStream;
 use IntrAgile\EInvoicing\Tests\Support\PdfBuilder;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
+use Throwable;
 
 /**
  * Inputs built to exhaust time or memory. Each must end in UnreadablePdf within a second, without
@@ -382,6 +383,72 @@ final class HostilePdfTest extends TestCase
         self::assertTrue($document->reconstructed());
         self::assertTrue($document->catalog()->isName('Type', 'Catalog'));
         self::assertBounded($started, $before, 100);
+    }
+
+    public function test_size_after_reconstruction_ignores_hostile_trailer_size(): void
+    {
+        // A /Size near the object limit would make an update allocate object numbers there.
+        $pdf = "%PDF-1.7\n1 0 obj\n".self::CATALOG."\nendobj\n2 0 obj\n".self::PAGES."\nendobj\n7 0 obj\n(x)\nendobj\n"
+            .'trailer<< /Root 1 0 R /Size '.PdfParser::MAX_OBJECTS." >>\nstartxref\n0\n%%EOF\n";
+
+        $document = PdfDocument::parse($pdf);
+
+        self::assertTrue($document->reconstructed());
+        self::assertSame(8, $document->size());
+        self::assertSame(8, $document->trailer()->get('Size'));
+    }
+
+    public function test_decode_errors_hold_no_decoded_data_in_their_trace(): void
+    {
+        // The inner layer decodes to 2 MiB; the second filter then fails on its parameters. The
+        // exceptions must not keep that buffer alive through the arguments in their traces.
+        $decoded = 2 * 1024 * 1024;
+        $inner = (string) gzcompress(str_repeat('a', $decoded), 9);
+        $twice = (string) gzcompress($inner, 9);
+        $failures = [
+            'unsupported predictor' => '/Predictor 3',
+            'malformed parameter' => '/Predictor 12 /Colors 99',
+        ];
+        foreach ($failures as $case => $parameters) {
+            $pdf = (new PdfBuilder)
+                ->object(1, self::CATALOG)
+                ->object(2, self::PAGES)
+                ->object(3, '<< /Filter [/FlateDecode /FlateDecode] /DecodeParms [null << '.$parameters.' >>] /Length '.strlen($twice)." >>\nstream\n".$twice."\nendstream")
+                ->trailer('/Root 1 0 R')
+                ->classic();
+            $document = PdfDocument::parse($pdf);
+            $stream = $document->object(3);
+            self::assertInstanceOf(PdfStream::class, $stream);
+
+            try {
+                $document->decodedStream($stream);
+                self::fail($case.': the stream was decoded.');
+            } catch (UnreadablePdf $e) {
+                self::assertLessThan(64 * 1024, self::largestHeldString($e), $case);
+            }
+        }
+    }
+
+    /**
+     * The longest string an exception keeps reachable through the arguments in its trace,
+     * including exceptions passed as arguments and chained exceptions.
+     */
+    private static function largestHeldString(Throwable $exception): int
+    {
+        $largest = 0;
+        for ($link = $exception; $link !== null; $link = $link->getPrevious()) {
+            foreach ($link->getTrace() as $frame) {
+                foreach ($frame['args'] ?? [] as $argument) {
+                    $largest = max($largest, match (true) {
+                        is_string($argument) => strlen($argument),
+                        $argument instanceof Throwable => self::largestHeldString($argument),
+                        default => 0,
+                    });
+                }
+            }
+        }
+
+        return $largest;
     }
 
     /** A catalog, $count tiny objects numbered down from 8 000 000, $extra, and no usable index. */

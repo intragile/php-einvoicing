@@ -25,7 +25,10 @@ use LogicException;
  *   attribute on its context element, which is removed.
  *
  * Reports with any other test are conditional and are left alone. Removing a node can expose
- * another prohibited one, so the rules are applied again until a round removes nothing.
+ * another prohibited one, so the rules are applied again until a round removes nothing. Every
+ * removed node is listed, so when a later round removes the parent of a node removed earlier,
+ * both the child's and the parent's paths appear in the result. A parent left without child
+ * elements also loses its whitespace and comments, as in ProfileReducer.
  */
 final class ProhibitionPruner
 {
@@ -36,7 +39,8 @@ final class ProhibitionPruner
      * Prunes the document in place.
      *
      * @return list<string> paths of the removed nodes in the notation of ReducedXml::$removed,
-     *                      de-duplicated and sorted
+     *                      de-duplicated and sorted; a node removed in one round and its parent
+     *                      removed in a later round are both listed
      *
      * @throws LogicException when the rules still prohibit nodes after the last round
      */
@@ -110,14 +114,8 @@ final class ProhibitionPruner
         }
         $node->remove();
 
-        // A parent left without elements keeps no indentation, as in ProfileReducer.
         if ($parent instanceof DOMElement && $parent->firstElementChild === null) {
-            for ($child = $parent->firstChild; $child !== null; $child = $next) {
-                $next = $child->nextSibling;
-                if ($child instanceof DOMText && trim($child->data) === '') {
-                    $child->remove();
-                }
-            }
+            ProfileReducer::clearEmptied($parent);
         }
     }
 

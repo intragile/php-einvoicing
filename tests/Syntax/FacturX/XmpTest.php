@@ -10,6 +10,7 @@ use DOMXPath;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Syntax\FacturX\FacturXProfile;
 use IntrAgile\EInvoicing\Syntax\FacturX\Xmp;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class XmpTest extends TestCase
@@ -116,6 +117,68 @@ final class XmpTest extends TestCase
         self::assertSame(1.0, $x->evaluate('count(//pdfaExtension:schemas)'));
         self::assertSame(1.0, $x->evaluate('count(//pdfaExtension:schemas/rdf:Bag/rdf:li)'));
         self::assertSame('fx', $x->evaluate('string(//pdfaExtension:schemas/rdf:Bag/rdf:li/pdfaSchema:prefix)'));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function emptyExtensionSchemas(): iterable
+    {
+        $description = '<rdf:Description rdf:about="" xmlns:pdfaExtension="http://www.aiim.org/pdfa/ns/extension/" xmlns:other="urn:example:other"';
+        yield 'attribute form' => [$description.' pdfaExtension:schemas=""/>'];
+        yield 'empty sequence' => [$description.'><pdfaExtension:schemas><rdf:Seq/></pdfaExtension:schemas></rdf:Description>'];
+        yield 'resource form' => [$description.'><pdfaExtension:schemas rdf:parseType="Resource"/></rdf:Description>'];
+        yield 'empty bag' => [$description.'><pdfaExtension:schemas><rdf:Bag/></pdfaExtension:schemas></rdf:Description>'];
+        yield 'one in each description' => [$description.'><pdfaExtension:schemas/></rdf:Description>'.$description.'><pdfaExtension:schemas/></rdf:Description>'];
+        // Nested in another property it is that property's value, not the extension schemas.
+        yield 'nested in another property' => [$description.'><other:Wrap rdf:parseType="Resource"><pdfaExtension:schemas/></other:Wrap></rdf:Description>'];
+    }
+
+    #[DataProvider('emptyExtensionSchemas')]
+    public function test_empty_extension_schemas_bag_gets_no_duplicate(string $descriptions): void
+    {
+        $existing = '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+            .$descriptions.'</rdf:RDF></x:xmpmeta>';
+
+        $x = $this->xpath(Xmp::merge($existing, FacturXProfile::En16931, 'factur-x.xml', $this->modified(), []));
+
+        $property = '/x:xmpmeta/rdf:RDF/rdf:Description/pdfaExtension:schemas';
+        self::assertSame(1.0, $x->evaluate("count({$property})"));
+        self::assertSame(0.0, $x->evaluate('count(//@pdfaExtension:schemas)'));
+        self::assertSame(0.0, $x->evaluate("count({$property}/@rdf:parseType)"));
+        self::assertSame(1.0, $x->evaluate("count({$property}/*)"));
+        self::assertSame(1.0, $x->evaluate("count({$property}/rdf:Bag/rdf:li)"));
+        self::assertSame('fx', $x->evaluate("string({$property}/rdf:Bag/rdf:li/pdfaSchema:prefix)"));
+    }
+
+    public function test_conflicts_and_merge_see_every_rdf_description(): void
+    {
+        // Two top-level rdf:RDF blocks, and an rdf:RDF nested inside a property value. Every
+        // reader sees the descriptions of the top-level blocks, and only those.
+        $rdf = 'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"';
+        $ns = 'xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/" xmlns:fx="urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#" xmlns:custom="urn:example:custom" xmlns:other="urn:example:other"';
+        $existing = '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+            .'<rdf:RDF '.$rdf.' '.$ns.'><rdf:Description rdf:about="" custom:Thing="first">'
+            .'<other:Wrap><rdf:RDF><rdf:Description rdf:about="" pdfaid:part="1" fx:ConformanceLevel="BASIC" custom:Thing="nested"/></rdf:RDF></other:Wrap>'
+            .'</rdf:Description></rdf:RDF>'
+            .'<rdf:RDF '.$rdf.' '.$ns.'><rdf:Description rdf:about="" custom:Thing="second" pdfaid:conformance="A"/></rdf:RDF>'
+            .'</x:xmpmeta>';
+
+        self::assertNull(Xmp::declaredPart($existing));
+        self::assertNull(Xmp::declaredConformanceLevel($existing));
+        self::assertSame(
+            ['The existing XMP metadata declares custom:Thing more than once with different values; the first ("first") was kept.'],
+            Xmp::conflicts($existing),
+        );
+
+        $xmp = Xmp::read($existing);
+        self::assertSame(Xmp::conflicts($existing), $xmp->conflictWarnings());
+        $merged = $xmp->merged(FacturXProfile::Basic, 'factur-x.xml', $this->modified(), []);
+        self::assertSame(Xmp::merge($existing, FacturXProfile::Basic, 'factur-x.xml', $this->modified(), []), $merged);
+        $x = $this->xpath($merged);
+        self::assertSame('A', $this->property($x, 'pdfaid:conformance'));
+        self::assertSame(3, Xmp::declaredPart($merged));
+        self::assertSame('BASIC', Xmp::declaredConformanceLevel($merged));
     }
 
     public function test_info_entries_fill_missing_properties(): void
@@ -240,6 +303,7 @@ final class XmpTest extends TestCase
         self::assertTrue($document->loadXML($xmp, LIBXML_NONET));
         $x = new DOMXPath($document);
         foreach ([
+            'x' => 'adobe:ns:meta/',
             'rdf' => 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
             'dc' => 'http://purl.org/dc/elements/1.1/',
             'xmp' => 'http://ns.adobe.com/xap/1.0/',

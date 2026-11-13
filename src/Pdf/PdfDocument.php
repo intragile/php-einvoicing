@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Pdf;
 
-use Closure;
-use Error;
 use IntrAgile\EInvoicing\Pdf\Exception\EncryptedPdf;
 use IntrAgile\EInvoicing\Pdf\Exception\UnreadablePdf;
 use IntrAgile\EInvoicing\Pdf\Exception\UnsupportedPdfFeature;
@@ -28,7 +26,7 @@ final class PdfDocument
      */
     public static function parse(string $bytes): self
     {
-        return self::guard(static fn (): self => new self(new PdfParser($bytes), $bytes));
+        return PdfParser::guarded(static fn (): self => new self(new PdfParser($bytes), $bytes));
     }
 
     /** The version in the %PDF- header, such as "1.7". */
@@ -51,13 +49,13 @@ final class PdfDocument
     /** Follows PdfRef values to a direct value; a missing or free object resolves to null. */
     public function resolve(mixed $value): mixed
     {
-        return self::guard(fn (): mixed => $this->parser->resolve($value));
+        return PdfParser::guarded(fn (): mixed => $this->parser->resolve($value));
     }
 
     /** The value of object $number in its newest revision, or null when there is none. */
     public function object(int $number): mixed
     {
-        return self::guard(fn (): mixed => $this->parser->object($number));
+        return PdfParser::guarded(fn (): mixed => $this->parser->object($number));
     }
 
     /**
@@ -72,7 +70,7 @@ final class PdfDocument
             throw new UnsupportedPdfFeature('Image streams are not decoded.');
         }
 
-        return self::guard(fn (): string => $this->parser->decode($stream));
+        return PdfParser::guarded(fn (): string => $this->parser->decode($stream));
     }
 
     /**
@@ -93,12 +91,16 @@ final class PdfDocument
     /**
      * The next free object number: the trailer /Size, or one more than the highest object
      * number the index lists when that is larger (some producers write a /Size that is too small,
-     * and allocating from it would overwrite existing objects).
+     * and allocating from it would overwrite existing objects). After reconstruction it is always
+     * one more than the highest object number found: the trailer of a damaged file is not trusted.
      */
     public function size(): int
     {
-        $size = $this->trailer()->get('Size');
         $listed = $this->parser->xref()->highest() + 1;
+        if ($this->reconstructed()) {
+            return $listed;
+        }
+        $size = $this->trailer()->get('Size');
 
         return is_int($size) ? max($size, $listed) : $listed;
     }
@@ -123,28 +125,5 @@ final class PdfDocument
     public function reconstructed(): bool
     {
         return $this->parser->xref()->reconstructed;
-    }
-
-    /**
-     * Runs $action with PHP warnings and engine errors (ValueError, ArithmeticError, TypeError
-     * and the like) turned into UnreadablePdf, so no damaged input can surface as a PHP diagnostic.
-     *
-     * @template T
-     *
-     * @param  Closure(): T  $action
-     * @return T
-     */
-    private static function guard(Closure $action): mixed
-    {
-        set_error_handler(static function (int $severity, string $message): never {
-            throw UnreadablePdf::malformed('Unreadable PDF: '.$message);
-        });
-        try {
-            return $action();
-        } catch (Error $e) {
-            throw new UnreadablePdf('Unreadable PDF: '.$e->getMessage(), 0, $e);
-        } finally {
-            restore_error_handler();
-        }
     }
 }

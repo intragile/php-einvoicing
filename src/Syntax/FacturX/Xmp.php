@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Syntax\FacturX;
 
 use DateTimeImmutable;
+use DOMAttr;
 use DOMDocument;
 use DOMElement;
 use DOMNode;
@@ -20,6 +21,10 @@ use IntrAgile\EInvoicing\Syntax\SafeXml;
  * schema and the PDF/A extension schema description that declares them are set, the modification
  * dates are updated, and the properties that mirror the PDF Info dictionary are filled in from
  * it where the XMP lacks them.
+ *
+ * Every reader of an existing packet sees the same properties: the children and attributes of
+ * each rdf:Description directly inside an rdf:RDF element that is not itself nested in another
+ * rdf:RDF. A packet that is both checked for conflicts and merged is parsed once, through read().
  */
 final class Xmp
 {
@@ -97,10 +102,73 @@ final class Xmp
      */
     public static function merge(?string $existingXmp, FacturXProfile $profile, string $attachmentName, DateTimeImmutable $modified, array $info): string
     {
-        $xmp = self::open($existingXmp);
+        return self::read($existingXmp)->merged($profile, $attachmentName, $modified, $info);
+    }
 
-        $xmp->set(self::PDFAID, 'part', '3');
-        $xmp->setIfMissing(self::PDFAID, 'conformance', 'B');
+    /**
+     * The existing packet, parsed once for conflictWarnings() and merged().
+     *
+     * @throws UnsafeXml when the existing XMP carries a DOCTYPE declaration
+     * @throws UnsupportedDocument when the existing XMP is not well-formed or not XMP
+     */
+    public static function read(?string $existingXmp): self
+    {
+        $document = new DOMDocument('1.0', 'UTF-8');
+        $document->formatOutput = true;
+        $meta = $document->createElementNS(self::X, 'x:xmpmeta');
+        $document->appendChild($meta);
+
+        $sources = [];
+        if ($existingXmp !== null && trim($existingXmp) !== '') {
+            $sources = self::rdfBlocks(SafeXml::load($existingXmp));
+            if ($sources === []) {
+                throw new UnsupportedDocument('The existing XMP metadata has no rdf:RDF element.');
+            }
+        }
+        $first = array_shift($sources);
+        $rdf = $first !== null ? $document->importNode($first, true) : $document->createElementNS(self::RDF, 'rdf:RDF');
+        assert($rdf instanceof DOMElement);
+        $meta->appendChild($rdf);
+        foreach ($sources as $source) {
+            foreach ($source->childNodes as $child) {
+                if ($child instanceof DOMElement) {
+                    $rdf->appendChild($document->importNode($child, true));
+                }
+            }
+        }
+
+        $about = '';
+        foreach (self::descriptionsOf($rdf) as $description) {
+            $about = $description->getAttributeNS(self::RDF, 'about');
+            break;
+        }
+
+        $xmp = new self($document, $rdf, $about);
+        $xmp->deduplicate();
+
+        return $xmp;
+    }
+
+    /**
+     * Conflicts in the existing packet that merged() resolves by keeping the first value; see
+     * conflicts().
+     *
+     * @return list<string>
+     */
+    public function conflictWarnings(): array
+    {
+        return $this->conflicts;
+    }
+
+    /**
+     * The merged packet; see merge().
+     *
+     * @param  array<string, string>  $info  as for merge()
+     */
+    public function merged(FacturXProfile $profile, string $attachmentName, DateTimeImmutable $modified, array $info): string
+    {
+        $this->set(self::PDFAID, 'part', '3');
+        $this->setIfMissing(self::PDFAID, 'conformance', 'B');
 
         foreach ([
             'DocumentType' => 'INVOICE',
@@ -108,23 +176,23 @@ final class Xmp
             'Version' => $profile->xmpVersion(),
             'ConformanceLevel' => $profile->value,
         ] as $name => $value) {
-            $xmp->set(self::FX, $name, $value);
+            $this->set(self::FX, $name, $value);
         }
-        $xmp->describeFacturXSchema();
+        $this->describeFacturXSchema();
 
         $date = $modified->format('Y-m-d\TH:i:sP');
-        $xmp->set(self::XMP, 'ModifyDate', $date);
-        $xmp->set(self::XMP, 'MetadataDate', $date);
+        $this->set(self::XMP, 'ModifyDate', $date);
+        $this->set(self::XMP, 'MetadataDate', $date);
 
-        $xmp->setIfMissing(self::DC, 'title', $info['Title'] ?? '', 'Alt');
-        $xmp->setIfMissing(self::DC, 'creator', $info['Author'] ?? '', 'Seq');
-        $xmp->setIfMissing(self::DC, 'description', $info['Subject'] ?? '', 'Alt');
-        $xmp->setIfMissing(self::PDF, 'Keywords', $info['Keywords'] ?? '');
-        $xmp->setIfMissing(self::XMP, 'CreatorTool', $info['Creator'] ?? '');
-        $xmp->setIfMissing(self::PDF, 'Producer', $info['Producer'] ?? '');
-        $xmp->setIfMissing(self::XMP, 'CreateDate', $info['CreationDate'] ?? '');
+        $this->setIfMissing(self::DC, 'title', $info['Title'] ?? '', 'Alt');
+        $this->setIfMissing(self::DC, 'creator', $info['Author'] ?? '', 'Seq');
+        $this->setIfMissing(self::DC, 'description', $info['Subject'] ?? '', 'Alt');
+        $this->setIfMissing(self::PDF, 'Keywords', $info['Keywords'] ?? '');
+        $this->setIfMissing(self::XMP, 'CreatorTool', $info['Creator'] ?? '');
+        $this->setIfMissing(self::PDF, 'Producer', $info['Producer'] ?? '');
+        $this->setIfMissing(self::XMP, 'CreateDate', $info['CreationDate'] ?? '');
 
-        return $xmp->packet();
+        return $this->packet();
     }
 
     /**
@@ -152,8 +220,8 @@ final class Xmp
 
     /**
      * The trimmed text of the first property $name in one of $namespaces, in element or
-     * attribute form, or null when there is none or the XMP cannot be read. Every rdf:RDF element
-     * is searched: some producers write a second one beside the first.
+     * attribute form, or null when there is none or the XMP cannot be read. Every top-level
+     * rdf:RDF element is searched: some producers write a second one beside the first.
      *
      * @param  list<string>  $namespaces
      *
@@ -169,8 +237,9 @@ final class Xmp
         } catch (UnsupportedDocument) {
             return null;
         }
+        $blocks = self::rdfBlocks($document);
         foreach ($namespaces as $namespace) {
-            foreach ($document->getElementsByTagNameNS(self::RDF, 'RDF') as $rdf) {
+            foreach ($blocks as $rdf) {
                 $value = self::findIn($rdf, $namespace, $name);
                 if ($value !== null) {
                     return trim($value->textContent);
@@ -193,55 +262,27 @@ final class Xmp
      */
     public static function conflicts(?string $existingXmp): array
     {
-        return self::open($existingXmp)->conflicts;
+        return self::read($existingXmp)->conflictWarnings();
     }
 
     /**
-     * The existing packet's properties gathered into one rdf:RDF: the descriptions of every
-     * rdf:RDF block are kept (some producers write more than one), and a property declared again
-     * is dropped after its first occurrence. Extension schema descriptions are merged into the
-     * first pdfaExtension:schemas bag instead.
+     * The rdf:RDF elements whose descriptions hold the packet's properties: every one not nested
+     * in another rdf:RDF, in document order. read() gathers their descriptions into one rdf:RDF,
+     * where a property declared again is dropped after its first occurrence and extension schema
+     * descriptions are merged into the first pdfaExtension:schemas bag.
+     *
+     * @return list<DOMElement>
      */
-    private static function open(?string $existing): self
+    private static function rdfBlocks(DOMDocument $document): array
     {
-        $document = new DOMDocument('1.0', 'UTF-8');
-        $document->formatOutput = true;
-        $meta = $document->createElementNS(self::X, 'x:xmpmeta');
-        $document->appendChild($meta);
-
-        $sources = [];
-        if ($existing !== null && trim($existing) !== '') {
-            foreach (SafeXml::load($existing)->getElementsByTagNameNS(self::RDF, 'RDF') as $candidate) {
-                if (! self::insideRdf($candidate)) {
-                    $sources[] = $candidate;
-                }
-            }
-            if ($sources === []) {
-                throw new UnsupportedDocument('The existing XMP metadata has no rdf:RDF element.');
-            }
-        }
-        $first = array_shift($sources);
-        $rdf = $first !== null ? $document->importNode($first, true) : $document->createElementNS(self::RDF, 'rdf:RDF');
-        assert($rdf instanceof DOMElement);
-        $meta->appendChild($rdf);
-        foreach ($sources as $source) {
-            foreach ($source->childNodes as $child) {
-                if ($child instanceof DOMElement) {
-                    $rdf->appendChild($document->importNode($child, true));
-                }
+        $blocks = [];
+        foreach ($document->getElementsByTagNameNS(self::RDF, 'RDF') as $candidate) {
+            if (! self::insideRdf($candidate)) {
+                $blocks[] = $candidate;
             }
         }
 
-        $about = '';
-        foreach (self::descriptionsOf($rdf) as $description) {
-            $about = $description->getAttributeNS(self::RDF, 'about');
-            break;
-        }
-
-        $xmp = new self($document, $rdf, $about);
-        $xmp->deduplicate();
-
-        return $xmp;
+        return $blocks;
     }
 
     private static function insideRdf(DOMElement $element): bool
@@ -452,29 +493,27 @@ final class Xmp
         return $this->descriptions[$namespace];
     }
 
-    /** Replaces any existing description of the fx schema in pdfaExtension:schemas with the reference one. */
+    /**
+     * Replaces any existing description of the fx schema in pdfaExtension:schemas with the
+     * reference one. The property is used in whatever form it has: an empty attribute becomes an
+     * element, and an element without an rdf:Bag gets one (taking over the items of another
+     * container), so the packet never holds the property twice or two containers in it.
+     */
     private function describeFacturXSchema(): void
     {
-        $bag = null;
-        foreach (iterator_to_array($this->rdf->getElementsByTagNameNS(self::EXTENSION, 'schemas')) as $schemas) {
-            foreach ($schemas->childNodes as $candidate) {
-                if ($candidate instanceof DOMElement && $candidate->namespaceURI === self::RDF && $candidate->localName === 'Bag') {
-                    $bag ??= $candidate;
-                    foreach (iterator_to_array($candidate->childNodes) as $item) {
-                        if ($item instanceof DOMElement && $this->describesFacturX($item)) {
-                            $candidate->removeChild($item);
-                        }
-                    }
+        $property = $this->find(self::EXTENSION, 'schemas');
+        if ($property instanceof DOMAttr) {
+            $property->ownerElement?->removeAttributeNode($property);
+            $property = null;
+        }
+        if ($property instanceof DOMElement) {
+            $bag = $this->bagOf($property);
+            foreach (iterator_to_array($bag->childNodes) as $item) {
+                if ($item instanceof DOMElement && $this->describesFacturX($item)) {
+                    $bag->removeChild($item);
                 }
             }
-        }
-        $empty = $this->rdf->getElementsByTagNameNS(self::EXTENSION, 'schemas')->item(0);
-        if ($bag === null && $empty instanceof DOMElement) {
-            // An existing pdfaExtension:schemas without a bag gets one, not a second property.
-            $bag = $this->element(self::RDF, 'rdf:Bag');
-            $empty->appendChild($bag);
-        }
-        if ($bag === null) {
+        } else {
             $schemas = $this->append(self::EXTENSION, 'schemas', null);
             $description = $schemas->parentNode;
             assert($description instanceof DOMElement);
@@ -499,6 +538,34 @@ final class Xmp
         }
         $schema->appendChild($this->element(self::SCHEMA, 'pdfaSchema:property'))->appendChild($properties);
         $bag->appendChild($schema);
+    }
+
+    /**
+     * The rdf:Bag of a pdfaExtension:schemas element. Without one, the element's content (another
+     * container, text, or a resource form) is replaced by a bag holding the items it had.
+     */
+    private function bagOf(DOMElement $schemas): DOMElement
+    {
+        foreach ($schemas->childNodes as $child) {
+            if ($child instanceof DOMElement && $child->namespaceURI === self::RDF && $child->localName === 'Bag') {
+                return $child;
+            }
+        }
+        $bag = $this->element(self::RDF, 'rdf:Bag');
+        foreach (iterator_to_array($schemas->childNodes) as $child) {
+            if ($child instanceof DOMElement && $child->namespaceURI === self::RDF) {
+                foreach (iterator_to_array($child->childNodes) as $item) {
+                    if ($item instanceof DOMElement && $item->namespaceURI === self::RDF && $item->localName === 'li') {
+                        $bag->appendChild($item);
+                    }
+                }
+            }
+            $schemas->removeChild($child);
+        }
+        $schemas->removeAttributeNS(self::RDF, 'parseType');
+        $schemas->appendChild($bag);
+
+        return $bag;
     }
 
     private function describesFacturX(DOMElement $item): bool

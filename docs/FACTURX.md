@@ -87,7 +87,7 @@ which is a `RuntimeException`; catch it too (`catch (UnsafeXml | UnsupportedDocu
 | The PDF cannot be read, or its index had to be reconstructed | `UnreadablePdf` |
 | The PDF already carries an invoice (`factur-x.xml`, `xrechnung.xml`, `zugferd-invoice.xml`) | `InvoiceAlreadyEmbedded` |
 | The PDF declares PDF/A-4 or later | `UnsupportedPdfAPart` |
-| The input declares no PDF/A and `$strict` is true | `NotPdfA` |
+| The input declares no PDF/A, or is PDF 2.0, and `$strict` is true | `NotPdfA` |
 | The XML is not CII, or declares no known profile | `UnsupportedDocument` |
 | The XML declares another profile than `$profile` | `ProfileMismatch` |
 | The PDF's XMP metadata is not well-formed XML, or has no `rdf:RDF` element | `UnsupportedDocument` |
@@ -104,6 +104,9 @@ change colours. Producing a conforming PDF/A is the job of whatever renders your
 - An input that declares no PDF/A part is embedded into with a warning in
   `EmbedResult::$warnings`, or refused with `NotPdfA` when `$strict` is true. Use `strict: true`
   in production code that must never emit a non-PDF/A file.
+- An input that is PDF 2.0 (its header, or its catalog `/Version`) is embedded into with the
+  warning that PDF/A-3 is based on PDF 1.7, so the result is not a valid PDF/A-3; it is refused
+  with `NotPdfA` when `$strict` is true.
 - Whether such an output passes a PDF/A validator depends on the input. We do not claim that it
   fails, and we do not claim that it passes: in one test, a plain headless-Chrome print passed
   PDF/A-3b after embedding because the missing trailer `/ID`, XMP and output intent were exactly
@@ -129,7 +132,8 @@ $invoice = $document->invoice()->invoice; // Invoice, as for a CII file
 ```
 
 The reader finds the invoice by file name (`factur-x.xml`, then `xrechnung.xml`, then
-`zugferd-invoice.xml`), in the `/AF` array before the name tree. The profile comes from the XML;
+`zugferd-invoice.xml`), in the `/AF` array before the name tree, matching `/UF` before `/F`; of
+two matches in the same place, the earlier one wins. The profile comes from the XML;
 a disagreeing XMP level, a missing `/AFRelationship` or a missing guideline identifier is a
 warning. A PDF with no invoice, and ZUGFeRD 1.0 documents (another CII version), throw
 `UnsupportedDocument`.
@@ -178,6 +182,12 @@ profile does not allow, so the output is valid for it:
 `write()` returns a `ReducedXml`: `xml`, and `removed`, the sorted paths of what was removed. A
 non-empty `removed` means the invoice carried data the profile cannot hold; check it before
 sending, or choose a richer profile. Use EN 16931 when you need the full semantic model.
+
+The reduced document is validated against the profile schema once more before it is returned. A
+failure there would be a defect of the writer, not of the invoice, and throws a `LogicException`
+naming the profile. The reduction reads the profile schema and the files it imports only through
+relative paths inside the schema's directory; any other `schemaLocation` is refused with
+`UnusableSchema`.
 
 ## Verification
 

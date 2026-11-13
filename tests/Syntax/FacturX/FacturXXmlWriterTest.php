@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Syntax\FacturX;
 
+use Composer\Autoload\ClassLoader;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\ProcessControl;
@@ -14,8 +15,11 @@ use IntrAgile\EInvoicing\Syntax\FacturX\FacturXProfile;
 use IntrAgile\EInvoicing\Syntax\FacturX\FacturXXmlWriter;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
+use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\SchemaValidator;
+use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 
 final class FacturXXmlWriterTest extends TestCase
@@ -43,7 +47,7 @@ final class FacturXXmlWriterTest extends TestCase
     }
 
     #[DataProvider('invoicesAndProfiles')]
-    public function test_every_profile_output_validates_against_its_schema(Invoice $invoice, FacturXProfile $profile): void
+    public function test_reduced_output_is_xsd_valid_for_every_profile(Invoice $invoice, FacturXProfile $profile): void
     {
         $reduced = (new FacturXXmlWriter)->write($invoice, $profile);
         $document = SafeXml::load($reduced->xml);
@@ -91,5 +95,48 @@ final class FacturXXmlWriterTest extends TestCase
         $expected = (new CiiWriter)->write($invoice->withProcessControl(new ProcessControl(FacturXProfile::XRechnung->guidelineId(), $invoice->processControl?->businessProcessType)));
         self::assertSame($expected, $reduced->xml);
         self::assertSame([], $reduced->removed);
+    }
+
+    /**
+     * The nodes the MINIMUM rules prohibit although the MINIMUM schema allows them.
+     */
+    public function test_r3_removed_paths_are_pinned(): void
+    {
+        $removed = (new FacturXXmlWriter)->write(TotalsCalculator::complete(InvoiceFactory::mixedVat()), FacturXProfile::Minimum)->removed;
+
+        self::assertContains('/rsm:CrossIndustryInvoice/rsm:SupplyChainTradeTransaction/ram:ApplicableHeaderTradeAgreement/ram:BuyerTradeParty/ram:PostalTradeAddress', $removed);
+        self::assertContains('/rsm:CrossIndustryInvoice/rsm:SupplyChainTradeTransaction/ram:ApplicableHeaderTradeAgreement/ram:BuyerTradeParty/ram:SpecifiedTaxRegistration', $removed);
+    }
+
+    public function test_failed_revalidation_throws_logic_exception_naming_the_profile(): void
+    {
+        // The full CII document still has its lines, which the MINIMUM schema does not allow.
+        $full = SafeXml::load((new CiiWriter)->write(TotalsCalculator::complete(InvoiceFactory::mixedVat())));
+
+        try {
+            (new FacturXXmlWriter)->assertSchemaValid($full, FacturXProfile::Minimum, RuleFiles::schema('MINIMUM'));
+            self::fail('A document the profile schema rejects passed the re-validation.');
+        } catch (LogicException $e) {
+            self::assertStringContainsString('MINIMUM', $e->getMessage());
+            self::assertStringContainsString('IncludedSupplyChainTradeLineItem', $e->getMessage());
+        }
+
+        $reduced = SafeXml::load((new FacturXXmlWriter)->write(TotalsCalculator::complete(InvoiceFactory::mixedVat()), FacturXProfile::Minimum)->xml);
+        (new FacturXXmlWriter)->assertSchemaValid($reduced, FacturXProfile::Minimum, RuleFiles::schema('MINIMUM'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_missing_rules_package_names_the_composer_command(): void
+    {
+        self::assertFalse(class_exists(RuleFiles::class, false), 'The rules package is already loaded in this process.');
+        foreach (ClassLoader::getRegisteredLoaders() as $loader) {
+            $loader->setPsr4('IntrAgile\\EInvoicing\\Rules\\FacturX\\', []);
+        }
+        self::assertFalse(class_exists(RuleFiles::class));
+
+        $this->expectException(RulesNotInstalled::class);
+        $this->expectExceptionMessage('composer require intragile/einvoicing-rules-facturx');
+
+        (new FacturXXmlWriter)->write(TotalsCalculator::complete(InvoiceFactory::mixedVat()), FacturXProfile::Minimum);
     }
 }

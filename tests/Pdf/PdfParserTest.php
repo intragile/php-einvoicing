@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Pdf;
 
+use Error;
 use ErrorException;
 use IntrAgile\EInvoicing\Pdf\Exception\EncryptedPdf;
 use IntrAgile\EInvoicing\Pdf\Exception\UnreadablePdf;
 use IntrAgile\EInvoicing\Pdf\Exception\UnsupportedPdfFeature;
+use IntrAgile\EInvoicing\Pdf\NameTree;
 use IntrAgile\EInvoicing\Pdf\PdfDictionary;
 use IntrAgile\EInvoicing\Pdf\PdfDocument;
 use IntrAgile\EInvoicing\Pdf\PdfName;
@@ -17,6 +19,9 @@ use IntrAgile\EInvoicing\Pdf\PdfStream;
 use IntrAgile\EInvoicing\Pdf\PdfString;
 use IntrAgile\EInvoicing\Tests\Support\PdfBuilder;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
+use Throwable;
+use TypeError;
 
 final class PdfParserTest extends TestCase
 {
@@ -489,6 +494,134 @@ final class PdfParserTest extends TestCase
         self::assertSame($raw, $document->decodedStream($stream));
     }
 
+    public function test_non_string_name_tree_key_is_malformed(): void
+    {
+        $pdf = $this->minimal(new PdfBuilder)
+            ->object(3, '<< /Names [(a.xml) 4 0 R /NotAString 4 0 R] >>')
+            ->object(4, '<< /Type /Filespec >>')
+            ->trailer('/Root 1 0 R')
+            ->classic();
+        $document = PdfDocument::parse($pdf);
+        $tree = $document->object(3);
+        self::assertInstanceOf(PdfDictionary::class, $tree);
+
+        try {
+            NameTree::entries($document, $tree);
+            self::fail('A name tree key that is not a string was accepted.');
+        } catch (UnreadablePdf $e) {
+            self::assertSame(UnreadablePdf::MALFORMED, $e->getCode());
+            self::assertStringContainsString('name tree key is not a string', $e->getMessage());
+        }
+    }
+
+    public function test_indirect_filter_on_xref_stream(): void
+    {
+        // The xref stream and the object stream both name their filter through object 9. While
+        // the index is read nothing can be resolved, so the file is reconstructed; reconstruction
+        // resolves the object stream's filter against the objects it found.
+        $pdf = (new PdfBuilder('1.5'))
+            ->object(9, '/FlateDecode')
+            ->objectStream(5, [1 => self::CATALOG, 2 => self::PAGES, 3 => '(packed)'])
+            ->trailer('/Root 1 0 R')
+            ->xrefStream();
+        $broken = str_replace(['/Filter /FlateDecode /DecodeParms', '/Filter /FlateDecode /Length'], ['/Filter 9 0 R /DecodeParms', '/Filter 9 0 R /Length'], $pdf);
+        self::assertSame(2, substr_count($broken, '/Filter 9 0 R'));
+
+        $parser = new PdfParser($broken);
+        $document = PdfDocument::parse($broken);
+
+        self::assertSame(0, $parser->xref()->skippedObjectStreams);
+        self::assertTrue($document->reconstructed());
+        self::assertTrue($document->catalog()->isName('Type', 'Catalog'));
+        self::assertEquals(new PdfString('packed'), $document->object(3));
+    }
+
+    public function test_unresolvable_indirect_filter_skips_the_object_stream_and_counts_it(): void
+    {
+        $pdf = (new PdfBuilder('1.5'))
+            ->object(1, self::CATALOG)
+            ->object(2, self::PAGES)
+            ->objectStream(5, [3 => '(packed)'])
+            ->trailer('/Root 1 0 R')
+            ->xrefStream();
+        $broken = (string) preg_replace('/startxref\n\d+/', "startxref\n1", str_replace('/Type /ObjStm /N 1 /First 4 /Filter /FlateDecode', '/Type /ObjStm /N 1 /First 4 /Filter 77 0 R', $pdf));
+        self::assertStringContainsString('/Filter 77 0 R', $broken);
+
+        $parser = new PdfParser($broken);
+
+        self::assertTrue($parser->xref()->reconstructed);
+        self::assertSame(1, $parser->xref()->skippedObjectStreams);
+        self::assertNull($parser->object(3));
+    }
+
+    public function test_one_bad_object_stream_does_not_abort_reconstruction(): void
+    {
+        $pdf = (new PdfBuilder('1.5'))
+            ->objectStream(5, [1 => self::CATALOG, 2 => self::PAGES])
+            ->objectStream(6, [3 => '(lost)'])
+            ->trailer('/Root 1 0 R')
+            ->xrefStream();
+        $at = (int) strpos($pdf, "6 0 obj\n");
+        $broken = substr($pdf, 0, $at).preg_replace('~/Filter /FlateDecode~', '/Filter /LZWDecode', substr($pdf, $at), 1);
+        $broken = (string) preg_replace('/startxref\n\d+/', "startxref\n1", $broken);
+        self::assertStringContainsString('/LZWDecode', $broken);
+
+        $parser = new PdfParser($broken);
+        $document = PdfDocument::parse($broken);
+
+        self::assertSame(1, $parser->xref()->skippedObjectStreams);
+        self::assertTrue($document->reconstructed());
+        self::assertTrue($document->catalog()->isName('Type', 'Catalog'));
+        self::assertNull($document->object(3));
+    }
+
+    public function test_type_error_inside_parser_becomes_unreadable_pdf(): void
+    {
+        $error = new TypeError('broken');
+
+        try {
+            PdfParser::guarded(static fn (): int => self::raise($error));
+            self::fail('The TypeError escaped the guard.');
+        } catch (UnreadablePdf $e) {
+            self::assertSame($error, $e->getPrevious());
+            self::assertStringContainsString('broken', $e->getMessage());
+        }
+
+        try {
+            PdfParser::guarded(static fn (): int => self::raise(new Error('engine')));
+            self::fail('The Error escaped the guard.');
+        } catch (UnreadablePdf $e) {
+            self::assertInstanceOf(Error::class, $e->getPrevious());
+        }
+
+        self::assertSame(42, PdfParser::guarded(static fn (): int => 42));
+    }
+
+    public function test_guard_turns_warnings_into_malformed_and_restores_the_handler(): void
+    {
+        // Exceptions other than engine errors pass through unchanged.
+        $passed = new RuntimeException('passes');
+        try {
+            PdfParser::guarded(static fn (): int => self::raise($passed));
+            self::fail('The exception did not pass through the guard.');
+        } catch (RuntimeException $e) {
+            self::assertSame($passed, $e);
+        }
+
+        try {
+            PdfParser::guarded(static function (): void {
+                trigger_error('a warning', E_USER_WARNING);
+            });
+            self::fail('The warning escaped the guard.');
+        } catch (UnreadablePdf $e) {
+            self::assertSame(UnreadablePdf::MALFORMED, $e->getCode());
+        }
+
+        // The test's own handler is back in place.
+        $this->expectException(ErrorException::class);
+        trigger_error('after the guard', E_USER_WARNING);
+    }
+
     /**
      * A catalog, a page tree and an xref stream of $size rows (W [1 $width 2], PNG Up) whose rows
      * between the page tree and the stream itself are free, after $padding bytes of comment.
@@ -523,6 +656,12 @@ final class PdfParserTest extends TestCase
 
         return $pdf.($size - 1)." 0 obj\n<< /Type /XRef /Size ".$size.' /W [1 '.$width.' 2] /Root 1 0 R /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns '.(3 + $width).' >> /Length '.strlen($data)." >>\nstream\n"
             .$data."\nendstream\nendobj\nstartxref\n".$start."\n%%EOF\n";
+    }
+
+    /** Throws $throwable; declared with a return type so the guard's callers stay reachable. */
+    private static function raise(Throwable $throwable): int
+    {
+        throw $throwable;
     }
 
     private function minimal(PdfBuilder $builder): PdfBuilder

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Pdf;
 
 use Closure;
+use Error;
 use IntrAgile\EInvoicing\Pdf\Exception\EncryptedPdf;
 use IntrAgile\EInvoicing\Pdf\Exception\UnreadablePdf;
 
@@ -50,8 +51,8 @@ final class PdfParser
 
     /**
      * The most entries a cross-reference index may hold, whatever the file size: an index of this
-     * size needs about 20 MiB. A larger listed index is reconstructed instead; reconstruction
-     * that finds more objects than this is refused.
+     * size needs about 30 MiB while it is built. A larger listed index is reconstructed instead;
+     * reconstruction that finds more objects than this is refused.
      */
     public const int MAX_INDEX_ENTRIES = 1 << 19;
 
@@ -92,12 +93,13 @@ final class PdfParser
         $this->version = self::headerVersion($bytes);
         $this->maxEntries = min(self::MAX_INDEX_ENTRIES, max(self::ENTRY_FLOOR, intdiv(strlen($bytes), self::BYTES_PER_ENTRY)));
         $startXref = self::startXrefOf($bytes);
-        // Before the index exists nothing can be resolved: an indirect /Filter or /DecodeParms on
-        // an xref stream (where the standard forbids them) is damage. So is a predictor over its
-        // budget there, which reconstruction can get past without the xref stream.
-        $decodeDirect = fn (PdfStream $stream): string => $this->decodeWith($stream, static function (mixed $value): mixed {
+        // While the index is read nothing can be resolved yet: an indirect /Filter or /DecodeParms
+        // on an xref stream (where the standard forbids them) is damage, which reconstruction gets
+        // past. Reconstruction passes a resolver over the objects its scan found. A predictor over
+        // its budget is damage here too, since reconstruction can do without the stream.
+        $decodeIndexing = fn (PdfStream $stream, ?Closure $resolve = null): string => $this->decodeWith($stream, $resolve ?? static function (mixed $value): mixed {
             if ($value instanceof PdfRef) {
-                throw UnreadablePdf::malformed('An xref or object stream refers to its filter indirectly.');
+                throw UnreadablePdf::malformed('An xref stream refers to its filter indirectly.');
             }
 
             return $value;
@@ -106,7 +108,7 @@ final class PdfParser
             if ($startXref === null) {
                 throw UnreadablePdf::malformed('The PDF has no startxref.');
             }
-            $this->xref = CrossReference::read($this->lexer, $startXref, $decodeDirect, $this->maxEntries);
+            $this->xref = CrossReference::read($this->lexer, $startXref, $decodeIndexing, $this->maxEntries);
             $this->verifyOffsets();
             $this->open();
         } catch (UnreadablePdf $e) {
@@ -116,7 +118,7 @@ final class PdfParser
             $this->objects = [];
             $this->objectStreams = [];
             $this->failedObjectStreams = [];
-            $this->xref = CrossReference::reconstruct($this->lexer, $startXref ?? 0, $decodeDirect, $this->maxEntries);
+            $this->xref = CrossReference::reconstruct($this->lexer, $startXref ?? 0, $decodeIndexing, $this->maxEntries);
             $this->open();
         }
     }
@@ -124,6 +126,36 @@ final class PdfParser
     public function version(): string
     {
         return $this->version;
+    }
+
+    /**
+     * Runs $parse with PHP warnings and engine errors (TypeError, ValueError, ArithmeticError and
+     * the like) turned into UnreadablePdf, so no damaged input can surface as a PHP diagnostic.
+     * The engine error is chained as the previous exception; other exceptions pass unchanged.
+     *
+     * @internal Used by the PDF and Factur-X entry points.
+     *
+     * @template T
+     *
+     * @param-immediately-invoked-callable  $parse
+     *
+     * @param  callable(): T  $parse
+     * @return T
+     *
+     * @throws UnreadablePdf
+     */
+    public static function guarded(callable $parse): mixed
+    {
+        set_error_handler(static function (int $severity, string $message): never {
+            throw UnreadablePdf::malformed('Unreadable PDF: '.$message);
+        });
+        try {
+            return $parse();
+        } catch (Error $e) {
+            throw new UnreadablePdf('Unreadable PDF: '.$e->getMessage(), 0, $e);
+        } finally {
+            restore_error_handler();
+        }
     }
 
     public function xref(): CrossReference
@@ -195,11 +227,9 @@ final class PdfParser
         // or corrupt streams exhaust the budgets instead of repeating the work.
         $inflated = 0;
         $predicted = 0;
+        // Filters rethrows failures with a trace that holds no decoded data.
         try {
             return Filters::decode($stream, $resolve, $limit, self::MAX_PREDICTOR_BYTES - $this->predicted, $inflated, $predicted, $indexing);
-        } catch (UnreadablePdf $e) {
-            // A fresh exception: the original's trace may hold up to 64 MiB of decoded data.
-            throw self::fresh($e);
         } finally {
             $this->decoded += $inflated;
             $this->predicted += $predicted;
@@ -301,16 +331,12 @@ final class PdfParser
 
             return $this->objectStreams[$number] = Lexer::objectStream($stream, $this->decode(...), $this->maxEntries);
         } catch (UnreadablePdf $e) {
-            throw $this->failedObjectStreams[$number] = self::fresh($e);
+            // Kept for later requests, so it must not hold the decoded data through its trace.
+            [$class, $message, $code] = [$e::class, $e->getMessage(), $e->getCode()];
+            unset($e);
+
+            throw $this->failedObjectStreams[$number] = new $class($message, $code);
         }
-    }
-
-    /** A copy of $e with the same class, message and code but a trace that holds no large data. */
-    private static function fresh(UnreadablePdf $e): UnreadablePdf
-    {
-        $class = $e::class;
-
-        return new $class($e->getMessage(), $e->getCode());
     }
 
     private static function headerVersion(string $bytes): string

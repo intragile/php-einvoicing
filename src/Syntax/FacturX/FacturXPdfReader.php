@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Syntax\FacturX;
 
+use DOMElement;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Pdf\Exception\EncryptedPdf;
@@ -13,6 +14,7 @@ use IntrAgile\EInvoicing\Pdf\NameTree;
 use IntrAgile\EInvoicing\Pdf\PdfDictionary;
 use IntrAgile\EInvoicing\Pdf\PdfDocument;
 use IntrAgile\EInvoicing\Pdf\PdfName;
+use IntrAgile\EInvoicing\Pdf\PdfParser;
 use IntrAgile\EInvoicing\Pdf\PdfStream;
 use IntrAgile\EInvoicing\Pdf\PdfString;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiDocument;
@@ -27,8 +29,13 @@ use IntrAgile\EInvoicing\Syntax\SafeXml;
  * 2. the location: a file specification in the catalog's /AF array before one in the
  *    /EmbeddedFiles name tree;
  * 3. the name entry: a match on /UF before a match on /F;
- * 4. the order within the /AF array or the name tree.
- * ZUGFeRD 1.0 documents use another CII version and are refused.
+ * 4. the order within the location: the order of the /AF array, or the depth-first key order of
+ *    the name tree.
+ * A file specification listed in both locations is found through /AF first. The innermost tie,
+ * two file specifications in one location matching the same name through the same entry, goes to
+ * the earlier one. ZUGFeRD 1.0 documents use another CII version and are refused.
+ *
+ * Damaged input never surfaces as a PHP warning or engine error: those become UnreadablePdf.
  */
 final class FacturXPdfReader
 {
@@ -52,6 +59,11 @@ final class FacturXPdfReader
      */
     public function read(string $pdf): FacturXDocument
     {
+        return PdfParser::guarded(static fn (): FacturXDocument => self::extract($pdf));
+    }
+
+    private static function extract(string $pdf): FacturXDocument
+    {
         $document = PdfDocument::parse($pdf);
         $catalog = $document->catalog();
         $filespecs = self::filespecs($document, $catalog);
@@ -60,7 +72,9 @@ final class FacturXPdfReader
         $xml = self::embeddedData($document, $filespec, $name);
         $dom = SafeXml::load($xml);
         $root = $dom->documentElement;
-        if ($root === null || $root->localName === 'CrossIndustryDocument' || ($name === self::ZUGFERD_1_NAME && $root->localName !== 'CrossIndustryInvoice')) {
+        // SafeXml refuses a document without a root element.
+        assert($root instanceof DOMElement);
+        if ($root->localName === 'CrossIndustryDocument' || ($name === self::ZUGFERD_1_NAME && $root->localName !== 'CrossIndustryInvoice')) {
             throw new UnsupportedDocument(sprintf('The embedded invoice "%s" is a ZUGFeRD 1.0 document; ZUGFeRD 1.0 is not supported.', $name));
         }
         if ($root->namespaceURI !== self::CII_NAMESPACE || $root->localName !== 'CrossIndustryInvoice') {

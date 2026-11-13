@@ -20,7 +20,12 @@ The hostile-input tests run at PHP's default `memory_limit` of 128M.
 - Classic cross-reference tables, cross-reference streams and hybrid files.
 - Object streams, and files with several incremental updates (`/Prev` chains).
 - Damaged files: when the cross-reference index is wrong or missing, the parser rebuilds it by
-  scanning the file. `PdfDocument::reconstructed()` says so.
+  scanning the file. `PdfDocument::reconstructed()` says so. An object stream whose filter is
+  given indirectly is decoded with the filter object the scan found. One object stream that
+  cannot be decoded (damaged, an unresolvable or unsupported filter) is skipped, so the objects
+  inside it are missing, but the rest of the file is still read. After reconstruction
+  `PdfDocument::size()` is one more than the highest object number found; the damaged file's
+  trailer `/Size` is ignored.
 - The `FlateDecode` filter, including the PNG and TIFF predictors.
 
 ## What it refuses
@@ -30,8 +35,13 @@ The hostile-input tests run at PHP's default `memory_limit` of 128M.
 | An encrypted PDF (the trailer has `/Encrypt`) | `EncryptedPdf` |
 | A stream filter other than `FlateDecode` on a stream the parser has to read | `UnsupportedPdfFeature` |
 | Data that is not a PDF (no `%PDF-` header in the first 1024 bytes) or is too damaged to read | `UnreadablePdf` |
+| A name tree (such as `/EmbeddedFiles`) with a key that is not a string | `UnreadablePdf` |
 | A breach of a limit below | `UnreadablePdf` |
 | Writing into a file whose index had to be reconstructed | `UnreadablePdf` |
+
+A PHP warning or engine error (such as a `TypeError`) raised while a PDF is parsed is turned into
+`UnreadablePdf`, with the engine error as its previous exception. Exceptions raised while a stream
+is decoded do not keep the decoded data alive through their stack traces.
 
 `EncryptedPdf` and `UnsupportedPdfFeature` extend `UnreadablePdf`, which extends
 `UnsupportedDocument`, so one `catch (UnsupportedDocument $e)` covers every refusal of the PDF

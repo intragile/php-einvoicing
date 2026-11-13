@@ -164,6 +164,77 @@ final class ProfileReducerTest extends TestCase
         (new ProfileReducer)->reduce('<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"/>', self::FIXTURES.'/'.$file);
     }
 
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function escapingSchemaLocations(): iterable
+    {
+        yield 'absolute path' => ['absolute-import.xsd', '/small-ram.xsd'];
+        yield 'drive letter' => ['drive-import.xsd', 'C:/small-ram.xsd'];
+        yield 'backslash root' => ['backslash-import.xsd', '\small-ram.xsd'];
+        yield 'parent of the schema directory' => ['nested/escape-import.xsd', '../small-ram.xsd'];
+    }
+
+    #[DataProvider('escapingSchemaLocations')]
+    public function test_absolute_schema_location_is_refused(string $file, string $location): void
+    {
+        try {
+            (new ProfileReducer)->reduce('<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"/>', self::FIXTURES.'/'.$file);
+            self::fail('The schemaLocation "'.$location.'" was followed.');
+        } catch (UnusableSchema $e) {
+            self::assertStringContainsString('"'.$location.'"', $e->getMessage());
+            self::assertStringContainsString('relative path inside the schema directory', $e->getMessage());
+        }
+    }
+
+    public function test_parent_step_that_stays_inside_the_schema_directory_is_followed(): void
+    {
+        $reduced = (new ProfileReducer)->reduce('<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100">x</rsm:CrossIndustryInvoice>', self::FIXTURES.'/inner-dotdot-import.xsd');
+
+        self::assertSame([], $reduced->removed);
+    }
+
+    public function test_compiled_schemas_are_cached_by_real_path(): void
+    {
+        $reducer = new ProfileReducer;
+        $xml = '<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"><rsm:First>A</rsm:First></rsm:CrossIndustryInvoice>';
+
+        $reducer->reduce($xml, self::FIXTURES.'/small.xsd');
+        $reducer->reduce($xml, self::FIXTURES.'/nested/../small.xsd');
+        $reducer->reduce($xml, self::FIXTURES.'/./small.xsd');
+
+        $schemas = (new \ReflectionProperty(ProfileReducer::class, 'schemas'))->getValue($reducer);
+        self::assertIsArray($schemas);
+        self::assertSame([(string) realpath(self::FIXTURES.'/small.xsd')], array_keys($schemas));
+    }
+
+    public function test_comments_in_emptied_elements_are_removed(): void
+    {
+        $xml = <<<'XML'
+            <?xml version="1.0" encoding="UTF-8"?>
+            <rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100">
+              <rsm:First>A</rsm:First>
+              <!-- kept: its parent keeps elements -->
+              <rsm:Fourth>
+                <rsm:Inner>i</rsm:Inner>
+              </rsm:Fourth>
+              <rsm:Fifth>
+                <!-- about the removed child -->
+                <rsm:Gone/>
+                <!-- trailing -->
+              </rsm:Fifth>
+            </rsm:CrossIndustryInvoice>
+            XML;
+
+        $reduced = (new ProfileReducer)->reduce($xml, self::FIXTURES.'/small.xsd');
+
+        self::assertSame(['/rsm:CrossIndustryInvoice/rsm:Fifth/rsm:Gone'], $reduced->removed);
+        self::assertStringContainsString('<rsm:Fifth/>', $reduced->xml);
+        self::assertStringNotContainsString('removed child', $reduced->xml);
+        self::assertStringNotContainsString('trailing', $reduced->xml);
+        self::assertStringContainsString('<!-- kept: its parent keeps elements -->', $reduced->xml);
+    }
+
     public function test_root_the_schema_does_not_declare_is_refused(): void
     {
         $this->expectException(InvalidArgumentException::class);

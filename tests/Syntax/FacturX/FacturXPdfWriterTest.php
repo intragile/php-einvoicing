@@ -402,6 +402,31 @@ final class FacturXPdfWriterTest extends TestCase
         (new FacturXPdfWriter)->embed($pdf, self::xml(FacturXProfile::En16931), modified: $this->modified());
     }
 
+    public function test_pdf_2_input_warns_and_strict_refuses(): void
+    {
+        $inputs = [
+            'header' => $this->basePdf(version: '2.0'),
+            'catalog /Version' => $this->basePdf(version: '1.7', catalog: '/Version /2.0'),
+        ];
+        foreach ($inputs as $case => $pdf) {
+            $result = (new FacturXPdfWriter)->embed($pdf, self::xml(FacturXProfile::En16931), modified: $this->modified());
+
+            self::assertCount(1, $result->warnings, $case);
+            self::assertStringContainsStringIgnoringCase('the input is PDF 2.0; PDF/A-3 is based on PDF 1.7, so the result is not a valid PDF/A-3', $result->warnings[0], $case);
+            $this->reparse($pdf, $result);
+
+            try {
+                (new FacturXPdfWriter)->embed($pdf, self::xml(FacturXProfile::En16931), modified: $this->modified(), strict: true);
+                self::fail($case.': strict mode accepted a PDF 2.0 input.');
+            } catch (NotPdfA $e) {
+                self::assertStringContainsString('PDF 2.0', $e->getMessage(), $case);
+            }
+        }
+
+        $lower = $this->basePdf(version: '1.7', catalog: '/Version /1.7');
+        self::assertSame([], (new FacturXPdfWriter)->embed($lower, self::xml(FacturXProfile::En16931), modified: $this->modified(), strict: true)->warnings);
+    }
+
     public function test_profile_mismatch_is_refused(): void
     {
         try {

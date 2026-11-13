@@ -27,6 +27,10 @@ final class Filters
      * a predictor over its budget is reported as MALFORMED instead of REFUSED, so that a reader
      * still building the index can fall back to reconstruction.
      *
+     * The helpers work on the buffer by reference. A failure is rethrown as a fresh exception of
+     * the same class, message and code once the buffer is released, because the original's trace
+     * refers to the decoded data through the helpers' arguments.
+     *
      * @param  Closure(mixed): mixed  $resolve
      */
     public static function decode(PdfStream $stream, Closure $resolve, int $maxBytes, int $maxPredictorBytes, int &$inflated, int &$predicted, bool $predictorLimitIsDamage = false): string
@@ -40,33 +44,42 @@ final class Filters
         $parameters = $resolve($dictionary->get('DecodeParms'));
         $parameters = is_array($parameters) ? $parameters : [$parameters];
         $data = $stream->raw;
-        foreach ($filters as $i => $filter) {
-            $filter = $resolve($filter);
-            if (! $filter instanceof PdfName) {
-                throw UnreadablePdf::malformed('A stream /Filter entry is not a name.');
+        try {
+            foreach ($filters as $i => $filter) {
+                $filter = $resolve($filter);
+                if (! $filter instanceof PdfName) {
+                    throw UnreadablePdf::malformed('A stream /Filter entry is not a name.');
+                }
+                if ($filter->name !== 'FlateDecode' && $filter->name !== 'Fl') {
+                    throw new UnsupportedPdfFeature('The PDF stream filter /'.$filter->name.' is not supported.');
+                }
+                $parms = $resolve($parameters[$i] ?? null);
+                self::inflate($data, $maxBytes, $inflated);
+                self::predict($data, $parms instanceof PdfDictionary ? $parms : null, $maxPredictorBytes, $predicted, $predictorLimitIsDamage);
             }
-            if ($filter->name !== 'FlateDecode' && $filter->name !== 'Fl') {
-                throw new UnsupportedPdfFeature('The PDF stream filter /'.$filter->name.' is not supported.');
-            }
-            $parms = $resolve($parameters[$i] ?? null);
-            $data = self::inflate($data, $maxBytes, $inflated);
-            $data = self::predict($data, $parms instanceof PdfDictionary ? $parms : null, $maxPredictorBytes, $predicted, $predictorLimitIsDamage);
+        } catch (UnreadablePdf $e) {
+            unset($data);
+            [$class, $message, $code] = [$e::class, $e->getMessage(), $e->getCode()];
+            unset($e);
+
+            throw new $class($message, $code);
         }
 
         return $data;
     }
 
-    private static function inflate(string $data, int $maxBytes, int &$inflated): string
+    /** Replaces $data with its inflated form. */
+    private static function inflate(string &$data, int $maxBytes, int &$inflated): void
     {
         try {
-            return self::inflateWith(ZLIB_ENCODING_DEFLATE, $data, $maxBytes, $inflated);
+            $data = self::inflateWith(ZLIB_ENCODING_DEFLATE, $data, $maxBytes, $inflated);
         } catch (UnreadablePdf $e) {
             if ($e->getCode() !== UnreadablePdf::MALFORMED) {
                 throw $e;
             }
 
             // Some writers emit raw deflate data without the zlib header.
-            return self::inflateWith(ZLIB_ENCODING_RAW, $data, $maxBytes, $inflated);
+            $data = self::inflateWith(ZLIB_ENCODING_RAW, $data, $maxBytes, $inflated);
         }
     }
 
@@ -126,15 +139,17 @@ final class Filters
         }
     }
 
-    private static function predict(string $data, ?PdfDictionary $parms, int $maxBytes, int &$predicted, bool $limitIsDamage): string
+    /** Replaces $data with the result of reversing its predictor, if it has one. */
+    private static function predict(string &$data, ?PdfDictionary $parms, int $maxBytes, int &$predicted, bool $limitIsDamage): void
     {
         $predictor = $parms?->get('Predictor') ?? 1;
         if ($predictor === 1) {
-            return $data;
+            return;
         }
         // Predictors run byte by byte in PHP, so their input gets its own, smaller budget.
         $predicted += strlen($data);
         if (strlen($data) > $maxBytes) {
+            unset($data);
             $message = sprintf('Predictor input exceeds the limit of %d MiB per document.', PdfParser::MAX_PREDICTOR_BYTES >> 20);
 
             throw $limitIsDamage ? UnreadablePdf::malformed($message) : UnreadablePdf::refused($message);
@@ -149,11 +164,16 @@ final class Filters
         $pixelBytes = max(1, intdiv($colors * $bits + 7, 8));
 
         if ($predictor === 2) {
-            return self::tiff($data, $rowLength, $colors, $bits);
+            $data = self::tiff($data, $rowLength, $colors, $bits);
+
+            return;
         }
         if (is_int($predictor) && $predictor >= 10 && $predictor <= 15) {
-            return self::png($data, $rowLength, $pixelBytes);
+            $data = self::png($data, $rowLength, $pixelBytes);
+
+            return;
         }
+        unset($data);
 
         throw new UnsupportedPdfFeature('The PDF stream predictor '.(is_scalar($predictor) ? $predictor : '?').' is not supported.');
     }
