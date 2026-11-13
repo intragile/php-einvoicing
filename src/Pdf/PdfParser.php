@@ -48,6 +48,13 @@ final class PdfParser
 
     public const int ENTRY_FLOOR = 4096;
 
+    /**
+     * The most entries a cross-reference index may hold, whatever the file size: an index of this
+     * size needs about 20 MiB. A larger listed index is reconstructed instead; reconstruction
+     * that finds more objects than this is refused.
+     */
+    public const int MAX_INDEX_ENTRIES = 1 << 19;
+
     /** How many indirect /Length values may be followed while one is already being resolved. */
     private const int MAX_LENGTH_DEPTH = 4;
 
@@ -83,7 +90,7 @@ final class PdfParser
     {
         $this->lexer = new Lexer($bytes);
         $this->version = self::headerVersion($bytes);
-        $this->maxEntries = min(self::MAX_OBJECTS + 1, max(self::ENTRY_FLOOR, intdiv(strlen($bytes), self::BYTES_PER_ENTRY)));
+        $this->maxEntries = min(self::MAX_INDEX_ENTRIES, max(self::ENTRY_FLOOR, intdiv(strlen($bytes), self::BYTES_PER_ENTRY)));
         $startXref = self::startXrefOf($bytes);
         // Before the index exists nothing can be resolved: an indirect /Filter or /DecodeParms on
         // an xref stream (where the standard forbids them) is damage. So is a predictor over its

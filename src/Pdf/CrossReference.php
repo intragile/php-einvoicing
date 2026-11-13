@@ -37,9 +37,11 @@ final class CrossReference
      * Entries are packed into one int each (see pack()), which keeps a large index small.
      *
      * @param  array<int, int>  $entries  object number => packed entry
+     * @param  int  $highest  the highest object number in $entries, or 0
      */
     private function __construct(
         private readonly array $entries,
+        private readonly int $highest,
         public readonly PdfDictionary $trailer,
         public readonly int $startXref,
         public readonly bool $xrefStream,
@@ -76,7 +78,7 @@ final class CrossReference
     /** The highest object number listed, or 0. */
     public function highest(): int
     {
-        return $this->entries === [] ? 0 : max(array_keys($this->entries));
+        return $this->highest;
     }
 
     /**
@@ -90,6 +92,7 @@ final class CrossReference
     {
         $length = strlen($lexer->data());
         $budget = $maxEntries;
+        $highest = 0;
         $entries = [];
         $trailers = [];
         $visited = [];
@@ -108,14 +111,14 @@ final class CrossReference
             }
             $pos = $lexer->skip($offset);
             if ($lexer->keywordAt($pos, 'xref')) {
-                [$section, $trailer] = self::readTable($lexer, $pos + 4, $budget);
+                [$section, $trailer] = self::readTable($lexer, $pos + 4, $budget, $highest);
                 $hidden = $trailer->get('XRefStm');
                 if (is_int($hidden)) {
                     if ($hidden < 0 || $hidden >= $length) {
                         throw UnreadablePdf::malformed('/XRefStm offset '.$hidden.' lies outside the file.');
                     }
                     // Hybrid file: the stream adds the objects that the table leaves out or marks free.
-                    [$streamSection] = self::readStream($lexer, $hidden, $decode, $budget);
+                    [$streamSection] = self::readStream($lexer, $hidden, $decode, $budget, $highest);
                     foreach ($streamSection as $number => $packed) {
                         if (! isset($section[$number]) || ($section[$number] & 3) === self::FREE) {
                             $section[$number] = $packed;
@@ -124,7 +127,7 @@ final class CrossReference
                 }
                 $isStream = false;
             } else {
-                [$section, $trailer] = self::readStream($lexer, $pos, $decode, $budget);
+                [$section, $trailer] = self::readStream($lexer, $pos, $decode, $budget, $highest);
                 $isStream = true;
             }
             if ($trailers === []) {
@@ -136,12 +139,13 @@ final class CrossReference
             $offset = is_int($prev) ? $prev : null;
         }
 
-        return new self($entries, self::mergeTrailers($trailers), $startXref, $newestIsStream, false);
+        return new self($entries, $highest, self::mergeTrailers($trailers), $startXref, $newestIsStream, false);
     }
 
     /**
      * Rebuilds the index from "N G obj" headers, object streams and the trailers or xref stream
-     * dictionaries found in the file; later definitions win.
+     * dictionaries found in the file; later definitions win. More than $maxEntries distinct
+     * objects throws UnreadablePdf with code REFUSED.
      *
      * @param  Closure(PdfStream): string  $decode
      */
@@ -149,7 +153,7 @@ final class CrossReference
     {
         $bytes = $lexer->data();
         $entries = [];
-        $positions = [];
+        $highest = 0;
         $trailers = [];
         $objectStreams = [];
         $catalog = null;
@@ -171,8 +175,12 @@ final class CrossReference
                 continue;
             }
             $pos = max($pos, $end);
+            // Checked before the insert: a hash table that has already grown costs the memory.
+            if (! isset($entries[$number]) && count($entries) >= $maxEntries) {
+                throw UnreadablePdf::refused('The PDF contains more than '.$maxEntries.' objects.');
+            }
             $entries[$number] = self::pack(self::IN_FILE, $start, $generation);
-            $positions[$number] = $start;
+            $highest = max($highest, $number);
             $dictionary = $value instanceof PdfStream ? $value->dictionary : $value;
             if (! $dictionary instanceof PdfDictionary) {
                 continue;
@@ -204,11 +212,11 @@ final class CrossReference
                 $relative = $members[$k + 1];
                 $index = $k >> 1;
                 if ($number < 1 || $number > PdfParser::MAX_OBJECTS || $number === $streamNumber
-                    || ($positions[$number] ?? -1) >= $start) {
+                    || self::positionOf($entries, $objectStreams, $number) >= $start) {
                     continue;
                 }
                 $entries[$number] = self::pack(self::IN_OBJECT_STREAM, $streamNumber, $index);
-                $positions[$number] = $start;
+                $highest = max($highest, $number);
                 if ($catalog === null) {
                     $at = $first + $relative;
                     try {
@@ -225,6 +233,8 @@ final class CrossReference
                     }
                 }
             }
+            // The decoded data (up to MAX_STREAM_BYTES) must not outlive its stream.
+            unset($streamLexer, $members);
         }
 
         $offset = 0;
@@ -252,16 +262,16 @@ final class CrossReference
             $merged = $merged->with('Root', new PdfRef($catalog, 0));
         }
         $size = $merged->get('Size');
-        $highest = max(array_keys($entries)) + 1;
-        $merged = $merged->with('Size', is_int($size) && $size > $highest ? $size : $highest);
+        $next = $highest + 1;
+        $merged = $merged->with('Size', is_int($size) && $size > $next ? $size : $next);
 
-        return new self($entries, $merged, $startXref, $newestIsStream, true);
+        return new self($entries, $highest, $merged, $startXref, $newestIsStream, true);
     }
 
     /**
      * @return array{array<int, int>, PdfDictionary}
      */
-    private static function readTable(Lexer $lexer, int $pos, int &$budget): array
+    private static function readTable(Lexer $lexer, int $pos, int &$budget, int &$highest): array
     {
         $bytes = $lexer->data();
         $entries = [];
@@ -288,6 +298,9 @@ final class CrossReference
                 throw UnreadablePdf::malformed('Invalid cross-reference subsection size at offset '.$pos.'.');
             }
             self::spend($budget, $count);
+            if ($count > 0) {
+                $highest = max($highest, $first + $count - 1);
+            }
             for ($i = 0; $i < $count; $i++) {
                 if (preg_match('/\G[\0\t\n\f\r ]*(\d{10})[ ]+(\d{5})[ ]+([nf])/', $bytes, $m, 0, $pos) !== 1) {
                     throw UnreadablePdf::malformed('Invalid cross-reference entry at offset '.$pos.'.');
@@ -308,7 +321,7 @@ final class CrossReference
      * @param  Closure(PdfStream): string  $decode
      * @return array{array<int, int>, PdfDictionary}
      */
-    private static function readStream(Lexer $lexer, int $offset, Closure $decode, int &$budget): array
+    private static function readStream(Lexer $lexer, int $offset, Closure $decode, int &$budget, int &$highest): array
     {
         [, , $stream] = $lexer->indirectObject($offset);
         if (! $stream instanceof PdfStream) {
@@ -347,6 +360,9 @@ final class CrossReference
         $entries = [];
         $row = 0;
         foreach ($ranges as [$first, $count]) {
+            if ($count > 0) {
+                $highest = max($highest, $first + $count - 1);
+            }
             for ($j = 0; $j < $count; $j++, $row++) {
                 $pos = $row * $rowLength;
                 $type = $widths[0] === 0 ? 1 : self::field($data, $pos, $widths[0]);
@@ -364,6 +380,24 @@ final class CrossReference
         }
 
         return [$entries, self::stripStreamKeys($dictionary)];
+    }
+
+    /**
+     * Where the newest definition of object $number seen so far starts: its header offset, or
+     * the offset of its object stream; -1 when there is none.
+     *
+     * @param  array<int, int>  $entries
+     * @param  array<int, array{int, PdfStream}>  $objectStreams
+     */
+    private static function positionOf(array $entries, array $objectStreams, int $number): int
+    {
+        $packed = $entries[$number] ?? null;
+
+        return match ($packed === null ? self::FREE : $packed & 3) {
+            self::IN_FILE => $packed >> 26,
+            self::IN_OBJECT_STREAM => $objectStreams[$packed >> 26][0] ?? -1,
+            default => -1,
+        };
     }
 
     /** Packs an entry: the type in bits 0–1, the third field in bits 2–25, the second above. */

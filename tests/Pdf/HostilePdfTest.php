@@ -297,6 +297,112 @@ final class HostilePdfTest extends TestCase
         $this->assertRefusedQuickly(static fn () => PdfDocument::parse($hex));
     }
 
+    #[RunInSeparateProcess]
+    public function test_reconstruction_refuses_more_objects_than_the_index_cap(): void
+    {
+        self::limitMemory();
+        // About 27 MB of tiny objects numbered downwards, with no usable cross-reference index.
+        $pdf = self::tinyObjects(1_100_000);
+        $before = memory_get_usage();
+        memory_reset_peak_usage();
+        $started = hrtime(true);
+        try {
+            PdfDocument::parse($pdf);
+            self::fail('Expected UnreadablePdf');
+        } catch (UnreadablePdf $e) {
+            self::assertSame(UnreadablePdf::REFUSED, $e->getCode());
+        }
+        self::assertBounded($started, $before, 48);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_reconstruction_indexes_objects_up_to_the_index_cap(): void
+    {
+        self::limitMemory();
+        $pdf = self::tinyObjects(520_000);
+        $before = memory_get_usage();
+        memory_reset_peak_usage();
+        $started = hrtime(true);
+
+        $document = PdfDocument::parse($pdf);
+
+        self::assertTrue($document->reconstructed());
+        self::assertSame(8_000_001, $document->size());
+        self::assertBounded($started, $before, 48);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_xref_stream_listing_more_entries_than_the_index_cap_is_reconstructed(): void
+    {
+        self::limitMemory();
+        // A valid xref stream of 4M rows in a file large enough to pass the per-byte budget.
+        $count = 4_000_000;
+        $head = "%PDF-1.7\n";
+        $catalog = "1 0 obj\n<< /Type /Catalog >>\nendobj\n";
+        $rows = "\x00\x00\x00\x00\x00\x00\x01".pack('N', strlen($head))."\x00".str_repeat("\x00", 6 * ($count - 2));
+        $data = (string) gzcompress($rows, 9);
+        unset($rows);
+        $padding = '%'.str_repeat('x', $count * PdfParser::BYTES_PER_ENTRY)."\n";
+        $start = strlen($head.$catalog.$padding);
+        $pdf = $head.$catalog.$padding.'2 0 obj'."\n".'<< /Type /XRef /Size '.$count.' /W [1 4 1] /Root 1 0 R /Filter /FlateDecode /Length '.strlen($data)." >>\nstream\n"
+            .$data."\nendstream\nendobj\nstartxref\n".$start."\n%%EOF\n";
+        unset($padding);
+        $before = memory_get_usage();
+        memory_reset_peak_usage();
+        $started = hrtime(true);
+
+        $document = PdfDocument::parse($pdf);
+
+        self::assertTrue($document->reconstructed());
+        self::assertTrue($document->catalog()->isName('Type', 'Catalog'));
+        self::assertBounded($started, $before, 48);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_reconstruction_releases_each_decoded_object_stream(): void
+    {
+        self::limitMemory();
+        // 500k objects and one object stream that decodes to 63 MiB: index plus one stream fit.
+        $context = deflate_init(ZLIB_ENCODING_DEFLATE, ['level' => 9]);
+        self::assertNotFalse($context);
+        $payload = deflate_add($context, '2 0 ', ZLIB_NO_FLUSH);
+        $spaces = str_repeat(' ', 1024 * 1024);
+        for ($i = 0; $i < 63; $i++) {
+            $payload .= deflate_add($context, $spaces, ZLIB_NO_FLUSH);
+        }
+        $payload .= deflate_add($context, 'null', ZLIB_FINISH);
+        $pdf = self::tinyObjects(500_000, "3 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /Length ".strlen($payload)." >>\nstream\n".$payload."\nendstream\nendobj\n");
+        unset($payload);
+        $before = memory_get_usage();
+        memory_reset_peak_usage();
+        $started = hrtime(true);
+
+        $document = PdfDocument::parse($pdf);
+
+        self::assertTrue($document->reconstructed());
+        self::assertTrue($document->catalog()->isName('Type', 'Catalog'));
+        self::assertBounded($started, $before, 100);
+    }
+
+    /** A catalog, $count tiny objects numbered down from 8 000 000, $extra, and no usable index. */
+    private static function tinyObjects(int $count, string $extra = ''): string
+    {
+        $pdf = "%PDF-1.7\n1 0 obj<</Type/Catalog>>endobj\n";
+        for ($i = 0; $i < $count; $i++) {
+            $pdf .= (8_000_000 - $i)." 0 obj null endobj\n";
+        }
+
+        return $pdf.$extra."trailer<</Root 1 0 R>>\nstartxref\n0\n%%EOF\n";
+    }
+
+    private static function assertBounded(int|float $started, int $before, int $megabytes): void
+    {
+        $seconds = (hrtime(true) - $started) / 1e9;
+        $peak = memory_get_peak_usage() - $before;
+        self::assertLessThan(5.0, $seconds, sprintf('Took %.3f s', $seconds));
+        self::assertLessThan($megabytes * 1024 * 1024, $peak, sprintf('Peak grew by %.1f MiB', $peak / 1048576));
+    }
+
     /** A file whose xref stream claims MAX_OBJECTS + 1 one-byte rows of the given type. */
     private static function claimingXrefStream(string $type, bool $withCatalog): string
     {
