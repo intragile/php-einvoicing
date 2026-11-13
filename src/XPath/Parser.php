@@ -132,7 +132,8 @@ final class Parser
      * A parenthesised union followed by further steps, "(P1 | P2)/rest" (also an XSLT 3.0 pattern
      * that Saxon accepts), matches what "P1/rest | P2/rest" matches and is compiled to that union.
      * Every alternative must itself be a path pattern; a filtered union followed by steps,
-     * "(P1 | P2)[pred]/rest", is rejected.
+     * "(P1 | P2)[pred]/rest", is rejected, also when it is one alternative of a union that is
+     * followed by steps, "((P1 | P2)[pred] | P3)/rest".
      *
      * @return array<mixed>
      */

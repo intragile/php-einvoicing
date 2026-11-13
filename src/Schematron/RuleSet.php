@@ -38,7 +38,8 @@ final class RuleSet
      * compiled from a report element, which fires when its test is true, and the optional
      * "documents" (URI => XML) of the files fn:document() reads, embedded at compile time, with
      * "documentSha256" (URI => SHA-256 of that XML) next to "sha256". Both are left out when the
-     * schema reads no document, so such a rule set compiles to the same bytes as before.
+     * schema reads no document, so such a rule set compiles to the same bytes as before. Every
+     * embedded document is checked against its hash when the rule set is loaded.
      */
     public const FORMAT = 4;
 
@@ -105,8 +106,12 @@ final class RuleSet
         $format = $compiled['format'] ?? 1;
         if (! in_array($format, self::READABLE_FORMATS, true)) {
             $format = is_int($format) ? (string) $format : (json_encode($format) ?: get_debug_type($format));
+            $readable = self::READABLE_FORMATS;
+            sort($readable);
+            $last = array_pop($readable);
+            $formats = $readable === [] ? "format {$last}" : 'formats '.implode(', ', $readable)." and {$last}";
 
-            throw new UnsupportedSchematron("The rule set \"{$id}\" was compiled with format {$format}; this engine reads formats ".implode(', ', array_slice(self::READABLE_FORMATS, 0, -1)).' and '.self::FORMAT.'. Recompile it.');
+            throw new UnsupportedSchematron("The rule set \"{$id}\" was compiled with format {$format}; this engine reads {$formats}. Recompile it.");
         }
         $namespaces = [];
         foreach (self::map($compiled['namespaces'] ?? null, 'The namespaces of the rule set') as $prefix => $uri) {
@@ -136,6 +141,7 @@ final class RuleSet
         }
 
         $documents = self::stringMap($compiled['documents'] ?? [], "The documents of \"{$id}\"");
+        $documentSha256 = self::documentHashes($compiled['documentSha256'] ?? [], $documents, $id);
 
         return new self(
             $id,
@@ -146,7 +152,7 @@ final class RuleSet
             $functions,
             $patterns,
             $documents,
-            self::documentHashes($compiled['documentSha256'] ?? [], $documents, $id),
+            $documentSha256,
         );
     }
 
@@ -294,7 +300,12 @@ final class RuleSet
     {
         $what = "The message of the assert \"{$assertId}\"";
         $result = [];
-        foreach (self::list($parts, $what) as $part) {
+        $parts = self::list($parts, $what);
+        if ($parts === []) {
+            // The compiler writes message parts only when the message has a name or value-of.
+            throw new UnsupportedSchematron("{$what} is malformed: it has no parts.");
+        }
+        foreach ($parts as $part) {
             $result[] = match (true) {
                 is_string($part) => $part,
                 $part === ['name' => true] => ['name' => true],
@@ -441,23 +452,28 @@ final class RuleSet
     }
 
     /**
+     * A map of strings keyed by URI. PHP stores an integer-like key such as "1" as an integer, so
+     * integer keys are accepted as the URIs they were written as.
+     *
      * @return array<string, string>
      */
     private static function stringMap(mixed $value, string $what): array
     {
         $result = [];
         foreach (self::map($value, $what) as $key => $item) {
-            if (! is_string($key) || ! is_string($item)) {
+            if (! is_string($item)) {
                 throw new UnsupportedSchematron("{$what} is malformed: a map of strings is expected.");
             }
-            $result[$key] = $item;
+            $result[(string) $key] = $item;
         }
 
         return $result;
     }
 
     /**
-     * Checks "documentSha256": a string per embedded document, for no other URI.
+     * Checks "documentSha256": the SHA-256 of every embedded document, for no other URI, and that
+     * each document still has that hash, so a modified rule file is refused when it is loaded
+     * instead of failing or validating differently at run time.
      *
      * @param  array<string, string>  $documents
      * @return array<string, string>
@@ -468,6 +484,14 @@ final class RuleSet
         $hashes = self::stringMap($value, $what);
         if (array_diff_key($hashes, $documents) !== []) {
             throw new UnsupportedSchematron("{$what} is malformed: it names a document that is not embedded.");
+        }
+        foreach ($documents as $uri => $xml) {
+            if (! isset($hashes[$uri])) {
+                throw new UnsupportedSchematron("{$what} is malformed: the embedded document \"{$uri}\" has no hash.");
+            }
+            if (! hash_equals($hashes[$uri], hash('sha256', $xml))) {
+                throw new UnsupportedSchematron("The embedded document \"{$uri}\" of the rule set \"{$id}\" does not match its recorded SHA-256: the compiled rule file was modified. Recompile or reinstall it.");
+            }
         }
 
         return $hashes;

@@ -14,6 +14,7 @@ use IntrAgile\EInvoicing\Validation\Severity;
 use ParseError;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use ReflectionClassConstant;
 
 final class RuleSetTest extends TestCase
 {
@@ -137,6 +138,50 @@ final class RuleSetTest extends TestCase
         $this->expectExceptionMessage('The rule set "future" was compiled with format 5; this engine reads formats 2, 3 and 4. Recompile it.');
 
         RuleSet::fromArray(['format' => 5, 'id' => 'future', 'version' => '1', 'namespaces' => [], 'lets' => [], 'functions' => [], 'patterns' => []]);
+    }
+
+    public function test_refusal_message_lists_readable_formats(): void
+    {
+        $declared = (new ReflectionClassConstant(RuleSet::class, 'READABLE_FORMATS'))->getValue();
+        self::assertIsArray($declared);
+        $formats = array_map(static fn (mixed $format): int => is_int($format) ? $format : self::fail('A readable format is not an integer.'), array_values($declared));
+        sort($formats);
+        $last = array_pop($formats);
+        self::assertNotNull($last);
+        $expected = 'this engine reads formats '.implode(', ', $formats)." and {$last}. Recompile it.";
+
+        try {
+            RuleSet::fromArray(['format' => 99, 'id' => 'future', 'version' => '1', 'namespaces' => [], 'lets' => [], 'functions' => [], 'patterns' => []]);
+            self::fail('A rule set of an unknown format must be refused.');
+        } catch (UnsupportedSchematron $exception) {
+            self::assertStringEndsWith($expected, $exception->getMessage());
+            self::assertContains(RuleSet::FORMAT, [...$formats, $last]);
+        }
+    }
+
+    public function test_empty_message_parts_are_refused(): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('The message of the assert "M-1" is malformed: it has no parts.');
+
+        RuleSet::fromArray(['format' => 4, 'id' => 'm', 'version' => '1', 'namespaces' => [], 'lets' => [], 'functions' => [], 'patterns' => [
+            ['id' => 'p', 'lets' => [], 'rules' => [['context' => 'a', 'match' => ['path'], 'lets' => [], 'asserts' => [
+                ['id' => 'M-1', 'flag' => 'fatal', 'test' => 'true()', 'ast' => ['call', 'fn:true', []], 'message' => 'x', 'messageParts' => []],
+            ]]]],
+        ]]);
+    }
+
+    public function test_tampered_embedded_document_is_refused_at_load(): void
+    {
+        $compiled = ['format' => RuleSet::FORMAT, 'id' => 'tiny', 'version' => '0.1', 'namespaces' => [], 'lets' => [], 'functions' => [], 'patterns' => [],
+            'documentSha256' => ['codes.xml' => hash('sha256', '<codes><code>A</code></codes>')],
+            'documents' => ['codes.xml' => '<codes><code>A</code><code>B</code></codes>'],
+        ];
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('The embedded document "codes.xml" of the rule set "tiny" does not match its recorded SHA-256: the compiled rule file was modified. Recompile or reinstall it.');
+
+        RuleSet::fromArray($compiled);
     }
 
     /**

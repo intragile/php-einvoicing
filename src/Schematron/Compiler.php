@@ -27,8 +27,12 @@ use SplObjectStorage;
  * An include element is replaced by the document element of the file it names, recursively, before
  * anything else is compiled. Its href must be a relative path without a fragment; it resolves
  * against the directory of the including file and must stay inside the include root (by default
- * the directory of the top-level schema). Cycles are refused. Errors in an included file name that
- * file, relative to the include root.
+ * the directory of the top-level schema), also after symbolic links are resolved. Paths are
+ * compared with "/" as the separator, and a Windows drive letter in any case. A file that is
+ * reached a second time through another include (a diamond) is inlined only at its first include,
+ * by real path; the later include elements are removed. A file that includes itself, directly or
+ * through other files, is refused. Errors in an included file name that file, relative to the
+ * include root.
  *
  * Only schema, title, ns, let, phase, active, pattern, rule, assert and report are accepted, plus
  * XSLT functions at schema level and empty name (without path) and value-of elements in assert and
@@ -40,7 +44,10 @@ use SplObjectStorage;
  *
  * A report compiles like an assert with the extra key "report" => true: it fires when its test is
  * true instead of false. Every assert and report needs an id and a flag unless CompileOptions
- * supply them (a default flag, an id synthesized from the rule context and the test).
+ * supply them (a default flag, an id synthesized from the rule context and the test). An id
+ * attribute that is present but empty is never synthesized; it is refused like a missing id. The
+ * flag of a rule is not inherited by its asserts and reports: each takes only its own flag or the
+ * default flag.
  *
  * The message of an assert is its text with whitespace collapsed. When the message contains name or
  * value-of elements, the assert also carries "messageParts": the text pieces, ['name' => true] for
@@ -134,6 +141,8 @@ final class Compiler
         ],
     ];
 
+    private const MISSING_INCLUDE_DIRECTORY = 'The include directory "%s" does not exist.';
+
     private readonly Parser $parser;
 
     /** @var array<string, string> prefix => URI, from the ns elements */
@@ -150,6 +159,9 @@ final class Compiler
 
     /** @var array<string, string> URI as written in a document() call => XML of the file it names */
     private array $documents = [];
+
+    /** @var array<string, true> real paths of the top-level schema and of every file inlined so far */
+    private array $inlined = [];
 
     /** @var SplObjectStorage<DOMElement, string> document element of each included file => its name in messages */
     private SplObjectStorage $includedFiles;
@@ -945,7 +957,7 @@ final class Compiler
             throw new UnsupportedSchematron("{$what} {$problem}.");
         }
 
-        $root = $this->realDirectory((string) $this->baseDir);
+        $root = $this->realDirectory((string) $this->baseDir, 'The schema directory "%s" that document() reads from does not exist.');
         $real = realpath($root.'/'.$uri);
         if ($real === false || ! is_file($real)) {
             throw new UnsupportedSchematron("{$what} does not exist as a file in {$root}.");
@@ -1081,9 +1093,12 @@ final class Compiler
     private function resolveIncludes(DOMElement $element, ?string $dir = null, array $stack = []): void
     {
         if ($dir === null && $this->baseDir !== null) {
-            $dir = $this->realDirectory($this->baseDir);
+            // Resolved only when an include needs it, so a missing directory is reported for what
+            // reads from it.
+            $dir = $this->baseDir;
             if ($this->path !== null && ($top = realpath($this->path)) !== false) {
                 $stack = [$top];
+                $this->inlined[$top] = true;
             }
         }
         foreach (iterator_to_array($element->childNodes) as $child) {
@@ -1091,8 +1106,11 @@ final class Compiler
                 continue;
             }
             if ($child->namespaceURI === self::SCHEMATRON_NAMESPACE && $child->localName === 'include') {
-                [$child, $childDir, $childStack] = $this->includeFile($child, $dir, $stack);
-                $this->resolveIncludes($child, $childDir, $childStack);
+                $included = $this->includeFile($child, $dir, $stack);
+                if ($included !== null) {
+                    [$child, $childDir, $childStack] = $included;
+                    $this->resolveIncludes($child, $childDir, $childStack);
+                }
             } else {
                 $this->resolveIncludes($child, $dir, $stack);
             }
@@ -1100,12 +1118,13 @@ final class Compiler
     }
 
     /**
-     * Replaces one include element by the document element of the file it names.
+     * Replaces one include element by the document element of the file it names, or removes it
+     * when that file is already inlined elsewhere.
      *
      * @param  list<string>  $stack
-     * @return array{DOMElement, string, list<string>} the included element, its directory and the extended stack
+     * @return array{DOMElement, string, list<string>}|null the included element, its directory and the extended stack; null when removed
      */
-    private function includeFile(DOMElement $include, ?string $dir, array $stack): array
+    private function includeFile(DOMElement $include, ?string $dir, array $stack): ?array
     {
         $this->checkAttributes($include);
         if ($dir === null || $this->includeRoot === null) {
@@ -1125,8 +1144,8 @@ final class Compiler
             throw new UnsupportedSchematron("The include \"{$href}\" ({$this->line($include)}) must be a relative path to a local file.");
         }
 
-        $root = $this->realDirectory($this->includeRoot);
-        $target = self::normalizePath($dir.'/'.rawurldecode($href));
+        $root = $this->realDirectory($this->includeRoot, self::MISSING_INCLUDE_DIRECTORY);
+        $target = self::normalizePath($this->realDirectory($dir, self::MISSING_INCLUDE_DIRECTORY).'/'.rawurldecode($href));
         $real = realpath($target);
         if (! self::isInside($target, $root) || ($real !== false && ! self::isInside($real, $root))) {
             throw new UnsupportedSchematron("The include \"{$href}\" ({$this->line($include)}) points outside {$root}.");
@@ -1138,6 +1157,12 @@ final class Compiler
         if (in_array($real, $stack, true)) {
             throw new UnsupportedSchematron("The include \"{$href}\" ({$this->line($include)}) includes itself: ".implode(' -> ', array_map(fn (string $path): string => $this->relativeName($path, $root), [...$stack, $real])).'.');
         }
+        if (isset($this->inlined[$real])) {
+            $include->parentNode?->removeChild($include);
+
+            return null;
+        }
+        $this->inlined[$real] = true;
 
         $name = $this->relativeName($real, $root);
         try {
@@ -1160,11 +1185,14 @@ final class Compiler
         return [$imported, dirname($real), [...$stack, $real]];
     }
 
-    private function realDirectory(string $directory): string
+    /**
+     * @param  string  $message  the refusal when the directory does not exist, with %s for its path
+     */
+    private function realDirectory(string $directory, string $message): string
     {
         $real = realpath($directory);
         if ($real === false || ! is_dir($real)) {
-            throw new UnsupportedSchematron("The include directory \"{$directory}\" does not exist.");
+            throw new UnsupportedSchematron(sprintf($message, $directory));
         }
 
         return $real;
@@ -1172,16 +1200,19 @@ final class Compiler
 
     private function relativeName(string $path, string $root): string
     {
-        return self::isInside($path, $root) ? substr($path, strlen(rtrim($root, '/')) + 1) : $path;
+        return self::isInside($path, $root) ? substr(self::comparable($path), strlen(rtrim(self::comparable($root), '/')) + 1) : $path;
     }
 
     /**
-     * Resolves "." and ".." segments of an absolute path without touching the file system.
+     * Resolves "." and ".." segments of an absolute path without touching the file system, with
+     * "/" as the separator. A Windows drive letter is kept, in upper case.
      */
     private static function normalizePath(string $path): string
     {
+        $path = self::comparable($path);
+        $drive = preg_match('~^[A-Z]:(?=/|$)~', $path, $match) === 1 ? $match[0] : '';
         $segments = [];
-        foreach (explode('/', $path) as $segment) {
+        foreach (explode('/', substr($path, strlen($drive))) as $segment) {
             if ($segment === '' || $segment === '.') {
                 continue;
             }
@@ -1193,11 +1224,29 @@ final class Compiler
             $segments[] = $segment;
         }
 
-        return '/'.implode('/', $segments);
+        return $drive.'/'.implode('/', $segments);
     }
 
+    /**
+     * Whether $path lies below the directory $root, both absolute and already resolved.
+     */
     private static function isInside(string $path, string $root): bool
     {
-        return str_starts_with($path, rtrim($root, '/').'/');
+        return str_starts_with(self::comparable($path), rtrim(self::comparable($root), '/').'/');
+    }
+
+    /**
+     * A path with "/" as the separator and the drive letter of a Windows path in upper case. A
+     * path with a drive letter is a Windows path on any host; on Windows, where both separators
+     * are accepted, every backslash becomes "/".
+     */
+    private static function comparable(string $path): string
+    {
+        $windows = preg_match('~^[A-Za-z]:[\\\\/]~', $path) === 1;
+        if ($windows || DIRECTORY_SEPARATOR === '\\') {
+            $path = str_replace(['\\', DIRECTORY_SEPARATOR], '/', $path);
+        }
+
+        return $windows ? ucfirst($path) : $path;
     }
 }

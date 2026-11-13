@@ -206,6 +206,34 @@ final class DocumentFunctionTest extends TestCase
         Compiler::compileString($xml, 'main.sch', 'tiny', '0.1');
     }
 
+    public function test_missing_base_directory_message_names_the_schema_directory(): void
+    {
+        $dir = self::scratch('missing-base', ['codedb.xml' => self::CODEDB]);
+        $xml = (string) file_get_contents("{$dir}/main.sch");
+        $missing = "{$dir}/no-such-directory";
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage("The schema directory \"{$missing}\" that document() reads from does not exist.");
+
+        Compiler::compileString($xml, 'main.sch', 'tiny', '0.1', $missing);
+    }
+
+    public function test_integer_like_document_uri_key_loads(): void
+    {
+        $dir = self::scratch('integer-uri', ['1' => self::CODEDB], "exists(document('1')/codedb/cl[@id=1]/enumeration[@value=\$v])");
+        $compiled = Compiler::compile("{$dir}/main.sch", 'tiny', '0.1');
+        $path = "{$dir}/compiled.php";
+        CompiledRuleSetWriter::write($compiled, $path, 'test');
+
+        $rules = RuleSet::fromFile($path);
+
+        self::assertSame([1 => self::CODEDB], $rules->documents());
+        self::assertSame([1 => hash('sha256', self::CODEDB)], $rules->documentSha256());
+        $result = (new Runner)->run($rules, SafeXml::load(self::DOCUMENT));
+        self::assertSame([], $result->dynamicErrors);
+        self::assertSame(['CL-1', 'CL-1'], array_map(static fn (Finding $finding): string => $finding->ruleId, $result->findings));
+    }
+
     public function test_document_with_doctype_is_rejected(): void
     {
         $doctype = "<?xml version=\"1.0\"?>\n<!DOCTYPE codedb [<!ENTITY e \"x\">]>\n<codedb><cl id=\"1\"><enumeration value=\"&e;\"/></cl></codedb>";
@@ -249,7 +277,7 @@ final class DocumentFunctionTest extends TestCase
     {
         yield 'documents not a map' => [['documents' => 'x'], 'documents'];
         yield 'document not a string' => [['documents' => ['a.xml' => 1]], 'documents'];
-        yield 'document key not a string' => [['documents' => [0 => '<a/>']], 'documents'];
+        yield 'document without its hash' => [['documents' => ['a.xml' => '<a/>']], 'documentSha256'];
         yield 'hash not a string' => [['documents' => ['a.xml' => '<a/>'], 'documentSha256' => ['a.xml' => 1]], 'documentSha256'];
         yield 'hash for another document' => [['documents' => ['a.xml' => '<a/>'], 'documentSha256' => ['b.xml' => 'x']], 'documentSha256'];
     }
@@ -286,7 +314,7 @@ final class DocumentFunctionTest extends TestCase
      * Writes main.sch, with one rule checking every code attribute against $test (or the given
      * rule), plus the given files, into a fresh scratch directory.
      *
-     * @param  array<string, string>  $files  relative path => contents
+     * @param  array<array-key, string>  $files  relative path => contents
      */
     private static function scratch(string $name, array $files, string $test = "exists(document('codedb.xml')/codedb/cl[@id=1]/enumeration[@value=\$v])", ?string $rule = null): string
     {

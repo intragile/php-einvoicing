@@ -24,9 +24,11 @@ final class FunctionsTest extends TestCase
           <cl id="01"><e value="71"/><e value="071"/><e value=" A "/><e value="A"/><e/></cl>
           <cl id="2.0"><e value="NaN"/><e value="1e0"/><e value="x"/></cl>
           <cl id="INF"><e value="-0"/><e value="NaN"/><e value="0"/></cl>
-          <cl id=" 4 "/>
+          <cl id=" 4 " xml:id="n4"/>
         </lists>
         XML;
+
+    private const XML_NAMESPACE = 'http://www.w3.org/XML/1998/namespace';
 
     private DOMDocument $document;
 
@@ -122,7 +124,8 @@ final class FunctionsTest extends TestCase
         yield 'boolean operand' => ["{$cl}[@id = true()]/@id", 'FORG0001'];
         yield 'error in the operand' => ["{$cl}[@id = 1 idiv 0]/@id", 'FOAR0001'];
         yield 'error in the operand without children' => ["document('lists.xml')/lists/none[@id = 1 idiv 0]", []];
-        yield 'namespaced name' => ["document('lists.xml')/lists/cl[@xml:id = 1]", []];
+        yield 'namespaced name' => ["document('lists.xml')/lists/cl[@xml:id = 'n4']/@id", [' 4 ']];
+        yield 'namespaced name against a number' => ["document('lists.xml')/lists/cl[@xml:id = 1]", 'FORG0001'];
     }
 
     /**
@@ -138,6 +141,44 @@ final class FunctionsTest extends TestCase
 
         self::assertSame($expected, $this->outcome($expression, $variables));
         self::assertSame($expected, $this->outcome((string) $scanned, $variables), (string) $scanned);
+    }
+
+    /**
+     * @return iterable<string, array{string, string, array<string, string>}>
+     */
+    public static function indexedLookups(): iterable
+    {
+        yield 'operand bound to a variable' => ["document('ids.xml')/ids/item[@code = \$b]", '', ['b' => "'K2'"]];
+        yield 'namespaced attribute' => ["document('ids.xml')/ids/item[@xml:id = 'i2']", self::XML_NAMESPACE, []];
+    }
+
+    /**
+     * The attribute index answers from the values it saw when it was built. Changing the attribute
+     * afterwards makes the index the only path that still selects the element, so the exact node
+     * returned proves that the step was answered from the index.
+     *
+     * @param  array<string, string>  $bindings  variable name => expression of its value
+     */
+    #[DataProvider('indexedLookups')]
+    public function test_indexed_lookup_returns_the_exact_node_from_the_index(string $expression, string $attributeNamespace, array $bindings): void
+    {
+        $ids = SafeXml::load('<ids><item code="K1" xml:id="i1"/><item code="K2" xml:id="i2"/><item code="K3" xml:id="i3"/></ids>');
+        $index = DocumentIndex::build($ids);
+        $evaluator = new Evaluator(DocumentIndex::build($this->document), static fn (string $uri): ?DocumentIndex => $uri === 'ids.xml' ? $index : null);
+        $context = new StaticContext(['xml' => self::XML_NAMESPACE], array_keys($bindings));
+        $variables = array_map(fn (string $value): array => $evaluator->evaluate((new Parser)->parse($value, $context), $this->document), $bindings);
+        $run = fn (string $xpath): array => $evaluator->evaluate((new Parser)->parse($xpath, $context), $this->document, $variables);
+        $expected = $ids->getElementsByTagName('item')->item(1);
+        self::assertInstanceOf(DOMElement::class, $expected);
+
+        self::assertSame([$expected], $run($expression));
+
+        $name = $attributeNamespace === '' ? 'code' : 'xml:id';
+        $expected->setAttributeNS($attributeNamespace === '' ? null : $attributeNamespace, $name, 'changed');
+        $scanned = (string) preg_replace('~\]$~', '][true()]', $expression);
+
+        self::assertSame([], $run($scanned), 'The scan sees the changed attribute.');
+        self::assertSame([$expected], $run($expression), 'The index still answers with the original node.');
     }
 
     public function test_document_takes_exactly_one_argument(): void

@@ -441,6 +441,22 @@ final class ParserTest extends TestCase
     }
 
     /**
+     * A filtered union nested in a union that is followed by steps cannot be distributed into
+     * path alternatives, so it is refused like a filtered union followed by steps.
+     */
+    public function test_union_step_with_predicate_under_union_is_refused(): void
+    {
+        foreach (['((A|B)[$n] | C)/D', '((/A|/B)[$n] | /C)/D', '(C | (A|B)[$n])/D'] as $pattern) {
+            try {
+                self::parsePattern($pattern);
+                self::fail("The pattern {$pattern} was accepted.");
+            } catch (UnsupportedXPath $exception) {
+                self::assertStringContainsString('filter in a match pattern', $exception->getMessage(), $pattern);
+            }
+        }
+    }
+
+    /**
      * Every rule context, assert test, let value and XSLT select or test expression of the four
      * Peppol rule files, with the namespaces, variable names and user functions each file declares
      * (all variable names of the file are in scope; the compiler applies the real scoping).

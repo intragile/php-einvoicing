@@ -17,6 +17,7 @@ use IntrAgile\EInvoicing\Validation\Finding;
 use IntrAgile\EInvoicing\XPath\Op;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 
 /**
  * @phpstan-import-type CompiledRuleSet from Compiler
@@ -772,6 +773,86 @@ final class CompilerTest extends TestCase
         $this->expectExceptionMessage('outside');
 
         Compiler::compile("{$dir}/sub/main.sch", 'tiny', '0.1');
+    }
+
+    public function test_windows_style_paths_are_normalised(): void
+    {
+        $normalizePath = new ReflectionMethod(Compiler::class, 'normalizePath');
+        $isInside = new ReflectionMethod(Compiler::class, 'isInside');
+
+        self::assertSame('C:/rules/x.sch', $normalizePath->invoke(null, 'C:\rules\x.sch'));
+        self::assertSame('C:/rules/x.sch', $normalizePath->invoke(null, 'C:\rules\sub\..\.\x.sch'));
+        self::assertSame('C:/rules/x.sch', $normalizePath->invoke(null, 'c:/rules/sub/../x.sch'));
+        self::assertSame('/rules/x.sch', $normalizePath->invoke(null, '/rules/sub/../x.sch'));
+
+        self::assertTrue($isInside->invoke(null, 'C:\rules\x.sch', 'C:\rules'));
+        self::assertTrue($isInside->invoke(null, 'C:\rules\x.sch', 'C:\rules\\'));
+        self::assertTrue($isInside->invoke(null, 'c:\rules\sub\x.sch', 'C:/rules'));
+        self::assertTrue($isInside->invoke(null, 'C:\rules\x.sch', 'C:\\'));
+        self::assertFalse($isInside->invoke(null, 'C:\rules2\x.sch', 'C:\rules'));
+        self::assertFalse($isInside->invoke(null, 'D:\rules\x.sch', 'C:\rules'));
+        self::assertFalse($isInside->invoke(null, 'C:\rules', 'C:\rules'));
+        self::assertTrue($isInside->invoke(null, '/rules/x.sch', '/rules'));
+        self::assertFalse($isInside->invoke(null, '/rules2/x.sch', '/rules'));
+    }
+
+    public function test_diamond_include_is_inlined_once(): void
+    {
+        $dir = self::includeScratch('diamond', [
+            'a.sch' => self::includingSchema('<include href="b.sch"/><include href="c.sch"/>'),
+            'b.sch' => '<pattern xmlns="http://purl.oclc.org/dsdl/schematron" id="b"><rule context="cbc:Note"><assert id="B-1" flag="fatal" test="true()">b</assert></rule><include href="d.sch"/></pattern>',
+            'c.sch' => '<pattern xmlns="http://purl.oclc.org/dsdl/schematron" id="c"><rule context="cbc:Name"><assert id="C-1" flag="fatal" test="true()">c</assert></rule><include href="d.sch"/></pattern>',
+            'd.sch' => '<rule xmlns="http://purl.oclc.org/dsdl/schematron" context="cbc:ID"><assert id="D-1" flag="fatal" test="true()">d</assert><assert id="D-2" flag="warning" test="true()">d</assert></rule>',
+        ]);
+
+        $compiled = Compiler::compile("{$dir}/a.sch", 'tiny', '0.1');
+
+        self::assertSame(['B-1', 'D-1', 'D-2', 'C-1'], array_column(self::asserts($compiled), 'id'));
+        self::assertSame(['b', 'c'], array_column($compiled['patterns'], 'id'));
+    }
+
+    public function test_include_symlink_escaping_root_is_refused(): void
+    {
+        $dir = self::includeScratch('symlink', [
+            'outside.sch' => '<pattern xmlns="http://purl.oclc.org/dsdl/schematron" id="v"><let name="x" value="1"/></pattern>',
+            'root/main.sch' => self::includingSchema('<include href="link.sch"/>'),
+        ]);
+        if (is_link("{$dir}/root/link.sch")) {
+            unlink("{$dir}/root/link.sch");
+        }
+        self::assertTrue(symlink("{$dir}/outside.sch", "{$dir}/root/link.sch"));
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage("The include \"link.sch\" (main.sch line 5) points outside {$dir}/root.");
+
+        Compiler::compile("{$dir}/root/main.sch", 'tiny', '0.1');
+    }
+
+    public function test_include_directory_message_names_the_directory(): void
+    {
+        $dir = self::includeScratch('missing-root', [
+            'main.sch' => self::includingSchema('<include href="common.sch"/>'),
+        ]);
+        $missing = "{$dir}/no-such-directory";
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage("The include directory \"{$missing}\" does not exist.");
+
+        Compiler::compile("{$dir}/main.sch", 'tiny', '0.1', $missing);
+    }
+
+    /**
+     * An id attribute that is present but empty is never synthesized, even with a prefix for
+     * missing ids; it is refused like a missing id without one.
+     */
+    public function test_empty_id_is_refused_and_not_synthesized(): void
+    {
+        $path = self::writeSchematron('<rule context="cbc:ID"><assert id="" test="true()">x</assert></rule>');
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('Assert without an id in the rule with context "cbc:ID" (tiny.sch line 6).');
+
+        Compiler::compile($path, 'tiny', '0.1', null, new CompileOptions(defaultFlag: 'fatal', missingIdPrefix: 'FX-REPORT'));
     }
 
     /**

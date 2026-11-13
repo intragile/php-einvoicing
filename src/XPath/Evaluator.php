@@ -922,7 +922,7 @@ final class Evaluator
             $candidate = is_finite($number->value) && $number->value >= 1 && $number->value <= count($items) ? (int) floor($number->value) : null;
         } else {
             $candidate = $number->value->isGreaterThanOrEqualTo(1) && $number->value->isLessThanOrEqualTo(count($items))
-                ? $number->value->toScale(0, RoundingMode::DOWN)->toInt()
+                ? $number->value->toScale(0, RoundingMode::Down)->toInt()
                 : null;
         }
 

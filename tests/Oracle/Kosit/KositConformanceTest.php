@@ -169,12 +169,11 @@ final class KositConformanceTest extends TestCase
 
         $aborted = [];
         foreach ($report->dynamicErrors as $error) {
-            // A dynamic error in a rule context has no rule id and cannot be attributed here.
-            $ruleId = $error->ruleId ?? self::fail("A dynamic error in a rule context ({$error->location}) cannot be attributed to a rule set.");
-            if (! isset($owner[$ruleId])) {
-                self::fail("The dynamic error of {$ruleId} belongs to no rule set that ran.");
+            $ruleSet = $error->ruleSet ?? self::fail("The dynamic error at {$error->location} names no rule set.");
+            if (! in_array($ruleSet, $report->ruleSets, true)) {
+                self::fail("The dynamic error at {$error->location} belongs to {$ruleSet}, which did not run.");
             }
-            $aborted[$owner[$ruleId]] = true;
+            $aborted[$ruleSet] = true;
         }
 
         return array_values(array_filter(

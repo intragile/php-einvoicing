@@ -199,13 +199,13 @@ final class Atomic
         }
 
         if ($op === 'idiv') {
-            return new IntegerValue($l->dividedBy($r, 0, RoundingMode::DOWN));
+            return new IntegerValue($l->dividedBy($r, 0, RoundingMode::Down));
         }
 
         if ($op === 'div') {
             $scale = max(self::DIVIDE_PRECISION, self::divisionScale($left) - self::divisionScale($right) + self::DIVIDE_PRECISION);
 
-            return new DecimalValue($l->dividedBy($r, $scale, RoundingMode::HALF_DOWN));
+            return new DecimalValue($l->dividedBy($r, $scale, RoundingMode::HalfDown));
         }
 
         $result = match ($op) {
@@ -270,7 +270,7 @@ final class Atomic
             throw new XPathError('FOAR0002', 'Integer division of NaN or an infinite value.');
         }
 
-        return new IntegerValue(self::exactDecimal($quotient, 'xs:integer')->toScale(0, RoundingMode::DOWN));
+        return new IntegerValue(self::exactDecimal($quotient, 'xs:integer')->toScale(0, RoundingMode::Down));
     }
 
     /**
@@ -463,7 +463,7 @@ final class Atomic
             return new IntegerValue(BigDecimal::of(ltrim($lexical, '+')));
         }
 
-        return new IntegerValue(self::toBigDecimal($value, 'xs:integer')->toScale(0, RoundingMode::DOWN));
+        return new IntegerValue(self::toBigDecimal($value, 'xs:integer')->toScale(0, RoundingMode::Down));
     }
 
     private static function toDouble(AtomicValue $value): float

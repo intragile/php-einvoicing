@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\Tests\Schematron;
 use DOMAttr;
 use DOMDocument;
 use DOMElement;
+use DOMNode;
 use IntrAgile\EInvoicing\Rules\En16931\RuleFiles;
 use IntrAgile\EInvoicing\Schematron\Compiler;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
@@ -308,6 +309,7 @@ final class RunnerTest extends TestCase
         self::assertCount(1, $result->dynamicErrors);
         self::assertNull($result->dynamicErrors[0]->ruleId);
         self::assertSame('INTRAGILE_RECURSION', $result->dynamicErrors[0]->errorCode);
+        self::assertSame('mini 0', $result->dynamicErrors[0]->ruleSet);
         self::assertSame('/', $result->dynamicErrors[0]->location);
         self::assertSame(['ROOT /t:Root[1]'], self::summary($result));
     }
@@ -488,6 +490,32 @@ final class RunnerTest extends TestCase
             'NEXT /t:Root[1]/t:Item[1]/t:Amount[1]',
             'NEXT /t:Root[1]/t:Item[2]/t:Amount[1]',
         ], self::summary($result));
+    }
+
+    public function test_on_finding_receives_the_built_message(): void
+    {
+        $rules = self::compileSchematron('<pattern id="p"><rule context="t:Item">'
+            .'<assert id="V" flag="fatal" test="false()">Amount <value-of select="t:Amount"/> of <name/>.</assert></rule></pattern>');
+        $seen = [];
+        $runner = new Runner(null, static function (DOMNode $node, array $assert, Finding $finding) use (&$seen): void {
+            $seen[] = [$node instanceof DOMElement ? $node->getAttribute('kind') : '?', $assert['id'], $finding->message];
+        });
+
+        $result = $runner->run($rules, SafeXml::load(self::DOCUMENT));
+
+        self::assertSame([['x', 'V', 'Amount 10 of t:Item.'], ['y', 'V', 'Amount abc of t:Item.']], $seen);
+        self::assertSame(array_column($seen, 2), array_map(static fn (Finding $finding): string => $finding->message, $result->findings));
+    }
+
+    public function test_dynamic_error_names_its_rule_set(): void
+    {
+        $result = self::runMini(['amounts' => [['t:Amount', [['DEC', 'fatal', 'xs:decimal(.) > 0']]]]]);
+
+        self::assertSame(
+            [['DEC', 'mini 0']],
+            array_map(static fn (DynamicError $error): array => [$error->ruleId, $error->ruleSet], $result->dynamicErrors),
+        );
+        self::assertNull((new DynamicError('R-1', 'FORG0001', '/', 'x'))->ruleSet);
     }
 
     public function test_name_in_message_is_the_context_node_name(): void

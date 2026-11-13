@@ -102,7 +102,10 @@ XRechnung 2.6.0 schemas use, so they compile as published:
 - **`include`.** An `include` is replaced by the document element of the file it names, recursively,
   before anything is compiled. The `href` must be a relative path to a local file without a
   fragment; it resolves against the including file and must stay inside the include root (the
-  directory of the top-level schema unless the caller passes a wider one). Cycles are refused.
+  directory of the top-level schema unless the caller passes a wider one), also after symbolic
+  links are resolved. Paths are compared with `/` as the separator, so Windows paths and drive
+  letters work too. A file reached through two includes (a diamond) is inlined once, at its first
+  include. Cycles are refused.
 - **Global pattern lets.** A `let` of a pattern is a global variable, as in the ISO skeleton and
   SchXslt: every rule, let and XSLT function of every pattern sees it, and its name must be unique
   among the schema and pattern lets (`XTSE0630`).
@@ -120,11 +123,14 @@ XRechnung 2.6.0 schemas use, so they compile as published:
   (the Factur-X Schematron) compiles only when the caller says how, through `CompileOptions`: a
   default flag, and a prefix for synthesized ids of the form `<prefix>-<first ten hex digits of
   SHA-256(rule context, line feed, test)>`, which can be recomputed from the official SVRL. By
-  default both are refused.
+  default both are refused. An empty `id=""` is never synthesized; it is refused. The `flag` of a
+  `rule` is not inherited by its asserts and reports.
 - **`document()`.** The files `fn:document()` reads (the Factur-X code lists) are embedded in the
   rule set when it is compiled, and the runner reads them from there; it never opens a file or the
   network at run time. The compiler checks every `document()` call, and one it cannot resolve
-  against an embeddable file is refused.
+  against an embeddable file is refused. The compiled file records the SHA-256 of every embedded
+  document, and loading the rule set refuses a document that no longer matches it
+  (`UnsupportedSchematron`: the compiled rule file was modified).
 - **Compiled format 4.** These additions are format 4 of the compiled rule files. Formats 2, 3
   and 4 are read; any other is refused with `UnsupportedSchematron`.
 
@@ -227,7 +233,8 @@ an amount, an empty amount, `2026-13-01` as a date, a singleton element given tw
 aborts the whole run with an error code and produces no report. The engine does not abort:
 
 - the assert is recorded in `dynamicErrors` as a `DynamicError` with the error code
-  (`FORG0001`, `XPTY0004`, …), the rule id and the location of the context node;
+  (`FORG0001`, `XPTY0004`, …), the rule id, the location of the context node and the rule set
+  that raised it (`ruleSet`, `"<id> <version>"`);
 - every other assert and rule is still evaluated, so the report also lists the other findings;
 - `isValid()` is false.
 

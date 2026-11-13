@@ -395,7 +395,7 @@ final class Functions
         return match (true) {
             $value === null => [],
             $value instanceof IntegerValue => [$value],
-            $value instanceof DecimalValue => [new DecimalValue($value->value->toScale(0, RoundingMode::HALF_CEILING))],
+            $value instanceof DecimalValue => [new DecimalValue($value->value->toScale(0, RoundingMode::HalfCeiling))],
             default => [new DoubleValue(self::roundDouble($value->value))],
         };
     }

@@ -41,7 +41,8 @@ use IntrAgile\EInvoicing\XPath\XPathError;
  * back to the static message and is not reported: messages only feed the report, never the verdict.
  *
  * Each rule's match set is computed once per document instead of testing the pattern per node.
- * Unlike the XSLT, a dynamic error does not abort the run: it is recorded and evaluation continues.
+ * Unlike the XSLT, a dynamic error does not abort the run: it is recorded, with the id and version
+ * of the rule set, and evaluation continues.
  *
  * fn:document() reads only the documents embedded in the rule set when it was compiled (see
  * RuleSet::documents()); each is parsed once per rule set and shared by every run.
@@ -57,8 +58,10 @@ final class Runner
     /**
      * @param  (Closure(string): void)|null  $onGlobal  called with the name of a schema or pattern let
      *                                                  each time its value is computed (for tests and profiling)
-     * @param  (Closure(DOMNode, RuleAssert): void)|null  $onFinding  called with the context node and the
-     *                                                                assert each time one yields a finding
+     * @param  (Closure(DOMNode, RuleAssert, Finding): void)|null  $onFinding  called with the context node,
+     *                                                                         the assert and the finding (its
+     *                                                                         message built) each time an
+     *                                                                         assert yields a finding
      */
     public function __construct(private readonly ?Closure $onGlobal = null, private readonly ?Closure $onFinding = null) {}
 
@@ -77,6 +80,7 @@ final class Runner
         }
         $namespaces = $rules->namespaces();
         $root = $document->documentElement;
+        $ruleSet = "{$rules->id()} {$rules->version()}";
 
         $findings = [];
         $errors = [];
@@ -93,7 +97,7 @@ final class Runner
                     // Evaluator::matchPattern()). A non-recoverable one, such as the recursion
                     // limit, and an error elsewhere in the pattern leave the rule without any node
                     // and are reported once for the rule, at the document node.
-                    $errors[] = new DynamicError(null, $error->errorCode, '/', "The rule context \"{$rule['context']}\" cannot be evaluated: {$error->getMessage()}");
+                    $errors[] = new DynamicError(null, $error->errorCode, '/', "The rule context \"{$rule['context']}\" cannot be evaluated: {$error->getMessage()}", $ruleSet);
 
                     continue;
                 }
@@ -118,10 +122,11 @@ final class Runner
                         if ($evaluator->effectiveBoolean($assert['ast'], $node, $variables) !== $assert['report']) {
                             continue;
                         }
-                        $this->onFinding?->__invoke($node, $assert);
-                        $findings[] = new Finding($assert['id'], $assert['severity'], LocationPath::of($node, $namespaces), self::message($assert, $node, $variables, $evaluator), $assert['test']);
+                        $finding = new Finding($assert['id'], $assert['severity'], LocationPath::of($node, $namespaces), self::message($assert, $node, $variables, $evaluator), $assert['test']);
+                        $findings[] = $finding;
+                        $this->onFinding?->__invoke($node, $assert, $finding);
                     } catch (XPathError $error) {
-                        $errors[] = new DynamicError($assert['id'], $error->errorCode, LocationPath::of($node, $namespaces), $error->getMessage());
+                        $errors[] = new DynamicError($assert['id'], $error->errorCode, LocationPath::of($node, $namespaces), $error->getMessage(), $ruleSet);
                     }
                 }
             }
