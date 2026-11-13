@@ -37,8 +37,14 @@ Included today:
   writer and reader ([Peppol transport](docs/TRANSPORT.md)). Live transmission through Recommand
   is not verified yet.
 
+- ZUGFeRD / Factur-X 1.0 (profiles MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED and XRECHNUNG):
+  writing the profile XML, embedding it into a PDF/A you supply, reading it back out of a hybrid
+  PDF, and validating it, with the optional Apache-2.0 rules package
+  `intragile/einvoicing-rules-facturx` ([ZUGFeRD / Factur-X](#zugferd--factur-x)). The PDF layer is
+  pure PHP ([PDF layer](docs/PDF.md)).
+
 Not included yet, planned for later releases: other access point drivers, CII and self-billing
-over Peppol, the ZUGFeRD/Factur-X profile, and a Laravel package.
+over Peppol, and a Laravel package. Rendering the invoice PDF is out of scope: you supply the PDF.
 
 ## Install
 
@@ -207,6 +213,38 @@ are not well-formed or carry a DOCTYPE are refused by both
 ([docs/VALIDATION.md](docs/VALIDATION.md#the-kosit-conformance-run)). The rules package is
 Apache-2.0, like the KoSIT artefacts it is compiled from.
 
+## ZUGFeRD / Factur-X
+
+A hybrid invoice is a PDF/A-3 that carries the invoice as embedded CII XML. The library writes the
+XML for a profile, embeds it into a PDF/A you supply by an incremental update (your PDF's bytes are
+not changed), reads it back, and validates it against the Factur-X 1.09.2 rules. Writing a profile
+and validating need the separate rules package, a suggestion of this package:
+
+```bash
+composer require intragile/einvoicing-rules-facturx
+```
+
+```php
+use IntrAgile\EInvoicing\Syntax\FacturX\{FacturXPdfReader, FacturXPdfWriter, FacturXProfile, FacturXXmlWriter};
+use IntrAgile\EInvoicing\Validation\FacturX\FacturXValidator;
+
+$xml = (new FacturXXmlWriter)->write($invoice, FacturXProfile::En16931)->xml;
+$result = (new FacturXPdfWriter)->embed($pdfA3Bytes, $xml);   // $result->pdf, $result->warnings
+
+$document = (new FacturXPdfReader)->read($result->pdf);       // ->xml, ->profile, ->invoice()
+$report = FacturXValidator::create()->validate($document->xml);
+```
+
+We do not convert to PDF/A: give us a PDF/A input. The writer adds the trailer `/ID`, the XMP
+packet and an sRGB output intent, and warns (or throws `NotPdfA` with `strict: true`) when the
+input declares no PDF/A part; it does not embed fonts or fix transparency. MINIMUM and BASIC WL
+carry no lines, so reading them into the `Invoice` model throws `UnsupportedDocument`; the XML is
+still available. Validation runs the XML Schema first, and the Schematron still runs after an XSD
+failure. The format is verified offline: Schematron verdicts equal the official Factur-X 1.09.2
+XSLT (SaxonC) on 699 documents with 0 differences, PDF/A was checked with veraPDF 1.30.3, all 102
+PDFs of the Mustang corpus parse and all 61 FeRD example invoices are read. Nothing is verified in
+live exchanges yet. Details: [docs/FACTURX.md](docs/FACTURX.md).
+
 ## Peppol BIS 3
 
 `Validator::peppol($dir)` validates against Peppol BIS Billing 3.0.22: OpenPeppol's copy of the
@@ -277,6 +315,9 @@ possible. To report a vulnerability, see [SECURITY.md](SECURITY.md).
   ([details](docs/VALIDATION.md#the-kosit-validator-as-the-xrechnung-oracle)).
   `docker/kosit/run.sh` builds the image, starts the KoSIT daemon and runs the group; it is not
   part of CI.
+- The same oracle group also runs the official Factur-X 1.09.2 XSLT through SaxonC and compares
+  the Factur-X verdicts, and the optional `verapdf` group (`docker/verapdf/run.sh`) runs veraPDF
+  1.30.3 on the PDFs the writer produces ([details](docs/FACTURX.md#verification)).
 - CI runs PHPUnit and PHPStan (level max) on PHP 8.3, 8.4 and 8.5, plus Pint, the oracle and a
   check that the compiled rules match the official Schematron.
 
@@ -304,7 +345,9 @@ scenario table and schemas in `packages/rules-xrechnung` are licensed under the 
 the KoSIT artefacts they come from; see
 [packages/rules-xrechnung/SOURCE.md](packages/rules-xrechnung/SOURCE.md). The Peppol BIS rules are
 not distributed: OpenPeppol AISBL holds their copyright, and they are downloaded and compiled on
-your machine ([why](docs/PEPPOL.md#why-the-rules-are-compiled-on-your-machine)).
+your machine ([why](docs/PEPPOL.md#why-the-rules-are-compiled-on-your-machine)). The optional
+Factur-X rules and schemas in `packages/rules-facturx` are licensed under the Apache-2.0, like the
+FeRD artefacts they come from; see [packages/rules-facturx/SOURCE.md](packages/rules-facturx/SOURCE.md).
 
 ---
 

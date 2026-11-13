@@ -20,9 +20,10 @@ which in practice means Java (Saxon). This library runs the same rules in plain 
    into a syntax tree with namespace prefixes resolved, and writes one PHP file per syntax that
    returns those arrays. The files ship in the separate package `intragile/einvoicing-rules-en16931`
    (see [Licences](#licences)). At runtime nothing is parsed, and with opcache the arrays are
-   shared memory. Each file records the format of its array. The compiler writes format 3; the
-   engine also reads format 2, which format 3 only extends (with the message parts of
-   [Messages](#schematron-subset)), so rule sets installed by an earlier release keep working. A
+   shared memory. Each file records the format of its array. The compiler writes format 4; the
+   engine also reads formats 2 and 3, which format 4 only extends (format 3 with the message parts
+   of [Messages](#schematron-subset), format 4 with `report` elements and embedded documents), so
+   rule sets installed by an earlier release keep working. A
    file of any other format is refused with `UnsupportedSchematron` asking to recompile it.
 2. **Run time.** The runner applies the semantics of the ISO Schematron XSLT skeleton: every
    pattern visits the document node and every element and attribute in document order, a node is
@@ -113,6 +114,19 @@ XRechnung 2.6.0 schemas use, so they compile as published:
   error, the finding carries the static message (the text with every element left out) and no
   `DynamicError` is reported: the official stylesheets evaluate messages only for the report, and
   the verdict never depends on them.
+
+- **Reports and missing flags.** A `report` is compiled like an `assert` with the test reversed:
+  it fires when its test is true. A rule set whose asserts or reports lack a `flag` or an `id`
+  (the Factur-X Schematron) compiles only when the caller says how, through `CompileOptions`: a
+  default flag, and a prefix for synthesized ids of the form `<prefix>-<first ten hex digits of
+  SHA-256(rule context, line feed, test)>`, which can be recomputed from the official SVRL. By
+  default both are refused.
+- **`document()`.** The files `fn:document()` reads (the Factur-X code lists) are embedded in the
+  rule set when it is compiled, and the runner reads them from there; it never opens a file or the
+  network at run time. The compiler checks every `document()` call, and one it cannot resolve
+  against an embeddable file is refused.
+- **Compiled format 4.** These additions are format 4 of the compiled rule files. Formats 2, 3
+  and 4 are read; any other is refused with `UnsupportedSchematron`.
 
 ## Lets and XSLT functions
 
@@ -430,8 +444,13 @@ fails when a generated file differs from what the compiler writes.
   Apache-2.0 licence of the KoSIT artefacts, with their `NOTICE`; origin and checksums are in its
   [SOURCE.md](../packages/rules-xrechnung/SOURCE.md). It is optional: only
   `XRechnungValidator` needs it.
+- The Factur-X 1.09.2 rule sets and the profile schemas are in `packages/rules-facturx/`
+  (package `intragile/einvoicing-rules-facturx`) under the Apache-2.0 licence of FeRD's technical
+  artefacts, with their `NOTICE`; origin and checksums are in its
+  [SOURCE.md](../packages/rules-facturx/SOURCE.md). It is optional: only the Factur-X validator
+  and writer need it. See [ZUGFeRD / Factur-X](FACTURX.md).
 
-Neither package is published yet. Before the first release the rules package moves to its own
+None of the packages is published yet. Before the first release the rules package moves to its own
 repository.
 
 ## Performance

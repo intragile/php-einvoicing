@@ -10,6 +10,27 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- ZUGFeRD / Factur-X 1.0 for the profiles MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED and
+  XRECHNUNG: `FacturXXmlWriter` writes the profile XML reduced to what the profile allows,
+  `FacturXPdfWriter::embed()` embeds it into a PDF/A you supply by an incremental update (embedded
+  file, `/AF`, XMP, trailer `/ID`, sRGB output intent), `FacturXPdfReader` extracts it, and
+  `FacturXValidator` validates it (XML Schema first, then Schematron, which still runs after an
+  XSD failure). The PDF is not converted to PDF/A: an input that declares no PDF/A part gets a
+  warning, or `NotPdfA` in strict mode. Reading MINIMUM and BASIC WL into the model throws
+  `UnsupportedDocument`, as they carry no lines. The default `/AFRelationship` is Data, and
+  Alternative for XRECHNUNG.
+- A pure-PHP PDF parser in `IntrAgile\EInvoicing\Pdf`: classic and stream cross-reference
+  sections, object streams, index reconstruction, FlateDecode with predictors, and hard safety
+  limits (a breach throws `UnreadablePdf`); no PDF library.
+- `intragile/einvoicing-rules-facturx` (Apache-2.0), a suggested package: the Factur-X 1.09.2
+  Schematron of the five profiles compiled to rule sets, and the profile XML Schemas.
+- Schematron compiler: `report` elements, default flags and synthesized ids for assertions
+  without them (`CompileOptions`), and `document()` on files embedded at compile time.
+- Factur-X conformance tests: the validator's verdicts equal the official Factur-X 1.09.2 XSLT
+  (SaxonC) on 699 documents, PDF/A is checked with veraPDF 1.30.3 (optional `verapdf` group), all
+  102 Mustang corpus PDFs parse and all 61 FeRD example invoices are read. Format verified
+  offline; nothing is verified in live exchanges.
+- `docs/FACTURX.md` and `docs/PDF.md`.
 - EN 16931 code lists as backed enums in `IntrAgile\EInvoicing\CodeList`, generated from the
   CEN validation artefacts 1.3.17.
 - The EN 16931-1 semantic model as immutable classes in `IntrAgile\EInvoicing\Model`, with exact
@@ -125,6 +146,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Compiled rule files are written in format 4, which adds `report` entries and the embedded
+  `documents` of `document()` to format 3. Formats 2, 3 and 4 are all read, so rule files compiled
+  earlier need no recompile.
+- The package requires `ext-zlib`, for the PDF streams.
+- `UnsupportedDocument` is no longer `final`: `ProfileMismatch`, `NotPdfA`, `UnreadablePdf` and
+  other Factur-X and PDF refusals extend it, so one `catch` covers them.
 - `einvoicing-rules install peppol` downloads and compiles five official files instead of four,
   adding the envelope rules (`peppol-envelope-3.0.22.php`). `check` exits 1 on a folder written
   by an earlier version until `install` is run again; `Validator::peppol()` keeps working with it.

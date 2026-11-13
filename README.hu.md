@@ -37,9 +37,15 @@ Jelenleg tartalmazza:
   SBDH-boríték írása és olvasása ([Peppol-átvitel](docs/TRANSPORT.md), angolul). Az éles küldést a
   Recommandon keresztül még nem ellenőriztük.
 
+- ZUGFeRD / Factur-X 1.0 (MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED és XRECHNUNG profil): a
+  profil XML-jének írása, beágyazása egy általad adott PDF/A-ba, kiolvasása a hibrid PDF-ből és
+  ellenőrzése, az opcionális, Apache-2.0 licencű `intragile/einvoicing-rules-facturx`
+  szabálycsomaggal ([ZUGFeRD / Factur-X](#zugferd--factur-x)). A PDF-réteg tisztán PHP-s
+  ([PDF-réteg](docs/PDF.md), angolul).
+
 Későbbi kiadásokra tervezett, jelenleg nincs benne: további hozzáférésipont-meghajtók, CII- és
-önszámlázó (self-billing) számlák küldése Peppolon, a ZUGFeRD/Factur-X profil,
-valamint Laravel csomag.
+önszámlázó (self-billing) számlák küldése Peppolon, valamint Laravel csomag. A számla PDF-jének
+megjelenítése (renderelése) nem feladata a csomagnak: a PDF-et te adod.
 
 ## Telepítés
 
@@ -218,6 +224,39 @@ nem jelez semmit; 3 nem jól formált vagy DOCTYPE-ot tartalmazó fájlt pedig m
 ([docs/VALIDATION.md](docs/VALIDATION.md#the-kosit-conformance-run), angolul). A szabálycsomag
 Apache-2.0 licencű, mint a KoSIT-anyagok, amelyekből fordul.
 
+## ZUGFeRD / Factur-X
+
+A hibrid számla egy PDF/A-3, amely a számlát beágyazott CII XML-ként hordozza. A könyvtár megírja a
+profil XML-jét, inkrementális frissítéssel beágyazza egy általad adott PDF/A-ba (a PDF eredeti
+bájtjai nem változnak), visszaolvassa, és ellenőrzi a Factur-X 1.09.2 szabályai szerint. A profil
+írásához és az ellenőrzéshez a külön szabálycsomag kell, amely ennek a csomagnak csak javaslata:
+
+```bash
+composer require intragile/einvoicing-rules-facturx
+```
+
+```php
+use IntrAgile\EInvoicing\Syntax\FacturX\{FacturXPdfReader, FacturXPdfWriter, FacturXProfile, FacturXXmlWriter};
+use IntrAgile\EInvoicing\Validation\FacturX\FacturXValidator;
+
+$xml = (new FacturXXmlWriter)->write($invoice, FacturXProfile::En16931)->xml;
+$result = (new FacturXPdfWriter)->embed($pdfA3Bytes, $xml);   // $result->pdf, $result->warnings
+
+$document = (new FacturXPdfReader)->read($result->pdf);       // ->xml, ->profile, ->invoice()
+$report = FacturXValidator::create()->validate($document->xml);
+```
+
+Nem alakítunk át PDF/A-vá: PDF/A bemenetet adj. Az író hozzáadja a trailer `/ID`-t, az XMP-csomagot
+és egy sRGB kimeneti szándékot (output intent), és figyelmeztet (`strict: true` esetén `NotPdfA`
+kivételt dob), ha a bemenet nem deklarál PDF/A-részt; betűtípusokat nem ágyaz be, az átlátszóságot
+nem javítja. A MINIMUM és a BASIC WL profil nem tartalmaz tételsorokat, ezért az `Invoice`
+modellbe olvasásuk `UnsupportedDocument` kivételt dob; az XML ettől még elérhető. Az ellenőrzés
+előbb az XML Schemát futtatja, a Schematron pedig XSD-hiba után is lefut. A formátumot offline
+ellenőriztük: a Schematron-eredmények 699 dokumentumon megegyeznek a hivatalos Factur-X 1.09.2
+XSLT-ével (SaxonC), 0 eltéréssel; a PDF/A-t a veraPDF 1.30.3-mal ellenőriztük, a Mustang-korpusz
+mind a 102 PDF-je beolvasható, és a 61 FeRD-mintaszámla mindegyike kiolvasható. Éles
+forgalomban még nem ellenőriztük. Részletek: [docs/FACTURX.md](docs/FACTURX.md), angolul.
+
 ## Peppol BIS 3
 
 A `Validator::peppol($dir)` a Peppol BIS Billing 3.0.22 szabályai szerint ellenőriz: az
@@ -293,6 +332,10 @@ entitás-kibontásos támadás (billion laughs) így nem lehetséges. Sérülék
   XRechnung-eredményeket ([részletek](docs/VALIDATION.md#the-kosit-validator-as-the-xrechnung-oracle),
   angolul). A `docker/kosit/run.sh` felépíti a képet, elindítja a KoSIT-démont és lefuttatja a
   csoportot; a CI nem futtatja.
+- Ugyanez az oracle-csoport a hivatalos Factur-X 1.09.2 XSLT-t is futtatja SaxonC-vel, és azzal
+  veti össze a Factur-X-eredményeket; az opcionális `verapdf` csoport (`docker/verapdf/run.sh`) a
+  veraPDF 1.30.3-mal ellenőrzi az író által előállított PDF-eket
+  ([részletek](docs/FACTURX.md#verification), angolul).
 - A CI PHPUnitot és PHPStant (max szint) futtat PHP 8.3, 8.4 és 8.5 alatt, továbbá Pintet, az
   oracle-csoportot, és ellenőrzi, hogy a lefordított szabályok egyeznek a hivatalos Schematronnal.
 
@@ -320,7 +363,9 @@ mappa opcionális XRechnung-szabályai, forgatókönyv-táblája és sémái Apa
 KoSIT-anyagok, amelyekből származnak; lásd:
 [packages/rules-xrechnung/SOURCE.md](packages/rules-xrechnung/SOURCE.md). A Peppol BIS szabályait a
 csomag nem terjeszti: szerzői joguk az OpenPeppol AISBL-é, ezért a saját gépeden töltődnek le és
-fordulnak le ([miért](docs/PEPPOL.md#why-the-rules-are-compiled-on-your-machine), angolul).
+fordulnak le ([miért](docs/PEPPOL.md#why-the-rules-are-compiled-on-your-machine), angolul). A
+`packages/rules-facturx` mappa opcionális Factur-X szabályai és sémái Apache-2.0 licencűek, mint a
+FeRD-anyagok, amelyekből származnak; lásd: [packages/rules-facturx/SOURCE.md](packages/rules-facturx/SOURCE.md).
 
 ---
 
