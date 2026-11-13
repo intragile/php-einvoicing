@@ -29,7 +29,8 @@ use RuntimeException;
  *
  * When KoSIT matches no scenario, XRechnungValidator must throw UnsupportedDocument. Files that
  * are not well-formed or carry a DOCTYPE must not be accepted by KoSIT and make us throw
- * UnsupportedDocument or UnsafeXml.
+ * UnsupportedDocument or UnsafeXml; the corpus has no DOCTYPE file, so one is built from a test
+ * suite instance (Mutations::withDoctype()), on which we must throw UnsafeXml.
  *
  * Dynamic errors. When an assert of a Schematron step cannot be evaluated (for example a cast of
  * a repeated element, XPTY0004), KoSIT's XSLT transformation of that step aborts: the step reports
@@ -124,6 +125,15 @@ final class KositConformanceTest extends TestCase
                 'accepted' => $report->isValid(),
             ],
         );
+    }
+
+    public function test_doctype_document_is_refused_like_kosit(): void
+    {
+        $xml = Mutations::withDoctype();
+
+        self::assertFalse($this->client->check($xml)->accepted);
+        $this->expectException(UnsafeXml::class);
+        self::validator()->validate($xml);
     }
 
     #[DataProvider('rejectedDocuments')]

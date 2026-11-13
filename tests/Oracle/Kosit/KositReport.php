@@ -46,7 +46,9 @@ final readonly class KositReport
 
     /**
      * @param  int  $httpStatus  the status the daemon answered with: 200 when accepted, 406 when
-     *                           rejected, 422 when the input is not well-formed
+     *                           rejected, 422 on a processing error (the input is not
+     *                           well-formed, or a Schematron step aborted on an XPath dynamic
+     *                           error)
      *
      * @throws RuntimeException when the report is not a VARL report, gives one code two custom
      *                          levels, or its acceptance contradicts the status or the verdict

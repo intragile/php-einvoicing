@@ -209,9 +209,12 @@ specifikáció-azonosítója (BT-24) egyik forgatókönyvvel sem egyezik pontosa
 amely felsorolja az elfogadott azonosítókat. XRechnung írásához tedd a számlára az
 `XRechnung::processControl()` értékét. A cél a KoSIT-tal azonos eredmény: forgatókönyv, XML
 Schema-érvényesség, a szabályazonosítók szintjükkel, és az elfogadás; tesztoracle-ként maga a
-KoSIT validátor fut: 583 dokumentumon (a KoSIT tesztcsomag, az XRechnung Schematron
-egységtesztjei, a konfiguráció tesztjei, a CEN 1.3.16 példák és mutációk) minden eredmény
-megegyezik a KoSIT validátor 1.6.3 eredményével a 2026-08-31-es konfigurációval
+KoSIT validátor fut. A KoSIT validátor 1.6.3-mal és a 2026-08-31-es konfigurációval összevetve
+579 dokumentumon (a KoSIT tesztcsomag, az XRechnung Schematron egységtesztjei, a konfiguráció
+tesztjei, a CEN 1.3.16 példák és mutációk) a forgatókönyv, az XML Schema-érvényesség, az
+eredmény és az elfogadás is megegyezik; 2 dokumentumon, ahol egy szabálykészletben XPath dinamikus
+hiba lép fel, akkor egyezik, ha az adott szabálykészlet találatait kihagyjuk, mert a KoSIT arra
+nem jelez semmit; 3 nem jól formált vagy DOCTYPE-ot tartalmazó fájlt pedig mindkettő elutasít
 ([docs/VALIDATION.md](docs/VALIDATION.md#the-kosit-conformance-run), angolul). A szabálycsomag
 Apache-2.0 licencű, mint a KoSIT-anyagok, amelyekből fordul.
 

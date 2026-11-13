@@ -282,8 +282,9 @@ The scenario table, the compiled XRechnung rule sets and the schemas live in
 hand. "Validated like KoSIT" means that, per document, the scenario name, the XML Schema
 validity, the sorted set of `"<rule id> <level>"` strings and the acceptance equal what the KoSIT
 validator reports. The conformance test against the KoSIT validator itself is described in the
-next section ([The KoSIT conformance run](#the-kosit-conformance-run)): all 583 documents give
-KoSIT's verdict. To write XRechnung, give the invoice `XRechnung::processControl()` (or
+next section ([The KoSIT conformance run](#the-kosit-conformance-run)): 579 documents give
+exactly KoSIT's verdict, 2 more give it after the documented dynamic-error rule, and 3 files that
+are not well-formed or carry a DOCTYPE are refused by both. To write XRechnung, give the invoice `XRechnung::processControl()` (or
 `XRechnung::processControl(XRechnung::EXTENSION)`), which sets BT-24 and the Peppol billing
 profile as BT-23.
 
@@ -368,11 +369,23 @@ KoSIT's; when KoSIT matches no scenario, the validator must throw `UnsupportedDo
 | Mutations of five instances (UBL Invoice, UBL CreditNote, CII, Extension, CVD): BT-24 with a trailing space, `xrechnung_2.3` or the Peppol BIS id; buyer reference removed; seller contact removed; IBAN check digit broken; due date and payment terms removed; an element out of schema order; `abc` as an amount | 45 |
 | Schema-valid documents that raise an XPath dynamic error, one per Schematron step | 2 |
 | Files that are not well-formed (KoSIT must not accept them, the validator must throw) | 2 |
+| A test suite instance with a DOCTYPE added (KoSIT must not accept it, the validator must throw `UnsafeXml`) | 1 |
 
-On KoSIT validator 1.6.3 with configuration 2026-08-31 all 583 documents give the same verdict
-(measured 2026-11-13): 318 accepted, 215 rejected by a Schematron error, 11 rejected by the XML
-Schema, 37 without a scenario (including the 2 unparseable files), and 2 processing errors. The
-run takes about 70 seconds. The `abc` amount fails the XML Schema in both syntaxes, so no
+Measured on KoSIT validator 1.6.3 with configuration 2026-08-31 (2026-11-13), in three groups:
+
+- The 579 corpus documents, CEN examples and mutations are compared on all four points (scenario,
+  XML Schema validity, verdict, acceptance) and all are equal: 318 accepted, 215 rejected by a
+  Schematron error, 11 rejected by the XML Schema, and 35 without a scenario, where the validator
+  throws `UnsupportedDocument`.
+- The 2 dynamic-error documents are processing errors on KoSIT's side (HTTP 422). Scenario, XML
+  Schema validity and rejection are equal; the verdicts are equal after the findings of the rule
+  set that hit the dynamic error are left out of ours, as KoSIT reports none for that step (rule
+  below).
+- The 3 refused files are not compared on a verdict: KoSIT does not accept them (HTTP 422, its
+  XML parser refuses them; the DOCTYPE with "DOCTYPE is disallowed") and the validator throws
+  (`UnsupportedDocument`, or `UnsafeXml` for the DOCTYPE).
+
+The run takes about 70 seconds. The `abc` amount fails the XML Schema in both syntaxes, so no
 Schematron runs on it.
 
 A dynamic error is compared by KoSIT's own rule: an assert that cannot be evaluated aborts the

@@ -120,6 +120,21 @@ final class Mutations
         ];
     }
 
+    /**
+     * A test suite UBL invoice with an internal DOCTYPE subset declaring one entity, inserted after
+     * the XML declaration: KoSIT must not accept it and the engine must refuse it as unsafe.
+     */
+    public static function withDoctype(): string
+    {
+        $xml = self::base('ubl-invoice');
+        $declaration = (string) preg_replace('/^(<\?xml[^>]*\?>).*$/s', '$1', $xml);
+        if ($declaration === $xml || ! str_starts_with($xml, '<?xml')) {
+            throw new RuntimeException('The DOCTYPE base has no XML declaration.');
+        }
+
+        return $declaration."\n".'<!DOCTYPE Invoice [<!ENTITY seller "Seller">]>'.substr($xml, strlen($declaration));
+    }
+
     private static function base(string $base): string
     {
         $name = self::BASES[$base];
@@ -177,9 +192,16 @@ final class Mutations
     }
 
     /**
-     * @param  Closure(DOMXPath, string): void  $change
+     * Applies one change to a parsed copy of $xml and returns the serialised result. The result
+     * is compared with the serialisation of the unchanged parse, not with the source text, which
+     * re-serialisation alone already alters.
+     *
+     * @param  Closure(DOMXPath, string): void  $change  receives an XPath with the cbc, cac, rsm and
+     *                                                   ram prefixes bound, and "ubl" or "cii"
+     *
+     * @throws RuntimeException when $xml is not well-formed or the change leaves it unchanged
      */
-    private static function apply(string $xml, Closure $change, string $name): string
+    public static function apply(string $xml, Closure $change, string $name): string
     {
         $document = new DOMDocument;
         $document->preserveWhiteSpace = true;
@@ -192,10 +214,12 @@ final class Mutations
         }
         $syntax = $document->documentElement?->namespaceURI === self::NAMESPACES['rsm'] ? 'cii' : 'ubl';
 
+        $unchanged = $document->saveXML();
+
         $change($xpath, $syntax);
 
         $mutated = $document->saveXML();
-        if ($mutated === false || $mutated === $xml) {
+        if ($mutated === false || $mutated === $unchanged) {
             throw new RuntimeException("The mutation {$name} did not change its base.");
         }
 

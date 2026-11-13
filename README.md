@@ -198,9 +198,12 @@ fatal in XRechnung CII). A document whose specification identifier (BT-24) match
 exactly is refused with an exception that lists the accepted identifiers. To write XRechnung, put
 `XRechnung::processControl()` on the invoice. The design goal is the same verdict as KoSIT:
 scenario, XML Schema validity, the set of rule ids with their levels, and acceptance; the KoSIT
-validator itself runs as the test oracle: on 583 documents (the KoSIT test suite, the XRechnung
-Schematron unit tests, the configuration tests, the CEN 1.3.16 examples and mutations) every
-verdict equals that of KoSIT validator 1.6.3 with configuration 2026-08-31
+validator itself runs as the test oracle. Against KoSIT validator 1.6.3 with configuration
+2026-08-31, scenario, XML Schema validity, verdict and acceptance are equal on 579 documents (the
+KoSIT test suite, the XRechnung Schematron unit tests, the configuration tests, the CEN 1.3.16
+examples and mutations); on 2 documents where a rule set hits an XPath dynamic error they are
+equal once that rule set's findings are left out, as KoSIT reports none for it; and 3 files that
+are not well-formed or carry a DOCTYPE are refused by both
 ([docs/VALIDATION.md](docs/VALIDATION.md#the-kosit-conformance-run)). The rules package is
 Apache-2.0, like the KoSIT artefacts it is compiled from.
 
