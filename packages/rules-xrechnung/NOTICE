@@ -1,0 +1,135 @@
+intragile/einvoicing-rules-xrechnung
+Distributed by IntrAgile Kft. (https://intragile.eu)
+
+This product includes software developed by the Koordinierungsstelle für IT-Standards (KoSIT),
+Coordination Office for IT Standards (https://www.xoev.de/):
+
+  - rules/xrechnung-ubl-2.6.0.php and rules/xrechnung-cii-2.6.0.php are compiled from the
+    XRechnung Schematron 2.6.0 (https://github.com/itplr-kosit/xrechnung-schematron),
+    licensed under the Apache License, Version 2.0;
+  - rules/scenarios-2026-08-31.php is compiled from scenarios.xml of the KoSIT validator
+    configuration for XRechnung 2026-08-31
+    (https://github.com/itplr-kosit/validator-configuration-xrechnung), licensed under the
+    Apache License, Version 2.0, whose NOTICE reads:
+
+      KoSIT XML-Validator Configuration for XRechnung
+      Copyright 2020 Koordinierungsstelle für IT-Standards
+
+      This product includes software developed by
+      Coordination Office for IT-Standards (http://www.xoev.de/).
+
+The files in schemas/ are unmodified copies of the XML Schemas shipped in that KoSIT validator
+configuration. They are not covered by the Apache License; each file keeps its own notice, and
+the notices are repeated below.
+
+
+OASIS Universal Business Language (UBL) 2.1
+-------------------------------------------
+
+schemas/ubl/2.1/xsd/maindoc/*.xsd and schemas/ubl/2.1/xsd/common/UBL-*.xsd are from OASIS UBL 2.1
+OS (http://docs.oasis-open.org/ubl/os-UBL-2.1/). Each file states:
+
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+
+The "Notices" section of the UBL 2.1 specification follows (converted to plain text and reflowed;
+wording unchanged, link targets omitted):
+
+  Copyright © OASIS Open 2001-2013. All Rights Reserved.
+
+  All capitalized terms in the following text have the meanings assigned to them in the OASIS
+  Intellectual Property Rights Policy (the “OASIS IPR Policy”). The full Policy may be found at
+  the OASIS website.
+
+  This document and translations of it may be copied and furnished to others, and derivative works
+  that comment on or otherwise explain it or assist in its implementation may be prepared, copied,
+  published, and distributed, in whole or in part, without restriction of any kind, provided that the
+  above copyright notice and this section are included on all such copies and derivative works.
+  However, this document itself may not be modified in any way, including by removing the copyright
+  notice or references to OASIS, except as needed for the purpose of developing any document or
+  deliverable produced by an OASIS Technical Committee (in which case the rules applicable to
+  copyrights, as set forth in the OASIS IPR Policy, must be followed) or as required to translate it
+  into languages other than English.
+
+  The limited permissions granted above are perpetual and will not be revoked by OASIS or its
+  successors or assigns.
+
+  This document and the information contained herein is provided on an “AS IS” basis and OASIS
+  DISCLAIMS ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTY THAT THE USE
+  OF THE INFORMATION HEREIN WILL NOT INFRINGE ANY OWNERSHIP RIGHTS AND ANY IMPLIED WARRANTIES OF
+  MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+
+  OASIS requests that any OASIS Party or any other party that believes it has patent claims that would
+  necessarily be infringed by implementations of this OASIS Committee Specification or OASIS Standard
+  notify OASIS TC Administrator and provide an indication of its willingness to grant patent licenses
+  to such patent claims in a manner consistent with the IPR Mode of the OASIS Technical Committee that
+  produced this specification.
+
+  OASIS invites any party to contact the OASIS TC Administrator if it is aware of a claim of ownership
+  of any patent claims that would necessarily be infringed by implementations of this specification by
+  a patent holder that is not willing to provide a license to such patent claims in a manner
+  consistent with the IPR Mode of the OASIS Technical Committee that produced this specification.
+  OASIS may include such claims on its website, but disclaims any obligation to do so.
+
+  OASIS takes no position regarding the validity or scope of any intellectual property or other rights
+  that might be claimed to pertain to the implementation or use of the technology described in this
+  document or the extent to which any license under such rights might or might not be available;
+  neither does it represent that it has made any effort to identify any such rights. Information on
+  OASIS’ procedures with respect to rights in any document or deliverable produced by an OASIS
+  Technical Committee can be found on the OASIS website. Copies of claims of rights made available for
+  publication and any assurances of licenses to be made available, or the result of an attempt made to
+  obtain a general license or permission for the use of such proprietary rights by implementers or
+  users of this OASIS Committee Specification or OASIS Standard, can be obtained from the OASIS TC
+  Administrator. OASIS makes no representation that any information or list of intellectual property
+  rights will at any time be complete, or that any claims in such list are, in fact, Essential Claims.
+
+  The name “OASIS” is a trademark of OASIS, the owner and developer of this specification, and
+  should be used only to refer to the organization and its official outputs. OASIS welcomes reference
+  to, and implementation and use of, specifications, while reserving the right to enforce its marks
+  against misleading uses. Please see http://www.oasis-open.org/policies-guidelines/trademark.php for
+  guidance.
+
+  CPFR is a registered trademark of the Voluntary Interindustry Commerce Solutions (VICS) association.
+  The term “CPFR” is not to be used in any format without written permission from VICS. For more
+  information on VICS and CPFR, visit www.vics.org.
+
+Three of the UBL files are copies of third-party schemas, as their headers state:
+
+  - UBL-xmldsig-core-schema-2.1.xsd: a copy of the W3C XML Signature schema
+    (http://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd), "Copyright 2001 The Internet
+    Society and W3C (Massachusetts Institute of Technology, Institut National de Recherche en
+    Informatique et en Automatique, Keio University). All Rights Reserved.", governed by the W3C
+    Software License (http://www.w3.org/Consortium/Legal/copyright-software-19980720);
+  - UBL-XAdESv132-2.1.xsd and UBL-XAdESv141-2.1.xsd: copies of the ETSI XAdES schemas
+    (http://uri.etsi.org/01903/v1.3.2/XAdES.xsd, http://uri.etsi.org/01903/v1.4.1/XAdESv141.xsd),
+    modified by OASIS only to change the importing URI.
+
+
+UN/CEFACT
+---------
+
+schemas/cii/16b/xsd/*.xsd are the UN/CEFACT Cross Industry Invoice D16B schemas (schema version
+100.D16B, 10 October 2016). Each file states:
+
+  Copyright (C) UN/CEFACT (2016). All Rights Reserved.
+
+  This document and translations of it may be copied and furnished to others, and derivative
+  works that comment on or otherwise explain it or assist in its implementation may be prepared,
+  copied, published and distributed, in whole or in part, without restriction of any kind,
+  provided that the above copyright notice and this paragraph are included on all such copies and
+  derivative works. However, this document itself may not be modified in any way, such as by
+  removing the copyright notice or references to UN/CEFACT, except as needed for the purpose of
+  developing UN/CEFACT specifications, in which case the procedures for copyrights defined in the
+  UN/CEFACT Intellectual Property Rights document must be followed, or as required to translate
+  it into languages other than English.
+
+  The limited permissions granted above are perpetual and will not be revoked by UN/CEFACT or its
+  successors or assigns.
+
+  This document and the information contained herein is provided on an "AS IS" basis and
+  UN/CEFACT DISCLAIMS ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTY
+  THAT THE USE OF THE INFORMATION HEREIN WILL NOT INFRINGE ANY RIGHTS OR ANY IMPLIED WARRANTIES OF
+  MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+
+schemas/ubl/2.1/xsd/common/CCTS_CCT_SchemaModule-2.1.xsd is the UN/CEFACT Core Component Type
+Schema Module 1.1 and carries the same notice as "Copyright (C) UN/CEFACT (2006). All Rights
+Reserved."

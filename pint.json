@@ -1,6 +1,7 @@
 {
     "preset": "laravel",
     "exclude": [
-        "packages/rules-en16931/rules"
+        "packages/rules-en16931/rules",
+        "packages/rules-xrechnung/rules"
     ]
 }
