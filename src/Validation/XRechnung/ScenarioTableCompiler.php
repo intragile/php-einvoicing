@@ -21,8 +21,8 @@ use UnexpectedValueException;
  *
  * @internal
  *
- * @phpstan-type Scenario array{name: string, namespaces: array<string, string>, match: string, schema: string, ruleSets: list<array{id: string, version: string}>, customLevels: array<string, 'error'|'warning'|'information'>}
- * @phpstan-type ScenarioTable array{format: int, configuration: string, scenarios: list<Scenario>}
+ * @phpstan-type ScenarioEntry array{name: string, namespaces: array<string, string>, match: string, schema: string, ruleSets: list<array{id: string, version: string}>, customLevels: array<string, 'error'|'warning'|'information'>}
+ * @phpstan-type ScenarioTable array{format: int, configuration: string, scenarios: list<ScenarioEntry>}
  */
 final class ScenarioTableCompiler
 {
@@ -116,7 +116,7 @@ final class ScenarioTableCompiler
     }
 
     /**
-     * @return Scenario
+     * @return ScenarioEntry
      */
     private static function scenario(DOMElement $scenario): array
     {
