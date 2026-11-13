@@ -39,6 +39,14 @@ use PHPUnit\Framework\TestCase;
  *     and no s:scenario element, so there is no scenario name (the configuration's
  *     noScenarioReport resource "Default Report" is not named either); the scenario is null,
  *     there is no XML Schema or Schematron step, and the document is rejected with HTTP 406.
+ *
+ * (e) An XPath dynamic error in a Schematron step (a repeated element passed to a cast, XPTY0004)
+ *     aborts the XSLT transformation of that step: the step is still reported with valid="true"
+ *     but has no message at all, not even those of asserts that were evaluated before or after
+ *     the failing one; the later Schematron steps run normally. The report names the scenario,
+ *     the XML Schema step is valid, and the document is rejected with HTTP 422 (processing
+ *     error), the status otherwise used for a body that is not well-formed. Saxon's error is only
+ *     written to the daemon's log, not into the report.
  */
 #[Group('kosit-oracle')]
 final class KositProbeTest extends TestCase
@@ -133,6 +141,32 @@ final class KositProbeTest extends TestCase
         self::assertNull($report->scenario);
         self::assertFalse($report->schemaValid);
         self::assertFalse($report->schematronRan);
+        self::assertFalse($report->accepted);
+    }
+
+    public function test_dynamic_error_aborts_its_schematron_step_with_http_422(): void
+    {
+        // The CEN step (val-sch.1) fails on the repeated ram:LineTotalAmount (BR-CO-10); it would
+        // otherwise report CII-SR-477. The XRechnung step (val-sch.2) still reports BR-DE-TMP-32.
+        [$status, $body] = $this->client->post(Mutations::dynamicErrors()['cii/line-total-amount-repeated']);
+        $report = KositReport::fromXml($body, $status);
+
+        self::assertSame(422, $status);
+        self::assertSame('EN16931 XRechnung (CII)', $report->scenario);
+        self::assertTrue($report->schemaValid);
+        self::assertTrue($report->processingError);
+        self::assertMatchesRegularExpression('#<rep:validationStepResult id="val-sch\.1" valid="true"><s:resource>.*?</s:resource></rep:validationStepResult>#', $body);
+        self::assertSame(['BR-DE-TMP-32 information'], $report->verdict);
+        self::assertFalse($report->accepted);
+
+        // In the UBL CreditNote the XRechnung step (val-sch.2) fails on the repeated
+        // cac:InvoicePeriod (PEPPOL-EN16931-R110); the CEN step before it reports UBL-SR-08.
+        [$status, $body] = $this->client->post(Mutations::dynamicErrors()['ubl-creditnote/invoice-period-repeated']);
+        $report = KositReport::fromXml($body, $status);
+
+        self::assertSame(422, $status);
+        self::assertMatchesRegularExpression('#<rep:validationStepResult id="val-sch\.2" valid="true"><s:resource>.*?</s:resource></rep:validationStepResult>#', $body);
+        self::assertSame(['UBL-SR-08 fatal'], $report->verdict);
         self::assertFalse($report->accepted);
     }
 

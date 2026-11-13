@@ -209,8 +209,12 @@ specifikáció-azonosítója (BT-24) egyik forgatókönyvvel sem egyezik pontosa
 amely felsorolja az elfogadott azonosítókat. XRechnung írásához tedd a számlára az
 `XRechnung::processControl()` értékét. A cél a KoSIT-tal azonos eredmény: forgatókönyv, XML
 Schema-érvényesség, a szabályazonosítók szintjükkel, és az elfogadás; tesztoracle-ként maga a
-KoSIT validátor fut ([docs/VALIDATION.md](docs/VALIDATION.md), angolul). A szabálycsomag
+KoSIT validátor fut: 583 dokumentumon (a KoSIT tesztcsomag, az XRechnung Schematron
+egységtesztjei, a konfiguráció tesztjei, a CEN 1.3.16 példák és mutációk) minden eredmény
+megegyezik a KoSIT validátor 1.6.3 eredményével a 2026-08-31-es konfigurációval
+([docs/VALIDATION.md](docs/VALIDATION.md#the-kosit-conformance-run), angolul). A szabálycsomag
 Apache-2.0 licencű, mint a KoSIT-anyagok, amelyekből fordul.
+
 ## Peppol BIS 3
 
 A `Validator::peppol($dir)` a Peppol BIS Billing 3.0.22 szabályai szerint ellenőriz: az

@@ -198,8 +198,12 @@ fatal in XRechnung CII). A document whose specification identifier (BT-24) match
 exactly is refused with an exception that lists the accepted identifiers. To write XRechnung, put
 `XRechnung::processControl()` on the invoice. The design goal is the same verdict as KoSIT:
 scenario, XML Schema validity, the set of rule ids with their levels, and acceptance; the KoSIT
-validator itself runs as the test oracle ([docs/VALIDATION.md](docs/VALIDATION.md)). The rules
-package is Apache-2.0, like the KoSIT artefacts it is compiled from.
+validator itself runs as the test oracle: on 583 documents (the KoSIT test suite, the XRechnung
+Schematron unit tests, the configuration tests, the CEN 1.3.16 examples and mutations) every
+verdict equals that of KoSIT validator 1.6.3 with configuration 2026-08-31
+([docs/VALIDATION.md](docs/VALIDATION.md#the-kosit-conformance-run)). The rules package is
+Apache-2.0, like the KoSIT artefacts it is compiled from.
+
 ## Peppol BIS 3
 
 `Validator::peppol($dir)` validates against Peppol BIS Billing 3.0.22: OpenPeppol's copy of the

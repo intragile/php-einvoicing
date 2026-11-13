@@ -17,7 +17,10 @@ use RuntimeException;
  *   (HTTP 406);
  * - no-scenario.xml: 01.01a-INVOICE_ubl.xml with an unknown cbc:CustomizationID (HTTP 406);
  * - custom-level.xml: 01.01a-INVOICE_ubl.xml with the first unitCode set to "ZZZQ", which fires
- *   BR-CL-23, downgraded to warning by the scenario (HTTP 200).
+ *   BR-CL-23, downgraded to warning by the scenario (HTTP 200);
+ * - processing-error.xml: 01.01a-INVOICE_uncefact.xml with the header ram:LineTotalAmount
+ *   repeated (Mutations::dynamicErrors()), on which the CEN Schematron step aborts with XPTY0004
+ *   (HTTP 422).
  */
 final class KositReportTest extends TestCase
 {
@@ -75,6 +78,26 @@ final class KositReportTest extends TestCase
         // customLevel turns it into a warning, and the document is accepted.
         self::assertSame(['BR-CL-23 warning', 'BR-DE-TMP-32 information'], $report->verdict);
         self::assertTrue($report->accepted);
+    }
+
+    public function test_processing_error_report(): void
+    {
+        $report = KositReport::fromXml(self::fixture('processing-error'), 422);
+
+        self::assertSame('EN16931 XRechnung (CII)', $report->scenario);
+        self::assertTrue($report->schemaValid);
+        self::assertTrue($report->schematronRan);
+        self::assertTrue($report->processingError);
+        // The aborted CEN step has no message; only the XRechnung step reports.
+        self::assertSame(['BR-DE-TMP-32 information'], $report->verdict);
+        self::assertFalse($report->accepted);
+    }
+
+    public function test_only_http_422_is_a_processing_error(): void
+    {
+        self::assertFalse(KositReport::fromXml(self::fixture('valid'), 200)->processingError);
+        self::assertFalse(KositReport::fromXml(self::fixture('br-de-failure'), 406)->processingError);
+        self::assertFalse(KositReport::fromXml(self::fixture('no-scenario'), 406)->processingError);
     }
 
     public function test_acceptance_must_agree_with_the_http_status(): void

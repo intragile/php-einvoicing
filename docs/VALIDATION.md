@@ -281,10 +281,12 @@ The scenario table, the compiled XRechnung rule sets and the schemas live in
 `packages/rules-xrechnung` and are generated from the pinned KoSIT releases, never edited by
 hand. "Validated like KoSIT" means that, per document, the scenario name, the XML Schema
 validity, the sorted set of `"<rule id> <level>"` strings and the acceptance equal what the KoSIT
-validator reports; the conformance test against the KoSIT validator itself is described in the
-next section. To write XRechnung, give the invoice `XRechnung::processControl()` (or
+validator reports. The conformance test against the KoSIT validator itself is described in the
+next section ([The KoSIT conformance run](#the-kosit-conformance-run)): all 583 documents give
+KoSIT's verdict. To write XRechnung, give the invoice `XRechnung::processControl()` (or
 `XRechnung::processControl(XRechnung::EXTENSION)`), which sets BT-24 and the Peppol billing
 profile as BT-23.
+
 ## How verdict equality is checked
 
 The test group `oracle` runs the official CEN XSLT through SaxonC-HE in Docker as the judge
@@ -340,14 +342,46 @@ the tests of the group are skipped.
 
 A document is POSTed to the daemon, which answers with its VARL report: HTTP 200 when it accepts
 the document, 406 when it rejects it (Schematron error, XML Schema failure or no matching
-scenario) and 422 when the body is not well-formed XML. The comparison reads from the report the
-matched scenario name, the validity of the XML Schema step, the sorted distinct
-`"<rule id> <level>"` strings of the Schematron steps (KoSIT `error` read as `fatal`) and the
-acceptance. KoSIT writes the assert's flag into each message and applies the scenario's custom
-levels only to the acceptance, so the custom levels embedded in the report's copy of the scenario
-are applied when the verdict is read. KoSIT runs no Schematron once the XML Schema step has
+scenario) and 422 on a processing error: a body that is not well-formed XML, or a Schematron step
+aborted by an XPath dynamic error. The comparison reads from the report the matched scenario
+name, the validity of the XML Schema step, the sorted distinct `"<rule id> <level>"` strings of
+the Schematron steps (KoSIT `error` read as `fatal`) and the acceptance. KoSIT writes the
+assert's flag into each message and applies the scenario's custom levels only to the acceptance,
+so the custom levels embedded in the report's copy of the scenario are applied when the verdict
+is read. KoSIT runs no Schematron once the XML Schema step has
 failed, and a document that matches no scenario has no scenario name. `KositProbeTest` pins this
 behaviour, so a KoSIT upgrade that changes it fails there first.
+
+### The KoSIT conformance run
+
+`KositConformanceTest` sends every document below to the daemon and validates it with
+`XRechnungValidator::create()`. Per document, the scenario name, the XML Schema validity, the
+sorted set of `"<rule id> <level>"` strings after custom levels and the acceptance must equal
+KoSIT's; when KoSIT matches no scenario, the validator must throw `UnsupportedDocument`.
+
+| Documents | Count |
+|---|---|
+| KoSIT XRechnung test suite 2026-08-31 (standard, extension, technical cases) | 86 |
+| XRechnung Schematron 2.6.0 unit-test instances (UBL Invoice 133, UBL CreditNote 93, CII 128) | 354 |
+| Validator configuration 2026-08-31 test files, including non-invoice XML such as SVRL reports | 62 |
+| CEN 1.3.16 example invoices (UBL and CII) | 32 |
+| Mutations of five instances (UBL Invoice, UBL CreditNote, CII, Extension, CVD): BT-24 with a trailing space, `xrechnung_2.3` or the Peppol BIS id; buyer reference removed; seller contact removed; IBAN check digit broken; due date and payment terms removed; an element out of schema order; `abc` as an amount | 45 |
+| Schema-valid documents that raise an XPath dynamic error, one per Schematron step | 2 |
+| Files that are not well-formed (KoSIT must not accept them, the validator must throw) | 2 |
+
+On KoSIT validator 1.6.3 with configuration 2026-08-31 all 583 documents give the same verdict
+(measured 2026-11-13): 318 accepted, 215 rejected by a Schematron error, 11 rejected by the XML
+Schema, 37 without a scenario (including the 2 unparseable files), and 2 processing errors. The
+run takes about 70 seconds. The `abc` amount fails the XML Schema in both syntaxes, so no
+Schematron runs on it.
+
+A dynamic error is compared by KoSIT's own rule: an assert that cannot be evaluated aborts the
+XSLT transformation of its Schematron step, which then reports no message at all while the later
+steps still run, and the daemon answers HTTP 422 with a rejection. The engine reports every assert
+it could evaluate plus the dynamic errors, so on such a document the test requires a processing
+error on KoSIT's side exactly when the engine reports dynamic errors, and compares KoSIT's messages
+with the engine's verdict minus the entries of the rule sets that raised a dynamic error. No
+corpus document raises one.
 
 ## Regenerating the rules for a new CEN release
 

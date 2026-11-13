@@ -19,6 +19,11 @@ use RuntimeException;
  * Schematron of the scenario). Messages keep the flag of the Schematron assert in their level
  * attribute; the custom levels of the scenario (s:customLevel, embedded in the report's copy of
  * the scenario) are applied here, as KoSIT applies them to the acceptance.
+ *
+ * A processing error (HTTP 422) is either a body that is not well-formed (no scenario) or, for a
+ * matched scenario, a Schematron step that hit an XPath dynamic error: that step's transformation
+ * aborts, so it reports no message at all (and still says valid="true"), the later steps run, and
+ * the document is rejected.
  */
 final readonly class KositReport
 {
@@ -28,6 +33,7 @@ final readonly class KositReport
 
     /**
      * @param  list<string>  $verdict
+     * @param  bool  $processingError  whether the daemon answered HTTP 422
      */
     private function __construct(
         public ?string $scenario,
@@ -35,6 +41,7 @@ final readonly class KositReport
         public bool $schematronRan,
         public array $verdict,
         public bool $accepted,
+        public bool $processingError,
     ) {}
 
     /**
@@ -96,10 +103,12 @@ final readonly class KositReport
             ));
         }
 
-        // With a matched scenario and a valid schema, the scenarios of this configuration accept
-        // exactly the documents without an error-level Schematron message after custom levels.
+        // With a matched scenario, a valid schema and no processing error, the scenarios of this
+        // configuration accept exactly the documents without an error-level Schematron message
+        // after custom levels.
+        $processingError = $httpStatus === 422;
         $fatal = array_values(array_filter($verdict, static fn (string $entry): bool => str_ends_with($entry, ' fatal')));
-        if ($scenario !== null && $schemaValid && $accepted !== ($fatal === [])) {
+        if ($scenario !== null && $schemaValid && ! $processingError && $accepted !== ($fatal === [])) {
             throw new RuntimeException(sprintf(
                 'The KoSIT report says %s but the derived verdict has %s.',
                 $accepted ? 'accept' : 'reject',
@@ -107,7 +116,7 @@ final readonly class KositReport
             ));
         }
 
-        return new self($scenario, $schemaValid, $schematronSteps !== [], $verdict, $accepted);
+        return new self($scenario, $schemaValid, $schematronSteps !== [], $verdict, $accepted, $processingError);
     }
 
     private static function firstText(DOMXPath $xpath, string $expression): ?string
