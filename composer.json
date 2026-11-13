@@ -47,6 +47,7 @@
     },
     "require-dev": {
         "ext-zip": "*",
+        "intragile/einvoicing-rules-facturx": "@dev",
         "intragile/einvoicing-rules-xrechnung": "@dev",
         "laravel/pint": "^1.0",
         "nyholm/psr7": "^1.8",
@@ -55,6 +56,7 @@
     },
     "suggest": {
         "guzzlehttp/guzzle": "A PSR-18 HTTP client and PSR-17 factories for the Peppol transports",
+        "intragile/einvoicing-rules-facturx": "The Factur-X 1.09.2 rules and profile schemas (Apache-2.0), needed for Factur-X and ZUGFeRD validation",
         "intragile/einvoicing-rules-xrechnung": "The KoSIT XRechnung rules, scenario table and schemas (Apache-2.0), needed for XRechnung validation",
         "symfony/http-client": "A PSR-18 HTTP client (with nyholm/psr7 for the PSR-17 factories) for the Peppol transports"
     },
@@ -62,6 +64,10 @@
         {
             "type": "path",
             "url": "packages/rules-en16931"
+        },
+        {
+            "type": "path",
+            "url": "packages/rules-facturx"
         },
         {
             "type": "path",
@@ -93,7 +99,8 @@
         "fetch-official": "@php bin/fetch-official.php",
         "compile-rules": [
             "@php bin/compile-schematron.php",
-            "@php bin/compile-xrechnung.php"
+            "@php bin/compile-xrechnung.php",
+            "@php bin/compile-facturx.php"
         ]
     },
     "config": {

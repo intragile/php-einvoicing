@@ -7,6 +7,6 @@ parameters:
         - packages
     excludePaths:
         - tests/fixtures
-        - packages/*/rules
+        - packages/*/rules/*.php
     scanFiles:
         - tests/Oracle/saxonc.stub

@@ -1,0 +1,37 @@
+{
+    "name": "intragile/einvoicing-rules-facturx",
+    "description": "The Factur-X 1.09.2 (ZUGFeRD) validation rules of the five profiles compiled to PHP arrays, and the profile XML Schemas, for intragile/php-einvoicing.",
+    "keywords": [
+        "factur-x",
+        "zugferd",
+        "en16931",
+        "e-invoicing",
+        "schematron",
+        "validation",
+        "cii"
+    ],
+    "type": "library",
+    "license": "Apache-2.0",
+    "homepage": "https://intragile.eu",
+    "authors": [
+        {
+            "name": "IntrAgile Kft.",
+            "email": "info@intragile.eu",
+            "homepage": "https://intragile.eu"
+        }
+    ],
+    "require": {
+        "php": "^8.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "IntrAgile\\EInvoicing\\Rules\\FacturX\\": "src/"
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.0.x-dev"
+        }
+    },
+    "minimum-stability": "stable"
+}

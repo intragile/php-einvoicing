@@ -9,6 +9,7 @@
 /tests/fixtures/official/facturx-1.09.2/** -text -eol
 # The schemas of the XRechnung rules package are unmodified copies of the KoSIT ones.
 /packages/rules-xrechnung/schemas/** -text -eol
+/packages/rules-facturx/schemas/** -text -eol
 # The ISO Schematron skeleton is kept byte-for-byte as pinned in its SOURCE.md.
 /tests/fixtures/iso-schematron/*.xsl -text -eol
 /tests/fixtures/iso-schematron/LICENSE -text -eol
@@ -18,6 +19,7 @@
 # bin/einvoicing-rules ships with the package; the other scripts are development tools.
 /bin/compile-schematron.php  export-ignore
 /bin/compile-xrechnung.php   export-ignore
+/bin/compile-facturx.php     export-ignore
 /bin/fetch-official.php      export-ignore
 /bin/generate-codelists.php  export-ignore
 /bin/generate-model-doc.php  export-ignore
