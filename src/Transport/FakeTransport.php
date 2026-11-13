@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Transport;
 
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
-use InvalidArgumentException;
+use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use LogicException;
 
 /**
@@ -13,7 +13,9 @@ use LogicException;
  *
  * Every send is recorded, including those answered with a queued exception. Sends are answered
  * from the queue filled by willReturn(), in order, then with delivered results whose ids are
- * fake-1, fake-2 and so on.
+ * fake-1, fake-2 and so on. A queued result with an empty document id is given the id fake-q-1,
+ * fake-q-2 and so on, and a generated id skips every id already returned, so no two sends share
+ * an id. An unknown inbound document id raises UnexpectedResponse, as a real driver does.
  */
 final class FakeTransport implements InboundSource, Transport
 {
@@ -28,6 +30,8 @@ final class FakeTransport implements InboundSource, Transport
 
     private int $sequence = 0;
 
+    private int $queuedSequence = 0;
+
     /** @var array<string, InboundDocument> */
     private array $inbox = [];
 
@@ -37,10 +41,18 @@ final class FakeTransport implements InboundSource, Transport
     public function send(OutboundDocument $document): SendResult
     {
         $this->sent[] = $document;
-        $outcome = array_shift($this->outcomes)
-            ?? new SendResult('fake-'.++$this->sequence, DeliveryState::Delivered);
+        $outcome = array_shift($this->outcomes) ?? new SendResult($this->nextId(), DeliveryState::Delivered);
         if ($outcome instanceof TransportException) {
             throw $outcome;
+        }
+        if ($outcome->documentId === '') {
+            $outcome = new SendResult(
+                'fake-q-'.++$this->queuedSequence,
+                $outcome->state,
+                $outcome->peppolMessageId,
+                $outcome->envelopeId,
+                $outcome->failure,
+            );
         }
         $this->results[$outcome->documentId] = $outcome;
 
@@ -59,8 +71,18 @@ final class FakeTransport implements InboundSource, Transport
             : new DeliveryStatus($documentId, $result->state, $result->failure);
     }
 
+    private function nextId(): string
+    {
+        do {
+            $id = 'fake-'.++$this->sequence;
+        } while (isset($this->results[$id]));
+
+        return $id;
+    }
+
     /**
-     * Queues the answers to the next sends: a result is returned, an exception thrown.
+     * Queues the answers to the next sends: a result is returned, an exception thrown. A result
+     * with an empty document id is returned with a generated fake-q-N id.
      */
     public function willReturn(SendResult|TransportException ...$outcomes): void
     {
@@ -124,16 +146,16 @@ final class FakeTransport implements InboundSource, Transport
     }
 
     /**
-     * @throws InvalidArgumentException when no document with this id was received
+     * @throws UnexpectedResponse when no document with this id was received
      */
     public function fetch(string $documentId): InboundDocument
     {
         return $this->inbox[$documentId]
-            ?? throw new InvalidArgumentException(sprintf('No inbound document with id "%s" was received.', $documentId));
+            ?? throw new UnexpectedResponse(sprintf('No inbound document with id "%s" was received.', $documentId));
     }
 
     /**
-     * @throws InvalidArgumentException when no document with this id was received
+     * @throws UnexpectedResponse when no document with this id was received
      */
     public function acknowledge(string $documentId): void
     {

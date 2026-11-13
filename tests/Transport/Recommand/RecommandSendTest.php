@@ -12,6 +12,7 @@ use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
 use IntrAgile\EInvoicing\Transport\Exception\RecipientUnreachable;
+use IntrAgile\EInvoicing\Transport\Exception\TransportException;
 use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\FailureCategory;
@@ -379,6 +380,116 @@ final class RecommandSendTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         new RecommandConfig('', self::SECRET, 'c_01example');
+    }
+
+    public function test_short_credentials_are_refused_without_quoting_them(): void
+    {
+        foreach ([['k_01234', self::SECRET], [self::KEY_ID, 's_01234'], ['  k_01234   ', self::SECRET]] as [$keyId, $secret]) {
+            $exception = self::capture(fn () => new RecommandConfig($keyId, $secret, 'c_01example'));
+
+            self::assertInstanceOf(InvalidArgumentException::class, $exception);
+            self::assertStringContainsString('8 characters', $exception->getMessage());
+            self::assertStringNotContainsString('_01234', $exception->getMessage());
+            self::assertStringNotContainsString(self::SECRET, $exception->getMessage());
+        }
+    }
+
+    public function test_company_id_is_trimmed(): void
+    {
+        $recorder = new RecordingHttpClient(self::fixture(200, 'send-pending.json'));
+
+        self::transport($recorder, companyId: "  c_01example\n")->send(self::document());
+
+        self::assertSame('c_01example', self::config("  c_01example\n")->companyId);
+        self::assertSame('https://app.recommand.eu/api/v1/c_01example/send', (string) $recorder->requests()[0]->getUri());
+    }
+
+    public function test_encoded_credentials_in_client_errors_are_redacted(): void
+    {
+        $leak = 'failed: '.base64_encode(self::SECRET).' / '.rawurlencode(self::KEY_ID.'/x').' / '.base64_encode(self::KEY_ID);
+
+        $status = self::capture(fn () => self::transport(new RecordingHttpClient(self::networkException($leak)))->status('doc_1'));
+
+        self::assertInstanceOf(TransportUnavailable::class, $status);
+        self::assertStringNotContainsString(base64_encode(self::SECRET), $status->getMessage());
+        self::assertStringNotContainsString(base64_encode(self::KEY_ID), $status->getMessage());
+        self::assertStringNotContainsString(self::KEY_ID, $status->getMessage());
+    }
+
+    public function test_success_without_id_is_outcome_unknown(): void
+    {
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response(200, [], '{"success":true,"deliveryStatus":"pending"}')))->send(self::document()));
+
+        self::assertInstanceOf(OutcomeUnknown::class, $exception);
+        self::assertStringContainsString('check the document list', strtolower($exception->getMessage()));
+        self::assertStringContainsString('no document id', $exception->getMessage());
+    }
+
+    public function test_whitespace_status_id_is_refused(): void
+    {
+        $recorder = new RecordingHttpClient;
+
+        $exception = self::capture(fn () => self::transport($recorder)->status("  \t"));
+
+        self::assertInstanceOf(InvalidArgumentException::class, $exception);
+        self::assertSame([], $recorder->requests());
+    }
+
+    /**
+     * @return iterable<string, array{Response, class-string<Throwable>, bool}>
+     */
+    public static function statusFailures(): iterable
+    {
+        yield '401' => [new Response(401, [], '{"success":false}'), AuthenticationFailed::class, false];
+        yield '403' => [new Response(403, [], '{"success":false}'), AuthenticationFailed::class, false];
+        yield '429' => [new Response(429, ['Retry-After' => '12'], '{"success":false}'), RateLimited::class, true];
+        yield '500' => [new Response(500, [], 'oops'), TransportUnavailable::class, true];
+        yield '503' => [new Response(503, [], ''), TransportUnavailable::class, true];
+        yield '200 without a document' => [new Response(200, [], '{"success":true}'), UnexpectedResponse::class, false];
+    }
+
+    /**
+     * @param  class-string<Throwable>  $expected
+     */
+    #[DataProvider('statusFailures')]
+    public function test_status_failures_use_the_common_mapping(Response $response, string $expected, bool $retryable): void
+    {
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient($response))->status('doc_1'));
+
+        self::assertInstanceOf($expected, $exception);
+        self::assertInstanceOf(TransportException::class, $exception);
+        self::assertSame($retryable, $exception->isRetryable());
+        if ($exception instanceof RateLimited) {
+            self::assertSame(12, $exception->retryAfterSeconds);
+        }
+        if ($exception instanceof AuthenticationFailed || $exception instanceof TransportUnavailable) {
+            self::assertStringContainsString('doc_1', $exception->getMessage());
+            self::assertStringContainsString('HTTP '.$response->getStatusCode(), $exception->getMessage());
+        }
+    }
+
+    public function test_status_with_null_delivery_status_is_pending(): void
+    {
+        $data = self::json('document.json');
+        self::assertIsArray($data['document']);
+        $data['document']['deliveryStatus'] = null;
+        $data['document']['deliveries'] = [];
+
+        $status = self::transport(new RecordingHttpClient(new Response(200, [], json_encode($data, JSON_THROW_ON_ERROR))))->status('doc_01failed');
+
+        self::assertSame(DeliveryState::Pending, $status->state);
+        self::assertNull($status->failure);
+        self::assertNull($status->changedAt);
+    }
+
+    public function test_invalid_input_details_are_quoted_as_path_and_message(): void
+    {
+        $body = '{"success":false,"invalidInputDetails":[{"path":["recipient"],"message":"Invalid Peppol address"},{"path":["document","lines",0],"message":"Required"}]}';
+
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response(400, [], $body)))->send(self::document()));
+
+        self::assertInstanceOf(DocumentRejected::class, $exception);
+        self::assertSame('Recommand rejected the document (HTTP 400): recipient: Invalid Peppol address; document.lines.0: Required.', $exception->getMessage());
     }
 
     private static function config(string $companyId = 'c_01example', string $baseUrl = 'https://app.recommand.eu'): RecommandConfig

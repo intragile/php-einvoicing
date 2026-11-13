@@ -126,6 +126,18 @@ final class RecommandWebhookTest extends TestCase
         self::assertNull($event->failure);
     }
 
+    public function test_null_delivery_status_is_unknown(): void
+    {
+        $data = json_decode(self::read('webhook-status.json'), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($data);
+        $data['deliveryStatus'] = null;
+        $raw = json_encode($data, JSON_THROW_ON_ERROR);
+
+        $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)]);
+
+        self::assertSame(DeliveryState::Unknown, $event->deliveryState);
+    }
+
     public function test_unknown_event_type_and_status_are_kept(): void
     {
         $raw = '{"eventType":"document.teleported","documentId":"doc_01","deliveryStatus":"somewhere"}';

@@ -84,6 +84,18 @@ final class ParticipantIdTest extends TestCase
         ParticipantId::parse($id);
     }
 
+    public function test_invalid_utf8_value_has_its_own_message(): void
+    {
+        foreach ([fn () => new ParticipantId('0208', "abc\xC3\x28"), fn () => ParticipantId::parse("0208:abc\xFF")] as $build) {
+            try {
+                $build();
+                self::fail('InvalidArgumentException expected.');
+            } catch (InvalidArgumentException $exception) {
+                self::assertSame('The participant identifier value is not valid UTF-8.', $exception->getMessage());
+            }
+        }
+    }
+
     public function test_constructor_validates_too(): void
     {
         $this->expectException(InvalidArgumentException::class);

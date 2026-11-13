@@ -9,6 +9,7 @@ use IntrAgile\EInvoicing\Transport\DeliveryFailure;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
+use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\FailureCategory;
 use IntrAgile\EInvoicing\Transport\FakeTransport;
 use IntrAgile\EInvoicing\Transport\InboundDocument;
@@ -19,7 +20,6 @@ use IntrAgile\EInvoicing\Transport\Peppol\ParticipantId;
 use IntrAgile\EInvoicing\Transport\Peppol\PeppolBis3;
 use IntrAgile\EInvoicing\Transport\Peppol\ProcessId;
 use IntrAgile\EInvoicing\Transport\SendResult;
-use InvalidArgumentException;
 use LogicException;
 use PHPUnit\Framework\TestCase;
 
@@ -97,12 +97,39 @@ final class FakeTransportTest extends TestCase
         self::assertSame(['in-1'], $fake->acknowledged());
     }
 
-    public function test_fetching_an_unknown_inbound_document_fails(): void
+    public function test_fake_unknown_inbound_id_is_unexpected_response(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('in-404');
+        $fake = new FakeTransport;
 
-        (new FakeTransport)->fetch('in-404');
+        foreach ([fn () => $fake->fetch('in-404'), fn () => $fake->acknowledge('in-404')] as $action) {
+            try {
+                $action();
+                self::fail('UnexpectedResponse expected.');
+            } catch (UnexpectedResponse $exception) {
+                self::assertStringContainsString('in-404', $exception->getMessage());
+                self::assertFalse($exception->isRetryable());
+            }
+        }
+        self::assertSame([], $fake->acknowledged());
+    }
+
+    public function test_fake_ids_do_not_collide(): void
+    {
+        $fake = new FakeTransport;
+        $fake->willReturn(
+            new SendResult('fake-1', DeliveryState::Failed),
+            new SendResult('', DeliveryState::Pending),
+            new SendResult('', DeliveryState::Pending),
+        );
+
+        $ids = [];
+        for ($i = 0; $i < 5; $i++) {
+            $ids[] = $fake->send(self::document())->documentId;
+        }
+
+        self::assertSame(['fake-1', 'fake-q-1', 'fake-q-2', 'fake-2', 'fake-3'], $ids);
+        self::assertSame(DeliveryState::Failed, $fake->status('fake-1')->state, 'A generated id never replaces a queued result.');
+        self::assertSame(DeliveryState::Pending, $fake->status('fake-q-2')->state);
     }
 
     public function test_assert_sent_passes_when_a_document_matches(): void

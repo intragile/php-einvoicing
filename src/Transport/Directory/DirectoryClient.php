@@ -23,11 +23,18 @@ use Psr\Http\Message\ResponseInterface;
  * or incomplete. Use it to find a participant identifier, never to decide whether or where to
  * send; route with ParticipantLookup (SML and SMP) instead.
  *
+ * The Directory ignores a name criterion of two characters or fewer; a query with such a name as
+ * its only criterion would return unfiltered results, so DirectoryQuery refuses it. With another
+ * criterion the short name is sent as given.
+ *
  * The Directory allows two queries per second. This client waits so that its own requests are at
  * least 500 ms apart; instances do not coordinate, so share one per process.
  */
 final class DirectoryClient
 {
+    /** Statuses of a server or gateway that is down or overloaded; a later retry may succeed. */
+    private const OUTAGE_STATUSES = [500, 502, 503, 504];
+
     /** Minimum gap between two requests, in microseconds. */
     public const MIN_INTERVAL_MICROSECONDS = 500_000;
 
@@ -60,7 +67,8 @@ final class DirectoryClient
      * One page of the participants matching every criterion of the query.
      *
      * @throws RateLimited when the Directory answers 429
-     * @throws TransportUnavailable when the Directory cannot be reached
+     * @throws TransportUnavailable when the Directory cannot be reached or answers 500, 502, 503
+     *                              or 504
      * @throws UnexpectedResponse when the Directory answers another error status or a body that
      *                            is not a search result
      */
@@ -78,6 +86,9 @@ final class DirectoryClient
                 self::retryAfter($response),
             );
         }
+        if (in_array($status, self::OUTAGE_STATUSES, true)) {
+            throw new TransportUnavailable(sprintf('The Peppol Directory is unavailable (HTTP %d).', $status));
+        }
         if ($status !== 200) {
             throw UnexpectedResponse::forResponse($response, 'The Peppol Directory answered with an error status');
         }
@@ -89,7 +100,8 @@ final class DirectoryClient
      * The Directory entry of the participant, or null when it is not listed.
      *
      * @throws RateLimited when the Directory answers 429
-     * @throws TransportUnavailable when the Directory cannot be reached
+     * @throws TransportUnavailable when the Directory cannot be reached or answers 500, 502, 503
+     *                              or 504
      * @throws UnexpectedResponse when the Directory answers another error status or a body that
      *                            is not a search result
      */

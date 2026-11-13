@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Transport\Lookup;
 
+use Closure;
+
 /**
  * Resolves NAPTR records with PHP's dns_get_record() and the system resolver.
  *
@@ -13,15 +15,34 @@ namespace IntrAgile\EInvoicing\Transport\Lookup;
  */
 final class DnsGetRecordResolver implements NaptrResolver
 {
+    /** @var Closure(string, int): (array<array-key, mixed>|false) */
+    private readonly Closure $query;
+
+    /**
+     * Both parameters are test seams; omit them in production.
+     *
+     * @param  (Closure(string, int): (array<array-key, mixed>|false))|null  $query  called instead of dns_get_record()
+     * @param  string  $typeConstant  name of the NAPTR record type constant; an undefined name
+     *                                behaves like a platform without NAPTR support
+     */
+    public function __construct(?Closure $query = null, private readonly string $typeConstant = 'DNS_NAPTR')
+    {
+        $this->query = $query ?? static fn (string $host, int $type): array|false => dns_get_record($host, $type);
+    }
+
     public function naptr(string $host): ?array
     {
-        if (! defined('DNS_NAPTR')) {
+        if (! defined($this->typeConstant)) {
+            return null;
+        }
+        $type = constant($this->typeConstant);
+        if (! is_int($type)) {
             return null;
         }
 
         set_error_handler(static fn (): bool => true);
         try {
-            $rows = dns_get_record($host, (int) constant('DNS_NAPTR'));
+            $rows = ($this->query)($host, $type);
         } catch (\ValueError) {
             return null;
         } finally {

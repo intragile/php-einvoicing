@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Transport\Recommand;
 
 use DateTimeImmutable;
-use Exception;
 use IntrAgile\EInvoicing\Transport\DeliveryFailure;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\DeliveryStatus;
@@ -413,7 +412,7 @@ final class ResponseMapper
             throw $this->unexpected($response, 'The Recommand response lists a document without an id');
         }
         $receivedAt = $this->time($document['createdAt'] ?? null)
-            ?? throw $this->unexpected($response, sprintf('The Recommand document "%s" has no valid createdAt time', $id));
+            ?? throw $this->unexpected($response, sprintf('The Recommand document "%s" has no valid createdAt time (ISO 8601 with a time zone)', $id));
 
         return new InboundReference(
             $id,
@@ -440,16 +439,25 @@ final class ResponseMapper
         }
     }
 
+    /**
+     * The time of an ISO 8601 timestamp with a time zone, in the DATE_ATOM form
+     * (2026-11-12T08:02:00+00:00) or with milliseconds (2026-11-12T07:45:10.000Z); null for any
+     * other value, including a date that does not exist.
+     */
     private function time(mixed $value): ?DateTimeImmutable
     {
         if (! is_string($value) || $value === '') {
             return null;
         }
-        try {
-            return new DateTimeImmutable($value);
-        } catch (Exception) {
-            return null;
+        foreach ([DATE_ATOM, DATE_RFC3339_EXTENDED] as $format) {
+            $time = DateTimeImmutable::createFromFormat($format, $value);
+            $errors = DateTimeImmutable::getLastErrors();
+            if ($time !== false && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0))) {
+                return $time;
+            }
         }
+
+        return null;
     }
 
     private static function optionalString(mixed $value): ?string
@@ -467,18 +475,37 @@ final class ResponseMapper
     }
 
     /**
-     * The first provider error messages, each prefixed with the field it belongs to.
+     * The first provider error messages, each prefixed with the field it belongs to; an
+     * invalidInputDetails entry is quoted as "path: message", its path segments joined with dots.
      *
      * @param  array<mixed>  $errors
      */
     private function quote(array $errors): string
     {
         $messages = [];
-        array_walk_recursive($errors, static function (mixed $value, int|string $key) use (&$messages): void {
-            if (is_string($value) && trim($value) !== '') {
-                $messages[] = is_string($key) && $key !== 'message' ? $key.': '.$value : $value;
+        foreach ($errors as $group => $value) {
+            if ($group === 'invalidInputDetails' && is_array($value) && array_is_list($value)) {
+                foreach ($value as $detail) {
+                    $message = self::inputDetail($detail);
+                    if ($message !== null) {
+                        $messages[] = $message;
+                    }
+                }
+
+                continue;
             }
-        });
+            if (is_string($value)) {
+                $value = [$group => $value];
+            }
+            if (! is_array($value)) {
+                continue;
+            }
+            array_walk_recursive($value, static function (mixed $item, int|string $key) use (&$messages): void {
+                if (is_string($item) && trim($item) !== '') {
+                    $messages[] = is_string($key) && $key !== 'message' ? $key.': '.$item : $item;
+                }
+            });
+        }
         if ($messages === []) {
             return 'no details given.';
         }
@@ -488,6 +515,23 @@ final class ResponseMapper
         }
 
         return $this->config->redact(rtrim($quoted, '.').'.');
+    }
+
+    /**
+     * "path: message" for an invalidInputDetails entry with a message, or null without one.
+     */
+    private static function inputDetail(mixed $detail): ?string
+    {
+        if (! is_array($detail) || ! is_string($detail['message'] ?? null) || trim($detail['message']) === '') {
+            return null;
+        }
+        $path = $detail['path'] ?? null;
+        $segments = is_array($path)
+            ? array_map(static fn (mixed $segment): string => is_scalar($segment) ? (string) $segment : '?', array_values($path))
+            : (is_string($path) ? [$path] : []);
+        $segments = array_filter($segments, static fn (string $segment): bool => $segment !== '');
+
+        return $segments === [] ? $detail['message'] : implode('.', $segments).': '.$detail['message'];
     }
 
     /**

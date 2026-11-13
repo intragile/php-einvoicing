@@ -142,8 +142,12 @@ vendor/bin/einvoicing-rules check peppol --dir=DIR
   `RuleSourceMismatch`, names the file and both hashes, and leaves `DIR` unchanged. It writes five
   files, `peppol-cen-ubl-3.0.22.php`, `peppol-ubl-3.0.22.php`, `peppol-cen-cii-3.0.22.php`,
   `peppol-cii-3.0.22.php` and `peppol-envelope-3.0.22.php`, and replaces them only after all five
-  have compiled. If moving the new files into place fails, the previous files are restored and
-  the error is reported; `PartialInstall` is thrown only when that restore itself fails.
+  have compiled. Each file is renamed over the installed one, so an installed rule file is never
+  missing. Before that, every installed file gets a `.bak-*` backup (a hard link, or a copy where
+  hard links are not supported). If moving the new files into place fails, the backups are
+  renamed back and the error is reported; `PartialInstall` is thrown only when that restore
+  itself fails, and it lists the files left in the new state (`writtenPaths`) and every backup
+  left in the folder (`backupPaths`).
 - The download uses PHP streams only (no HTTP client dependency): HTTPS with certificate
   verification, at most three HTTPS redirects, a time limit and a size limit.
 - For `--from`, get the five files from the

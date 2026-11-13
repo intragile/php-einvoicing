@@ -11,6 +11,7 @@ use IntrAgile\EInvoicing\Transport\Directory\DirectoryClient;
 use IntrAgile\EInvoicing\Transport\Directory\DirectoryEnvironment;
 use IntrAgile\EInvoicing\Transport\Directory\DirectoryQuery;
 use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
+use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\Http\HttpClient;
 use IntrAgile\EInvoicing\Transport\Peppol\DocumentTypeId;
@@ -210,7 +211,7 @@ final class DirectoryClientTest extends TestCase
     public static function unexpectedResponses(): iterable
     {
         yield 'bad request' => [400, 'Bad request'];
-        yield 'server error' => [500, 'oops'];
+        yield 'not implemented' => [501, 'oops'];
         yield 'not json' => [200, '<html></html>'];
         yield 'matches not a list' => [200, '{"total-result-count":1,"matches":"x"}'];
         yield 'total missing' => [200, '{"matches":[]}'];
@@ -227,6 +228,71 @@ final class DirectoryClientTest extends TestCase
         } catch (UnexpectedResponse $exception) {
             self::assertSame($status, $exception->status);
         }
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function outages(): iterable
+    {
+        foreach ([500, 502, 503, 504] as $status) {
+            yield (string) $status => [$status];
+        }
+    }
+
+    #[DataProvider('outages')]
+    public function test_directory_5xx_is_retryable(int $status): void
+    {
+        $exception = self::capture(fn () => self::client(new RecordingHttpClient(new Response($status, [], 'down')))->search(new DirectoryQuery(q: 'kft')));
+
+        self::assertInstanceOf(TransportUnavailable::class, $exception);
+        self::assertTrue($exception->isRetryable());
+        self::assertStringContainsString('HTTP '.$status, $exception->getMessage());
+    }
+
+    public function test_directory_other_5xx_is_unexpected(): void
+    {
+        $exception = self::capture(fn () => self::client(new RecordingHttpClient(new Response(501, [], 'nope')))->search(new DirectoryQuery(q: 'kft')));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertFalse($exception->isRetryable());
+        self::assertSame(501, $exception->status);
+    }
+
+    public function test_429_with_an_http_date_retry_after_has_no_delay(): void
+    {
+        $exception = self::capture(fn () => self::client(new RecordingHttpClient(new Response(429, ['Retry-After' => 'Wed, 21 Oct 2026 07:28:00 GMT'], '')))->search(new DirectoryQuery(q: 'kft')));
+
+        self::assertInstanceOf(RateLimited::class, $exception);
+        self::assertNull($exception->retryAfterSeconds);
+    }
+
+    public function test_match_details_are_normalised(): void
+    {
+        $body = json_encode([
+            'total-result-count' => 3,
+            'matches' => [
+                [
+                    'participantID' => ['scheme' => 'ISO6523-ACTORID-UPIS', 'value' => '0208:0123456789'],
+                    'docTypes' => [
+                        ['scheme' => 'busdox-docid-qns', 'value' => 'urn:a::Invoice##b::2.1'],
+                        ['scheme' => 'busdox-docid-qns', 'value' => 'urn:a::Invoice##b::2.1'],
+                    ],
+                    'entities' => [['name' => [['name' => 'Upper Case Scheme BV']], 'regDate' => '2026-02-30']],
+                ],
+                ['participantID' => ['scheme' => 'iso6523-actorid-upis', 'value' => 'no-icd-here'], 'entities' => []],
+                ['participantID' => ['scheme' => 'iso6523-actorid-upis', 'value' => '0208:0000000002'], 'entities' => [['regDate' => '12/01/2024']]],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $result = self::client(new RecordingHttpClient(new Response(200, [], $body)))->search(new DirectoryQuery(q: 'bv'));
+
+        self::assertSame(3, $result->total);
+        self::assertCount(2, $result->entries, 'The unparsable participant is skipped.');
+        self::assertSame('0208:0123456789', $result->entries[0]->participant->toString(), 'The scheme is matched regardless of case.');
+        self::assertSame(['busdox-docid-qns::urn:a::Invoice##b::2.1'], $result->entries[0]->documentTypes, 'Duplicate document types are listed once.');
+        self::assertNull($result->entries[0]->registeredOn, 'A rolled-over registration date is dropped.');
+        self::assertNull($result->entries[1]->registeredOn, 'A registration date not in Y-m-d form is dropped.');
     }
 
     /**
@@ -262,6 +328,16 @@ final class DirectoryClientTest extends TestCase
 
         self::assertSame('ab', $query->name);
         self::assertSame('HU', $query->country);
+    }
+
+    private static function capture(callable $action): \Throwable
+    {
+        try {
+            $action();
+        } catch (\Throwable $exception) {
+            return $exception;
+        }
+        self::fail('No exception was thrown.');
     }
 
     private static function fixture(): string

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Validation\Peppol;
 
+use Closure;
 use IntrAgile\EInvoicing\Schematron\CompiledRuleSetWriter;
 use IntrAgile\EInvoicing\Schematron\Compiler;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
@@ -24,15 +25,28 @@ final class RuleInstaller
 {
     private readonly Downloader $downloader;
 
-    public function __construct(?Downloader $downloader = null)
+    /** @var Closure(string, string): bool */
+    private readonly Closure $rename;
+
+    /** @var Closure(string): bool */
+    private readonly Closure $unlink;
+
+    /**
+     * @param  (Closure(string, string): bool)|null  $rename  replaces rename() in tests
+     * @param  (Closure(string): bool)|null  $unlink  replaces unlink() for backups in tests
+     */
+    public function __construct(?Downloader $downloader = null, ?Closure $rename = null, ?Closure $unlink = null)
     {
         $this->downloader = $downloader ?? new Downloader;
+        $this->rename = $rename ?? static fn (string $from, string $to): bool => @rename($from, $to);
+        $this->unlink = $unlink ?? static fn (string $path): bool => @unlink($path);
     }
 
     /**
      * Installs the five rule files: the invoice rules and the envelope rules. No installed file is
-     * replaced unless every source matches its checksum and compiles; if moving the files into
-     * place fails, the previous rules are restored.
+     * replaced unless every source matches its checksum and compiles. Each file is replaced
+     * atomically, so the target never goes missing; if moving the files into place fails, the
+     * previous rules are restored.
      *
      * @param  ?string  $sourceDir  a folder holding the five .sch files, for air-gapped machines;
      *                              null downloads them from PeppolSources::BASE_URL
@@ -92,7 +106,7 @@ final class RuleInstaller
                 unset($contents[$key]);
             }
 
-            $written = self::replace($targetDir, $temporary);
+            $written = $this->replace($targetDir, $temporary);
         } finally {
             foreach ($temporary as $path) {
                 if (is_file($path)) {
@@ -105,8 +119,13 @@ final class RuleInstaller
     }
 
     /**
-     * Moves the compiled files into place. Every installed file is first renamed to a backup, so a
-     * failed move can put all of them back; the backups are deleted once every file is in place.
+     * Moves the compiled files into place without a moment in which an installed file is missing.
+     *
+     * Every installed file first gets a backup: a hard link to it, or a copy where hard links are
+     * not supported. Each compiled file is then renamed over its target, which replaces the target
+     * atomically. If a move fails, every replaced target gets its backup renamed back over it, the
+     * same atomic way, and the new files that had no previous version are removed. The backups
+     * are deleted once every file is in place; one that cannot be deleted is left behind.
      *
      * @param  array<string, string>  $temporary  compiled file path per source key
      * @return list<string> written file paths
@@ -114,76 +133,99 @@ final class RuleInstaller
      * @throws RuntimeException when a file could not be moved and the previous rules were restored
      * @throws PartialInstall when a file could not be moved and restoring the previous rules failed
      */
-    private static function replace(string $targetDir, array $temporary): array
+    private function replace(string $targetDir, array $temporary): array
     {
         $targets = [];
+        $backups = [];
+        // Every backup name is chosen before anything is touched, so that a failure to generate
+        // one cannot strike halfway through.
         foreach (PeppolSources::all() as $key => $source) {
             $targets[$key] = PeppolRules::path($targetDir, $source['id']);
+            if (is_file($targets[$key])) {
+                $backups[$key] = $targets[$key].'.bak-'.bin2hex(random_bytes(6));
+            }
         }
 
-        /** @var array<string, string> $backups backup path per source key */
-        $backups = [];
+        /** @var array<string, string> $made backup path per source key, for the backups that exist */
+        $made = [];
         /** @var list<string> $written */
         $written = [];
         try {
-            foreach ($targets as $key => $target) {
-                if (! is_file($target)) {
-                    continue;
+            foreach ($backups as $key => $backup) {
+                if (! @link($targets[$key], $backup) && ! @copy($targets[$key], $backup)) {
+                    throw new RuntimeException("Cannot back up the installed rule set \"{$targets[$key]}\".");
                 }
-                $backup = $target.'.bak-'.bin2hex(random_bytes(6));
-                if (! @rename($target, $backup)) {
-                    throw new RuntimeException("Cannot back up the installed rule set \"{$target}\".");
-                }
-                $backups[$key] = $backup;
+                $made[$key] = $backup;
             }
             foreach ($targets as $key => $target) {
-                if (! @rename($temporary[$key], $target)) {
+                if (! ($this->rename)($temporary[$key], $target)) {
                     throw new RuntimeException("Cannot move the compiled rule set to \"{$target}\".");
                 }
                 $written[] = $target;
             }
         } catch (RuntimeException $exception) {
-            $notRestored = self::restore($targets, $backups, $written);
+            [$notRestored, $leftover] = $this->restore($targets, $made, $written);
+            $backupNote = $leftover === []
+                ? ''
+                : ' These backups could not be removed and are left in place: '.implode(', ', $leftover).'.';
             if ($notRestored !== []) {
                 throw new PartialInstall(
-                    $exception->getMessage().' Restoring the previous rules failed; these files now hold the new rules or are missing.',
+                    $exception->getMessage().' Restoring the previous rules failed; these files now hold the new rules or are missing: '
+                    .implode(', ', $notRestored).'.'.$backupNote,
                     $notRestored,
                     $exception,
+                    $leftover,
                 );
             }
 
-            throw new RuntimeException($exception->getMessage().' The previous rules were restored; nothing was changed.', 0, $exception);
+            throw new RuntimeException($exception->getMessage().' The previous rules were restored; nothing was changed.'.$backupNote, 0, $exception);
         }
 
-        foreach ($backups as $backup) {
-            @unlink($backup);
+        foreach ($made as $backup) {
+            ($this->unlink)($backup);
         }
 
         return $written;
     }
 
     /**
-     * Puts every backup back in place and removes the new files that had no previous version.
+     * Puts every backup back over a replaced target, removes the new files that had no previous
+     * version, and deletes the backups of the targets that were never replaced.
      *
      * @param  array<string, string>  $targets  installed path per source key
      * @param  array<string, string>  $backups  backup path per source key
      * @param  list<string>  $written  targets that already hold a new file
-     * @return list<string> targets that could not be restored
+     * @return array{list<string>, list<string>} the targets that could not be restored, and the
+     *                                           backups left behind
      */
-    private static function restore(array $targets, array $backups, array $written): array
+    private function restore(array $targets, array $backups, array $written): array
     {
         $failed = [];
+        $leftover = [];
         foreach ($targets as $key => $target) {
-            if (isset($backups[$key])) {
-                if (! @rename($backups[$key], $target)) {
+            $replaced = in_array($target, $written, true);
+            $backup = $backups[$key] ?? null;
+            if ($backup === null) {
+                if ($replaced && ! @unlink($target)) {
                     $failed[] = $target;
                 }
-            } elseif (in_array($target, $written, true) && ! @unlink($target)) {
-                $failed[] = $target;
+
+                continue;
+            }
+            if ($replaced) {
+                // Renamed over the new file, so the target is never missing.
+                if (! ($this->rename)($backup, $target)) {
+                    $failed[] = $target;
+                    $leftover[] = $backup;
+                }
+            } elseif (! ($this->unlink)($backup)) {
+                // The target still holds the previous rules; only the backup is in the way. A
+                // rename would do nothing here, because a hard link and its target are one file.
+                $leftover[] = $backup;
             }
         }
 
-        return $failed;
+        return [$failed, $leftover];
     }
 
     private static function read(string $path): string

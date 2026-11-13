@@ -15,11 +15,22 @@ use IntrAgile\EInvoicing\Transport\Peppol\DocumentTypeId;
 use IntrAgile\EInvoicing\Transport\Peppol\ParticipantId;
 use IntrAgile\EInvoicing\Transport\Peppol\ProcessId;
 use InvalidArgumentException;
+use XMLReader;
 
 /**
  * Reads a Peppol Business Message Envelope (Standard Business Document) and separates the header
  * metadata from the business document it carries. Elements are matched by namespace, whatever
  * prefix the sender chose.
+ *
+ * The header must be the first element of the document and appear once; DocumentIdentification
+ * Standard and Type must name the namespace and local name of the payload root, and COUNTRY_C1
+ * must be two upper-case letters. Two deviations from the specification are tolerated, because
+ * access points in use produce them: a Sender or Receiver Identifier without the Authority
+ * attribute, and an identifier value that repeats the "iso6523-actorid-upis::" scheme prefix.
+ * An Authority other than iso6523-actorid-upis is refused.
+ *
+ * CreationDateAndTime is read with any fractional seconds it carries; EnvelopeWriter writes whole
+ * seconds in UTC, so a round trip through the writer drops sub-second precision.
  */
 final class EnvelopeReader
 {
@@ -49,7 +60,7 @@ final class EnvelopeReader
             ));
         }
 
-        $header = self::required($root, 'StandardBusinessDocumentHeader', 'StandardBusinessDocument');
+        $header = self::header($root);
         $path = 'StandardBusinessDocumentHeader';
         self::required($header, 'HeaderVersion', $path);
         $sender = self::participant($header, 'Sender');
@@ -76,7 +87,43 @@ final class EnvelopeReader
             array_diff_key($scopes, array_flip(self::MANDATORY_SCOPES)),
         );
 
-        return [$envelope, self::payload($root, $header)];
+        return [$envelope, self::payload($root, $header, $identification)];
+    }
+
+    /**
+     * Whether the root element is a Standard Business Document, read from the start of the XML
+     * without building a tree, so that a large document is not parsed twice. A DOCTYPE or a
+     * malformed start counts as no envelope, so that the full parse that follows refuses it.
+     */
+    public static function isEnvelopeStream(string $xml): bool
+    {
+        if (trim($xml) === '') {
+            return false;
+        }
+
+        $previous = libxml_use_internal_errors(true);
+        $reader = new XMLReader;
+
+        try {
+            if (! $reader->XML($xml, null, LIBXML_NONET)) {
+                return false;
+            }
+            while ($reader->read()) {
+                if ($reader->nodeType === XMLReader::DOC_TYPE) {
+                    return false;
+                }
+                if ($reader->nodeType === XMLReader::ELEMENT) {
+                    return $reader->namespaceURI === self::NAMESPACE_URI
+                        && $reader->localName === 'StandardBusinessDocument';
+                }
+            }
+
+            return false;
+        } finally {
+            $reader->close();
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
     }
 
     /**
@@ -96,6 +143,28 @@ final class EnvelopeReader
     private static function isEnvelopeRoot(DOMElement $root): bool
     {
         return $root->namespaceURI === self::NAMESPACE_URI && $root->localName === 'StandardBusinessDocument';
+    }
+
+    /**
+     * The header, which must be the first element child of the root and appear only once.
+     */
+    private static function header(DOMElement $root): DOMElement
+    {
+        $headers = self::children($root, 'StandardBusinessDocumentHeader');
+        if ($headers === []) {
+            throw new UnsupportedDocument('The envelope lacks the mandatory element StandardBusinessDocument/StandardBusinessDocumentHeader.');
+        }
+        if (count($headers) > 1) {
+            throw new UnsupportedDocument(sprintf(
+                'The Standard Business Document carries %d StandardBusinessDocumentHeader elements; exactly one is allowed.',
+                count($headers),
+            ));
+        }
+        if (! $headers[0]->isSameNode(self::children($root)[0])) {
+            throw new UnsupportedDocument('The StandardBusinessDocumentHeader must be the first element of the Standard Business Document.');
+        }
+
+        return $headers[0];
     }
 
     private static function participant(DOMElement $header, string $role): ParticipantId
@@ -149,11 +218,21 @@ final class EnvelopeReader
                 throw new UnsupportedDocument(sprintf('The envelope lacks the mandatory %s with Type "%s".', $path, $type));
             }
         }
+        if (preg_match('/\A[A-Z]{2}\z/', $scopes['COUNTRY_C1']) !== 1) {
+            throw new UnsupportedDocument(sprintf(
+                'The envelope COUNTRY_C1 "%s" is not an ISO 3166-1 alpha-2 code in upper case.',
+                addcslashes($scopes['COUNTRY_C1'], "\0..\37\177"),
+            ));
+        }
 
         return $scopes;
     }
 
-    private static function payload(DOMElement $root, DOMElement $header): string
+    /**
+     * The payload serialised on its own, after checking that DocumentIdentification Standard and
+     * Type name its root.
+     */
+    private static function payload(DOMElement $root, DOMElement $header, DOMElement $identification): string
     {
         $payloads = array_values(array_filter(
             self::children($root),
@@ -166,15 +245,38 @@ final class EnvelopeReader
             ));
         }
 
+        $path = 'StandardBusinessDocumentHeader/DocumentIdentification';
+        $standard = self::text($identification, 'Standard', $path);
+        $type = self::text($identification, 'Type', $path);
+        if ($standard !== $payloads[0]->namespaceURI || $type !== $payloads[0]->localName) {
+            throw new UnsupportedDocument(sprintf(
+                'The envelope %s Standard and Type {%s}%s does not match the payload root {%s}%s.',
+                $path,
+                $standard,
+                $type,
+                (string) $payloads[0]->namespaceURI,
+                (string) $payloads[0]->localName,
+            ));
+        }
+
         $document = new DOMDocument('1.0', 'UTF-8');
         $document->appendChild($document->importNode($payloads[0], true));
 
         return (string) $document->saveXML();
     }
 
+    /**
+     * @throws UnsupportedDocument when the value is not an xs:dateTime with a time zone or names a
+     *                             date or time that does not exist, such as 2026-02-30
+     */
     private static function dateTime(string $value): DateTimeImmutable
     {
-        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/', $value) === 1) {
+        $pattern = '/\A(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})\z/';
+        if (
+            preg_match($pattern, $value, $parts) === 1
+            && checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])
+            && (int) $parts[4] <= 23 && (int) $parts[5] <= 59 && (int) $parts[6] <= 59
+        ) {
             try {
                 return new DateTimeImmutable($value);
             } catch (Exception) {
@@ -183,8 +285,8 @@ final class EnvelopeReader
         }
 
         throw new UnsupportedDocument(sprintf(
-            'The StandardBusinessDocumentHeader/DocumentIdentification/CreationDateAndTime "%s" is not a date and time with a time zone.',
-            $value,
+            'The StandardBusinessDocumentHeader/DocumentIdentification/CreationDateAndTime "%s" is not a valid date and time with a time zone.',
+            addcslashes($value, "\0..\37\177"),
         ));
     }
 

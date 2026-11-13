@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Transport\Recommand;
 
 use Closure;
+use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use InvalidArgumentException;
@@ -100,9 +101,9 @@ final class RecommandWebhook
         // document status.
         $peppolDelivery = ($data['channel'] ?? null) === 'peppol';
         if (array_key_exists('deliveryStatus', $data)) {
-            $state = ResponseMapper::stateOf($data['deliveryStatus']);
+            $state = self::state($data['deliveryStatus']);
         } elseif ($peppolDelivery && array_key_exists('status', $data)) {
-            $state = ResponseMapper::stateOf($data['status']);
+            $state = self::state($data['status']);
         } else {
             $state = null;
         }
@@ -115,6 +116,16 @@ final class RecommandWebhook
             $state,
             $peppolDelivery ? ResponseMapper::failureOf($data['failure'] ?? null) : null,
         );
+    }
+
+    /**
+     * The delivery state of a status the event reports. A status event that reports null says
+     * nothing about where delivery stands, so it is Unknown; Pending would claim that delivery
+     * has not finished yet.
+     */
+    private static function state(mixed $status): DeliveryState
+    {
+        return $status === null ? DeliveryState::Unknown : ResponseMapper::stateOf($status);
     }
 
     /**

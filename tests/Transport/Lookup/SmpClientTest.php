@@ -17,6 +17,7 @@ use IntrAgile\EInvoicing\Transport\Peppol\ParticipantId;
 use IntrAgile\EInvoicing\Transport\Peppol\PeppolBis3;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
+use Nyholm\Psr7\Stream;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -150,15 +151,70 @@ final class SmpClientTest extends TestCase
 
     public function test_smp_response_size_is_capped(): void
     {
-        $body = str_repeat(' ', 2_000_001);
+        $body = str_repeat(' ', 2_097_153);
         $recorder = new RecordingHttpClient(new Response(200, [], $body));
 
         try {
             self::client($recorder)->documentTypes('https://smp.example/', self::participant());
             self::fail('An oversized SMP response must be refused.');
         } catch (UnexpectedResponse $exception) {
-            self::assertStringContainsString('2000000 bytes', $exception->getMessage());
+            self::assertStringContainsString('2097152 bytes', $exception->getMessage());
         }
+    }
+
+    public function test_smp_response_over_two_mib_is_refused_while_reading(): void
+    {
+        $resource = fopen('php://temp/maxmemory:1048576', 'w+b');
+        self::assertIsResource($resource);
+        $chunk = str_repeat(' ', 1_048_576);
+        for ($i = 0; $i < 8; $i++) {
+            fwrite($resource, $chunk);
+        }
+        rewind($resource);
+        $stream = Stream::create($resource);
+        $response = (new Response(200))->withBody($stream)->withoutHeader('Content-Length');
+
+        $exception = self::capture(fn () => self::client(new RecordingHttpClient($response))->documentTypes('https://smp.example/', self::participant()));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString('2097152 bytes', $exception->getMessage());
+        // The client reads in 1 MiB chunks and stops at the first chunk past the cap.
+        self::assertLessThanOrEqual(3 * 1_048_576, $stream->tell(), 'The body must not be read past the SMP cap.');
+    }
+
+    public function test_smp_document_identifier_mismatch_is_refused(): void
+    {
+        $metadata = self::fixture('service-metadata.xml');
+        $cases = [
+            'other document type' => str_replace('xsd:Invoice-2::Invoice##', 'xsd:CreditNote-2::CreditNote##', $metadata),
+            'other scheme' => str_replace('scheme="busdox-docid-qns"', 'scheme="peppol-doctype-wildcard"', $metadata),
+            'scheme in another case' => str_replace('scheme="busdox-docid-qns"', 'scheme="BUSDOX-DOCID-QNS"', $metadata),
+            'value in another case' => str_replace('xsd:Invoice-2::Invoice##', 'xsd:invoice-2::Invoice##', $metadata),
+        ];
+
+        foreach ($cases as $name => $xml) {
+            self::assertNotSame($metadata, $xml, $name);
+            $exception = self::capture(fn () => self::client(new RecordingHttpClient(new Response(200, [], $xml)))
+                ->endpoints('https://smp.example/', self::participant(), new DocumentTypeId(PeppolBis3::INVOICE)));
+
+            self::assertInstanceOf(UnexpectedResponse::class, $exception, $name);
+            self::assertStringContainsString('DocumentIdentifier', $exception->getMessage(), $name);
+        }
+    }
+
+    public function test_href_with_raw_hash_keeps_the_document_type(): void
+    {
+        // The document type with its "#" characters left unencoded, as some SMPs publish it.
+        $raw = 'busdox-docid-qns%3A%3A'.str_replace('%23', '#', rawurlencode(PeppolBis3::INVOICE));
+        $xml = '<ServiceGroup xmlns="http://busdox.org/serviceMetadata/publishing/1.0/"><ServiceMetadataReferenceCollection>'
+            .'<ServiceMetadataReference href="https://smp.example/peppol/'.self::PARTICIPANT_SEGMENT.'/services/'.$raw.'"/>'
+            .'<ServiceMetadataReference href="https://smp.example/peppol/'.self::PARTICIPANT_SEGMENT.'/services/'.$raw.'?x=1"/>'
+            .'</ServiceMetadataReferenceCollection></ServiceGroup>';
+
+        $types = self::client(new RecordingHttpClient(new Response(200, [], $xml)))->documentTypes('https://smp.example/', self::participant());
+
+        self::assertStringContainsString('##urn', $raw);
+        self::assertSame([PeppolBis3::INVOICE], $types);
     }
 
     public function test_size_cap_is_configurable(): void
@@ -205,6 +261,16 @@ final class SmpClientTest extends TestCase
         $this->expectException(UnexpectedResponse::class);
 
         self::client(new RecordingHttpClient(new Response(200, [], $xml)))->endpoints('https://smp.example/', self::participant(), new DocumentTypeId(PeppolBis3::INVOICE));
+    }
+
+    private static function capture(callable $action): \Throwable
+    {
+        try {
+            $action();
+        } catch (\Throwable $exception) {
+            return $exception;
+        }
+        self::fail('No exception was thrown.');
     }
 
     private static function client(RecordingHttpClient $recorder): SmpClient

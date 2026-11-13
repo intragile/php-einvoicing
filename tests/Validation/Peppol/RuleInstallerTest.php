@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Tests\Validation\Peppol;
 
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
 use IntrAgile\EInvoicing\Schematron\RuleSet;
+use IntrAgile\EInvoicing\Tests\Support\Process;
 use IntrAgile\EInvoicing\Validation\Exception\PartialInstall;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\Exception\RuleSourceMismatch;
@@ -84,15 +85,10 @@ final class RuleInstallerTest extends TestCase
             var_export($this->dir, true),
             var_export(dirname(InstalledRules::sourceDir()).'/examples/base-example.xml', true),
         );
-        $process = proc_open([PHP_BINARY, '-r', $script], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-        self::assertIsResource($process);
-        $stdout = (string) stream_get_contents($pipes[1]);
-        $stderr = (string) stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
+        $result = Process::run([PHP_BINARY, '-r', $script]);
 
-        self::assertSame(0, proc_close($process), $stderr);
-        self::assertSame('["peppol-cen-ubl 3.0.22","peppol-ubl 3.0.22"]', $stdout);
+        self::assertSame(0, $result['status'], $result['stderr']);
+        self::assertSame('["peppol-cen-ubl 3.0.22","peppol-ubl 3.0.22"]', $result['stdout']);
     }
 
     public function test_folder_installed_before_the_envelope_rules_has_no_envelope_rules(): void
@@ -229,6 +225,106 @@ final class RuleInstallerTest extends TestCase
         self::assertSame([], glob($target.'/*.bak-*') ?: [], 'No backup may be left behind.');
         self::assertSame([], glob($target.'/*.tmp-*') ?: [], 'No temporary file may be left behind.');
         self::assertCount(5, array_diff(scandir($target) ?: [], ['.', '..']));
+    }
+
+    public function test_rollback_never_leaves_a_missing_target(): void
+    {
+        $target = $this->dir.'/rules';
+        $first = (new RuleInstaller)->install($target, self::sourceDir());
+        foreach ($first as $path) {
+            file_put_contents($path, "\n// installed earlier\n", FILE_APPEND);
+        }
+        $before = array_map(static fn (string $path): string => (string) file_get_contents($path), $first);
+        $moves = 0;
+        $calls = 0;
+        $rename = function (string $from, string $to) use ($first, &$moves, &$calls): bool {
+            $calls++;
+            foreach ($first as $path) {
+                self::assertFileExists($path, "Rename #{$calls} ({$from} -> {$to}) found a target missing.");
+            }
+            // The third compiled file fails to move into place, after two already did.
+            if (str_contains($from, '.tmp-') && ++$moves === 3) {
+                return false;
+            }
+
+            return rename($from, $to);
+        };
+
+        try {
+            (new RuleInstaller(rename: $rename))->install($target, self::sourceDir());
+            self::fail('The failed move must be reported.');
+        } catch (PartialInstall) {
+            self::fail('A successful rollback must not report a partial install.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('nothing was changed', $exception->getMessage());
+        }
+
+        self::assertGreaterThan(3, $calls, 'The restore renames are checked as well.');
+        foreach ($first as $index => $path) {
+            self::assertSame($before[$index], file_get_contents($path));
+        }
+        self::assertSame([], glob($target.'/*.bak-*') ?: [], 'No backup may be left behind.');
+        self::assertSame([], glob($target.'/*.tmp-*') ?: [], 'No temporary file may be left behind.');
+    }
+
+    public function test_partial_install_names_leftover_backups(): void
+    {
+        $target = $this->dir.'/rules';
+        $first = (new RuleInstaller)->install($target, self::sourceDir());
+        $moves = 0;
+        $rename = function (string $from, string $to) use (&$moves): bool {
+            if (str_contains($from, '.tmp-') && ++$moves === 3) {
+                return false;
+            }
+            // Restoring a backup fails as well.
+            if (str_contains($from, '.bak-')) {
+                return false;
+            }
+
+            return rename($from, $to);
+        };
+
+        try {
+            (new RuleInstaller(rename: $rename))->install($target, self::sourceDir());
+            self::fail('The failed restore must be reported.');
+        } catch (PartialInstall $exception) {
+            $leftover = glob($target.'/*.bak-*') ?: [];
+            sort($leftover);
+            $reported = $exception->backupPaths;
+            sort($reported);
+
+            self::assertCount(2, $leftover, 'The backups of the two files already replaced stay.');
+            self::assertSame($leftover, $reported);
+            self::assertSame([$first[0], $first[1]], $exception->writtenPaths);
+            foreach ($leftover as $backup) {
+                self::assertStringContainsString($backup, $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_backups_that_cannot_be_removed_are_reported(): void
+    {
+        $target = $this->dir.'/rules';
+        (new RuleInstaller)->install($target, self::sourceDir());
+        $moves = 0;
+        $rename = function (string $from, string $to) use (&$moves): bool {
+            return str_contains($from, '.tmp-') && ++$moves === 1 ? false : rename($from, $to);
+        };
+        $unlink = static fn (string $path): bool => str_contains($path, '.bak-') ? false : unlink($path);
+
+        try {
+            (new RuleInstaller(rename: $rename, unlink: $unlink))->install($target, self::sourceDir());
+            self::fail('The failed move must be reported.');
+        } catch (PartialInstall) {
+            self::fail('Every target was restored, so the install is not partial.');
+        } catch (RuntimeException $exception) {
+            $leftover = glob($target.'/*.bak-*') ?: [];
+            self::assertCount(5, $leftover);
+            foreach ($leftover as $backup) {
+                self::assertStringContainsString($backup, $exception->getMessage());
+            }
+            self::assertStringContainsString('nothing was changed', $exception->getMessage());
+        }
     }
 
     /**

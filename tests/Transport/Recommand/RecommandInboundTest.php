@@ -299,6 +299,55 @@ final class RecommandInboundTest extends TestCase
         }
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function lenientCreationTimes(): iterable
+    {
+        yield 'no time zone' => ['2026-11-12T07:45:10'];
+        yield 'space separator' => ['2026-11-12 07:45:10+00:00'];
+        yield 'date only' => ['2026-11-12'];
+        yield 'relative' => ['now'];
+        yield 'rolled-over date' => ['2026-02-30T00:00:00Z'];
+        yield 'microseconds' => ['2026-11-12T07:45:10.123456Z'];
+    }
+
+    #[DataProvider('lenientCreationTimes')]
+    public function test_lenient_created_at_is_refused(string $createdAt): void
+    {
+        $body = json_encode(['success' => true, 'documents' => [['id' => 'doc_1', 'createdAt' => $createdAt]]], JSON_THROW_ON_ERROR);
+
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient(new Response(200, [], $body)))->pending());
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString('createdAt', $exception->getMessage());
+    }
+
+    public function test_fetch_of_an_envelope_with_an_incomplete_header_is_unsupported(): void
+    {
+        $data = json_decode(self::read('inbound-document-sbdh.json'), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($data);
+        self::assertIsArray($data['document']);
+        self::assertIsString($data['document']['xml']);
+        $data['document']['xml'] = str_replace('<HeaderVersion>1.0</HeaderVersion>', '', $data['document']['xml']);
+        $response = new Response(200, [], json_encode($data, JSON_THROW_ON_ERROR));
+
+        $exception = self::capture(fn () => self::transport(new RecordingHttpClient($response))->fetch('doc_01inboundsbdh'));
+
+        self::assertInstanceOf(UnsupportedDocument::class, $exception);
+        self::assertStringContainsString('HeaderVersion', $exception->getMessage());
+    }
+
+    public function test_whitespace_document_ids_are_refused(): void
+    {
+        $recorder = new RecordingHttpClient;
+        $transport = self::transport($recorder);
+
+        self::assertInstanceOf(InvalidArgumentException::class, self::capture(fn () => $transport->fetch(' ')));
+        self::assertInstanceOf(InvalidArgumentException::class, self::capture(fn () => $transport->acknowledge("\n")));
+        self::assertSame([], $recorder->requests());
+    }
+
     private static function transport(RecordingHttpClient $recorder, string $companyId = 'c_01example'): RecommandTransport
     {
         $factory = new Psr17Factory;

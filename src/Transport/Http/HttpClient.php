@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Transport\Http;
 
+use Closure;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
@@ -27,8 +28,14 @@ use Throwable;
  * as OutcomeUnknown and only a failed safe request (GET, HEAD, OPTIONS) as TransportUnavailable.
  * A body that cannot be read to the end is mapped the same way: the status line arrived, so the
  * server most likely processed the request.
- * Response bodies are read into memory up to a size cap. Credentials in headers, user info and
- * query strings are kept out of exception messages.
+ * Response bodies are read into memory up to a size cap.
+ *
+ * Credentials are kept out of exception messages and body excerpts: the Authorization and
+ * Proxy-Authorization header values, the user info and query string of the URL, and every secret
+ * passed to the constructor, each raw, percent-encoded (rawurlencode) and Base64-encoded. Only
+ * whole occurrences are replaced, and a body is redacted before its excerpt is cut, so a secret
+ * across the excerpt limit cannot survive in part. Secrets shorter than eight characters are not
+ * redacted, because replacing them would garble ordinary text.
  */
 final class HttpClient
 {
@@ -40,21 +47,69 @@ final class HttpClient
 
     private const CHUNK_BYTES = 1_048_576;
 
+    /** Secrets shorter than this are not redacted. */
+    private const MIN_SECRET_LENGTH = 8;
+
+    private const REDACTED = '[redacted]';
+
+    /**
+     * The configured secrets, kept in a closure so that they stay out of var_export(), print_r(),
+     * var_dump() and json_encode() output.
+     *
+     * @var Closure(): list<string>
+     */
+    private readonly Closure $secrets;
+
+    /**
+     * @param  list<string>  $secrets  values to keep out of exception messages and body excerpts,
+     *                                 such as API keys; values under eight characters are ignored
+     */
     public function __construct(
         private readonly ClientInterface $client,
         private readonly RequestFactoryInterface $requests,
         private readonly StreamFactoryInterface $streams,
         private readonly int $maxResponseBytes = 20_000_000,
+        #[SensitiveParameter] array $secrets = [],
     ) {
         if ($maxResponseBytes < 1) {
             throw new InvalidArgumentException('The response size cap must be at least one byte.');
         }
+        $kept = array_values(array_unique(array_filter(
+            $secrets,
+            static fn (string $secret): bool => strlen($secret) >= self::MIN_SECRET_LENGTH,
+        )));
+        $this->secrets = static fn (): array => $kept;
+    }
+
+    /**
+     * A client with the same settings that also redacts the given secrets.
+     *
+     * @param  list<string>  $secrets
+     */
+    public function withSecrets(#[SensitiveParameter] array $secrets): self
+    {
+        return new self(
+            $this->client,
+            $this->requests,
+            $this->streams,
+            $this->maxResponseBytes,
+            [...($this->secrets)(), ...$secrets],
+        );
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function __debugInfo(): array
+    {
+        return ['maxResponseBytes' => (string) $this->maxResponseBytes, 'secrets' => '[redacted]'];
     }
 
     /**
      * Sends the request and returns the response with its body fully read, whatever its status.
      *
      * @param  array<string, string|list<string>>  $headers
+     * @param  int|null  $maxBytes  a size cap for this response; it can only lower the client's cap
      *
      * @throws OutcomeUnknown when a request other than GET, HEAD or OPTIONS failed without a
      *                        response or its response body could not be read
@@ -62,8 +117,13 @@ final class HttpClient
      *                              or its response body could not be read
      * @throws UnexpectedResponse when the response body exceeds the size cap
      */
-    public function send(string $method, string $url, #[SensitiveParameter] array $headers = [], ?string $body = null): ResponseInterface
+    public function send(string $method, string $url, #[SensitiveParameter] array $headers = [], ?string $body = null, ?int $maxBytes = null): ResponseInterface
     {
+        if ($maxBytes !== null && $maxBytes < 1) {
+            throw new InvalidArgumentException('The response size cap must be at least one byte.');
+        }
+        $cap = min($maxBytes ?? $this->maxResponseBytes, $this->maxResponseBytes);
+
         $request = $this->requests->createRequest($method, $url);
         foreach ($headers as $name => $value) {
             $request = $request->withHeader($name, $value);
@@ -79,7 +139,7 @@ final class HttpClient
         }
 
         try {
-            $contents = $this->read($response);
+            $contents = $this->read($request, $response, $cap);
         } catch (UnexpectedResponse $exception) {
             throw $exception;
         } catch (RuntimeException $exception) {
@@ -122,11 +182,11 @@ final class HttpClient
     }
 
     /**
-     * Removes the request's credentials from a client exception message.
+     * Removes the request's credentials and the configured secrets from text.
      */
-    private function redact(RequestInterface $request, string $message): string
+    private function redact(RequestInterface $request, string $text): string
     {
-        $secrets = [];
+        $secrets = $this->secretVariants();
         foreach (self::SECRET_HEADERS as $name) {
             foreach ($request->getHeader($name) as $value) {
                 $secrets[] = $value;
@@ -142,14 +202,46 @@ final class HttpClient
         // Longest first, so that a whole header value is replaced before its credential part.
         usort($secrets, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
 
-        return str_replace($secrets, '[redacted]', $message);
+        return str_replace($secrets, self::REDACTED, $text);
+    }
+
+    /**
+     * Each configured secret raw, percent-encoded and Base64-encoded.
+     *
+     * @return list<string>
+     */
+    private function secretVariants(): array
+    {
+        $variants = [];
+        foreach (($this->secrets)() as $secret) {
+            array_push($variants, $secret, rawurlencode($secret), base64_encode($secret));
+        }
+
+        return $variants;
+    }
+
+    /**
+     * The longest text redact() may replace, so that an excerpt cut from enough text past the
+     * limit has every secret that starts inside it replaced whole.
+     */
+    private function longestSecret(RequestInterface $request): int
+    {
+        $longest = strlen($request->getUri()->getUserInfo()) + strlen($request->getUri()->getQuery());
+        foreach ($this->secretVariants() as $secret) {
+            $longest = max($longest, strlen($secret));
+        }
+        foreach (self::SECRET_HEADERS as $name) {
+            $longest = max($longest, strlen($request->getHeaderLine($name)));
+        }
+
+        return $longest;
     }
 
     /**
      * @throws UnexpectedResponse when the body exceeds the size cap
      * @throws RuntimeException when the stream fails or stalls before end of file while the body is read
      */
-    private function read(ResponseInterface $response): string
+    private function read(RequestInterface $request, ResponseInterface $response, int $cap): string
     {
         $stream = $response->getBody();
         if ($stream->isSeekable()) {
@@ -157,8 +249,8 @@ final class HttpClient
         }
 
         $declared = $response->getHeaderLine('Content-Length');
-        if (ctype_digit($declared) && (int) $declared > $this->maxResponseBytes) {
-            throw $this->tooLarge($response, $stream->read(UnexpectedResponse::EXCERPT_BYTES));
+        if (ctype_digit($declared) && (int) $declared > $cap) {
+            throw $this->tooLarge($request, $response, $cap, $stream->read(UnexpectedResponse::EXCERPT_BYTES + $this->longestSecret($request)));
         }
 
         $body = '';
@@ -175,20 +267,26 @@ final class HttpClient
             // an empty read is a stall only when the next end-of-file check still says no.
             $emptyRead = $chunk === '';
             $body .= $chunk;
-            if (strlen($body) > $this->maxResponseBytes) {
-                throw $this->tooLarge($response, $body);
+            if (strlen($body) > $cap) {
+                throw $this->tooLarge($request, $response, $cap, $body);
             }
         }
 
         return $body;
     }
 
-    private function tooLarge(ResponseInterface $response, string $start): UnexpectedResponse
+    /**
+     * @param  string  $start  the start of the body, long enough to hold the excerpt and any secret
+     *                         that starts inside it
+     */
+    private function tooLarge(RequestInterface $request, ResponseInterface $response, int $cap, string $start): UnexpectedResponse
     {
+        $start = substr($start, 0, UnexpectedResponse::EXCERPT_BYTES + $this->longestSecret($request));
+
         return UnexpectedResponse::forResponse(
             $response,
-            sprintf('The response body exceeds the limit of %d bytes', $this->maxResponseBytes),
-            $start,
+            sprintf('The response body exceeds the limit of %d bytes', $cap),
+            $this->redact($request, $start),
         );
     }
 }

@@ -18,13 +18,11 @@ use IntrAgile\EInvoicing\Transport\InboundReference;
 use IntrAgile\EInvoicing\Transport\InboundSource;
 use IntrAgile\EInvoicing\Transport\OutboundDocument;
 use IntrAgile\EInvoicing\Transport\Sbdh\EnvelopeReader;
-use IntrAgile\EInvoicing\Transport\Sbdh\EnvelopeWriter;
 use IntrAgile\EInvoicing\Transport\SendResult;
 use IntrAgile\EInvoicing\Transport\Transport;
 use InvalidArgumentException;
 use JsonException;
 use Psr\Http\Message\ResponseInterface;
-use XMLReader;
 
 /**
  * Sends and receives documents over Peppol through the Recommand access point REST API
@@ -36,10 +34,13 @@ final class RecommandTransport implements InboundSource, Transport
 {
     private readonly ResponseMapper $mapper;
 
+    private readonly HttpClient $http;
+
     public function __construct(
         private readonly RecommandConfig $config,
-        private readonly HttpClient $http,
+        HttpClient $http,
     ) {
+        $this->http = $config->redactingClient($http);
         $this->mapper = new ResponseMapper($config);
     }
 
@@ -86,7 +87,7 @@ final class RecommandTransport implements InboundSource, Transport
 
     /**
      * @throws TransportUnavailable when the request failed without an answer; it is safe to retry
-     * @throws InvalidArgumentException when the document id is empty
+     * @throws InvalidArgumentException when the document id is empty or whitespace
      */
     public function status(string $documentId): DeliveryStatus
     {
@@ -121,7 +122,7 @@ final class RecommandTransport implements InboundSource, Transport
      * @throws TransportException when Recommand refused the request
      * @throws UnsafeXml when the document carries a DOCTYPE declaration
      * @throws UnsupportedDocument when the document is not well-formed XML or its envelope is incomplete
-     * @throws InvalidArgumentException when the document id is empty
+     * @throws InvalidArgumentException when the document id is empty or whitespace
      */
     public function fetch(string $documentId): InboundDocument
     {
@@ -129,7 +130,7 @@ final class RecommandTransport implements InboundSource, Transport
 
         [$reference, $xml] = $this->mapper->inboundDocument($this->get($this->documentUrl($documentId)), $documentId);
 
-        if (self::hasEnvelopeRoot($xml)) {
+        if (EnvelopeReader::isEnvelopeStream($xml)) {
             // The reader parses the envelope once with SafeXml and serialises the payload from the
             // parsed tree, so the payload needs no second parse.
             [$envelope, $payload] = (new EnvelopeReader)->unwrap($xml);
@@ -151,7 +152,7 @@ final class RecommandTransport implements InboundSource, Transport
      * @throws OutcomeUnknown when the request failed without an answer; retrying is safe
      * @throws UnexpectedResponse when Recommand does not know the document or answered unexpectedly
      * @throws TransportException when Recommand refused the request
-     * @throws InvalidArgumentException when the document id is empty
+     * @throws InvalidArgumentException when the document id is empty or whitespace
      */
     public function acknowledge(string $documentId): void
     {
@@ -212,44 +213,8 @@ final class RecommandTransport implements InboundSource, Transport
 
     private static function assertDocumentId(string $documentId): void
     {
-        if ($documentId === '') {
-            throw new InvalidArgumentException('The document id must not be empty.');
-        }
-    }
-
-    /**
-     * Whether the root element is a Standard Business Document, read from the start of the XML
-     * without building a tree. A DOCTYPE or a malformed start counts as no envelope, so that the
-     * full parse that follows refuses it.
-     */
-    private static function hasEnvelopeRoot(string $xml): bool
-    {
-        if (trim($xml) === '') {
-            return false;
-        }
-
-        $previous = libxml_use_internal_errors(true);
-        $reader = new XMLReader;
-
-        try {
-            if (! $reader->XML($xml, null, LIBXML_NONET)) {
-                return false;
-            }
-            while ($reader->read()) {
-                if ($reader->nodeType === XMLReader::DOC_TYPE) {
-                    return false;
-                }
-                if ($reader->nodeType === XMLReader::ELEMENT) {
-                    return $reader->namespaceURI === EnvelopeWriter::NAMESPACE_URI
-                        && $reader->localName === 'StandardBusinessDocument';
-                }
-            }
-
-            return false;
-        } finally {
-            $reader->close();
-            libxml_clear_errors();
-            libxml_use_internal_errors($previous);
+        if (trim($documentId) === '') {
+            throw new InvalidArgumentException('The document id must not be empty or whitespace.');
         }
     }
 }

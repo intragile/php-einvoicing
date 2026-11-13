@@ -96,12 +96,23 @@ These two snippets show the intended wiring; the test suite runs with its own PS
 clients, not with Guzzle or Symfony.
 
 - **Set timeouts.** A request without a timeout can hang the worker indefinitely.
-- **Do not follow redirects**, at least for SMP lookups. `SmpClient` handles the SMP's own
+- **Configure your PSR-18 client not to follow redirects.** `SmpClient` handles the SMP's own
   `Redirect` element (one hop) itself; an HTTP 3xx followed silently by the client would bypass
-  the URL checks the lookup applies (https only, no user info, query string or fragment).
-- The `Authorization` header value is kept out of this package's exception messages; a PSR-18
-  client's own exception, chained as the previous exception, is passed through unchanged, so check
-  what your client puts in its messages before logging the whole chain.
+  the URL checks the lookup applies (https only, no user info, query string or fragment), and a
+  redirected send could reach a host you did not configure.
+- **Redaction.** Exception messages and body excerpts of this package have whole occurrences of
+  the credentials replaced by `[redacted]`: the `Authorization` header value, the URL's user info
+  and query string, and every secret passed as the fifth constructor argument
+  (`new HttpClient($client, $factory, $factory, $maxBytes, [$apiKey])`), each raw, URL-encoded
+  and Base64-encoded. A body is redacted before its 500-byte excerpt is cut, so a secret across
+  the cut is replaced whole. Secrets shorter than eight characters are ignored. Text that echoes
+  only part of a secret, or encodes it some other way, is not recognised. `RecommandTransport`
+  adds its API key id and secret by itself.
+- A PSR-18 client's own exception, chained as the previous exception, is passed through
+  unchanged, so check what your client puts in its messages before logging the whole chain.
+- `send()` takes an optional `$maxBytes` that lowers the size cap for one response; a body over
+  the cap is an `UnexpectedResponse` whatever its status, and it is not retryable, because the
+  same request would get the same body again.
 
 ## Errors
 
@@ -115,13 +126,14 @@ the same call later may succeed **and cannot cause a duplicate**.
 | `RecipientUnreachable` | false | The receiver is not registered or does not accept this document type (Recommand HTTP 422) | `$e->category` is a `FailureCategory`; use another channel or ask the receiver |
 | `AuthenticationFailed` | false | Wrong credentials or missing permission (HTTP 401/403); a webhook with a bad signature | Fix the configuration; for a webhook, refuse the request |
 | `RateLimited` | true | Too many requests (HTTP 429) | Wait `$e->retryAfterSeconds` (when given), then retry |
-| `TransportUnavailable` | true | A GET got no answer (or its body stalled), the provider answered 503, or a GET answered another 5xx | Retry later with backoff |
+| `TransportUnavailable` | true | A GET got no answer (or its body stalled), the provider answered 503, a GET answered another 5xx (the Peppol Directory: 500, 502, 503 or 504; any other 5xx from it is `UnexpectedResponse`) | Retry later with backoff |
 | `OutcomeUnknown` | false | A send (or another state-changing request) got no answer or a body that stalled; a send answered any 5xx except 503; a send answered 200 with a body that is not JSON, does not report success or has no document id | **Do not resend blindly**; see below |
 | `UnexpectedResponse` | false | An unexpected status, or a malformed or oversized body. On a send, a malformed 200 is `OutcomeUnknown`, but a body over the size cap is this exception whatever the status | Log `$e->status` and `$e->bodyExcerpt`; investigate. On a send over the size cap, also handle it like `OutcomeUnknown` |
 
 `fetch()` can also throw `UnsafeXml` and `UnsupportedDocument` (the library's own exceptions)
-for a received document with a DOCTYPE or broken XML; `InvalidArgumentException` signals an
-empty document id or a malformed value.
+for a received document with a DOCTYPE, broken XML or an incomplete or inconsistent SBDH
+envelope; `InvalidArgumentException` signals an empty or whitespace-only document id or a
+malformed value.
 
 ### OutcomeUnknown
 
@@ -161,7 +173,7 @@ use IntrAgile\EInvoicing\Transport\Peppol\ProcessId;
 
 $lookup = new ParticipantLookup(
     new SmlLocator(new DnsGetRecordResolver, SmlZone::Production),  // SmlZone::Test for the test network
-    new SmpClient(new HttpClient($psr18, $factory, $factory, 2_000_000)),
+    new SmpClient(new HttpClient($psr18, $factory, $factory)),  // the SMP cap (2 MiB) applies per request
 );
 
 $result = $lookup->lookup(ParticipantId::parse('0208:0123456789'), new DocumentTypeId(PeppolBis3::INVOICE));
@@ -182,15 +194,18 @@ match ($result->status) {
 - `lookup()` without a document type reads only the SMP ServiceGroup; with one, it reads the
   endpoints of that type. `supports()` checks that an endpoint for the document type, process and
   transport profile (AS4 by default) is active now.
-- SMP answers are parsed with `SafeXml` (DOCTYPE refused), capped at 2 MB, and at most one SMP
-  `Redirect` is followed.
+- SMP answers are parsed with `SafeXml` (DOCTYPE refused) and capped at 2 MiB while they are
+  read, so an oversized answer is not downloaded to the end. At most one SMP `Redirect` is
+  followed. The `DocumentIdentifier` of an endpoint answer must repeat the requested document
+  type exactly (scheme and value, case-sensitive); an answer for another type gives `Unknown`.
+- Only the first-ranked NAPTR record of the SML answer is used; the others are not tried.
 - **The SMP signature is not verified.** The endpoint data is only as trustworthy as the TLS
   connection to the SMP. Your access point verifies the receiver's certificate when it sends;
   use the lookup to decide whether to send over Peppol, not to pin certificates.
 - **`DnsGetRecordResolver` is a fallback, not a production resolver.** PHP's `dns_get_record()`
-  has no timeout of its own (the system resolver's applies), and some platforms report a
-  resolver failure (SERVFAIL) like a missing record (NXDOMAIN), which would turn `Unknown` into
-  `NotRegistered`. For production, implement `NaptrResolver` (one method,
+  has no timeout of its own (the system resolver's applies), and a DNS SERVFAIL can look like
+  NXDOMAIN: some platforms report a resolver failure like a missing record, which would turn
+  `Unknown` into `NotRegistered`. For production, implement `NaptrResolver` (one method,
   `naptr(string $host): ?array`, returning `null` on failure and `[]` when there is no record)
   with a resolver that has a timeout and tells the two apart, for example a DNS-over-HTTPS client.
 
@@ -218,6 +233,8 @@ $entry = $directory->find(ParticipantId::parse('0208:0123456789'));  // null whe
   429 answer throws `RateLimited`.
 - A query needs at least one criterion; a name of two characters or fewer as the only criterion
   is refused (the Directory ignores it), and only the first 1000 results can be paged through.
+- 500, 502, 503 and 504 answers throw `TransportUnavailable` (retryable); any other error status
+  throws `UnexpectedResponse`.
 
 ## Receiving documents
 
@@ -259,7 +276,7 @@ try {
 } catch (AuthenticationFailed) {
     return response('', 401);                       // missing or wrong X-Signature
 } catch (UnexpectedResponse) {
-    return response('', 204);                       // an event without a document id: ignore it
+    return response('', 204);                       // signed, but not a document event: ignore it
 }
 
 if (! $alreadySeen($event->idempotencyKey)) {      // X-Idempotency-Key: deliveries can repeat
@@ -273,9 +290,11 @@ return response('', 204);
 - The signature is an HMAC-SHA256 of the raw body (`X-Signature: sha256=<hex>`), compared in
   constant time. Pass the body exactly as received; a decoded and re-encoded body no longer
   matches.
-- Only document events are parsed. A signed event without a `documentId` (for example a company
-  verification event) throws `UnexpectedResponse`; answer it with 2xx anyway, or the sender will
-  keep retrying it.
+- Only document events are parsed. A correctly signed notification throws `UnexpectedResponse`
+  when its body is not valid JSON, is not a JSON object, or has no non-empty `eventType` or
+  `documentId` (for example a company verification event). Answer it with 2xx anyway, or the
+  sender will keep retrying it; log `$e->bodyExcerpt` if you want to see what was ignored.
+- A status event whose `deliveryStatus` is `null` gives `DeliveryState::Unknown`.
 - `verify($rawBody, $signatureHeader)` returns the signature check alone as a boolean.
 
 ## The SBDH envelope
@@ -299,8 +318,12 @@ EnvelopeReader::isEnvelope($xml);
 
 The writer copies the participant ids exactly as they appear in the invoice, because the
 official rules compare them case-sensitively, and writes the header elements in schema order.
-The reader matches elements by namespace, parses with `SafeXml` and refuses an envelope that
-lacks mandatory header data.
+The reader matches elements by namespace, parses with `SafeXml` and throws
+`UnsupportedDocument` for an envelope that lacks mandatory header data, has its header anywhere
+but first or more than once, has a `COUNTRY_C1` that is not two upper-case letters, a
+`CreationDateAndTime` that does not exist (such as `2026-02-30`), or a `Standard` and `Type`
+that do not name the payload root. It tolerates a participant `Identifier` without the
+`Authority` attribute and one that repeats the `iso6523-actorid-upis::` prefix.
 
 ### Envelope validation
 
@@ -334,11 +357,21 @@ $fake->willReturn(new OutcomeUnknown('no answer'));   // queue answers or except
 $fake->assertSent(fn (OutboundDocument $d): bool => $d->receiver->toString() === '0208:0123456789');
 ```
 
+Unqueued sends get delivered results with the ids `fake-1`, `fake-2`, …; a queued `SendResult`
+with an empty document id gets `fake-q-1`, `fake-q-2`, …, and a generated id never repeats one
+already returned. `fetch()` and `acknowledge()` of an unknown inbound id throw
+`UnexpectedResponse`, as a real driver does.
+
 ## Recommand
 
 - Create an API key in the Recommand dashboard; its id (`key_…`) and secret (`secret_…`) and the
   sending company's id go into `RecommandConfig`. The secret is kept out of `var_export()`,
-  `print_r()`, `var_dump()`, `json_encode()` and exception messages.
+  `print_r()`, `var_dump()`, `json_encode()` and exception messages. `RecommandConfig` refuses an
+  API key id or secret shorter than eight characters (without quoting it) and trims the company
+  id.
+- An inbox entry's `createdAt` must be an ISO 8601 time with a time zone
+  (`2026-11-12T08:02:00+00:00` or `2026-11-12T07:45:10.000Z`); anything else is an
+  `UnexpectedResponse`.
 - **Playground teams.** A Recommand playground is a separate team whose API key uses the same
   base URL. By default nothing it sends leaves Recommand: transmissions are simulated and the
   returned `peppolMessageId` and `envelopeId` are `null`. A playground created with

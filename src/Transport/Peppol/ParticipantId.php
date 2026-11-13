@@ -27,6 +27,9 @@ final readonly class ParticipantId
         if (preg_match('/\A\d{4}\z/', $icd) !== 1) {
             throw new InvalidArgumentException(sprintf('The participant identifier scheme "%s" is not a four-digit ISO 6523 ICD.', $icd));
         }
+        if (! mb_check_encoding($value, 'UTF-8')) {
+            throw new InvalidArgumentException('The participant identifier value is not valid UTF-8.');
+        }
         if ($value === '' || preg_match('/[\s\p{Cc}]/u', $value) !== 0) {
             throw new InvalidArgumentException(sprintf('The participant identifier value "%s" is empty or contains whitespace or control characters.', addcslashes($value, "\0..\37\177")));
         }

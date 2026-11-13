@@ -28,9 +28,10 @@ use Psr\Http\Message\ResponseInterface;
  * prefixes. One ServiceMetadata Redirect is followed; a redirect to another redirect is refused.
  * The XMLDSig signature of the ServiceMetadata is not verified.
  *
- * Responses larger than the size cap (2 MB by default) are refused. The HttpClient reads a body
- * up to its own cap before this check runs, so give it a cap no larger than this one to stop
- * reading an oversized body early.
+ * Responses larger than the size cap (2 MiB by default) are refused while they are read: the cap
+ * is passed to the HttpClient for each request, so an oversized body is not read to the end.
+ * The DocumentIdentifier of a ServiceMetadata answer must repeat the requested document type
+ * exactly (scheme and value, case-sensitive); an answer for another document type is refused.
  */
 final class SmpClient
 {
@@ -42,9 +43,12 @@ final class SmpClient
 
     private const DATE_TIME = '/\A\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?\z/';
 
+    /** Default response size cap: 2 MiB. */
+    public const DEFAULT_MAX_BYTES = 2_097_152;
+
     public function __construct(
         private readonly HttpClient $http,
-        private readonly int $maxBytes = 2_000_000,
+        private readonly int $maxBytes = self::DEFAULT_MAX_BYTES,
     ) {
         if ($maxBytes < 1) {
             throw new InvalidArgumentException('The SMP response size cap must be at least one byte.');
@@ -104,7 +108,8 @@ final class SmpClient
      *
      * @throws TransportUnavailable when the SMP cannot be reached or answers with a 5xx status
      * @throws UnexpectedResponse when the answer is oversized, malformed, a second redirect, a
-     *                            redirect to a refused URL or has another status
+     *                            redirect to a refused URL, for another document type or has
+     *                            another status
      * @throws UnsafeXml when the answer carries a DOCTYPE declaration
      */
     public function endpoints(string $smpUrl, ParticipantId $id, DocumentTypeId $type): array
@@ -119,7 +124,8 @@ final class SmpClient
      *
      * @throws TransportUnavailable when the SMP cannot be reached or answers with a 5xx status
      * @throws UnexpectedResponse when the answer is oversized, malformed, a second redirect, a
-     *                            redirect to a refused URL or has another status
+     *                            redirect to a refused URL, for another document type or has
+     *                            another status
      * @throws UnsafeXml when the answer carries a DOCTYPE declaration
      */
     public function findEndpoints(string $smpUrl, ParticipantId $id, DocumentTypeId $type): ?array
@@ -136,7 +142,7 @@ final class SmpClient
 
             $redirect = self::first($xpath, 'smp:Redirect', $metadata);
             if ($redirect === null) {
-                return self::parseEndpoints($response, $xpath, $metadata);
+                return self::parseEndpoints($response, $xpath, $metadata, $type);
             }
             if ($redirects > 0) {
                 throw UnexpectedResponse::forResponse($response, 'The SMP redirect leads to another redirect, which is refused');
@@ -159,7 +165,7 @@ final class SmpClient
      */
     private function fetch(string $url): ?array
     {
-        $response = $this->http->send('GET', $url);
+        $response = $this->http->send('GET', $url, maxBytes: $this->maxBytes);
         $status = $response->getStatusCode();
         if ($status === 404) {
             return null;
@@ -172,9 +178,6 @@ final class SmpClient
         }
 
         $body = (string) $response->getBody();
-        if (strlen($body) > $this->maxBytes) {
-            throw UnexpectedResponse::forResponse($response, sprintf('The SMP response exceeds the limit of %d bytes', $this->maxBytes), $body);
-        }
 
         try {
             $document = SafeXml::load($body);
@@ -219,16 +222,27 @@ final class SmpClient
 
     /**
      * @return list<ServiceEndpoint>
+     *
+     * @throws UnexpectedResponse when the ServiceInformation is missing, incomplete or for another
+     *                            document type than the one requested
      */
-    private static function parseEndpoints(ResponseInterface $response, DOMXPath $xpath, DOMElement $metadata): array
+    private static function parseEndpoints(ResponseInterface $response, DOMXPath $xpath, DOMElement $metadata, DocumentTypeId $requested): array
     {
         $information = self::first($xpath, 'smp:ServiceInformation', $metadata)
             ?? throw UnexpectedResponse::forResponse($response, 'The SMP ServiceMetadata has neither ServiceInformation nor Redirect');
-        $documentType = self::identifier(
-            self::first($xpath, 'ids:DocumentIdentifier', $information)
-                ?? throw UnexpectedResponse::forResponse($response, 'The SMP ServiceInformation has no DocumentIdentifier'),
-            DocumentTypeId::SCHEME,
-        );
+        $identifier = self::first($xpath, 'ids:DocumentIdentifier', $information)
+            ?? throw UnexpectedResponse::forResponse($response, 'The SMP ServiceInformation has no DocumentIdentifier');
+        $scheme = $identifier->getAttribute('scheme');
+        $value = trim($identifier->textContent);
+        if ($scheme !== DocumentTypeId::SCHEME || $value !== $requested->value) {
+            throw UnexpectedResponse::forResponse($response, sprintf(
+                'The SMP DocumentIdentifier %s::%s does not match the requested document type %s',
+                addcslashes($scheme, "\0..\37\177"),
+                addcslashes($value, "\0..\37\177"),
+                $requested->toUri(),
+            ));
+        }
+        $documentType = $value;
 
         $endpoints = [];
         foreach (self::elements($xpath, 'smp:ProcessList/smp:Process', $information) as $process) {
@@ -260,12 +274,22 @@ final class SmpClient
 
     /**
      * The document type in the last path segment of a ServiceMetadataReference href.
+     *
+     * The path is cut out of the href by hand rather than with parse_url(): document type
+     * identifiers contain "#", which some SMPs leave unencoded and parse_url() would take for the
+     * start of a fragment. The query string, if any, is dropped; "#" is kept as part of the path.
      */
     private static function documentTypeFromHref(string $href): ?string
     {
-        $path = parse_url($href, PHP_URL_PATH);
-        if (! is_string($path)) {
-            return null;
+        $path = trim($href);
+        $authority = strpos($path, '://');
+        if ($authority !== false) {
+            $slash = strpos($path, '/', $authority + 3);
+            $path = $slash === false ? '' : substr($path, $slash);
+        }
+        $query = strpos($path, '?');
+        if ($query !== false) {
+            $path = substr($path, 0, $query);
         }
         $segment = rawurldecode(substr($path, (int) strrpos($path, '/') + 1));
         $prefix = DocumentTypeId::SCHEME.'::';
@@ -274,17 +298,6 @@ final class SmpClient
         }
 
         return $segment === '' ? null : $segment;
-    }
-
-    /**
-     * An identifier's value, prefixed with its scheme unless that is the default one.
-     */
-    private static function identifier(DOMElement $element, string $defaultScheme): string
-    {
-        $scheme = $element->getAttribute('scheme');
-        $value = trim($element->textContent);
-
-        return $scheme === '' || $scheme === $defaultScheme ? $value : $scheme.'::'.$value;
     }
 
     /**

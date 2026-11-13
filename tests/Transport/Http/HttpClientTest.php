@@ -27,6 +27,8 @@ final class HttpClientTest extends TestCase
 {
     private const AUTHORIZATION = 'Basic a2V5LWlkOnRvcC1zZWNyZXQ=';
 
+    private const SECRET = 'secret_01topsecretvalue';
+
     public function test_sends_method_url_headers_and_body(): void
     {
         $recorder = new RecordingHttpClient(new Response(201, [], '{"ok":true}'));
@@ -116,6 +118,68 @@ final class HttpClientTest extends TestCase
             self::assertStringNotContainsString('pw@', $exception->getMessage());
             self::assertStringNotContainsString('t0ps3cret', $exception->getMessage());
         }
+    }
+
+    public function test_secret_straddling_the_excerpt_cut_is_redacted(): void
+    {
+        // The secret occupies bytes 495 to 517, across the 500-byte excerpt limit, so a body cut
+        // first and redacted afterwards would keep its first five bytes.
+        $body = str_repeat('x', 495).self::SECRET.str_repeat('y', 600);
+        $streamed = (new Response(200, [], $body))->withoutHeader('Content-Length');
+        $declared = new Response(200, ['Content-Length' => (string) strlen($body)], $body);
+
+        foreach ([$streamed, $declared] as $response) {
+            $exception = self::capture(fn () => (new HttpClient(new RecordingHttpClient($response), new Psr17Factory, new Psr17Factory, 1_000, [self::SECRET]))
+                ->send('GET', 'https://ap.example/api'));
+
+            self::assertInstanceOf(UnexpectedResponse::class, $exception);
+            self::assertStringNotContainsString('secre', $exception->bodyExcerpt);
+            // Redacted first, then cut: the excerpt ends inside the marker, not inside the secret.
+            self::assertSame(str_repeat('x', 495).'[reda', $exception->bodyExcerpt);
+        }
+    }
+
+    public function test_encoded_secret_variants_are_redacted(): void
+    {
+        $secret = 'p@ss/w0rd+s3cret value';
+        $variants = [$secret, rawurlencode($secret), base64_encode($secret), self::AUTHORIZATION];
+        $message = 'Failed: '.implode(' | ', $variants).' | short';
+        $request = new Request('GET', 'https://ap.example/api');
+
+        $exception = self::capture(fn () => (new HttpClient(new RecordingHttpClient(self::networkException($request, $message)), new Psr17Factory, new Psr17Factory, 1_000, [$secret, 'short']))
+            ->send('GET', 'https://ap.example/api', ['Authorization' => self::AUTHORIZATION]));
+        $excerpt = self::capture(fn () => (new HttpClient(new RecordingHttpClient(new Response(200, [], $message.str_repeat('z', 1_000))), new Psr17Factory, new Psr17Factory, 1_000, [$secret]))
+            ->send('GET', 'https://ap.example/api', ['Authorization' => self::AUTHORIZATION]));
+
+        self::assertInstanceOf(TransportUnavailable::class, $exception);
+        self::assertInstanceOf(UnexpectedResponse::class, $excerpt);
+        foreach ($variants as $variant) {
+            self::assertStringNotContainsString($variant, $exception->getMessage());
+            self::assertStringNotContainsString($variant, $excerpt->bodyExcerpt);
+        }
+        self::assertSame(4, substr_count($exception->getMessage(), '[redacted]'));
+        self::assertStringContainsString('| short', $exception->getMessage(), 'A secret under eight characters is not redacted.');
+    }
+
+    public function test_configured_secrets_stay_out_of_dumps(): void
+    {
+        $client = new HttpClient(new RecordingHttpClient, new Psr17Factory, new Psr17Factory, 1_000, [self::SECRET]);
+
+        self::assertStringNotContainsString(self::SECRET, var_export($client, true));
+        self::assertStringNotContainsString(self::SECRET, print_r($client, true));
+    }
+
+    public function test_per_request_cap_lowers_but_never_raises_the_client_cap(): void
+    {
+        $lowered = self::capture(fn () => (new HttpClient(new RecordingHttpClient(new Response(200, [], str_repeat('a', 101))), new Psr17Factory, new Psr17Factory, 1_000))
+            ->send('GET', 'https://ap.example/api', maxBytes: 100));
+        $raised = self::capture(fn () => (new HttpClient(new RecordingHttpClient(new Response(200, [], str_repeat('a', 1_001))), new Psr17Factory, new Psr17Factory, 1_000))
+            ->send('GET', 'https://ap.example/api', maxBytes: 5_000));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $lowered);
+        self::assertStringContainsString('100 bytes', $lowered->getMessage());
+        self::assertInstanceOf(UnexpectedResponse::class, $raised);
+        self::assertStringContainsString('1000 bytes', $raised->getMessage());
     }
 
     public function test_body_over_the_cap_is_rejected(): void
@@ -259,13 +323,6 @@ final class HttpClientTest extends TestCase
     }
 
     /**
-     * A body of the given size that php://temp keeps on disk, so the test itself stays small.
-     */
-    /**
-     * A non-seekable stream that never reaches end of file: read() throws $failure, or returns
-     * an empty string when $failure is null.
-     */
-    /**
      * A non-seekable stream that throws $failure on read, or returns $chunks one by one and then
      * empty strings; eof() stays false unless $eofAfterEmptyRead, in which case it turns true
      * after the first empty read.
@@ -369,6 +426,9 @@ final class HttpClientTest extends TestCase
         };
     }
 
+    /**
+     * A body of the given size that php://temp keeps on disk, so the test itself stays small.
+     */
     private static function largeBody(int $bytes): StreamInterface
     {
         $resource = fopen('php://temp/maxmemory:1048576', 'w+b');
