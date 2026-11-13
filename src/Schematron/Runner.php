@@ -13,6 +13,7 @@ use IntrAgile\EInvoicing\Validation\DynamicError;
 use IntrAgile\EInvoicing\Validation\Finding;
 use IntrAgile\EInvoicing\XPath\DocumentIndex;
 use IntrAgile\EInvoicing\XPath\Evaluator;
+use IntrAgile\EInvoicing\XPath\Functions;
 use IntrAgile\EInvoicing\XPath\Thunk;
 use IntrAgile\EInvoicing\XPath\UserFunction;
 use IntrAgile\EInvoicing\XPath\Value\AtomicValue;
@@ -31,6 +32,12 @@ use IntrAgile\EInvoicing\XPath\XPathError;
  * at most once per document. Rule contexts see the global variables; asserts see those and the
  * lets of their rule. XSLT functions see the schema lets.
  *
+ * The message of a failed assert with name or value-of elements is built at the failing node, as
+ * the skeleton writes it into the report: name gives the qualified name of the node as written in
+ * the document (XPath name()), value-of the string values of the selected items joined by a single
+ * space (the xsl:value-of default separator). A message expression that raises an error falls
+ * back to the static message and is not reported: messages only feed the report, never the verdict.
+ *
  * Each rule's match set is computed once per document instead of testing the pattern per node.
  * Unlike the XSLT, a dynamic error does not abort the run: it is recorded and evaluation continues.
  *
@@ -38,6 +45,7 @@ use IntrAgile\EInvoicing\XPath\XPathError;
  *
  * @phpstan-import-type Let from RuleSet
  * @phpstan-import-type Rule from RuleSet
+ * @phpstan-import-type RuleAssert from RuleSet
  */
 final class Runner
 {
@@ -100,7 +108,7 @@ final class Runner
                         if ($evaluator->effectiveBoolean($assert['ast'], $node, $variables)) {
                             continue;
                         }
-                        $findings[] = new Finding($assert['id'], $assert['severity'], LocationPath::of($node, $namespaces), $assert['message'], $assert['test']);
+                        $findings[] = new Finding($assert['id'], $assert['severity'], LocationPath::of($node, $namespaces), self::message($assert, $node, $variables, $evaluator), $assert['test']);
                     } catch (XPathError $error) {
                         $errors[] = new DynamicError($assert['id'], $error->errorCode, LocationPath::of($node, $namespaces), $error->getMessage());
                     }
@@ -157,6 +165,37 @@ final class Runner
         }
 
         return $variables;
+    }
+
+    /**
+     * The message of a failed assert at the node it failed on.
+     *
+     * @param  RuleAssert  $assert
+     * @param  array<string, list<DOMNode|AtomicValue>|Thunk>  $variables
+     */
+    private static function message(array $assert, DOMNode $node, array $variables, Evaluator $evaluator): string
+    {
+        if ($assert['messageParts'] === null) {
+            return $assert['message'];
+        }
+
+        $message = '';
+        try {
+            foreach ($assert['messageParts'] as $part) {
+                $message .= match (true) {
+                    is_string($part) => $part,
+                    isset($part['valueOf']) => implode(' ', array_map(
+                        static fn (AtomicValue $value): string => $value->lexical(),
+                        Functions::data($evaluator->evaluate($part['valueOf'], $node, $variables)),
+                    )),
+                    default => Functions::name($node),
+                };
+            }
+        } catch (XPathError) {
+            return $assert['message'];
+        }
+
+        return Compiler::collapse($message);
     }
 
     /**

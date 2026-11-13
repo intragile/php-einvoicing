@@ -10,9 +10,9 @@ use IntrAgile\EInvoicing\Validation\Severity;
 /**
  * A compiled Schematron rule set (the array a compiled rule file returns), with its shape checked.
  *
- * Compiled arrays carry the format they were written in; a file of any other format is refused
- * with a request to recompile it, so a rule file left over from an older engine never runs with
- * a different meaning.
+ * Compiled arrays carry the format they were written in. The current format and the formats it
+ * only extends are read; a file of any other format is refused with a request to recompile it, so
+ * a rule file left over from another engine never runs with a different meaning.
  *
  * Load a compiled rule file with RuleSet::fromFile() to pass custom rule sets to the Validator
  * constructor; the rest of the class serves the engine.
@@ -20,17 +20,22 @@ use IntrAgile\EInvoicing\Validation\Severity;
  * @phpstan-type Let array{name: string, value: string, ast: array<mixed>}
  * @phpstan-type Instruction list<mixed>
  * @phpstan-type CompiledFunction array{name: string, as: ?string, params: list<array{name: string, as: ?string}>, body: list<Instruction>}
- * @phpstan-type RuleAssert array{id: string, severity: Severity, test: string, ast: array<mixed>, message: string}
+ * @phpstan-type MessagePart string|array{name: true}|array{valueOf: array<mixed>}
+ * @phpstan-type RuleAssert array{id: string, severity: Severity, test: string, ast: array<mixed>, message: string, messageParts: ?list<MessagePart>}
  * @phpstan-type Rule array{context: string, match: array<mixed>, lets: list<Let>, asserts: list<RuleAssert>, roots: list<array{string, string}>}
  * @phpstan-type Pattern array{id: string, lets: list<Let>, rules: list<Rule>}
  */
 final class RuleSet
 {
     /**
-     * The layout of the compiled array this engine reads and the compiler writes. Files written
-     * before the "format" key existed are format 1.
+     * The layout of the compiled array the compiler writes. Files written before the "format" key
+     * existed are format 1. Format 3 adds the optional "messageParts" of an assert (name and
+     * value-of in messages) to format 2.
      */
-    public const FORMAT = 2;
+    public const FORMAT = 3;
+
+    /** The formats this engine reads: the current one and format 2, which it only extends. */
+    private const READABLE_FORMATS = [2, self::FORMAT];
 
     /** @var array<string, self> */
     private static array $loaded = [];
@@ -83,10 +88,10 @@ final class RuleSet
         $compiled = self::map($compiled, 'The rule set');
         $id = self::string($compiled, 'id', 'The rule set');
         $format = $compiled['format'] ?? 1;
-        if ($format !== self::FORMAT) {
+        if (! in_array($format, self::READABLE_FORMATS, true)) {
             $format = is_int($format) ? (string) $format : (json_encode($format) ?: get_debug_type($format));
 
-            throw new UnsupportedSchematron("The rule set \"{$id}\" was compiled with format {$format}; this engine reads format ".self::FORMAT.'. Recompile it.');
+            throw new UnsupportedSchematron("The rule set \"{$id}\" was compiled with format {$format}; this engine reads formats ".implode(' and ', self::READABLE_FORMATS).'. Recompile it.');
         }
         $namespaces = [];
         foreach (self::map($compiled['namespaces'] ?? null, 'The namespaces of the rule set') as $prefix => $uri) {
@@ -202,6 +207,7 @@ final class RuleSet
                 'test' => self::string($assert, 'test', "The assert \"{$assertId}\""),
                 'ast' => self::map($assert['ast'] ?? null, "The test of the assert \"{$assertId}\""),
                 'message' => self::string($assert, 'message', "The assert \"{$assertId}\""),
+                'messageParts' => isset($assert['messageParts']) ? self::messageParts($assert['messageParts'], $assertId) : null,
             ];
         }
 
@@ -212,6 +218,27 @@ final class RuleSet
             'asserts' => $asserts,
             'roots' => self::roots($context, $namespaces),
         ];
+    }
+
+    /**
+     * Checks the message parts of an assert: strings, ['name' => true] and ['valueOf' => AST].
+     *
+     * @return list<MessagePart>
+     */
+    private static function messageParts(mixed $parts, string $assertId): array
+    {
+        $what = "The message of the assert \"{$assertId}\"";
+        $result = [];
+        foreach (self::list($parts, $what) as $part) {
+            $result[] = match (true) {
+                is_string($part) => $part,
+                $part === ['name' => true] => ['name' => true],
+                is_array($part) && count($part) === 1 && is_array($part['valueOf'] ?? null) => ['valueOf' => $part['valueOf']],
+                default => throw new UnsupportedSchematron("{$what} is malformed: an unknown message part."),
+            };
+        }
+
+        return $result;
     }
 
     /**

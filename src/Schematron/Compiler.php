@@ -31,11 +31,17 @@ use SplObjectStorage;
  * file, relative to the include root.
  *
  * Only schema, title, ns, let, phase, active, pattern, rule and assert are accepted, plus XSLT
- * functions at schema level, each with the attributes listed in ATTRIBUTES; anything else (report,
- * value-of in messages, foreign elements, processing instructions, abstract patterns or rules,
- * attributes such as pattern/@documents or assert/@diagnostics) raises UnsupportedSchematron
- * instead of being ignored, because ignoring it could change a verdict or a message. Phases are
- * not compiled: like the official XSLT without a selected phase, all patterns run.
+ * functions at schema level and empty name (without path) and value-of elements in assert messages,
+ * each with the attributes listed in ATTRIBUTES; anything else (report, other message elements,
+ * foreign elements, processing instructions, abstract patterns or rules, attributes such as
+ * pattern/@documents or assert/@diagnostics) raises UnsupportedSchematron instead of being ignored,
+ * because ignoring it could change a verdict or a message. Phases are not compiled: like the
+ * official XSLT without a selected phase, all patterns run.
+ *
+ * The message of an assert is its text with whitespace collapsed. When the message contains name or
+ * value-of elements, the assert also carries "messageParts": the text pieces, ['name' => true] for
+ * each name and ['valueOf' => AST] for each value-of, whose select is parsed with the variables the
+ * test sees. The static "message" then has each element replaced by the empty string.
  *
  * Variables are scoped the way the ISO Schematron skeleton and SchXslt turn them into XSLT
  * variables: schema and pattern lets become global variables (so their names must be unique,
@@ -56,7 +62,8 @@ use SplObjectStorage;
  * @phpstan-type CompiledParam array{name: string, as: ?string}
  * @phpstan-type Instruction list<mixed>
  * @phpstan-type CompiledFunction array{name: string, as: ?string, params: list<CompiledParam>, body: list<Instruction>}
- * @phpstan-type CompiledAssert array{id: string, flag: string, test: string, ast: array<mixed>, message: string}
+ * @phpstan-type MessagePart string|array{name: true}|array{valueOf: array<mixed>}
+ * @phpstan-type CompiledAssert array{id: string, flag: string, test: string, ast: array<mixed>, message: string, messageParts?: list<MessagePart>}
  * @phpstan-type CompiledRule array{context: string, match: array<mixed>, lets: list<CompiledLet>, asserts: list<CompiledAssert>}
  * @phpstan-type CompiledPattern array{id: string, lets: list<CompiledLet>, rules: list<CompiledRule>}
  * @phpstan-type CompiledRuleSet array{format: int, id: string, version: string, source: string, sha256: string, namespaces: array<string, string>, lets: list<CompiledLet>, functions: array<string, CompiledFunction>, patterns: list<CompiledPattern>}
@@ -100,6 +107,8 @@ final class Compiler
             'pattern' => ['id'],
             'rule' => ['context', 'flag'],
             'assert' => ['id', 'test', 'flag'],
+            'name' => [],
+            'value-of' => ['select'],
         ],
         self::XSLT_NAMESPACE => [
             'function' => ['name', 'as'],
@@ -751,22 +760,82 @@ final class Compiler
         }
         $this->checkRegularExpressions($ast, "assert \"{$id}\"");
 
-        foreach ($assert->childNodes as $node) {
-            if ($node instanceof DOMElement) {
-                throw $this->unsupportedElement($node);
-            }
-            if ($node->nodeType === XML_PI_NODE) {
-                throw $this->unsupportedProcessingInstruction($node);
-            }
-        }
-
-        return [
+        $parts = $this->messageParts($assert, $id, $scope);
+        $compiled = [
             'id' => $id,
             'flag' => $flag,
             'test' => $test,
             'ast' => $ast,
-            'message' => trim((string) preg_replace('/[\x20\x09\x0D\x0A]+/', ' ', $assert->textContent), " \t\r\n"),
+            'message' => self::collapse(implode('', array_filter($parts, is_string(...)))),
         ];
+        if (count(array_filter($parts, is_array(...))) > 0) {
+            $compiled['messageParts'] = $parts;
+        }
+
+        return $compiled;
+    }
+
+    /**
+     * Splits the content of an assert into text pieces (adjacent text and CDATA joined, comments
+     * skipped) and its name and value-of elements, in document order.
+     *
+     * @param  list<string>  $scope  names of the variables the assert test sees
+     * @return list<MessagePart>
+     */
+    private function messageParts(DOMElement $assert, string $id, array $scope): array
+    {
+        /** @var list<MessagePart> $parts */
+        $parts = [];
+        $text = '';
+        foreach ($assert->childNodes as $node) {
+            if ($node->nodeType === XML_PI_NODE) {
+                throw $this->unsupportedProcessingInstruction($node);
+            }
+            if ($node->nodeType === XML_TEXT_NODE || $node->nodeType === XML_CDATA_SECTION_NODE) {
+                $text .= $node->nodeValue;
+
+                continue;
+            }
+            if (! $node instanceof DOMElement) {
+                continue;
+            }
+            if ($node->namespaceURI !== self::SCHEMATRON_NAMESPACE || ! in_array($node->localName, ['name', 'value-of'], true)) {
+                throw $this->unsupportedElement($node);
+            }
+            $this->checkAttributes($node);
+            foreach ($node->childNodes as $child) {
+                if ($child instanceof DOMElement) {
+                    throw $this->unsupportedElement($child);
+                }
+                if ($child->nodeType !== XML_COMMENT_NODE) {
+                    throw new UnsupportedSchematron("The {$node->localName} element in the message of assert \"{$id}\" ({$this->line($node)}) must be empty.");
+                }
+            }
+            if ($text !== '') {
+                $parts[] = $text;
+                $text = '';
+            }
+            if ($node->localName === 'name') {
+                $parts[] = ['name' => true];
+            } elseif ($node->hasAttribute('select')) {
+                $parts[] = ['valueOf' => $this->expression($node->getAttribute('select'), $scope, "the message of assert \"{$id}\"", $node)];
+            } else {
+                throw new UnsupportedSchematron("A value-of without a select in the message of assert \"{$id}\" ({$this->line($node)}).");
+            }
+        }
+        if ($text !== '') {
+            $parts[] = $text;
+        }
+
+        return $parts;
+    }
+
+    /**
+     * Collapses runs of XML whitespace to one space and trims the result, as messages are reported.
+     */
+    public static function collapse(string $message): string
+    {
+        return trim((string) preg_replace('/[\x20\x09\x0D\x0A]+/', ' ', $message), " \t\r\n");
     }
 
     /**

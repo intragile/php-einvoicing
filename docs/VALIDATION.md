@@ -20,8 +20,10 @@ which in practice means Java (Saxon). This library runs the same rules in plain 
    into a syntax tree with namespace prefixes resolved, and writes one PHP file per syntax that
    returns those arrays. The files ship in the separate package `intragile/einvoicing-rules-en16931`
    (see [Licences](#licences)). At runtime nothing is parsed, and with opcache the arrays are
-   shared memory. Each file records the format of its array; a file written by an engine with
-   another format is refused with `UnsupportedSchematron` asking to recompile it.
+   shared memory. Each file records the format of its array. The compiler writes format 3; the
+   engine also reads format 2, which format 3 only extends (with the message parts of
+   [Messages](#schematron-subset)), so rule sets installed by an earlier release keep working. A
+   file of any other format is refused with `UnsupportedSchematron` asking to recompile it.
 2. **Run time.** The runner applies the semantics of the ISO Schematron XSLT skeleton: every
    pattern visits the document node and every element and attribute in document order, a node is
    handled by the first rule of the pattern whose context matches it, and every assert of that rule
@@ -77,17 +79,40 @@ silently wrong rules.
 | Paths | axes `child`, `self`, `attribute`, `parent`, `ancestor`, `ancestor-or-self`, `descendant`, `descendant-or-self`, `preceding`, `following-sibling`, `preceding-sibling`; abbreviations `@`, `..`, `.`, `//`, `*`, `prefix:*`; kind tests `node()` and `text()`; expressions as path steps (`…/xs:decimal(cbc:Amount)`, `…/normalize-space(cbc:ID)`) |
 | Predicates | boolean and numeric (positional) predicates on steps and on parenthesised expressions, applied in axis order (`ancestor::*[1]` is the nearest ancestor, `preceding-sibling::*[1]` the nearest preceding sibling); `last()` is the number of items the predicate filters |
 | Variables and user functions | `$name` only when declared by the caller, by a `let` in scope or by an enclosing `for`, `some` or `every` (otherwise `UnsupportedXPath` naming `XPST0008` at parse time); calls to functions in a namespace other than `fn` and `xs` only when declared as an `xsl:function` of the schema with that arity (see [Lets and XSLT functions](#lets-and-xslt-functions)) |
-| Rule contexts | XSLT match patterns: `N`, `N/N`, `//N`, `/N/N/N`, `N[@attr]`, predicates with function calls, unions; a parenthesised union with predicates, `(/A \| /B)[$v and …]`, selects the nodes of the union for which the predicates hold (a numeric-literal predicate is rejected) |
+| Rule contexts | XSLT match patterns: `N`, `N/N`, `//N`, `/N/N/N`, `N[@attr]`, predicates with function calls, unions; a parenthesised union with predicates, `(/A \| /B)[$v and …]`, selects the nodes of the union for which the predicates hold (a numeric-literal predicate is rejected); a parenthesised union followed by steps, `(/A[$v]/B \| /C/D)/E`, matches like the distributed union `/A[$v]/B/E \| /C/D/E` (every alternative must be a path pattern; a filtered union followed by steps is rejected) |
 | Regular expressions | XML Schema syntax with anchors, back-references and reluctant quantifiers; flags `i s m x` (the XPath 3.0 flag `q` is reported as unsupported); `\w`, `\s`, `\d` and categories with XML Schema meaning |
 
 Rejected with `UnsupportedXPath` (in the compiler: `UnsupportedSchematron`): the XPath 3.0 `let`
 expression, `typeswitch`, `instance of`, `treat as`, `intersect`, `except`, `is`, `<<`, `>>`, unary
 `+`, casts to other types, other axes, `*:local`, other kind tests, unknown functions or arities,
 unknown prefixes, and in regular expressions `\i`, `\c`, `\I`, `\C`, `\p{IsBlock}` and character
-class subtraction. Schematron `report`, `value-of`, processing instructions, abstract rules and
-abstract patterns are rejected by the compiler as well, and so is any attribute the CEN and Peppol
-schemas do not use (such as `pattern/@documents`, `rule/@role` or `assert/@diagnostics`): the error
-names the element, the attribute and the line.
+class subtraction. Schematron `report`, message elements other than `name` and `value-of`,
+processing instructions, abstract rules and abstract patterns are rejected by the compiler as well,
+and so is any attribute the CEN, Peppol and XRechnung schemas do not use (such as
+`pattern/@documents`, `rule/@role`, `assert/@diagnostics` or `name/@path`): the error names the
+element, the attribute and the line.
+
+## Schematron subset
+
+Besides the elements every rule set needs (`schema`, `title`, `ns`, `let`, `phase`, `active`,
+`pattern`, `rule`, `assert`) and the XSLT functions described below, the compiler supports what the
+XRechnung 2.6.0 schemas use, so they compile as published:
+
+- **`include`.** An `include` is replaced by the document element of the file it names, recursively,
+  before anything is compiled. The `href` must be a relative path to a local file without a
+  fragment; it resolves against the including file and must stay inside the include root (the
+  directory of the top-level schema unless the caller passes a wider one). Cycles are refused.
+- **Global pattern lets.** A `let` of a pattern is a global variable, as in the ISO skeleton and
+  SchXslt: every rule, let and XSLT function of every pattern sees it, and its name must be unique
+  among the schema and pattern lets (`XTSE0630`).
+- **Messages.** An assert message may contain empty `name` elements (without `path`) and
+  `value-of select="…"` elements. When the assert fails, `name` is the qualified name of the failing
+  node as the document writes it (XPath `name()`), and `value-of` is the string value of the
+  selected items, joined by a single space as `xsl:value-of` does; the `select` sees the variables
+  the test sees. The whole message is then whitespace-collapsed. If a `value-of` raises an XPath
+  error, the finding carries the static message (the text with every element left out) and no
+  `DynamicError` is reported: the official stylesheets evaluate messages only for the report, and
+  the verdict never depends on them.
 
 ## Lets and XSLT functions
 

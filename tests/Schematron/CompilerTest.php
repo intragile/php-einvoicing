@@ -109,6 +109,76 @@ final class CompilerTest extends TestCase
         self::assertSame(Op::GCMP, $rule['asserts'][0]['ast'][0]);
     }
 
+    public function test_message_elements_compile_to_message_parts(): void
+    {
+        $compiled = Compiler::compile(self::writeSchematron(<<<'XML'
+            <rule context="cbc:ID">
+              <let name="max" value="10"/>
+              <assert id="R-1" flag="warning" test="string-length(.) &lt;= $max">
+                [R-1] <name/> is
+                longer than <value-of select="$max"/>: <value-of select="."/>.
+              </assert>
+              <assert id="R-2" flag="warning" test="true()">[R-2] Plain.</assert>
+            </rule>
+            XML), 'tiny', '0.1');
+
+        [$withParts, $plain] = $compiled['patterns'][0]['rules'][0]['asserts'];
+        self::assertSame('[R-1] is longer than : .', $withParts['message']);
+        $parts = $withParts['messageParts'] ?? self::fail('The assert has no message parts.');
+        // Text pieces keep their whitespace (it depends on the indentation of the fixture); compare
+        // them collapsed, with the surrounding spaces made visible.
+        $visible = array_map(static fn (string|array $part): string|array => is_string($part) ? '|'.preg_replace('/\s+/', ' ', $part).'|' : $part, $parts);
+        self::assertSame(['| [R-1] |', ['name' => true], '| is longer than |', ['valueOf' => [Op::VAR, 'max']], '|: |', ['valueOf' => [Op::CONTEXT]], '|. |'], $visible);
+        self::assertArrayNotHasKey('messageParts', $plain);
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function invalidMessageElements(): iterable
+    {
+        yield 'name with a path' => ['<name path=".."/>', 'Unsupported attribute "path" of element "name"'];
+        yield 'value-of without select' => ['<value-of/>', 'value-of without a select'];
+        yield 'value-of with a syntax error' => ['<value-of select="count("/>', 'count('];
+        yield 'value-of with an undeclared variable' => ['<value-of select="$nope"/>', '$nope'];
+        yield 'value-of with text' => ['<value-of select=".">x</value-of>', 'must be empty'];
+    }
+
+    #[DataProvider('invalidMessageElements')]
+    public function test_rejects_invalid_message_elements(string $element, string $message): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage($message);
+
+        Compiler::compile(self::writeSchematron('<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x '.$element.'</assert></rule>'), 'tiny', '0.1');
+    }
+
+    /**
+     * The official XRechnung 2.6.0 schemas compile as distributed: their include of common.sch,
+     * the global lets it declares, name and value-of in messages and the parenthesised union
+     * contexts need no hand patching.
+     *
+     * @return iterable<string, array{string, int}>
+     */
+    public static function xrechnungScope(): iterable
+    {
+        yield 'ubl' => ['ubl', 77];
+        yield 'cii' => ['cii', 74];
+    }
+
+    #[DataProvider('xrechnungScope')]
+    public function test_xrechnung_schematron_compiles(string $syntax, int $asserts): void
+    {
+        $sch = Fixtures::xrechnungSchematron($syntax);
+        $compiled = Compiler::compile($sch, "xrechnung-{$syntax}", '2.6.0', dirname($sch, 2));
+
+        self::assertCount($asserts, self::asserts($compiled));
+        self::assertSame(hash_file('sha256', $sch), $compiled['sha256']);
+        $parts = array_filter(self::asserts($compiled), static fn (array $assert): bool => isset($assert['messageParts']));
+        self::assertNotSame([], $parts);
+        self::assertInstanceOf(RuleSet::class, RuleSet::fromArray($compiled));
+    }
+
     /**
      * @return iterable<string, array{string, string}>
      */
@@ -117,7 +187,9 @@ final class CompilerTest extends TestCase
         yield 'report' => ['<rule context="cbc:ID"><report id="R-1" flag="fatal" test="true()">x</report></rule>', 'report'];
         yield 'xsl:variable in a rule' => ['<rule context="cbc:ID"><xsl:variable xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="x" select="1"/><assert id="R-1" flag="fatal" test="true()">x</assert></rule>', '{http://www.w3.org/1999/XSL/Transform}variable'];
         yield 'let in an assert' => ['<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x <let name="x" value="1"/></assert></rule>', 'let'];
-        yield 'value-of' => ['<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x <value-of select="."/></assert></rule>', 'value-of'];
+        yield 'emph in a message' => ['<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x <emph>y</emph></assert></rule>', 'emph'];
+        yield 'value-of with content' => ['<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x <value-of select="."><name/></value-of></assert></rule>', 'name'];
+        yield 'foreign element in a message' => ['<rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x <b xmlns="urn:x"/></assert></rule>', '{urn:x}b'];
     }
 
     #[DataProvider('unsupportedElements')]

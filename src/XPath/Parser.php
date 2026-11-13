@@ -128,6 +128,11 @@ final class Parser
      * predicate that is a numeric literal would select by position within the whole union and is
      * rejected.
      *
+     * A parenthesised union followed by further steps, "(P1 | P2)/rest" (also an XSLT 3.0 pattern
+     * that Saxon accepts), matches what "P1/rest | P2/rest" matches and is compiled to that union.
+     * Every alternative must itself be a path pattern; a filtered union followed by steps,
+     * "(P1 | P2)[pred]/rest", is rejected.
+     *
      * @return array<mixed>
      */
     public function parsePattern(string $pattern, StaticContext $context): array
@@ -157,7 +162,7 @@ final class Parser
     private function patternSelection(array $ast, string $pattern): array
     {
         $alternatives = [];
-        foreach ($this->alternatives($ast) as $alternative) {
+        foreach ($this->alternatives(self::distributeUnion($ast)) as $alternative) {
             $this->assertPatternPath($alternative, true, $pattern);
             $alternatives[] = $this->startsAtRoot($alternative)
                 ? $alternative
@@ -731,6 +736,43 @@ final class Parser
         if (($token->is(Token::NAME) || $token->is(Token::SYMBOL)) && isset(self::UNSUPPORTED_OPERATORS[$token->value])) {
             throw $this->unsupported(self::UNSUPPORTED_OPERATORS[$token->value], $token);
         }
+    }
+
+    /**
+     * Rewrites every path whose leftmost operand is a union, "(P1 | P2)/rest", into the union of
+     * the distributed paths, "P1/rest | P2/rest". Nested unions and longer paths are distributed
+     * recursively; any other node is returned unchanged.
+     *
+     * @param  array<mixed>  $ast
+     * @return array<mixed>
+     */
+    private static function distributeUnion(array $ast): array
+    {
+        if ($ast[0] === Op::UNION) {
+            /** @var array<mixed> $left */
+            $left = $ast[1];
+            /** @var array<mixed> $right */
+            $right = $ast[2];
+
+            return [Op::UNION, self::distributeUnion($left), self::distributeUnion($right)];
+        }
+        if ($ast[0] !== Op::PATH) {
+            return $ast;
+        }
+
+        /** @var array<mixed> $left */
+        $left = $ast[1];
+        $left = self::distributeUnion($left);
+        if ($left[0] !== Op::UNION) {
+            return [Op::PATH, $left, $ast[2]];
+        }
+
+        /** @var array<mixed> $first */
+        $first = $left[1];
+        /** @var array<mixed> $second */
+        $second = $left[2];
+
+        return [Op::UNION, self::distributeUnion([Op::PATH, $first, $ast[2]]), self::distributeUnion([Op::PATH, $second, $ast[2]])];
     }
 
     /**

@@ -286,7 +286,11 @@ final class Functions
         return $item;
     }
 
-    private static function name(?DOMNode $node): string
+    /**
+     * The lexical QName of a node as written in its document (fn:name()): the prefix the document
+     * uses, or none; the empty string for nodes without a name.
+     */
+    public static function name(?DOMNode $node): string
     {
         return match (true) {
             $node instanceof DOMElement, $node instanceof DOMAttr => $node->nodeName,

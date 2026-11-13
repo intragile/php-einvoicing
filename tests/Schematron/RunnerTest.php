@@ -437,7 +437,7 @@ final class RunnerTest extends TestCase
 
         yield 'no format key' => [$current, 'format 1'];
         yield 'format 1' => [['format' => 1, ...$current], 'format 1'];
-        yield 'format 3' => [['format' => 3, ...$current], 'format 3'];
+        yield 'format 4' => [['format' => 4, ...$current], 'format 4'];
         yield 'format as string' => [['format' => '2', ...$current], 'format "2"'];
     }
 
@@ -448,9 +448,95 @@ final class RunnerTest extends TestCase
     public function test_old_format_asks_to_recompile(array $compiled, string $format): void
     {
         $this->expectException(UnsupportedSchematron::class);
-        $this->expectExceptionMessage("The rule set \"old\" was compiled with {$format}; this engine reads format 2. Recompile it.");
+        $this->expectExceptionMessage("The rule set \"old\" was compiled with {$format}; this engine reads formats 2 and 3. Recompile it.");
 
         RuleSet::fromArray($compiled);
+    }
+
+    public function test_name_in_message_is_the_context_node_name(): void
+    {
+        $result = self::runSchematron('<pattern id="p"><rule context="t:Item/@kind"><assert id="N" flag="fatal" test="false()">Attribute <name/>  is bad</assert></rule>'
+            .'<rule context="t:Item"><assert id="N" flag="fatal" test="false()">Element <name/> is bad</assert></rule></pattern>');
+
+        self::assertSame(
+            ['Element t:Item is bad', 'Attribute kind is bad', 'Element t:Item is bad', 'Attribute kind is bad'],
+            array_map(static fn (Finding $finding): string => $finding->message, $result->findings),
+        );
+    }
+
+    public function test_name_in_message_keeps_the_instance_prefix(): void
+    {
+        $xml = '<p:Root xmlns:p="urn:test:runner"><Plain xmlns="urn:test:runner"/></p:Root>';
+        $result = self::runSchematron('<pattern id="p"><rule context="t:Root | t:Plain"><assert id="N" flag="fatal" test="false()"><name/></assert></rule></pattern>', $xml);
+
+        self::assertSame(['p:Root', 'Plain'], array_map(static fn (Finding $finding): string => $finding->message, $result->findings));
+    }
+
+    public function test_value_of_in_message_is_evaluated(): void
+    {
+        $result = self::runSchematron('<pattern id="p"><rule context="t:Root"><let name="unit" value="\'EUR\'"/>'
+            .'<assert id="V" flag="fatal" test="false()">Amounts <value-of select="t:Item/t:Amount"/> in <value-of select="$unit"/>.</assert></rule></pattern>');
+
+        self::assertSame([], $result->dynamicErrors);
+        self::assertSame(['Amounts 10 abc in EUR.'], array_map(static fn (Finding $finding): string => $finding->message, $result->findings));
+    }
+
+    public function test_failing_value_of_falls_back_to_static_message(): void
+    {
+        $result = self::runSchematron('<pattern id="p"><rule context="t:Root">'
+            .'<assert id="V" flag="fatal" test="false()">Total <value-of select="sum(t:Item/t:Amount)"/> of <name/>.</assert></rule></pattern>');
+
+        self::assertSame([], $result->dynamicErrors);
+        self::assertEquals(
+            [new Finding('V', Severity::Fatal, '/t:Root[1]', 'Total of .', 'false()')],
+            $result->findings,
+        );
+    }
+
+    public function test_parenthesised_union_pattern_matches_like_the_distributed_union(): void
+    {
+        $xml = <<<'XML'
+            <t:Root xmlns:t="urn:test:runner">
+              <t:Item kind="x"><t:Amount>1</t:Amount><t:Sub><t:Amount>2</t:Amount></t:Sub></t:Item>
+              <t:Line kind="y"><t:Amount>3</t:Amount></t:Line>
+              <t:Line kind="z"><t:Amount>4</t:Amount></t:Line>
+              <t:Other><t:Amount>5</t:Amount></t:Other>
+            </t:Root>
+            XML;
+        $rule = static fn (string $context): string => '<pattern id="p"><let name="on" value="true()"/><rule context="'.$context.'">'
+            .'<assert id="U" flag="fatal" test="false()">x</assert></rule></pattern>';
+
+        $cases = [
+            "(/t:Root[\$on]/t:Item | t:Line[@kind = 'z'])/t:Amount" => "/t:Root[\$on]/t:Item/t:Amount | t:Line[@kind = 'z']/t:Amount",
+            '(t:Item | (t:Line | t:Other))//t:Amount' => 't:Item//t:Amount | t:Line//t:Amount | t:Other//t:Amount',
+            '(t:Item | t:Line)/t:Amount | t:Other/t:Amount' => 't:Item/t:Amount | t:Line/t:Amount | t:Other/t:Amount',
+            '(t:Item | t:Line)/@kind' => 't:Item/@kind | t:Line/@kind',
+        ];
+        foreach ($cases as $parenthesised => $distributed) {
+            $expected = self::summary(self::runSchematron($rule($distributed), $xml));
+            self::assertNotSame([], $expected, $distributed);
+            self::assertSame($expected, self::summary(self::runSchematron($rule($parenthesised), $xml)), $parenthesised);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function invalidParenthesisedUnions(): iterable
+    {
+        yield 'variable alternative' => ['(t:Item | $v)/t:Amount'];
+        yield 'parent axis alternative' => ['(t:Item | ../t:Line)/t:Amount'];
+        yield 'filtered union followed by a path' => ['(t:Item | t:Line)[$v]/t:Amount'];
+        yield 'union after a step' => ['t:Root/(t:Item | t:Line)'];
+    }
+
+    #[DataProvider('invalidParenthesisedUnions')]
+    public function test_parenthesised_union_needs_path_alternatives(string $context): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage($context);
+
+        self::compileSchematron('<let name="v" value="/"/><pattern id="p"><rule context="'.$context.'"><assert id="U" flag="fatal" test="false()">x</assert></rule></pattern>');
     }
 
     public function test_location_path_uses_known_prefixes_and_expanded_names_otherwise(): void
