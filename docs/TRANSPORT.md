@@ -2,11 +2,12 @@
 
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
-This page explains how to send and receive invoices over Peppol with this package: sending
-through an access point (Recommand is the first driver), looking up participants in the SML and
-their SMP, searching the Peppol Directory, receiving documents by polling or webhooks, the
-errors and what to do about each, the SBDH envelope, and what is verified and what is not. The
-invoice format and its validation are described in [PEPPOL.md](PEPPOL.md).
+This page explains how to send and receive invoices over Peppol with this package: sending through
+an access point (Recommand is the available driver; Storecove, e-invoice.be and B2Brouter are
+planned for 1.0.0), looking up participants in the SML and their SMP, searching the Peppol
+Directory, receiving documents by polling or webhooks, the errors and what to do about each, the
+SBDH envelope, and what is verified and what is not. The invoice format and its validation are
+described in [PEPPOL.md](PEPPOL.md).
 
 > **Live transmission through Recommand is not yet verified.** The Recommand driver is tested
 > offline against fixtures written by hand from Recommand's published API description; see
@@ -41,11 +42,59 @@ from the seller's electronic address (BT-34; UBL `cbc:EndpointID`, CII
 (BT-49), the process from the business process type (BT-23; UBL `cbc:ProfileID`, CII
 `ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID`; Peppol billing when absent) and
 the sender's country (C1) from the seller's country (BT-40).
-`OutboundDocument::fromInvoice($invoice)` writes a model invoice as UBL first;
-`fromInvoice($invoice, syntax: Syntax::Cii)` writes CII, which is allowed only for an invoice
-with `XRechnung::processControl()`. Later, `$transport->status($result->documentId)` returns a
-`DeliveryStatus` with the current state and, for a failed delivery, a `DeliveryFailure` with a
-`FailureCategory`.
+Later, `$transport->status($result->documentId)` returns a `DeliveryStatus` with the current
+state and, for a failed delivery, a `DeliveryFailure` with a `FailureCategory`.
+
+`OutboundDocument::fromInvoice($invoice)` writes a model invoice as UBL first and reads the
+routing metadata from that XML; nothing goes over the network:
+
+<!-- sample: run -->
+```php
+<?php
+
+declare(strict_types=1);
+
+use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
+use IntrAgile\EInvoicing\CodeList\{CountryCode, CurrencyCode, ElectronicAddressScheme, InvoiceTypeCode, UnitCode, VatCategory};
+use IntrAgile\EInvoicing\Model\{ElectronicAddress, Invoice, InvoiceLine, Item, LineVat, Party, PostalAddress, Price, ProcessControl};
+use IntrAgile\EInvoicing\Transport\OutboundDocument;
+use IntrAgile\EInvoicing\Transport\Peppol\PeppolBis3;
+
+$invoice = TotalsCalculator::complete(new Invoice(
+    number: 'INV-2026-0042',
+    issueDate: new DateTimeImmutable('2026-11-14'),
+    type: InvoiceTypeCode::C_380,
+    currency: CurrencyCode::EUR,
+    seller: new Party(
+        'Example Seller BV',
+        vatIdentifier: 'BE0123456749',
+        electronicAddress: new ElectronicAddress('0123456749', ElectronicAddressScheme::C_0208),   // BT-34: the sender
+        address: new PostalAddress(CountryCode::BE, city: 'Brussels', postCode: '1000'),
+    ),
+    buyer: new Party(
+        'Example Buyer NV',
+        electronicAddress: new ElectronicAddress('0987654394', ElectronicAddressScheme::C_0208),   // BT-49: the receiver
+        address: new PostalAddress(CountryCode::BE, city: 'Antwerp', postCode: '2000'),
+    ),
+    lines: [
+        new InvoiceLine('1', '3', UnitCode::C62, new Price('100.00'), new Item('Widget'), new LineVat(VatCategory::StandardRate, '21')),
+    ],
+    buyerReference: 'PO-1234',
+    processControl: new ProcessControl(PeppolBis3::CUSTOMIZATION, PeppolBis3::PROCESS),   // BT-24, BT-23
+));
+
+$document = OutboundDocument::fromInvoice($invoice);
+
+$document->sender->toString();     // "0208:0123456749"
+$document->receiver->toString();   // "0208:0987654394"
+$document->documentType->value;    // PeppolBis3::INVOICE
+$document->countryC1;              // "BE"
+```
+
+`fromInvoice()` needs the BIS specification identifier (BT-24) or an XRechnung one on the
+invoice, as in [What can be sent](#what-can-be-sent); an invoice without process control is
+written with `urn:cen.eu:en16931:2017` and refused. `fromInvoice($invoice, syntax: Syntax::Cii)`
+writes CII, which is allowed only for an invoice with `XRechnung::processControl()`.
 
 ### What can be sent
 
@@ -456,8 +505,9 @@ SML and SMP lookups (and the rule download from GitHub).
   `NaptrResolver` in production.
 - **Only the first-ranked NAPTR record** is tried.
 - **Directory rate limit** (2 requests per second) is enforced per `DirectoryClient` instance.
-- **One access point driver** (Recommand); the `Transport` and `InboundSource` interfaces are
-  the extension point for others.
+- **One access point driver today**: Recommand is the available driver; Storecove, e-invoice.be
+  and B2Brouter are planned for 1.0.0. The `Transport` and `InboundSource` interfaces are the
+  extension point for others.
 
 ---
 

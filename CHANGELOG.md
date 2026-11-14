@@ -10,6 +10,32 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Peppol transport:** XRechnung over Peppol. `OutboundDocument::fromXml()` sends XRechnung 3.0
+  (CIUS: UBL Invoice, UBL CreditNote and CII) and the XRechnung 3.0 Extension (UBL Invoice and
+  CII) under their own Peppol document types (`XRechnungPeppol`, Peppol Code Lists v9.7), and
+  reads the CII routing data from BT-34, BT-49, BT-40 and BT-23. The XRechnung CVD (no Peppol
+  document type) and the deprecated UBL Credit Note Extension are refused.
+  `OutboundDocument::fromInvoice()` takes an optional `Syntax`; CII is allowed only for an
+  XRechnung invoice.
+- **Validation:** the `DocumentValidator` interface (`validate(string $xml): ValidationReport`),
+  implemented by `Validator`, `XRechnungValidator` and `FacturXValidator`, and
+  `PeppolPayloadValidator`, which routes a document by its root element and specification
+  identifier (BT-24) to the Peppol BIS rules or to `XRechnungValidator`. Without
+  `intragile/einvoicing-rules-xrechnung`, an XRechnung document throws `RulesNotInstalled` naming
+  the composer command.
+- **Peppol:** `IntrAgile\EInvoicing\Peppol\PeppolDocumentTypes`, the one document-type resolver
+  that sending and validation share, and `PeppolBis3::CUSTOMIZATION`.
+- **Transport:** `HttpClient` takes the secrets to redact as a fifth constructor argument and
+  through `withSecrets()`, and `send()` takes a per-request `$maxBytes` that can only lower the
+  cap; `RecommandConfig::MIN_CREDENTIAL_LENGTH` and `RecommandConfig::redactingClient()`;
+  `SmpClient::DEFAULT_MAX_BYTES`; `EnvelopeReader::isEnvelopeStream()`.
+- **Validation:** `DynamicError::$ruleSet` names the rule set that raised the error
+  (`"<id> <version>"`).
+- **PDF:** `CrossReference::$skippedObjectStreams` counts the object streams skipped while an
+  index is reconstructed.
+- **Rule installer:** `PartialInstall::$backupPaths` lists the backups left in the rules folder.
+- **Documentation:** a test compiles every PHP sample of the READMEs and `docs/*.md` and runs the
+  main ones (`tests/Docs/CodeSamplesTest.php`); a versioning policy in the README of every package.
 - ZUGFeRD / Factur-X 1.0 for the profiles MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED and
   XRECHNUNG: `FacturXXmlWriter` writes the profile XML reduced to what the profile allows,
   `FacturXPdfWriter::embed()` embeds it into a PDF/A you supply by an incremental update (embedded
@@ -146,6 +172,58 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Peppol transport (behaviour change):** a UBL document sent over Peppol needs the exact Peppol
+  BIS specification identifier (BT-24) or an XRechnung pair of root element and BT-24. The
+  writers' default `urn:cen.eu:en16931:2017` (an invoice without process control) is refused with
+  guidance to set `new ProcessControl(PeppolBis3::CUSTOMIZATION, PeppolBis3::PROCESS)`. An
+  XRechnung document must use the Peppol billing process (BT-23).
+- **Peppol transport (public API):** `ValidatingTransport::__construct()` takes a
+  `DocumentValidator` instead of a `Validator`; the type is wider, so existing callers keep
+  working.
+- **Transport (behaviour change):** Peppol Directory answers 500, 502, 503 and 504 throw the
+  retryable `TransportUnavailable` instead of `UnexpectedResponse`. `FakeTransport::fetch()` and
+  `acknowledge()` of an unknown id throw `UnexpectedResponse` instead of
+  `InvalidArgumentException`; a queued `SendResult` with an empty id gets `fake-q-1`, `fake-q-2`,
+  …, and a generated id never repeats one already returned.
+- **Recommand (behaviour change):** `RecommandConfig` refuses an API key id or secret shorter than
+  eight characters, without quoting it, and trims the company id. An inbox `createdAt` that is not
+  an ISO 8601 time with a time zone is an `UnexpectedResponse`. A webhook status event whose
+  `deliveryStatus` is `null` gives `DeliveryState::Unknown`. A whitespace-only document id throws
+  `InvalidArgumentException`.
+- **Participant lookup:** the SMP answer cap is 2 MiB (2,097,152 bytes, previously 2,000,000) and
+  applies while the answer is read; an endpoint answer whose `DocumentIdentifier` does not repeat
+  the requested document type exactly gives `Unknown`.
+- **SBDH:** `EnvelopeReader` refuses an envelope whose header is not the first element or appears
+  more than once, a `COUNTRY_C1` that is not two upper-case letters, a `CreationDateAndTime` that
+  does not exist, and a `Standard` or `Type` that does not name the payload root.
+- **Schematron compiler:** a file reached through more than one include is inlined only once, and
+  a repeated inclusion of a file that declares global lets is refused (Saxon's XTSE0630). Include
+  paths are compared with `/` as the separator, so Windows paths work. A compiled rule file whose
+  embedded documents do not match their recorded SHA-256 is refused when it is loaded.
+- **XRechnung validation:** the scenario table compiler refuses attributes and repeated elements
+  the KoSIT configuration does not use; `XRechnungValidator` refuses a rule file of another
+  version than the scenario names (`RulesNotInstalled`, naming both).
+- **XML Schema loading:** a `file://` URI with a host other than `localhost` (a remote share) is
+  refused like a network URI, with `UnusableSchema`; that includes `file://C:/x`, whose
+  well-formed form is `file:///C:/x`.
+- **Factur-X:** a PDF 2.0 input is embedded into with a warning, or refused with `NotPdfA` in
+  strict mode; `FacturXXmlWriter` checks the reduced XML against the profile schema once more and
+  throws `LogicException` on a failure; a profile schema import with an absolute or escaping
+  `schemaLocation` is refused with `UnusableSchema`.
+- **PDF:** a name-tree key that is not a string makes the PDF unreadable; an indirect `/Filter` on
+  a cross-reference stream leads to index reconstruction; one unreadable object stream is skipped
+  and counted instead of aborting the reconstruction; after a reconstruction, `size()` is the
+  highest object number plus one.
+- **Rule installer:** backups are hard links and each file is replaced by an atomic rename;
+  `PartialInstall` names the failed files and every backup left behind.
+- **Packaging:** the five packages share one version. The core requires
+  `intragile/einvoicing-rules-en16931` `^1.0` and `psr/http-client` `^1.0.1`, and conflicts with
+  the optional rule packages outside `^1.0`; each rule package conflicts with cores outside
+  `^1.0`. The `rules-facturx` `LICENSE` is the plain Apache-2.0 text, with Mustang's external
+  components note moved to `NOTICE`. The calculation code uses the camel-case `RoundingMode` cases
+  (`Rounding::MODE` is `RoundingMode::HalfUp`).
+- **Validation:** `Validator::validateInvoice()` on the envelope validator throws
+  `LogicException`, since an envelope validator cannot validate an invoice.
 - Compiled rule files are written in format 4, which adds `report` entries and the embedded
   `documents` of `document()` to format 3. Formats 2, 3 and 4 are all read, so rule files compiled
   earlier need no recompile.
@@ -178,6 +256,18 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Transport:** `HttpClient` redacts a response body before it cuts the 500-byte excerpt, so a
+  secret across the cut is replaced whole.
+- **Peppol identifiers:** a participant identifier that is not valid UTF-8 is refused with a clear
+  message.
+- **PDF:** decode errors no longer keep the decoded buffers alive through their exception traces.
+- **XML Schema loading:** `SchemaValidator` no longer turns unrelated PHP warnings raised during
+  validation into `UnusableSchema`.
+- **Factur-X:** the Factur-X XMP extension schema is written once, whatever form the existing
+  packet uses, and an `rdf:RDF` nested inside a property is no longer read as the PDF/A
+  declaration; comments in elements the reduction empties are removed.
+- **Schematron:** compiled rule files with integer-like `document()` URIs load, and an empty list
+  of message parts is refused.
 - The UBL writer refuses a purchase order reference (BT-13) of exactly `NA` beside a sales
   order reference (BT-14): `NA` is the placeholder it writes when only BT-14 exists, so the
   value would be read back as absent.

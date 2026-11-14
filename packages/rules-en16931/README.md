@@ -46,6 +46,15 @@ The files in `rules/` are generated from the official preprocessed Schematron by
 nothing by hand: a change belongs upstream or in the compiler, and CI fails when a generated file
 differs from what the compiler writes.
 
+## Versioning
+
+The five packages, `intragile/php-einvoicing`, the rule packages
+`intragile/einvoicing-rules-en16931`, `intragile/einvoicing-rules-xrechnung` and
+`intragile/einvoicing-rules-facturx`, and `intragile/laravel-einvoicing`, are released together
+with the same version number and follow Semantic Versioning. Use the same minor version of each.
+A rule package declares a Composer `conflict` with cores older than its own minor version (and
+with the next major), so new rules are never installed next to an engine that cannot run them.
+
 ---
 
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)

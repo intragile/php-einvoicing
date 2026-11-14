@@ -36,24 +36,43 @@ package, a suggestion of the core package:
 composer require intragile/einvoicing-rules-facturx
 ```
 
-Writing a profile XML and validating need it; embedding into a PDF and reading do not. Without it,
-`FacturXXmlWriter` and `FacturXValidator::create()` throw `RulesNotInstalled` with this command in
-the message. The core package needs `ext-zlib` (PDF streams are deflated); there is no other new
+Writing and validating every profile except XRECHNUNG need it; embedding into a PDF and reading
+do not. The XRECHNUNG profile XML is written without it and validated by `XRechnungValidator`,
+which needs `intragile/einvoicing-rules-xrechnung` instead; `FacturXValidator::create()` still
+needs this package, so with only the XRechnung rules installed, validate an XRECHNUNG document with
+`XRechnungValidator::create()` directly. Without it, `FacturXXmlWriter` (for the other five
+profiles) and `FacturXValidator::create()` throw `RulesNotInstalled` with this command in the
+message. The core package needs `ext-zlib` (PDF streams are deflated); there is no other new
 dependency.
 
 ## Write
 
+<!-- sample: run -->
 ```php
-use IntrAgile\EInvoicing\Syntax\FacturX\{FacturXPdfWriter, FacturXProfile, FacturXXmlWriter};
+use IntrAgile\EInvoicing\Syntax\FacturX\{FacturXProfile, FacturXXmlWriter};
+use IntrAgile\EInvoicing\Syntax\Ubl\UblReader;
 
-$xml = (new FacturXXmlWriter)->write($invoice, FacturXProfile::En16931)->xml;
-$result = (new FacturXPdfWriter)->embed($pdfA3Bytes, $xml);
+$invoice = (new UblReader)->read(file_get_contents('invoice.xml'))->invoice;  // or one you built
+
+$reduced = (new FacturXXmlWriter)->write($invoice, FacturXProfile::En16931);
+$reduced->removed;   // list<string>: what the profile could not hold; empty here
+$xml = $reduced->xml;
+file_put_contents('factur-x.xml', $xml);
+```
+
+Then embed the XML into your PDF/A-3:
+
+```php
+use IntrAgile\EInvoicing\Syntax\FacturX\FacturXPdfWriter;
+
+$result = (new FacturXPdfWriter)->embed($pdfA3Bytes, $xml);  // $pdfA3Bytes: the PDF/A you rendered
 file_put_contents('invoice.pdf', $result->pdf);
 ```
 
 `$invoice` is an `Invoice` with totals (see `TotalsCalculator::complete()` in the
-[README](../README.md#create-an-invoice)). `FacturXXmlWriter::write()` sets the guideline
-identifier of the profile, writes the invoice as CII and reduces it to what the profile allows
+[README](../README.md#create-an-invoice)); the first sample reads one from a UBL file.
+`FacturXXmlWriter::write()` sets the guideline identifier of the profile, writes the invoice as
+CII and reduces it to what the profile allows
 ([What the reduction removes](#what-the-reduction-removes)).
 
 `FacturXPdfWriter::embed(string $pdf, string $xml, ?FacturXProfile $profile = null,
@@ -64,7 +83,7 @@ returns an `EmbedResult`: `pdf` (the new bytes), `profile`, `relationship` and `
   different one throws `ProfileMismatch`.
 - **Relationship.** The default `/AFRelationship` is `Data` for MINIMUM, BASIC WL, BASIC, EN 16931
   and EXTENDED, and `Alternative` for XRECHNUNG. The official FeRD example invoices use `Data` in
-  61 of 61 non-XRechnung invoices. Pass `AfRelationship::Data`, `Alternative` or `Source` to
+  all 57 non-XRechnung invoices and `Alternative` in the 4 XRechnung ones. Pass `AfRelationship::Data`, `Alternative` or `Source` to
   choose another.
 - **Date.** `$modified` is written as the modification date; fixing it makes the output
   reproducible, byte for byte.
@@ -194,9 +213,13 @@ relative paths inside the schema's directory; any other `schemaLocation` is refu
 Format verified offline; nothing is verified in live exchanges.
 
 - Schematron verdicts equal the official Factur-X 1.09.2 XSLT (run by SaxonC) on 699 documents,
-  with 0 differences. The corpus is the 57 FeRD example invoices, the XML read from their 57
-  PDFs, the writer's output for three test invoices in each of the five profiles, and 570
-  mutations of the examples. Per document, the sorted set of rule ids with their levels is equal.
+  with 0 differences. The corpus is the 57 FeRD example invoices of the five Factur-X profiles,
+  the XML read from their 57 PDFs, the writer's output for three test invoices in each of the
+  five profiles, and 570 mutations of the examples. Per document, the sorted set of rule ids with
+  their levels is equal. FeRD publishes 61 example invoices, each as XML and as PDF; the other 4
+  are XRechnung documents, which the Factur-X XSLT does not cover: 3 in the XRECHNUNG profile
+  (XRechnung 3.0, handed to `XRechnungValidator`) and 1 in XRechnung 2.1,
+  which neither validator accepts.
 - PDF/A was checked with veraPDF 1.30.3 on 10 input and output pairs: the 9 Mustang corpus PDFs
   that carry no invoice and declare a PDF/A part, plus one headless Chrome print. The other corpus
   PDFs already carry an invoice or have an index that had to be reconstructed, so the writer

@@ -32,19 +32,20 @@ Included today:
   2026-08-31 (scenarios, XML Schema, custom levels), with the optional Apache-2.0 rules package
   `intragile/einvoicing-rules-xrechnung` ([XRechnung](#xrechnung)), and writing XRechnung from the
   model.
-- Peppol transport: sending and receiving through an access point (Recommand driver), SML and
-  SMP participant lookup, Peppol Directory search, webhook verification, and an SBDH envelope
-  writer and reader ([Peppol transport](docs/TRANSPORT.md)). Live transmission through Recommand
-  is not verified yet.
-
+- Peppol transport: sending and receiving through an access point, SML and SMP participant
+  lookup, Peppol Directory search, webhook verification, and an SBDH envelope writer and reader
+  ([Peppol transport](docs/TRANSPORT.md)). Recommand is the available driver; Storecove,
+  e-invoice.be and B2Brouter are planned for 1.0.0. Live transmission through Recommand is not
+  verified yet.
 - ZUGFeRD / Factur-X 1.0 (profiles MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED and XRECHNUNG):
   writing the profile XML, embedding it into a PDF/A you supply, reading it back out of a hybrid
   PDF, and validating it, with the optional Apache-2.0 rules package
   `intragile/einvoicing-rules-facturx` ([ZUGFeRD / Factur-X](#zugferd--factur-x)). The PDF layer is
   pure PHP ([PDF layer](docs/PDF.md)).
 
-Not included yet, planned for later releases: other access point drivers, CII and self-billing
-over Peppol, and a Laravel package. Rendering the invoice PDF is out of scope: you supply the PDF.
+Not included: self-billing over Peppol, and CII under Peppol BIS Billing 3.0 (CII goes over
+Peppol only as XRechnung). Rendering the invoice PDF is out of scope: you supply the PDF. The
+Laravel integration is a separate package, `intragile/laravel-einvoicing`.
 
 ## Install
 
@@ -65,6 +66,7 @@ integers and held as `Brick\Math\BigDecimal`. A `float` is rejected at runtime w
 in a file without `strict_types`, PHP still turns a `bool` into an integer (`true` becomes 1)
 before the library sees it. PHPStan reports a `bool` argument from the PHPDoc types.
 
+<!-- sample: run -->
 ```php
 <?php
 
@@ -131,9 +133,11 @@ of failing the read. Only data the model cannot do without makes a document unsu
 
 ## Validate an invoice
 
+<!-- sample: run -->
 ```php
 use IntrAgile\EInvoicing\Validation\Validator;
 
+$xml = file_get_contents('invoice.xml');         // a received or written invoice
 $report = Validator::en16931()->validate($xml); // UBL Invoice, UBL CreditNote or CII
 
 if (! $report->isValid()) {
@@ -188,12 +192,57 @@ suggestion of this package, not a requirement:
 composer require intragile/einvoicing-rules-xrechnung
 ```
 
+<!-- sample: run -->
 ```php
+<?php
+
+declare(strict_types=1);
+
+use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
+use IntrAgile\EInvoicing\CodeList\{CountryCode, CurrencyCode, ElectronicAddressScheme, InvoiceTypeCode, PaymentMeansCode, UnitCode, VatCategory};
+use IntrAgile\EInvoicing\Model\{Contact, CreditTransfer, ElectronicAddress, Invoice, InvoiceLine, Item, LineVat, Party, PaymentInstructions, PostalAddress, Price};
+use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
+use IntrAgile\EInvoicing\Syntax\XRechnung;
 use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungValidator;
+
+$invoice = TotalsCalculator::complete(new Invoice(
+    number: 'RE-2026-0815',
+    issueDate: new DateTimeImmutable('2026-11-13'),
+    type: InvoiceTypeCode::C_380,
+    currency: CurrencyCode::EUR,
+    seller: new Party(
+        'Muster Software GmbH',
+        vatIdentifier: 'DE123456789',
+        electronicAddress: new ElectronicAddress('rechnung@muster-software.example', ElectronicAddressScheme::EM),
+        address: new PostalAddress(CountryCode::DE, line1: 'Lindenstraße 12', city: 'Berlin', postCode: '10115'),
+        contact: new Contact(name: 'Erika Mustermann', phone: '+49 30 1234567', email: 'erika.mustermann@muster-software.example'),
+    ),
+    buyer: new Party(
+        'Beispiel Handel AG',
+        electronicAddress: new ElectronicAddress('eingang@beispiel-handel.example', ElectronicAddressScheme::EM),
+        address: new PostalAddress(CountryCode::DE, line1: 'Marktplatz 3', city: 'Köln', postCode: '50667'),
+    ),
+    lines: [
+        new InvoiceLine('1', '10', UnitCode::HUR, new Price('95.00'), new Item('Softwareentwicklung'), new LineVat(VatCategory::StandardRate, '19')),
+    ],
+    dueDate: new DateTimeImmutable('2026-12-13'),
+    buyerReference: '04011000-12345-34',            // the Leitweg-ID (BT-10)
+    paymentTerms: 'Zahlbar innerhalb von 30 Tagen ohne Abzug.',
+    processControl: XRechnung::processControl(),    // XRechnung 3.0 CIUS (BT-24), Peppol billing (BT-23)
+    payment: new PaymentInstructions(
+        meansCode: PaymentMeansCode::C_58,
+        remittanceInformation: 'RE-2026-0815',
+        creditTransfers: [new CreditTransfer(accountIdentifier: 'DE75512108001245126199', accountName: 'Muster Software GmbH')],
+    ),
+));
+
+$xml = (new UblWriter)->write($invoice);           // or (new CiiWriter)->write($invoice)
 
 $report = XRechnungValidator::create()->validate($xml);
 $report->scenario;   // "EN16931 XRechnung (UBL Invoice)"
-$report->isValid();  // false on an XML Schema violation or any fatal finding
+if (! $report->isValid()) {   // false on an XML Schema violation or any fatal finding
+    throw new RuntimeException(implode("\n", $report->verdict()));
+}
 ```
 
 The first KoSIT scenario whose match holds is applied: XRechnung CIUS, Extension or CVD for a UBL
@@ -270,23 +319,43 @@ against the official envelope rules. Install, deployment, verification details a
 ## Sending over Peppol
 
 ```php
+use IntrAgile\EInvoicing\Transport\OutboundDocument;
+use IntrAgile\EInvoicing\Transport\Recommand\{RecommandConfig, RecommandTransport};
+use IntrAgile\EInvoicing\Transport\ValidatingTransport;
+use IntrAgile\EInvoicing\Validation\PeppolPayloadValidator;
+
 $transport = new ValidatingTransport(
     new RecommandTransport(new RecommandConfig($apiKeyId, $secret, $companyId), $http),
-    Validator::peppol(__DIR__.'/var/peppol-rules'),
+    PeppolPayloadValidator::create(__DIR__.'/var/peppol-rules'),
 );
 
-$result = $transport->send(OutboundDocument::fromXml($ublXml));
+$result = $transport->send(OutboundDocument::fromXml($xml));   // or OutboundDocument::fromInvoice($invoice)
 ```
 
 `$http` wraps any PSR-18 client (Guzzle, Symfony) and PSR-17 factories; the package itself
 depends only on the PSR interfaces. The sender, receiver, document type and process are read from
-the invoice. Always wrap the driver in `ValidatingTransport`: it refuses an invalid document
-before it leaves. Every error says through `isRetryable()` whether retrying is safe; an
-`OutcomeUnknown` means the access point may have accepted the document, so check before
-resending. Participant lookup (SML and SMP), the Peppol Directory, receiving by polling or
-webhooks, the SBDH envelope, what is verified and the known limitations:
-[docs/TRANSPORT.md](docs/TRANSPORT.md). Live transmission through Recommand is not verified yet;
-the driver is tested against fixtures written from Recommand's published API description.
+the invoice. Recommand is the available driver; Storecove, e-invoice.be and B2Brouter are planned
+for 1.0.0.
+
+What can be sent: Peppol BIS Billing 3.0 as UBL Invoice or CreditNote, with the exact BIS
+specification identifier (BT-24); XRechnung 3.0 as UBL Invoice, UBL CreditNote or CII; and the
+XRechnung 3.0 Extension as UBL Invoice or CII. Everything else is refused with
+`UnsupportedDocument`, including a plain EN 16931 invoice (`urn:cen.eu:en16931:2017`, what the
+writers use for an invoice without process control: put
+`new ProcessControl(PeppolBis3::CUSTOMIZATION, PeppolBis3::PROCESS)` or
+`XRechnung::processControl()` on it), the XRechnung CVD, the XRechnung UBL Credit Note Extension
+and self-billing. The receiver must be registered in its SMP for the document type: a receiver
+that lists only BIS Billing 3.0 cannot receive XRechnung.
+
+Always wrap the driver in `ValidatingTransport`: it refuses an invalid document before it leaves.
+`PeppolPayloadValidator` applies the Peppol BIS rules to a BIS document and the KoSIT XRechnung
+rules to an XRechnung document (which needs `intragile/einvoicing-rules-xrechnung`). Every error
+says through `isRetryable()` whether retrying is safe; an `OutcomeUnknown` means the access point
+may have accepted the document, so check before resending. Participant lookup (SML and SMP), the
+Peppol Directory, receiving by polling or webhooks, the SBDH envelope, what is verified and the
+known limitations: [docs/TRANSPORT.md](docs/TRANSPORT.md). Live transmission through Recommand is
+not verified yet; the driver is tested against fixtures written from Recommand's published API
+description.
 
 ## Security: hostile XML
 
@@ -320,6 +389,15 @@ possible. To report a vulnerability, see [SECURITY.md](SECURITY.md).
   1.30.3 on the PDFs the writer produces ([details](docs/FACTURX.md#verification)).
 - CI runs PHPUnit and PHPStan (level max) on PHP 8.3, 8.4 and 8.5, plus Pint, the oracle and a
   check that the compiled rules match the official Schematron.
+
+## Versioning
+
+The five packages, `intragile/php-einvoicing`, the rule packages
+`intragile/einvoicing-rules-en16931`, `intragile/einvoicing-rules-xrechnung` and
+`intragile/einvoicing-rules-facturx`, and `intragile/laravel-einvoicing`, are released together
+with the same version number and follow Semantic Versioning. Use the same minor version of each.
+A rule package declares a Composer `conflict` with cores older than its own minor version (and
+with the next major), so new rules are never installed next to an engine that cannot run them.
 
 ## Developing
 

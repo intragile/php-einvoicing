@@ -277,14 +277,15 @@ $report = XRechnungValidator::create()->validate($xml);
 `validate()` follows KoSIT step by step:
 
 1. The document is parsed like every other input (a DOCTYPE raises `UnsafeXml`).
-2. The scenarios of the configuration are tried in order and the first whose match expression
-   holds is applied. The match expressions are compiled from `scenarios.xml` by
-   `composer compile-rules`, evaluated by the engine's own XPath evaluator with the scenario's
-   namespace bindings, as an effective boolean value with the document node as context. They
-   compare the specification identifier (BT-24) exactly, without whitespace normalisation, as
-   KoSIT does. When no scenario matches, `UnsupportedDocument` lists the accepted identifiers
-   (`XRechnung::CIUS`, `XRechnung::EXTENSION`, `XRechnung::CVD` and the EN 16931 one); there is
-   no fallback to a weaker scenario.
+2. The scenarios of the configuration are tried in order and the first whose match expression holds
+   is applied. The match expressions are compiled from `scenarios.xml` by `composer compile-rules`,
+   evaluated by the engine's own XPath evaluator with the scenario's namespace bindings, as an
+   effective boolean value with the document node as context. They compare the specification
+   identifier (BT-24) exactly, without whitespace normalisation, as KoSIT does. A match expression
+   that raises an XPath dynamic error counts as no match, and the next scenario is tried. When no
+   scenario matches, `UnsupportedDocument` lists the accepted identifiers (`XRechnung::CIUS`,
+   `XRechnung::EXTENSION`, `XRechnung::CVD` and the EN 16931 one); there is no fallback to a weaker
+   scenario.
 3. The document is validated against the scenario's XML Schema, KoSIT's copy of UBL 2.1 or
    CII D16B, shipped in the rules package (`SchemaValidator`, no network access, instance schema
    hints ignored). Schema imports resolve only local paths and `file://` URIs on this machine;
@@ -326,8 +327,10 @@ profile as BT-23.
 ## How verdict equality is checked
 
 The test group `oracle` runs the official CEN XSLT through SaxonC-HE in Docker as the judge
-(`docker/oracle/run.sh 8.3|8.4|8.5`). A verdict is the sorted set of distinct `"<rule id> <flag>"`
-strings of a document; locations and message text are not compared. Per document:
+(`docker/oracle/run.sh 8.3|8.4|8.5`; like `docker/kosit/run.sh` and `docker/verapdf/run.sh`, it
+needs `timeout`, which macOS lacks: `brew install coreutils`). A verdict is the sorted set of
+distinct `"<rule id> <flag>"` strings of a document; locations and message text are not compared.
+Per document:
 
 - if Saxon returns a report, our verdict must be identical and we must report no dynamic error;
 - if Saxon aborts with a dynamic error, we must report a dynamic error with the same code.
@@ -361,7 +364,8 @@ the same verdict on every document of the corpus Saxon does not abort on (1,757 
 
 For XRechnung the judge is the KoSIT validator 1.6.3 itself (Java), run with the XRechnung
 validator configuration 2026-08-31 in the test group `kosit-oracle`. It is excluded from the
-default run; `docker/kosit/run.sh [PHPUnit arguments]` (Docker, `curl` and `vendor/` needed):
+default run; `docker/kosit/run.sh [PHPUnit arguments]` (Docker, `curl`, `timeout` and `vendor/`
+needed; on macOS `timeout` comes with coreutils, `brew install coreutils`):
 
 1. builds the image `php-einvoicing-kosit:1.6.3` from `docker/kosit/Dockerfile`: an
    `eclipse-temurin` 21 JRE pinned by tag and digest, the validator jar and the configuration

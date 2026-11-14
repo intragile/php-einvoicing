@@ -32,20 +32,21 @@ Jelenleg tartalmazza:
   konfigurációval (forgatókönyvek, XML Schema, egyedi szintek), az opcionális, Apache-2.0 licencű
   `intragile/einvoicing-rules-xrechnung` szabálycsomaggal ([XRechnung](#xrechnung)), valamint
   XRechnung írása a modellből.
-- Peppol-átvitel: küldés és fogadás hozzáférési ponton keresztül (Recommand-meghajtó), résztvevő
-  keresése az SML-ben és az SMP-ben, keresés a Peppol Directoryban, webhookok ellenőrzése, valamint
-  SBDH-boríték írása és olvasása ([Peppol-átvitel](docs/TRANSPORT.md), angolul). Az éles küldést a
+- Peppol-átvitel: küldés és fogadás hozzáférési ponton keresztül, résztvevő keresése az SML-ben
+  és az SMP-ben, keresés a Peppol Directoryban, webhookok ellenőrzése, valamint SBDH-boríték írása
+  és olvasása ([Peppol-átvitel](docs/TRANSPORT.md), angolul). Elérhető meghajtó a Recommand; a
+  Storecove, az e-invoice.be és a B2Brouter meghajtó az 1.0.0-ra tervezett. Az éles küldést a
   Recommandon keresztül még nem ellenőriztük.
-
 - ZUGFeRD / Factur-X 1.0 (MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED és XRECHNUNG profil): a
   profil XML-jének írása, beágyazása egy általad adott PDF/A-ba, kiolvasása a hibrid PDF-ből és
   ellenőrzése, az opcionális, Apache-2.0 licencű `intragile/einvoicing-rules-facturx`
   szabálycsomaggal ([ZUGFeRD / Factur-X](#zugferd--factur-x)). A PDF-réteg tisztán PHP-s
   ([PDF-réteg](docs/PDF.md), angolul).
 
-Későbbi kiadásokra tervezett, jelenleg nincs benne: további hozzáférésipont-meghajtók, CII- és
-önszámlázó (self-billing) számlák küldése Peppolon, valamint Laravel csomag. A számla PDF-jének
-megjelenítése (renderelése) nem feladata a csomagnak: a PDF-et te adod.
+Nincs benne: önszámlázó (self-billing) számlák küldése Peppolon, valamint CII a Peppol BIS
+Billing 3.0 szerint (CII Peppolon csak XRechnungként megy). A számla PDF-jének megjelenítése
+(renderelése) nem feladata a csomagnak: a PDF-et te adod. A Laravel-integráció külön csomag:
+`intragile/laravel-einvoicing`.
 
 ## Telepítés
 
@@ -67,6 +68,7 @@ float a 0,1-et sem tudja pontosan tárolni. Ismert korlát: `strict_types` nélk
 `bool` értéket még a könyvtár előtt egész számmá alakítja (`true`-ból 1 lesz). A `bool`
 argumentumot a PHPStan a PHPDoc típusok alapján jelzi.
 
+<!-- sample: run -->
 ```php
 <?php
 
@@ -136,9 +138,11 @@ támogatottá, amely nélkül a modell nem létezhet.
 
 ## Számla ellenőrzése
 
+<!-- sample: run -->
 ```php
 use IntrAgile\EInvoicing\Validation\Validator;
 
+$xml = file_get_contents('invoice.xml');         // egy beérkezett vagy megírt számla
 $report = Validator::en16931()->validate($xml); // UBL Invoice, UBL CreditNote vagy CII
 
 if (! $report->isValid()) {
@@ -198,12 +202,57 @@ csomag csak javasol, nem húz be:
 composer require intragile/einvoicing-rules-xrechnung
 ```
 
+<!-- sample: run -->
 ```php
+<?php
+
+declare(strict_types=1);
+
+use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
+use IntrAgile\EInvoicing\CodeList\{CountryCode, CurrencyCode, ElectronicAddressScheme, InvoiceTypeCode, PaymentMeansCode, UnitCode, VatCategory};
+use IntrAgile\EInvoicing\Model\{Contact, CreditTransfer, ElectronicAddress, Invoice, InvoiceLine, Item, LineVat, Party, PaymentInstructions, PostalAddress, Price};
+use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
+use IntrAgile\EInvoicing\Syntax\XRechnung;
 use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungValidator;
+
+$invoice = TotalsCalculator::complete(new Invoice(
+    number: 'RE-2026-0815',
+    issueDate: new DateTimeImmutable('2026-11-13'),
+    type: InvoiceTypeCode::C_380,
+    currency: CurrencyCode::EUR,
+    seller: new Party(
+        'Muster Software GmbH',
+        vatIdentifier: 'DE123456789',
+        electronicAddress: new ElectronicAddress('rechnung@muster-software.example', ElectronicAddressScheme::EM),
+        address: new PostalAddress(CountryCode::DE, line1: 'Lindenstraße 12', city: 'Berlin', postCode: '10115'),
+        contact: new Contact(name: 'Erika Mustermann', phone: '+49 30 1234567', email: 'erika.mustermann@muster-software.example'),
+    ),
+    buyer: new Party(
+        'Beispiel Handel AG',
+        electronicAddress: new ElectronicAddress('eingang@beispiel-handel.example', ElectronicAddressScheme::EM),
+        address: new PostalAddress(CountryCode::DE, line1: 'Marktplatz 3', city: 'Köln', postCode: '50667'),
+    ),
+    lines: [
+        new InvoiceLine('1', '10', UnitCode::HUR, new Price('95.00'), new Item('Softwareentwicklung'), new LineVat(VatCategory::StandardRate, '19')),
+    ],
+    dueDate: new DateTimeImmutable('2026-12-13'),
+    buyerReference: '04011000-12345-34',            // a Leitweg-ID (BT-10)
+    paymentTerms: 'Zahlbar innerhalb von 30 Tagen ohne Abzug.',
+    processControl: XRechnung::processControl(),    // XRechnung 3.0 CIUS (BT-24), Peppol billing (BT-23)
+    payment: new PaymentInstructions(
+        meansCode: PaymentMeansCode::C_58,
+        remittanceInformation: 'RE-2026-0815',
+        creditTransfers: [new CreditTransfer(accountIdentifier: 'DE75512108001245126199', accountName: 'Muster Software GmbH')],
+    ),
+));
+
+$xml = (new UblWriter)->write($invoice);           // vagy (new CiiWriter)->write($invoice)
 
 $report = XRechnungValidator::create()->validate($xml);
 $report->scenario;   // "EN16931 XRechnung (UBL Invoice)"
-$report->isValid();  // false XML Schema-hibánál vagy bármely fatal eredménynél
+if (! $report->isValid()) {   // false XML Schema-hibánál vagy bármely fatal eredménynél
+    throw new RuntimeException(implode("\n", $report->verdict()));
+}
 ```
 
 Az első olyan KoSIT-forgatókönyv fut le, amelynek a feltétele teljesül: XRechnung CIUS,
@@ -277,24 +326,44 @@ $report = Validator::peppol(__DIR__.'/var/peppol-rules')->validate($xml);
 Az eredmények egyezését a Saxonnal futtatott OpenPeppol Schematronnal 1611 dokumentumból álló
 korpuszon ellenőriztük, eltérés nélkül; ahol a Saxon leáll (101 dokumentum), ott csak a
 hibakódot hasonlítjuk össze. A `Validator::peppolEnvelope($dir)` egy Standard Business
-Document borítékát (SBDH) ellenőrzi a hivatalos borítékszabályok szerint. Telepítés, üzemeltetés, az ellenőrzés
-részletei és mérések: [docs/PEPPOL.md](docs/PEPPOL.md) (angolul).
+Document borítékát (SBDH) ellenőrzi a hivatalos borítékszabályok szerint. Telepítés,
+üzemeltetés, az ellenőrzés részletei és mérések: [docs/PEPPOL.md](docs/PEPPOL.md) (angolul).
 
 ## Küldés Peppolon
 
 ```php
+use IntrAgile\EInvoicing\Transport\OutboundDocument;
+use IntrAgile\EInvoicing\Transport\Recommand\{RecommandConfig, RecommandTransport};
+use IntrAgile\EInvoicing\Transport\ValidatingTransport;
+use IntrAgile\EInvoicing\Validation\PeppolPayloadValidator;
+
 $transport = new ValidatingTransport(
     new RecommandTransport(new RecommandConfig($apiKeyId, $secret, $companyId), $http),
-    Validator::peppol(__DIR__.'/var/peppol-rules'),
+    PeppolPayloadValidator::create(__DIR__.'/var/peppol-rules'),
 );
 
-$result = $transport->send(OutboundDocument::fromXml($ublXml));
+$result = $transport->send(OutboundDocument::fromXml($xml));   // vagy OutboundDocument::fromInvoice($invoice)
 ```
 
 A `$http` bármilyen PSR-18 klienst (Guzzle, Symfony) és PSR-17 gyárakat csomagol be; maga a csomag
 csak a PSR-interfészektől függ. A küldőt, a címzettet, a dokumentumtípust és a folyamatot a
-számlából olvassa ki. A meghajtót mindig csomagold `ValidatingTransport`-ba: az érvénytelen
-dokumentumot még elküldés előtt visszautasítja. Minden hiba `isRetryable()` metódusa megmondja,
+számlából olvassa ki. Elérhető meghajtó a Recommand; a Storecove, az e-invoice.be és a B2Brouter
+meghajtó az 1.0.0-ra tervezett.
+
+Mit lehet elküldeni: Peppol BIS Billing 3.0 számlát UBL Invoice vagy CreditNote formában, a
+pontos BIS specifikáció-azonosítóval (BT-24); XRechnung 3.0-t UBL Invoice, UBL CreditNote vagy
+CII formában; és XRechnung 3.0 Extensiont UBL Invoice vagy CII formában. Minden mást
+`UnsupportedDocument` kivétellel elutasít, köztük a sima EN 16931 számlát
+(`urn:cen.eu:en16931:2017`, ezt írják az írók folyamatvezérlés nélküli számlára: tedd rá a
+`new ProcessControl(PeppolBis3::CUSTOMIZATION, PeppolBis3::PROCESS)` vagy az
+`XRechnung::processControl()` értéket), az XRechnung CVD-t, az XRechnung UBL Credit Note
+Extensiont és az önszámlázást. A címzettnek az SMP-jében regisztrálnia kell a dokumentumtípust:
+az a címzett, aki csak a BIS Billing 3.0-t jelenti be, XRechnungot nem tud fogadni.
+
+A meghajtót mindig csomagold `ValidatingTransport`-ba: az érvénytelen dokumentumot még elküldés
+előtt visszautasítja. A `PeppolPayloadValidator` a BIS dokumentumra a Peppol BIS szabályait, az
+XRechnung dokumentumra a KoSIT XRechnung-szabályait alkalmazza (ehhez az
+`intragile/einvoicing-rules-xrechnung` kell). Minden hiba `isRetryable()` metódusa megmondja,
 biztonságos-e az újrapróbálás; az `OutcomeUnknown` azt jelenti, hogy a hozzáférési pont
 befogadhatta a dokumentumot, ezért újraküldés előtt ellenőrizd. Résztvevő keresése (SML és SMP),
 a Peppol Directory, fogadás lekérdezéssel vagy webhookkal, az SBDH-boríték, mit és hogyan
@@ -338,6 +407,16 @@ entitás-kibontásos támadás (billion laughs) így nem lehetséges. Sérülék
   ([részletek](docs/FACTURX.md#verification), angolul).
 - A CI PHPUnitot és PHPStant (max szint) futtat PHP 8.3, 8.4 és 8.5 alatt, továbbá Pintet, az
   oracle-csoportot, és ellenőrzi, hogy a lefordított szabályok egyeznek a hivatalos Schematronnal.
+
+## Verziókezelés
+
+Az öt csomag (`intragile/php-einvoicing`, az `intragile/einvoicing-rules-en16931`,
+`intragile/einvoicing-rules-xrechnung` és `intragile/einvoicing-rules-facturx` szabálycsomag,
+valamint az `intragile/laravel-einvoicing`) mindig együtt, azonos verziószámmal jelenik meg, a
+szemantikus verziózás (Semantic Versioning) szerint. Mindegyikből ugyanazt a minor verziót
+használd. A szabálycsomagok Composer `conflict` bejegyzéssel kizárják a saját minor verziójuknál
+régebbi (és a következő major) magot, így új szabályok sosem kerülnek olyan motor mellé, amely
+nem tudja futtatni őket.
 
 ## Fejlesztés
 
