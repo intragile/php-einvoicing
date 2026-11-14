@@ -4,10 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Transport\Recommand;
 
-use DOMDocument;
-use DOMElement;
-use DOMXPath;
-use IntrAgile\EInvoicing\Tests\Fixtures;
+use IntrAgile\EInvoicing\Tests\Support\LiveTransport;
 use IntrAgile\EInvoicing\Tests\Support\StreamHttpClient;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\Http\HttpClient;
@@ -40,10 +37,6 @@ use PHPUnit\Framework\TestCase;
 #[Group('recommand-live')]
 final class RecommandLiveTest extends TestCase
 {
-    private const NS_CBC = 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2';
-
-    private const NS_CAC = 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2';
-
     private const INBOX_ATTEMPTS = 10;
 
     private const INBOX_WAIT_SECONDS = 3;
@@ -80,8 +73,8 @@ final class RecommandLiveTest extends TestCase
         $recipient = $recipientEnv !== '' ? ParticipantId::parse($recipientEnv) : $sender;
 
         $transport = new RecommandTransport($this->config, $this->http);
-        $invoiceNumber = 'LIVE-'.bin2hex(random_bytes(6));
-        $document = OutboundDocument::fromXml(self::baseExample($sender, $recipient, $invoiceNumber));
+        $invoiceNumber = LiveTransport::invoiceNumber();
+        $document = OutboundDocument::fromXml(LiveTransport::baseExample($invoiceNumber, $recipient, $sender));
 
         $result = $transport->send($document);
         self::assertNotSame('', $result->documentId);
@@ -171,36 +164,5 @@ final class RecommandLiveTest extends TestCase
         self::assertTrue(($data['success'] ?? null) === true, sprintf('GET %s did not report success.', $path));
 
         return $data;
-    }
-
-    /**
-     * The Peppol base example with the invoice number and the seller and buyer electronic
-     * addresses replaced.
-     */
-    private static function baseExample(ParticipantId $seller, ParticipantId $buyer, string $invoiceNumber): string
-    {
-        $examples = Fixtures::peppolExamples();
-        self::assertArrayHasKey('examples/base-example.xml', $examples);
-
-        $dom = new DOMDocument;
-        $dom->loadXML($examples['examples/base-example.xml'], LIBXML_NONET);
-        $xpath = new DOMXPath($dom);
-        $xpath->registerNamespace('cac', self::NS_CAC);
-        $xpath->registerNamespace('cbc', self::NS_CBC);
-
-        $ids = $xpath->query('/*/cbc:ID');
-        $id = $ids === false ? null : $ids->item(0);
-        self::assertInstanceOf(DOMElement::class, $id);
-        $id->textContent = $invoiceNumber;
-
-        foreach (['AccountingSupplierParty' => $seller, 'AccountingCustomerParty' => $buyer] as $party => $id) {
-            $nodes = $xpath->query(sprintf('/*/cac:%s/cac:Party/cbc:EndpointID', $party));
-            $endpoint = $nodes === false ? null : $nodes->item(0);
-            self::assertInstanceOf(DOMElement::class, $endpoint);
-            $endpoint->setAttribute('schemeID', $id->icd);
-            $endpoint->textContent = $id->value;
-        }
-
-        return (string) $dom->saveXML();
     }
 }

@@ -85,7 +85,7 @@ final class EInvoiceBeWebhookTest extends TestCase
             self::assertNull($event->failure);
         }
 
-        self::assertFalse((new EInvoiceBeWebhook('secret2'))->verify(CanonicalJsonTest::DOCUMENTED_EVENT, ['X-Signature' => self::VECTOR_SIGNATURE]));
+        self::assertFalse((new EInvoiceBeWebhook('whsec_FAKEWRONG00000'))->verify(CanonicalJsonTest::DOCUMENTED_EVENT, ['X-Signature' => self::VECTOR_SIGNATURE]));
     }
 
     public function test_raw_body_hmac_does_not_verify(): void

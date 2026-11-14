@@ -4,10 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Transport\B2Brouter;
 
-use DOMDocument;
-use DOMElement;
-use DOMXPath;
-use IntrAgile\EInvoicing\Tests\Fixtures;
+use IntrAgile\EInvoicing\Tests\Support\LiveTransport;
 use IntrAgile\EInvoicing\Tests\Support\StreamHttpClient;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterTransport;
@@ -46,19 +43,11 @@ use Psr\Http\Message\ResponseInterface;
 #[Group('b2brouter-live')]
 final class B2BrouterLiveTest extends TestCase
 {
-    private const NS_CBC = 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2';
-
-    private const NS_CAC = 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2';
-
     private const DELIVERED_RECIPIENT = '0088:9508397101047';
 
     private const REFUSED_RECIPIENT = '0088:9506215594996';
 
     private const UNKNOWN_RECIPIENT = '0088:9500047420799';
-
-    private const STATUS_ATTEMPTS = 10;
-
-    private const STATUS_WAIT_SECONDS = 6;
 
     private B2BrouterConfig $config;
 
@@ -105,26 +94,26 @@ final class B2BrouterLiveTest extends TestCase
         $xml = [];
         $ids = [];
         foreach ([self::DELIVERED_RECIPIENT, self::REFUSED_RECIPIENT, self::UNKNOWN_RECIPIENT] as $recipient) {
-            $xml[$recipient] = self::baseExample(ParticipantId::parse($recipient), self::invoiceNumber());
+            $xml[$recipient] = LiveTransport::baseExample(LiveTransport::invoiceNumber(), ParticipantId::parse($recipient));
             $result = $transport->send(OutboundDocument::fromXml($xml[$recipient]));
             self::assertNotSame('', $result->documentId);
             $ids[$recipient] = $result->documentId;
         }
 
-        $delivered = $this->finalStatus($transport, $ids[self::DELIVERED_RECIPIENT]);
+        $delivered = LiveTransport::pollUntilFinal(static fn (): DeliveryStatus => $transport->status($ids[self::DELIVERED_RECIPIENT]));
         self::assertSame(DeliveryState::Delivered, $delivered->state, (string) $delivered->failure?->message);
 
-        $refused = $this->finalStatus($transport, $ids[self::REFUSED_RECIPIENT]);
+        $refused = LiveTransport::pollUntilFinal(static fn (): DeliveryStatus => $transport->status($ids[self::REFUSED_RECIPIENT]));
         self::assertSame(DeliveryState::Delivered, $refused->state, 'a refusal is a business response to a delivered invoice');
 
-        $unknown = $this->finalStatus($transport, $ids[self::UNKNOWN_RECIPIENT]);
+        $unknown = LiveTransport::pollUntilFinal(static fn (): DeliveryStatus => $transport->status($ids[self::UNKNOWN_RECIPIENT]));
         self::assertSame(DeliveryState::Failed, $unknown->state);
         self::assertSame(FailureCategory::RecipientNotFound, $unknown->failure?->category);
         self::assertSame('PEPPOL_NO_RECEIVER', $unknown->failure->providerCode);
 
         // Evidence for whether the delivered document can be compared with the sent one.
         $legal = $this->request('GET', sprintf('/invoices/%s/as/legal', rawurlencode($ids[self::DELIVERED_RECIPIENT])), ['Accept' => 'application/xml, */*;q=0.1']);
-        self::report(sprintf(
+        LiveTransport::report('b2brouter-live', sprintf(
             'GET /invoices/{id}/as/legal answered HTTP %d; the body is %s the sent XML.',
             $legal->getStatusCode(),
             (string) $legal->getBody() === $xml[self::DELIVERED_RECIPIENT] ? 'byte-identical to' : 'NOT byte-identical to',
@@ -134,7 +123,7 @@ final class B2BrouterLiveTest extends TestCase
     public function test_seeded_inbox_pending_fetch_and_acknowledge(): void
     {
         $transport = new B2BrouterTransport($this->config, $this->http);
-        $invoiceNumber = self::invoiceNumber();
+        $invoiceNumber = LiveTransport::invoiceNumber();
 
         // The sandbox does not simulate inbound traffic; importing with issued=false creates a
         // received invoice in the account.
@@ -142,12 +131,12 @@ final class B2BrouterLiveTest extends TestCase
             'POST',
             sprintf('/accounts/%d/invoices/import?issued=false', $this->config->accountId),
             ['Content-Type' => 'application/octet-stream'],
-            self::baseExample(ParticipantId::parse(self::DELIVERED_RECIPIENT), $invoiceNumber),
+            LiveTransport::baseExample($invoiceNumber, ParticipantId::parse(self::DELIVERED_RECIPIENT)),
         );
-        self::assertSame(201, $import->getStatusCode(), $this->excerpt('The import of the received invoice', $import));
+        self::assertSame(201, $import->getStatusCode(), LiveTransport::excerpt($this->redactor, 'The import of the received invoice', $import));
         $imported = json_decode((string) $import->getBody(), true);
         $id = is_array($imported) && is_array($imported['invoice'] ?? null) ? ($imported['invoice']['id'] ?? null) : null;
-        self::assertIsInt($id, $this->excerpt('The import answer has no invoice id', $import));
+        self::assertIsInt($id, LiveTransport::excerpt($this->redactor, 'The import answer has no invoice id', $import));
         $id = (string) $id;
 
         self::assertContains($id, self::ids($transport->pending()));
@@ -162,7 +151,7 @@ final class B2BrouterLiveTest extends TestCase
     public function test_report_xrechnung_document_type_codes(): void
     {
         $response = $this->request('GET', '/document_types');
-        self::assertSame(200, $response->getStatusCode(), $this->excerpt('GET /document_types', $response));
+        self::assertSame(200, $response->getStatusCode(), LiveTransport::excerpt($this->redactor, 'GET /document_types', $response));
         $data = json_decode((string) $response->getBody(), true);
         $types = is_array($data) && is_array($data['document_types'] ?? null) ? $data['document_types'] : [];
 
@@ -173,22 +162,8 @@ final class B2BrouterLiveTest extends TestCase
                 $codes[] = $code;
             }
         }
-        self::report('Document type codes containing "xrechnung": '.($codes === [] ? '(none)' : implode(', ', $codes)));
+        LiveTransport::report('b2brouter-live', 'Document type codes containing "xrechnung": '.($codes === [] ? '(none)' : implode(', ', $codes)));
         $this->addToAssertionCount(1);
-    }
-
-    /**
-     * The status of an invoice once it is delivered or failed, polled a bounded number of times.
-     */
-    private function finalStatus(B2BrouterTransport $transport, string $invoiceId): DeliveryStatus
-    {
-        $status = $transport->status($invoiceId);
-        for ($attempt = 2; $attempt <= self::STATUS_ATTEMPTS && ! in_array($status->state, [DeliveryState::Delivered, DeliveryState::Failed], true); $attempt++) {
-            sleep(self::STATUS_WAIT_SECONDS);
-            $status = $transport->status($invoiceId);
-        }
-
-        return $status;
     }
 
     /**
@@ -200,57 +175,11 @@ final class B2BrouterLiveTest extends TestCase
     }
 
     /**
-     * A failure message with the start of the response, without the key or the account id.
-     */
-    private function excerpt(string $what, ResponseInterface $response): string
-    {
-        return $this->redactor->redact(sprintf('%s answered HTTP %d: %s', $what, $response->getStatusCode(), substr((string) $response->getBody(), 0, 300)));
-    }
-
-    /**
      * @param  list<InboundReference>  $references
      * @return list<string>
      */
     private static function ids(array $references): array
     {
         return array_map(static fn (InboundReference $reference): string => $reference->documentId, $references);
-    }
-
-    private static function invoiceNumber(): string
-    {
-        return 'LIVE-'.bin2hex(random_bytes(6));
-    }
-
-    private static function report(string $line): void
-    {
-        fwrite(STDERR, PHP_EOL.'[b2brouter-live] '.$line.PHP_EOL);
-    }
-
-    /**
-     * The Peppol base example with the invoice number and the buyer electronic address replaced.
-     */
-    private static function baseExample(ParticipantId $buyer, string $invoiceNumber): string
-    {
-        $examples = Fixtures::peppolExamples();
-        self::assertArrayHasKey('examples/base-example.xml', $examples);
-
-        $dom = new DOMDocument;
-        $dom->loadXML($examples['examples/base-example.xml'], LIBXML_NONET);
-        $xpath = new DOMXPath($dom);
-        $xpath->registerNamespace('cac', self::NS_CAC);
-        $xpath->registerNamespace('cbc', self::NS_CBC);
-
-        $ids = $xpath->query('/*/cbc:ID');
-        $id = $ids === false ? null : $ids->item(0);
-        self::assertInstanceOf(DOMElement::class, $id);
-        $id->textContent = $invoiceNumber;
-
-        $nodes = $xpath->query('/*/cac:AccountingCustomerParty/cac:Party/cbc:EndpointID');
-        $endpoint = $nodes === false ? null : $nodes->item(0);
-        self::assertInstanceOf(DOMElement::class, $endpoint);
-        $endpoint->setAttribute('schemeID', $buyer->icd);
-        $endpoint->textContent = $buyer->value;
-
-        return (string) $dom->saveXML();
     }
 }

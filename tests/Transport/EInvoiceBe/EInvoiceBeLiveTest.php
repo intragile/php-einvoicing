@@ -4,10 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Transport\EInvoiceBe;
 
-use DOMDocument;
-use DOMElement;
-use DOMXPath;
-use IntrAgile\EInvoicing\Tests\Fixtures;
+use IntrAgile\EInvoicing\Tests\Support\LiveTransport;
 use IntrAgile\EInvoicing\Tests\Support\RequestCounter;
 use IntrAgile\EInvoicing\Tests\Support\StreamHttpClient;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
@@ -49,15 +46,7 @@ use Psr\Http\Message\ResponseInterface;
 #[Group('einvoicebe-live')]
 final class EInvoiceBeLiveTest extends TestCase
 {
-    private const NS_CBC = 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2';
-
-    private const NS_CAC = 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2';
-
     private const CONFIRMATION_VARIABLE = 'EINVOICEBE_SANDBOX_CONFIRMED';
-
-    private const STATUS_ATTEMPTS = 10;
-
-    private const STATUS_WAIT_SECONDS = 6;
 
     /** Pending documents fetched, newest first, while looking for the simulated one. */
     private const INBOX_FETCH_LIMIT = 20;
@@ -139,9 +128,9 @@ final class EInvoiceBeLiveTest extends TestCase
         $this->redactor = $this->config->redactor();
 
         $response = $this->request('GET', '/api/me/');
-        self::assertSame(200, $response->getStatusCode(), $this->excerpt('GET /api/me/', $response));
+        self::assertSame(200, $response->getStatusCode(), LiveTransport::excerpt($this->redactor, 'GET /api/me/', $response));
         $me = json_decode((string) $response->getBody(), true);
-        self::assertIsArray($me, $this->excerpt('GET /api/me/ is not a JSON object', $response));
+        self::assertIsArray($me, LiveTransport::excerpt($this->redactor, 'GET /api/me/ is not a JSON object', $response));
         $this->me = $me;
 
         $company = self::companyParticipant($me);
@@ -159,7 +148,7 @@ final class EInvoiceBeLiveTest extends TestCase
     public function test_send_to_self_is_delivered(): void
     {
         $transport = new EInvoiceBeTransport($this->config, $this->http);
-        $document = OutboundDocument::fromXml(self::baseExample($this->company, self::invoiceNumber()));
+        $document = OutboundDocument::fromXml(LiveTransport::baseExample(LiveTransport::invoiceNumber(), $this->company, $this->company));
         $refusal = self::selfAddressRefusal($document->sender, $document->receiver, $this->company);
         if ($refusal !== null) {
             self::fail($refusal);
@@ -168,7 +157,7 @@ final class EInvoiceBeLiveTest extends TestCase
         $result = $transport->send($document);
         self::assertNotSame('', $result->documentId);
 
-        $status = $this->finalStatus($transport, $result->documentId);
+        $status = LiveTransport::pollUntilFinal(static fn (): DeliveryStatus => $transport->status($result->documentId));
         self::assertSame(DeliveryState::Delivered, $status->state, $this->redactor->redact((string) $status->failure?->message));
     }
 
@@ -208,76 +197,13 @@ final class EInvoiceBeLiveTest extends TestCase
         sort($fields);
         $plan = $this->me['plan'] ?? null;
 
-        self::report('GET /api/me/ fields: '.implode(', ', $fields));
-        self::report('plan: '.(is_string($plan) && preg_match('/\A[A-Za-z0-9_-]{1,40}\z/', $plan) === 1 ? $plan : '(not a short plain string)'));
+        LiveTransport::report('einvoicebe-live', 'GET /api/me/ fields: '.implode(', ', $fields));
+        LiveTransport::report('einvoicebe-live', 'plan: '.(is_string($plan) && preg_match('/\A[A-Za-z0-9_-]{1,40}\z/', $plan) === 1 ? $plan : '(not a short plain string)'));
         $this->addToAssertionCount(1);
-    }
-
-    /**
-     * The status of a document once it is delivered or failed, polled a bounded number of times.
-     */
-    private function finalStatus(EInvoiceBeTransport $transport, string $documentId): DeliveryStatus
-    {
-        $status = $transport->status($documentId);
-        for ($attempt = 2; $attempt <= self::STATUS_ATTEMPTS && ! in_array($status->state, [DeliveryState::Delivered, DeliveryState::Failed], true); $attempt++) {
-            sleep(self::STATUS_WAIT_SECONDS);
-            $status = $transport->status($documentId);
-        }
-
-        return $status;
     }
 
     private function request(string $method, string $path): ResponseInterface
     {
         return $this->http->send($method, $this->config->baseUrl.$path, $this->config->headers());
-    }
-
-    /**
-     * A failure message with the start of the response, without the key or the Peppol id.
-     */
-    private function excerpt(string $what, ResponseInterface $response): string
-    {
-        return $this->redactor->redact(sprintf('%s answered HTTP %d: %s', $what, $response->getStatusCode(), substr((string) $response->getBody(), 0, 300)));
-    }
-
-    private static function invoiceNumber(): string
-    {
-        return 'LIVE-'.bin2hex(random_bytes(6));
-    }
-
-    private static function report(string $line): void
-    {
-        fwrite(STDERR, PHP_EOL.'[einvoicebe-live] '.$line.PHP_EOL);
-    }
-
-    /**
-     * The Peppol base example with the invoice number replaced and the company as both the seller
-     * and the buyer electronic address.
-     */
-    private static function baseExample(ParticipantId $company, string $invoiceNumber): string
-    {
-        $examples = Fixtures::peppolExamples();
-        self::assertArrayHasKey('examples/base-example.xml', $examples);
-
-        $dom = new DOMDocument;
-        $dom->loadXML($examples['examples/base-example.xml'], LIBXML_NONET);
-        $xpath = new DOMXPath($dom);
-        $xpath->registerNamespace('cac', self::NS_CAC);
-        $xpath->registerNamespace('cbc', self::NS_CBC);
-
-        $ids = $xpath->query('/*/cbc:ID');
-        $id = $ids === false ? null : $ids->item(0);
-        self::assertInstanceOf(DOMElement::class, $id);
-        $id->textContent = $invoiceNumber;
-
-        foreach (['cac:AccountingSupplierParty', 'cac:AccountingCustomerParty'] as $party) {
-            $nodes = $xpath->query('/*/'.$party.'/cac:Party/cbc:EndpointID');
-            $endpoint = $nodes === false ? null : $nodes->item(0);
-            self::assertInstanceOf(DOMElement::class, $endpoint);
-            $endpoint->setAttribute('schemeID', $company->icd);
-            $endpoint->textContent = $company->value;
-        }
-
-        return (string) $dom->saveXML();
     }
 }
