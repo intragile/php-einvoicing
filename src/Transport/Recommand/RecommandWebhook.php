@@ -73,8 +73,9 @@ final class RecommandWebhook implements WebhookParser
      *
      * "document.received" is DocumentReceived; "document.sent" and
      * "document.delivery_status_changed" are DeliveryChanged; any other type is Other. The
-     * deduplication key is the X-Idempotency-Key header, or "<type>:<documentId>" when it is
-     * missing, blank or repeated.
+     * deduplication key is the X-Idempotency-Key header, or "<type>:<documentId>:<state>" (the
+     * delivery state value, empty when the event reports none) when it is missing, blank or
+     * repeated, so that two different transitions of one document never share a key.
      *
      * Only document events are supported: a notification without a documentId, such as
      * "company.verification", raises UnexpectedResponse even when its signature is valid. Catch it
@@ -120,7 +121,7 @@ final class RecommandWebhook implements WebhookParser
             $type,
             $documentId,
             is_string($companyId) && $companyId !== '' ? $companyId : null,
-            $idempotencyKey !== null && trim($idempotencyKey) !== '' ? $idempotencyKey : $type.':'.$documentId,
+            $idempotencyKey !== null && trim($idempotencyKey) !== '' ? $idempotencyKey : $type.':'.$documentId.':'.($state->value ?? ''),
             $state,
             $peppolDelivery ? ResponseMapper::failureOf($data['failure'] ?? null) : null,
         );

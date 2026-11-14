@@ -95,7 +95,20 @@ final class RecommandWebhookTest extends TestCase
 
         $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)] + $headers);
 
-        self::assertSame('document.received:doc_01inboundfirst', $event->deduplicationKey);
+        self::assertSame('document.received:doc_01inboundfirst:', $event->deduplicationKey);
+    }
+
+    public function test_fallback_key_differs_per_delivery_state(): void
+    {
+        $webhook = new RecommandWebhook(self::SECRET);
+        $delivered = '{"eventType":"document.delivery_status_changed","documentId":"doc_01","deliveryStatus":"delivered"}';
+        $failed = '{"eventType":"document.delivery_status_changed","documentId":"doc_01","deliveryStatus":"failed"}';
+
+        $first = $webhook->parse($delivered, ['X-Signature' => self::sign($delivered)]);
+        $second = $webhook->parse($failed, ['X-Signature' => self::sign($failed)]);
+
+        self::assertSame('document.delivery_status_changed:doc_01:delivered', $first->deduplicationKey);
+        self::assertSame('document.delivery_status_changed:doc_01:failed', $second->deduplicationKey);
     }
 
     public function test_two_identical_signature_headers_are_refused(): void
