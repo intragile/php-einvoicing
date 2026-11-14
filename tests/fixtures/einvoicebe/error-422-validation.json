@@ -1,0 +1,6 @@
+{
+  "detail": [
+    {"loc": ["body", "file"], "msg": "Field required", "type": "missing"},
+    {"loc": ["query", "page_size"], "msg": "Input should be less than or equal to 100", "type": "less_than_equal"}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "doc-Fa1LeD0001",
+  "created_at": "2026-11-12T09:10:00Z",
+  "document_type": "INVOICE",
+  "state": "FAILED",
+  "direction": "OUTBOUND",
+  "invoice_id": "INV-2026-002",
+  "currency": "EUR",
+  "invoice_total": "50.00"
+}

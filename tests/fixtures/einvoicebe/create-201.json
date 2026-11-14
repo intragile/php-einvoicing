@@ -1,0 +1,13 @@
+{
+  "id": "doc-7Hq2Lm9Xa4",
+  "created_at": "2026-11-12T08:00:00.412377Z",
+  "document_type": "INVOICE",
+  "state": "DRAFT",
+  "direction": "OUTBOUND",
+  "invoice_id": "INV-2026-001",
+  "invoice_date": "2026-11-12",
+  "currency": "EUR",
+  "invoice_total": "121.00",
+  "customer_name": "Buyer Example BV",
+  "items": []
+}

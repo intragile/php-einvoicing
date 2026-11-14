@@ -1,0 +1,12 @@
+{
+  "id": "doc-In0000000001",
+  "file_name": "doc-In0000000001.xml",
+  "file_size": 345,
+  "signed_url": "https://storage.example.com/einvoice-docs/tenant-42/doc-In0000000001.xml?X-Amz-Expires=3600&X-Amz-Signature=FAKESIGNATURE0123456789abcdef",
+  "sender_peppol_scheme": "0208",
+  "sender_peppol_id": "0987654321",
+  "receiver_peppol_scheme": "0208",
+  "receiver_peppol_id": "0123456789",
+  "file_hash": "ba31f05c23d1e660575e2dfe2512c4858d524a8e0070e13887d60d657d3f9793",
+  "validated_at": "2026-11-14T09:30:01Z"
+}

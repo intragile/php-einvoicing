@@ -1,0 +1,10 @@
+{
+  "document_id": "doc-Fa1LeD0001",
+  "events": [
+    {"event_type": "document_created", "timestamp": "2026-11-12T09:10:00Z", "id": null, "details": null},
+    {"event_type": "send_attempted", "timestamp": "2026-11-12T09:10:01Z", "id": null, "details": null},
+    {"event_type": "send_failed", "timestamp": "2026-11-12T09:10:16Z", "id": null, "details": null},
+    {"event_type": "send_failed", "timestamp": "2026-11-12T10:02:31.250000Z", "id": "evt-2", "details": {}},
+    {"event_type": "send_attempted", "timestamp": "2026-11-12T10:02:15Z", "id": null, "details": null}
+  ]
+}
