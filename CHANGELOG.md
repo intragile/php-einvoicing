@@ -10,6 +10,28 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Peppol transport:** the B2Brouter driver: `B2BrouterConfig`, `B2BrouterTransport` (import and
+  send in one request, delivery status, unacknowledged received invoices, fetch with SBDH
+  unwrapping, acknowledgement) and `B2BrouterWebhook` (`X-B2Brouter-Signature` over
+  `"<t>.<raw body>"`, timestamp tolerance opt-in). BIS Billing 3.0 invoices and credit notes are
+  sent by default; other document types need a configured B2Brouter document type code. The API
+  version `2026-06-26` is pinned. Opt-in sandbox test group `b2brouter-live`.
+- **Peppol transport:** the e-invoice.be driver: `EInvoiceBeConfig`, `EInvoiceBeTransport` (upload
+  and send of BIS Billing 3.0 UBL only, delivery status with the timeline's failure note, inbox
+  listing back to a configurable look-back, download from the signed URL without the API key,
+  local-only acknowledgement) and `EInvoiceBeWebhook`, which verifies `X-Signature` over the
+  canonical JSON string of the event (`CanonicalJson`, Python `json.dumps(sort_keys=True)`; a
+  number with a fraction fails closed). Opt-in sandbox test group `einvoicebe-live`, which needs
+  `EINVOICEBE_SANDBOX_CONFIRMED=1`.
+- **Peppol transport:** provider-neutral webhooks in `IntrAgile\EInvoicing\Transport\Webhook`:
+  the `WebhookParser` interface (`parse()`, `verify()`), `WebhookEvent` and `WebhookKind`
+  (`DocumentReceived`, `DeliveryChanged`, `Other`). `RecommandWebhook`, `B2BrouterWebhook` and
+  `EInvoiceBeWebhook` implement it. Webhooks are verified offline against each provider's
+  documented scheme, not live.
+- **Peppol transport:** the `InboundSource` contract states that consumers de-duplicate on the
+  document id, because a provider that cannot record acknowledgements lists a document again.
+- **Documentation:** a section per driver in `docs/TRANSPORT.md` and a driver table in the README.
+  Live transmission is not verified for any driver yet; Storecove is planned for 1.0.0.
 - **Peppol transport:** XRechnung over Peppol. `OutboundDocument::fromXml()` sends XRechnung 3.0
   (CIUS: UBL Invoice, UBL CreditNote and CII) and the XRechnung 3.0 Extension (UBL Invoice and
   CII) under their own Peppol document types (`XRechnungPeppol`, Peppol Code Lists v9.7), and
@@ -126,7 +148,7 @@ All notable changes to this project are documented here. The format follows
   Directory's two requests per second per instance.
 - `RecommandTransport`: sending, delivery status, inbox polling, fetching (SBDH unwrapped) and
   acknowledging through the Recommand access point API; `RecommandWebhook` verifies the
-  HMAC-SHA256 signature of webhook notifications and exposes the idempotency key. Tested offline
+  HMAC-SHA256 signature of webhook notifications and exposes a deduplication key. Tested offline
   against fixtures written from the published API description; live transmission is not verified
   yet (test group `recommand-live`).
 - `EnvelopeWriter` and `EnvelopeReader`: the Peppol Business Message Envelope (SBDH), written in
@@ -172,6 +194,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Peppol transport (public API):** `Recommand\WebhookEvent` is removed in favour of
+  `Transport\Webhook\WebhookEvent`, which `RecommandWebhook::parse()` now returns. Its fields:
+  `kind` (a `WebhookKind`) is new; `deduplicationKey` (always set) replaces `idempotencyKey`;
+  `accountId` replaces `companyId`; `type`, `documentId`, `deliveryState` and `failure` are kept.
+- **Peppol transport (public API):** `RecommandWebhook::verify(string $rawBody, array $headers)`
+  takes the request headers instead of the signature header value.
+- **Recommand (behaviour change):** without an `X-Idempotency-Key` header, the webhook
+  deduplication key is `"{type}:{documentId}:{state}"` (the delivery state value, empty without
+  one) instead of `null`. A signature header that appears more than once, even with identical
+  values, is refused with `AuthenticationFailed`. An event type other than `document.received`,
+  `document.sent` and `document.delivery_status_changed` is `WebhookKind::Other`.
 - **Peppol transport (behaviour change):** a UBL document sent over Peppol needs the exact Peppol
   BIS specification identifier (BT-24) or an XRechnung pair of root element and BT-24. The
   writers' default `urn:cen.eu:en16931:2017` (an invoice without process control) is refused with

@@ -3,14 +3,14 @@
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
 This page explains how to send and receive invoices over Peppol with this package: sending through
-an access point (Recommand is the available driver; Storecove, e-invoice.be and B2Brouter are
+an access point (Recommand, B2Brouter and e-invoice.be are the available drivers; Storecove is
 planned for 1.0.0), looking up participants in the SML and their SMP, searching the Peppol
 Directory, receiving documents by polling or webhooks, the errors and what to do about each, the
 SBDH envelope, and what is verified and what is not. The invoice format and its validation are
 described in [PEPPOL.md](PEPPOL.md).
 
-> **Live transmission through Recommand is not yet verified.** The Recommand driver is tested
-> offline against fixtures written by hand from Recommand's published API description; see
+> **No driver is live-tested yet.** The Recommand, B2Brouter and e-invoice.be drivers are tested
+> offline against fixtures written by hand from each provider's published API description; see
 > [What is verified](#what-is-verified).
 
 ## Quick start
@@ -190,8 +190,9 @@ clients, not with Guzzle or Symfony.
   (`new HttpClient($client, $factory, $factory, $maxBytes, [$apiKey])`), each raw, URL-encoded
   and Base64-encoded. A body is redacted before its 500-byte excerpt is cut, so a secret across
   the cut is replaced whole. Secrets shorter than eight characters are ignored. Text that echoes
-  only part of a secret, or encodes it some other way, is not recognised. `RecommandTransport`
-  adds its API key id and secret by itself.
+  only part of a secret, or encodes it some other way, is not recognised. The built-in drivers
+  add their own credentials by themselves (`RecommandTransport` its API key id and secret,
+  `B2BrouterTransport` and `EInvoiceBeTransport` their API key).
 - A PSR-18 client's own exception, chained as the previous exception, is passed through
   unchanged, so check what your client puts in its messages before logging the whole chain.
 - `send()` takes an optional `$maxBytes` that lowers the size cap for one response; a body over
@@ -206,7 +207,7 @@ the same call later may succeed **and cannot cause a duplicate**.
 | Exception | `isRetryable()` | When | What to do |
 |---|---|---|---|
 | `InvalidDocument` | false | `ValidatingTransport` found a fatal finding or a dynamic error; nothing was sent | Fix the invoice; `$e->report` is the `ValidationReport` |
-| `DocumentRejected` | false | The access point refused the document (Recommand HTTP 400 on send) | Fix the document; `$e->errors` holds the provider's details |
+| `DocumentRejected` | false | The access point refused the document (Recommand HTTP 400 on send; B2Brouter 400, 406, 409 or 422; e-invoice.be 415 or 422 on upload, 400, 406, 409 or 422 on send) | Fix the document; `$e->errors` holds the provider's details |
 | `RecipientUnreachable` | false | The receiver is not registered or does not accept this document type (Recommand HTTP 422) | `$e->category` is a `FailureCategory`; use another channel or ask the receiver |
 | `AuthenticationFailed` | false | Wrong credentials or missing permission (HTTP 401/403); a webhook with a bad signature | Fix the configuration; for a webhook, refuse the request |
 | `RateLimited` | true | Too many requests (HTTP 429) | Wait `$e->retryAfterSeconds` (when given), then retry |
@@ -226,8 +227,17 @@ arrive as the same client exception. For a send, the access point may therefore 
 the invoice. Resending at once risks delivering it twice. Instead:
 
 1. Mark the invoice as "outcome unknown" in your system, not as failed.
-2. Check the access point's document list (for Recommand, the documents of the company in the
-   dashboard or the API) for a document to the same receiver with the same invoice number.
+2. Check the access point's document list for a document to the same receiver with the same
+   invoice number. The exception message says where to look:
+   - Recommand: the documents of the company in the dashboard or the API;
+   - B2Brouter: the invoices of the account, by invoice number. Its API documentation says an
+     invoice number that already exists in the account is refused (HTTP 422 `parameter_taken`,
+     reported as `DocumentRejected` with the category `duplicate`), so a resend of an imported
+     invoice should fail rather than deliver it twice;
+   - e-invoice.be: when the upload got no answer, the drafts, by invoice number (send an existing
+     draft rather than uploading again); when the upload succeeded and the send call got no
+     answer, the message names the draft id: read its state and send it again only when it is
+     `DRAFT` or `FAILED`.
 3. Resend only when it is not there.
 
 `send()` treats these answers the same way: every 5xx status except 503 (a server error may come
@@ -347,10 +357,15 @@ document id.
 
 ### Webhooks
 
+Every built-in driver has a webhook parser that implements `Transport\Webhook\WebhookParser`
+(`RecommandWebhook`, `B2BrouterWebhook`, `EInvoiceBeWebhook`) and returns the same
+provider-neutral `WebhookEvent`:
+
 ```php
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\Recommand\RecommandWebhook;
+use IntrAgile\EInvoicing\Transport\Webhook\WebhookKind;
 
 $webhook = new RecommandWebhook($webhookSecret);   // response() stands for your framework's response
 
@@ -358,36 +373,68 @@ try {
     // The raw request body, never re-encoded JSON; $headers as name => value or list of values.
     $event = $webhook->parse($rawBody, $headers);
 } catch (AuthenticationFailed) {
-    return response('', 401);                       // missing or wrong X-Signature
+    return response('', 401);                       // missing, repeated or wrong signature
 } catch (UnexpectedResponse) {
     return response('', 204);                       // signed, but not a document event: ignore it
 }
 
-if (! $alreadySeen($event->idempotencyKey)) {      // X-Idempotency-Key: deliveries can repeat
-    // $event->type, $event->documentId, $event->deliveryState, $event->failure
-    // A notification carries no document: fetch($event->documentId) for "document.received".
+if (! $alreadySeen($event->deduplicationKey)) {    // deliveries can repeat
+    match ($event->kind) {
+        WebhookKind::DocumentReceived => $queueFetch($event->documentId),   // fetch() it; the event carries no document
+        WebhookKind::DeliveryChanged => $event->deliveryState === null
+            ? $queueStatusCheck($event->documentId)                         // the event did not say how: read status()
+            : $record($event->documentId, $event->deliveryState, $event->failure),
+        WebhookKind::Other => null,
+    };
 }
 
 return response('', 204);
 ```
 
+- `$event->kind` says what the event is about (`DocumentReceived`, `DeliveryChanged` or `Other`);
+  `$event->type` keeps the provider's event name as sent.
+- `$event->deliveryState` is `null` when the provider did not say where delivery stands; read
+  `status()` then. Events arrive more than once and not always in order, so never let an event
+  move a document out of a final state.
+- `$event->accountId` is the provider account the event names (Recommand company, B2Brouter
+  account, e-invoice.be tenant), or `null` when it names none. Compare it with your own account
+  when one endpoint could receive events of several accounts.
+- `$event->deduplicationKey` is the same on every retry of one delivery; how each provider builds
+  it is described below.
+- **Header names are matched case-insensitively, and a signature header that appears more than
+  once is refused**, even when the copies are identical.
+- `verify($rawBody, $headers)` returns the signature check alone as a boolean and never throws.
+- Answer a notification you ignore with 2xx, or the provider keeps retrying it.
+- **Webhooks are not live-tested.** That needs a public HTTPS endpoint. The signatures are
+  verified offline against each provider's documented scheme; for e-invoice.be also against its
+  published test vector.
+
+Recommand:
+
 - The signature is an HMAC-SHA256 of the raw body (`X-Signature: sha256=<hex>`), compared in
   constant time. Pass the body exactly as received; a decoded and re-encoded body no longer
   matches.
-- Only document events are parsed. A correctly signed notification throws `UnexpectedResponse`
-  when its body is not valid JSON, is not a JSON object, or has no non-empty `eventType` or
-  `documentId` (for example a company verification event). Answer it with 2xx anyway, or the
-  sender will keep retrying it; log `$e->bodyExcerpt` if you want to see what was ignored.
+- `document.received` is `DocumentReceived`; `document.sent` and
+  `document.delivery_status_changed` are `DeliveryChanged`; any other type is `Other`. A correctly
+  signed notification throws `UnexpectedResponse` when its body is not valid JSON, is not a JSON
+  object, or has no non-empty `eventType` or `documentId` (for example a company verification
+  event). Log `$e->bodyExcerpt` if you want to see what was ignored.
+- The deduplication key is the `X-Idempotency-Key` header, or `"{type}:{documentId}:{state}"`
+  (the delivery state value, empty when the event reports none) when the header is missing,
+  blank or repeated, so that two different transitions of one document never share a key.
 - A status event whose `deliveryStatus` is `null` gives `DeliveryState::Unknown`. This differs
   from `send()` and `status()`, where a missing or `null` `deliveryStatus` gives
-  `DeliveryState::Pending`: the document was accepted and its delivery is not yet known.
-- `verify($rawBody, $signatureHeader)` returns the signature check alone as a boolean.
+  `DeliveryState::Pending`: the document was accepted and its delivery is not yet known. An event
+  of a non-Peppol channel (for example e-mail) without a `deliveryStatus` carries no state.
+
+B2Brouter and e-invoice.be: see [B2Brouter webhooks](#b2brouter-webhooks) and
+[e-invoice.be webhooks](#e-invoicebe-webhooks).
 
 ## The SBDH envelope
 
 On the Peppol network every document travels inside a Standard Business Document: the Peppol
-Business Message Envelope (SBDH) followed by the document. Recommand builds the envelope itself,
-so `RecommandTransport` sends the bare invoice. For an access point that expects the whole
+Business Message Envelope (SBDH) followed by the document. Recommand, B2Brouter and e-invoice.be
+build the envelope themselves, so their drivers send the bare invoice. For an access point that expects the whole
 Standard Business Document, or for archiving, write and read it yourself:
 
 ```php
@@ -470,6 +517,255 @@ already returned. `fetch()` and `acknowledge()` of an unknown inbound id throw
 - Recommand returns the whole inbox in one `pending()` call, so acknowledge processed documents
   to keep it short.
 
+## B2Brouter
+
+```php
+use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
+use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterTransport;
+use IntrAgile\EInvoicing\Transport\OutboundDocument;
+use IntrAgile\EInvoicing\Transport\ValidatingTransport;
+use IntrAgile\EInvoicing\Validation\PeppolPayloadValidator;
+
+$config = new B2BrouterConfig($apiKey, $accountId);   // the account id as an int or as digits
+$b2brouter = new B2BrouterTransport($config, $http);
+
+$transport = new ValidatingTransport($b2brouter, PeppolPayloadValidator::create(__DIR__.'/var/peppol-rules'));
+$result = $transport->send(OutboundDocument::fromXml($ublXml));
+$result->documentId;   // the B2Brouter invoice id (digits)
+```
+
+**Configuration.** `B2BrouterConfig($apiKey, $accountId, $baseUrl, $documentTypeCodes)` takes the
+API key (at least eight characters, kept out of dumps and messages), the B2Brouter account that
+sends and receives (a positive integer), the base URL (default `https://api.b2brouter.net`) and
+extra document type codes (below). Every request carries the key in `X-B2B-API-Key` and pins
+`X-B2B-API-Version: 2026-06-26`, the API version the driver was built against, so an account
+setting cannot change the response shapes. B2Brouter routes a request to its **sandbox by the key
+alone**: a key that starts with `test_` goes to the sandbox, on the same base URL.
+`$config->isSandboxKey()` tells which one you have.
+
+**What can be sent.** B2Brouter takes the XML and a B2Brouter document type code, which decides
+the format of the document it transmits. The driver maps the Peppol document type:
+
+| Peppol document type | B2Brouter code |
+|---|---|
+| `PeppolBis3::INVOICE` | `xml.ubl.invoice.bis3` |
+| `PeppolBis3::CREDIT_NOTE` | `xml.ubl.credit_note.bis3` |
+| any other, for example XRechnung | only with a code you configure |
+
+Any other document type is refused with `UnsupportedDocument` before a request is made, unless
+`$documentTypeCodes` maps it (`[XRechnungPeppol::UBL_INVOICE => '<code>']`; codes are 3 to 100
+characters of `a-z`, `0-9`, `.` and `_`). B2Brouter documents no code for XRechnung 3.0 yet, only
+the old `xml.ubl.invoice.xrechnung.v22`; the codes of your account are listed by its
+`GET /document_types` call. A send imports the XML into the account and queues it for sending in
+one request (`POST /accounts/{account}/invoices/import`, with `send_after_import`, `issued`, the
+transport `peppol` and the code).
+
+**Who builds the SBDH.** B2Brouter. The driver sends the bare invoice.
+
+**The delivered document is not byte-for-byte your XML.** B2Brouter renders the transmitted
+document from its own invoice model, in the format of the document type code, so the bytes that
+reach the receiver may differ from the XML you passed in (and validated). B2Brouter keeps the
+document as delivered as the invoice's "legal" document (`GET /invoices/{id}/as/legal`); the
+driver does not read it.
+
+**Status.** `status()` reads `GET /invoices/{id}`. `changedAt` is the invoice's
+`state_updated_at`. An id that belongs to a received invoice is an `UnexpectedResponse` (B2Brouter
+answers it with a redirect, which is never followed).
+
+| B2Brouter state | `DeliveryState` | Failure |
+|---|---|---|
+| `new`, `sending` | `Pending` | |
+| `sent`, `registered`, `read`, `accepted`, `refused`, `received`, `allegedly_paid`, `paid`, `closed` | `Delivered` | |
+| `error` | `Failed` | `recipient_not_found` for the error code `PEPPOL_NO_RECEIVER`, else `transport`; with B2Brouter's `error_message` and `error_code` |
+| `invalid` | `Failed` | `validation` |
+| any other state (for example `annulled`, `expired`) or none | `Unknown` | |
+
+`refused`, `accepted` and `paid` are business responses of the receiver. They come after
+delivery to the receiver's access point and do not change the delivery state, as for Recommand.
+
+**Inbound.** `pending()` lists the account's unacknowledged received invoices, at most ten pages
+of 100 per call; acknowledge processed ones to reach those behind them. The list reports no Peppol
+participant identifiers, so `sender` and `receiver` are `null`; `documentType` is B2Brouter's
+document type code, not a Peppol identifier, and `receivedAt` is the invoice's `created_at`.
+`fetch()` reads the document exactly as B2Brouter stored it (`GET /invoices/{id}/as/original`),
+removes an SBDH when there is one, and follows one redirect only when it stays on the base URL's
+host (the API key is sent again); any other redirect is an `UnexpectedResponse`. Its reference holds only the id and the time of the fetch.
+`acknowledge()` calls `POST /invoices/{id}/ack`, which removes the invoice from `pending()`; it is
+idempotent, so it is safe to repeat after an `OutcomeUnknown`.
+
+**Sandbox.** A B2Brouter sandbox is free and self-service. It **simulates** the Peppol network:
+nothing reaches a real access point, and the SMP is never queried. Pre-created test recipients
+(GLN, scheme `0088`) give fixed outcomes: `0088:9508397101047` ends `registered`,
+`0088:9506215594996` ends `refused` (a business response, still `Delivered`), and
+`0088:9500047420799` fails with `PEPPOL_NO_RECEIVER`. Received documents are not simulated;
+importing a document as a received invoice seeds the inbox.
+
+### B2Brouter webhooks
+
+```php
+use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterWebhook;
+
+$webhook = new B2BrouterWebhook($webhookSecret);         // no timestamp check (the default)
+$webhook = new B2BrouterWebhook($webhookSecret, 300);    // refuse a signed time more than 300 s from now
+```
+
+- The secret is the web hook's signing secret (`signing_secret` in B2Brouter's web hook object).
+- B2Brouter signs with `X-B2Brouter-Signature: t=<unix time>,s=<hex>`, an HMAC-SHA256 of
+  `"<t>.<raw body>"`. The header must appear exactly once and match that form exactly; pass the
+  body exactly as received.
+- `issued_invoice.state_change` is `DeliveryChanged` with the state of `data.state` as in the
+  table above (`null` when the notification has no state). The failure is always `null`, because
+  the notification carries no error code: read `status()` for it. `received_invoice.created` is
+  `DocumentReceived`; any other event with an invoice id is `Other`. A signed notification without
+  `data.invoice_id` throws `UnexpectedResponse`. The account id is `data.account_id`.
+- The deduplication key is the `X-B2Brouter-Delivery-Id` header, the same on every attempt of one
+  delivery. Without it, the key is `"<code>:<invoice id>:<data.event_id>"`, or
+  `"<code>:<invoice id>:<data.state>"` when there is no event id either.
+- **The `X-B2Brouter-Delivery-Id` header is not covered by the signature**, and the signed
+  timestamp is **not checked by default**. Someone who captured a signed notification can
+  therefore send it again later, with a new delivery id, and it is accepted as a new delivery. It
+  can only repeat a state B2Brouter really reported for that invoice; never let it move a document
+  out of a final state. The tolerance is off because B2Brouter retries a failed delivery for about
+  a week, treats any 4xx answer other than 429 as final, and does not say whether a retry is signed
+  again: with a tolerance, a legitimate late retry would be refused for good. To check the
+  timestamp anyway, pass the tolerance in seconds as the second constructor argument (in the
+  Laravel bridge, `webhook_tolerance`); a value well above your longest outage keeps late retries,
+  if B2Brouter signs them again.
+
+**Rate limits.** 1,000 requests per minute in production, 600 in the sandbox and on staging.
+A 429 answer throws `RateLimited`; B2Brouter documents no `Retry-After` header, so
+`retryAfterSeconds` is usually `null` and you choose the wait. The driver does not throttle.
+
+**Not verified yet** (these are checked when the driver is first run against the sandbox):
+
+- that a send is delivered to the buyer's electronic address (`cbc:EndpointID`);
+- whether the delivered "legal" document equals the XML sent;
+- which document type codes exist for XRechnung 3.0 UBL and CII;
+- whether a received document's original carries an SBDH (the driver unwraps one either way);
+- whether B2Brouter checks that the seller's tax id matches the account;
+- whether webhook retries are signed again;
+- whether a 429 answer carries `Retry-After`, and the full list of Peppol delivery error codes;
+- that the received-invoice list carries no Peppol participant identifiers.
+
+## e-invoice.be
+
+```php
+use IntrAgile\EInvoicing\Transport\EInvoiceBe\EInvoiceBeConfig;
+use IntrAgile\EInvoicing\Transport\EInvoiceBe\EInvoiceBeTransport;
+use IntrAgile\EInvoicing\Transport\OutboundDocument;
+use IntrAgile\EInvoicing\Transport\ValidatingTransport;
+use IntrAgile\EInvoicing\Validation\PeppolPayloadValidator;
+
+$config = new EInvoiceBeConfig($apiKey);   // inboundLookbackDays: 7, inboundMaxPages: 10
+$einvoicebe = new EInvoiceBeTransport($config, $http);
+
+$transport = new ValidatingTransport($einvoicebe, PeppolPayloadValidator::create(__DIR__.'/var/peppol-rules'));
+$result = $transport->send(OutboundDocument::fromXml($ublXml));
+$result->documentId;   // the e-invoice.be document id, "doc-…"
+```
+
+**Configuration.** `EInvoiceBeConfig($apiKey, $baseUrl, $inboundLookbackDays, $inboundMaxPages)`
+takes the API key (at least eight characters, sent as a bearer token and kept out of dumps and
+messages), the base URL (default `https://api.e-invoice.be`) and the two inbound limits below.
+e-invoice.be uses **one host for test and production**: the company the key belongs to decides
+whether a send reaches the Peppol network.
+
+**What can be sent.** Peppol BIS Billing 3.0 UBL only: `PeppolBis3::INVOICE` and
+`PeppolBis3::CREDIT_NOTE`, where the document's declared type and its XML must both resolve to
+one of them. XRechnung and CII are refused with `UnsupportedDocument` before any request;
+self-billing is out of scope for 1.0. A send takes two requests: the UBL is uploaded as a draft
+(`POST /api/documents/ubl`), then the draft is sent (`POST /api/documents/{id}/send`) with the
+sender's and receiver's scheme and id from the document. The draft id is the document id. A
+refused send leaves the draft in the account. HTTP 409 on the send (the sender is not one of the
+company's Peppol identifiers) is a `DocumentRejected`; 405 (the draft is not `DRAFT` or `FAILED`)
+is an `UnexpectedResponse`.
+
+**Who builds the SBDH.** e-invoice.be. The driver sends the bare invoice.
+
+**Byte-for-byte, except the EndpointIDs.** When it transmits the document, e-invoice.be writes the
+final sender and receiver into the `cbc:EndpointID` elements of the UBL; the rest of the document
+is sent unchanged.
+
+**Status.** `status()` reads `GET /api/documents/{id}`.
+
+| e-invoice.be state | `DeliveryState` | Failure |
+|---|---|---|
+| `DRAFT`, `TRANSIT` | `Pending` | |
+| `SENT` | `Delivered` | |
+| `FAILED` | `Failed` | `transport`, provider code `send_failed`; `changedAt` is the newest `send_failed` time of the timeline |
+| any other state, or none | `Unknown` | |
+
+e-invoice.be does not record the technical reason of a failed transmission, so the failure only
+says that it failed. A `FAILED` document can be sent again. When the timeline cannot be read, the
+state is still `Failed`, without a message.
+
+**Inbound without a remote acknowledgement.** e-invoice.be has no call to mark a received document
+as processed and no unread filter, so:
+
+- `pending()` lists the inbox newest first, back to `inboundLookbackDays` (default 7, 1 to 365),
+  reading at most `inboundMaxPages` pages of 100 (default 10, 1 to 100). It lists a processed
+  document again on every call until the document falls out of the look-back, so **de-duplicate
+  on the document id**. A document that falls out of the look-back before you fetched it is not
+  listed any more: poll more often than the look-back, or use webhooks.
+- The inbox reports no Peppol participants or document type, so `sender`, `receiver` and
+  `documentType` are `null`; `receivedAt` is the inbox entry's time.
+- `fetch()` reads the document's UBL record, then downloads the document from its signed URL
+  **without the API key**, over https only. The signed URL is a credential and is kept out of
+  every message. When the record carries a SHA-256 file hash, the download must match it. An SBDH
+  is removed when present. The reference carries the sender and receiver of the record.
+- `acknowledge()` checks the id and records nothing remotely.
+
+**Sandbox.** A sandbox company is free and needs no VAT or contact verification. It **simulates**
+the Peppol network: a send becomes an e-mail with the UBL to the company's contact address, and
+then the document is `SENT`. e-invoice.be documents that a sandbox company without a contact
+e-mail address answers the send with HTTP 400 (a `DocumentRejected`) **and still moves the document
+to `SENT`**, so give it a contact address. Received documents can only be simulated with
+"Simulate inbound" in the e-invoice.be app; a send to yourself never reaches your inbox. No API
+field tells a sandbox company from a production one.
+
+### e-invoice.be webhooks
+
+```php
+use IntrAgile\EInvoicing\Transport\EInvoiceBe\EInvoiceBeWebhook;
+
+$webhook = new EInvoiceBeWebhook($webhookSecret);   // the "secret" of the webhook create response
+```
+
+- e-invoice.be signs with `X-Signature: sha256=<hex>`, an HMAC-SHA256 **not of the raw body but of
+  a canonical JSON string** of the event: the output of Python's
+  `json.dumps(payload, sort_keys=True)`. The parser decodes the body and rebuilds that string
+  (`EInvoiceBe\CanonicalJson`). **Do not compute the HMAC of the raw body yourself, and do not
+  re-encode the body before you pass it**: pass it exactly as received. A body whose canonical form
+  cannot be rebuilt, such as one with a number that has a fraction or an exponent, or an integer
+  outside the PHP range, is refused with `AuthenticationFailed` (it fails closed); the documented
+  events carry no such number.
+- `document.received` is `DocumentReceived`. `document.sent` is `DeliveryChanged` with
+  `Delivered`. `document.sent.failed` is `DeliveryChanged` **without a state**: read `status()`,
+  which also gives the failure. `document.received.failed` and any other type are `Other`. A
+  signed notification without `data.document_id` throws `UnexpectedResponse`. The account id is
+  `tenant_id`.
+- The deduplication key is `"<type>:<document id>"`, because the event id changes on every
+  attempt. **This merges distinct events of the same type for one document**: a second
+  `document.sent.failed` after a resend has the same key as the first. It follows from
+  e-invoice.be's event model (an event carries no state and no stable id), so de-duplicate by
+  reading the document state rather than by trusting the key alone.
+- e-invoice.be makes at most three attempts (2xx within 10 seconds counts as success) and does not
+  keep the order of events.
+
+**Rate limits.** e-invoice.be limits only some calls, among them the UBL upload. A 429 answer
+throws `RateLimited`, whose `retryAfterSeconds` is the `Retry-After` header; e-invoice.be documents
+it as the length of its rate window rather than the time until the limit resets. The driver does
+not throttle.
+
+**Not verified yet** (these are checked when the driver is first run against the sandbox):
+
+- how long a signed download URL stays valid, which matters when the fetch is queued;
+- whether the UBL record of a received CII document serves it unchanged;
+- that document ids always have the form `doc-` followed by letters and digits;
+- that the record's file hash is a SHA-256 (a hash of another shape is ignored);
+- where e-invoice.be takes the envelope's `COUNTRY_C1` from;
+- whether `GET /api/me/` tells a sandbox company apart.
+
 ## What is verified
 
 | Area | How | Status |
@@ -479,6 +775,9 @@ already returned. `fetch()` and `acknowledge()` of an unknown inbound id throw
 | SML and SMP lookup | Offline tests with scripted DNS answers and SMP fixtures; live test group `network` against the production SML and public SMPs (a known participant, its endpoints, a random unregistered id) | Live checks passed on 2026-11-12 |
 | Peppol Directory | Offline tests with recorded answers; one manual live search and lookup against the production Directory (no live test in the suite) | Manual check passed on 2026-11-12 |
 | Recommand driver | Offline tests with JSON fixtures **hand-written from Recommand's published API description** (OpenAPI document and source), not recorded from the live service | **Live transmission not yet verified** |
+| B2Brouter driver | Offline contract tests with JSON fixtures hand-written from B2Brouter's public API reference (OpenAPI 2026-06-26) and developer guides | **Not live-tested** |
+| e-invoice.be driver | Offline contract tests with JSON fixtures hand-written from e-invoice.be's public API reference (OpenAPI 1.1.0) and guides | **Not live-tested** |
+| Webhook signatures | Offline tests against each provider's documented signing scheme; e-invoice.be also against its published test vector | **Not live-tested** (needs a public HTTPS endpoint) |
 
 A live test group, `recommand-live`, sends the Peppol base example through a Recommand
 playground team and then calls `status()`, `pending()`, `fetch()` and `acknowledge()`. It
@@ -490,7 +789,26 @@ RECOMMAND_API_KEY_ID=key_… RECOMMAND_API_SECRET=secret_… RECOMMAND_COMPANY_I
     vendor/bin/phpunit --group recommand-live
 ```
 
-Neither live group runs by default; `vendor/bin/phpunit --group network` runs the unauthenticated
+Two more live groups run against the providers' sandboxes. Both prove the provider's API contract
+against its **simulation**, not delivery over Peppol:
+
+- `b2brouter-live` sends to the three sandbox test recipients, queries their status, seeds the
+  inbox with an imported received invoice, fetches and acknowledges it, and prints the XRechnung
+  document type codes and whether the delivered document equals the sent XML. It needs
+  `B2BROUTER_API_KEY` and `B2BROUTER_ACCOUNT_ID` (optionally `B2BROUTER_BASE_URL`) and refuses a key
+  that does not start with `test_` before any request.
+- `einvoicebe-live` sends to the company's own Peppol id, queries the status, and lists, fetches
+  and acknowledges the inbox. It needs `EINVOICEBE_API_KEY` and `EINVOICEBE_SANDBOX_CONFIRMED=1`
+  (your statement that the key belongs to a sandbox company, since no API field tells); without
+  the confirmation it fails before any request. For the inbox case, simulate a received document
+  in the e-invoice.be app and set `EINVOICEBE_EXPECT_INBOUND_NUMBER` to its invoice number.
+
+```bash
+B2BROUTER_API_KEY=test_… B2BROUTER_ACCOUNT_ID=… vendor/bin/phpunit --group b2brouter-live
+EINVOICEBE_API_KEY=… EINVOICEBE_SANDBOX_CONFIRMED=1 vendor/bin/phpunit --group einvoicebe-live
+```
+
+No live group runs by default; `vendor/bin/phpunit --group network` runs the unauthenticated
 SML and SMP lookups (and the rule download from GitHub).
 
 ## Known limitations
@@ -505,9 +823,14 @@ SML and SMP lookups (and the rule download from GitHub).
   `NaptrResolver` in production.
 - **Only the first-ranked NAPTR record** is tried.
 - **Directory rate limit** (2 requests per second) is enforced per `DirectoryClient` instance.
-- **One access point driver today**: Recommand is the available driver; Storecove, e-invoice.be
-  and B2Brouter are planned for 1.0.0. The `Transport` and `InboundSource` interfaces are the
+- **Three access point drivers today**: Recommand, B2Brouter and e-invoice.be; Storecove is
+  planned for 1.0.0. The `Transport`, `InboundSource` and `WebhookParser` interfaces are the
   extension point for others.
+- **e-invoice.be sends BIS Billing 3.0 UBL only**; B2Brouter sends XRechnung only with a document
+  type code you configure.
+- **B2Brouter renders the delivered document itself**, so it may differ from the XML you validated.
+- **e-invoice.be cannot acknowledge** received documents; they are listed again until they fall
+  out of the look-back.
 
 ---
 

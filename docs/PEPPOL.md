@@ -265,9 +265,10 @@ input in [Resource use](VALIDATION.md#resource-use) apply here too.
 
 ## Not covered yet
 
-- **Live network transmission through Recommand** is not verified yet. Sending, receiving and
-  participant lookup are described in [TRANSPORT.md](TRANSPORT.md), with what is verified and
-  how; the lookups (SML, SMP) have been checked against the live network.
+- **Live transmission through the access point drivers** (Recommand, B2Brouter, e-invoice.be)
+  is not verified yet; Storecove is planned for 1.0.0. Sending, receiving and participant lookup
+  are described in [TRANSPORT.md](TRANSPORT.md), with what is verified and how; the lookups (SML,
+  SMP) have been checked against the live network.
 - **Self-billing over Peppol** is refused, and CII is sent only for XRechnung; see
   [What can be sent](#what-can-be-sent).
 - Other Peppol BIS documents (orders, despatch advice and the like) are refused, not validated.

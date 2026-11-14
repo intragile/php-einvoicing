@@ -34,9 +34,9 @@ Included today:
   model.
 - Peppol transport: sending and receiving through an access point, SML and SMP participant
   lookup, Peppol Directory search, webhook verification, and an SBDH envelope writer and reader
-  ([Peppol transport](docs/TRANSPORT.md)). Recommand is the available driver; Storecove,
-  e-invoice.be and B2Brouter are planned for 1.0.0. Live transmission through Recommand is not
-  verified yet.
+  ([Peppol transport](docs/TRANSPORT.md)). Recommand, B2Brouter and e-invoice.be are the
+  available drivers; Storecove is planned for 1.0.0 (follow-up). No driver is live-tested yet
+  ([drivers](#drivers)).
 - ZUGFeRD / Factur-X 1.0 (profiles MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED and XRECHNUNG):
   writing the profile XML, embedding it into a PDF/A you supply, reading it back out of a hybrid
   PDF, and validating it, with the optional Apache-2.0 rules package
@@ -334,8 +334,26 @@ $result = $transport->send(OutboundDocument::fromXml($xml));   // or OutboundDoc
 
 `$http` wraps any PSR-18 client (Guzzle, Symfony) and PSR-17 factories; the package itself
 depends only on the PSR interfaces. The sender, receiver, document type and process are read from
-the invoice. Recommand is the available driver; Storecove, e-invoice.be and B2Brouter are planned
-for 1.0.0.
+the invoice. `B2BrouterTransport` and `EInvoiceBeTransport` plug in the same way.
+
+### Drivers
+
+Recommand, B2Brouter and e-invoice.be are the available drivers; Storecove is planned for 1.0.0
+(follow-up).
+
+| Driver | Peppol test network | Provider sandbox | Status at release |
+|---|---|---|---|
+| Recommand | yes (playground team with `useTestNetwork`) | yes | not live-tested (offline contract tests from the public API docs) |
+| B2Brouter | no (the sandbox simulates the network) | yes, free | not live-tested (offline contract tests from the public API docs) |
+| e-invoice.be | no (the sandbox simulates the network) | yes, free | not live-tested (offline contract tests from the public API docs) |
+| Storecove | unverified | 30-day, on request | planned for 1.0.0 |
+
+A test against a provider sandbox that simulates the network proves the provider's API contract,
+not delivery over Peppol; only Recommand can reach the Peppol test network. e-invoice.be sends
+Peppol BIS Billing 3.0 UBL only. B2Brouter renders the document it transmits from its own invoice
+model, so the delivered bytes may differ from your XML. Webhook signatures are verified offline
+against each provider's documented scheme, not live. Details per driver:
+[docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 What can be sent: Peppol BIS Billing 3.0 as UBL Invoice or CreditNote, with the exact BIS
 specification identifier (BT-24); XRechnung 3.0 as UBL Invoice, UBL CreditNote or CII; and the
@@ -353,8 +371,8 @@ rules to an XRechnung document (which needs `intragile/einvoicing-rules-xrechnun
 says through `isRetryable()` whether retrying is safe; an `OutcomeUnknown` means the access point
 may have accepted the document, so check before resending. Participant lookup (SML and SMP), the
 Peppol Directory, receiving by polling or webhooks, the SBDH envelope, what is verified and the
-known limitations: [docs/TRANSPORT.md](docs/TRANSPORT.md). Live transmission through Recommand is
-not verified yet; the driver is tested against fixtures written from Recommand's published API
+known limitations: [docs/TRANSPORT.md](docs/TRANSPORT.md). Live transmission is not verified
+yet for any driver; each is tested against fixtures written from the provider's published API
 description.
 
 ## Security: hostile XML

@@ -34,9 +34,9 @@ Jelenleg tartalmazza:
   XRechnung írása a modellből.
 - Peppol-átvitel: küldés és fogadás hozzáférési ponton keresztül, résztvevő keresése az SML-ben
   és az SMP-ben, keresés a Peppol Directoryban, webhookok ellenőrzése, valamint SBDH-boríték írása
-  és olvasása ([Peppol-átvitel](docs/TRANSPORT.md), angolul). Elérhető meghajtó a Recommand; a
-  Storecove, az e-invoice.be és a B2Brouter meghajtó az 1.0.0-ra tervezett. Az éles küldést a
-  Recommandon keresztül még nem ellenőriztük.
+  és olvasása ([Peppol-átvitel](docs/TRANSPORT.md), angolul). Elérhető meghajtó a Recommand, a
+  B2Brouter és az e-invoice.be; a Storecove az 1.0.0-ra tervezett (külön lépésben). Egyik
+  meghajtót sem teszteltük még élesben ([meghajtók](#meghajtók)).
 - ZUGFeRD / Factur-X 1.0 (MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED és XRECHNUNG profil): a
   profil XML-jének írása, beágyazása egy általad adott PDF/A-ba, kiolvasása a hibrid PDF-ből és
   ellenőrzése, az opcionális, Apache-2.0 licencű `intragile/einvoicing-rules-facturx`
@@ -347,8 +347,26 @@ $result = $transport->send(OutboundDocument::fromXml($xml));   // vagy OutboundD
 
 A `$http` bármilyen PSR-18 klienst (Guzzle, Symfony) és PSR-17 gyárakat csomagol be; maga a csomag
 csak a PSR-interfészektől függ. A küldőt, a címzettet, a dokumentumtípust és a folyamatot a
-számlából olvassa ki. Elérhető meghajtó a Recommand; a Storecove, az e-invoice.be és a B2Brouter
-meghajtó az 1.0.0-ra tervezett.
+számlából olvassa ki. A `B2BrouterTransport` és az `EInvoiceBeTransport` ugyanígy illeszthető be.
+
+### Meghajtók
+
+Elérhető meghajtó a Recommand, a B2Brouter és az e-invoice.be; a Storecove az 1.0.0-ra tervezett
+(külön lépésben).
+
+| Meghajtó | Peppol tesztháló | Szolgáltatói sandbox | Állapot a kiadáskor |
+|---|---|---|---|
+| Recommand | igen (playground csapat `useTestNetwork` beállítással) | igen | élesben nem tesztelt (offline szerződéstesztek a nyilvános API-dokumentációból) |
+| B2Brouter | nem (a sandbox szimulálja a hálózatot) | igen, ingyenes | élesben nem tesztelt (offline szerződéstesztek a nyilvános API-dokumentációból) |
+| e-invoice.be | nem (a sandbox szimulálja a hálózatot) | igen, ingyenes | élesben nem tesztelt (offline szerződéstesztek a nyilvános API-dokumentációból) |
+| Storecove | nem ellenőrzött | 30 napos, kérésre | az 1.0.0-ra tervezett |
+
+A hálózatot csak szimuláló szolgáltatói sandbox elleni teszt a szolgáltató API-szerződését
+igazolja, nem a Peppolon történő kézbesítést; a Peppol teszthálót csak a Recommand éri el. Az
+e-invoice.be csak Peppol BIS Billing 3.0 UBL-t küld. A B2Brouter a továbbított dokumentumot a
+saját számlamodelljéből állítja elő, így a kézbesített bájtok eltérhetnek a te XML-edtől. A
+webhook-aláírásokat a szolgáltatók dokumentált sémája szerint offline ellenőrizzük, élesben nem.
+Meghajtónkénti részletek: [docs/TRANSPORT.md](docs/TRANSPORT.md) (angolul).
 
 Mit lehet elküldeni: Peppol BIS Billing 3.0 számlát UBL Invoice vagy CreditNote formában, a
 pontos BIS specifikáció-azonosítóval (BT-24); XRechnung 3.0-t UBL Invoice, UBL CreditNote vagy
@@ -368,7 +386,7 @@ biztonságos-e az újrapróbálás; az `OutcomeUnknown` azt jelenti, hogy a hozz
 befogadhatta a dokumentumot, ezért újraküldés előtt ellenőrizd. Résztvevő keresése (SML és SMP),
 a Peppol Directory, fogadás lekérdezéssel vagy webhookkal, az SBDH-boríték, mit és hogyan
 ellenőriztünk, és az ismert korlátok: [docs/TRANSPORT.md](docs/TRANSPORT.md) (angolul). Az éles
-küldést a Recommandon keresztül még nem ellenőriztük; a meghajtót a Recommand közzétett
+küldést egyik meghajtóval sem ellenőriztük még; mindegyiket a szolgáltató közzétett
 API-leírásából kézzel írt mintaválaszokkal teszteljük.
 
 ## Biztonság: rosszindulatú XML
