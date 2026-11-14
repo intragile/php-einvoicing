@@ -1,0 +1,14 @@
+{
+    "invoice": {
+        "id": 482913,
+        "type": "IssuedInvoice",
+        "number": "INV-2026-001",
+        "state": "sent",
+        "state_updated_at": "2026-11-12T08:00:09+00:00",
+        "document_type_code": "xml.ubl.invoice.bis3",
+        "error_code": null,
+        "error_message": null,
+        "created_at": "2026-11-12T08:00:04.000Z",
+        "updated_at": "2026-11-12T08:00:09.000Z"
+    }
+}

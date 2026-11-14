@@ -21,6 +21,7 @@ use IntrAgile\EInvoicing\Transport\Http\JsonResponse;
 use IntrAgile\EInvoicing\Transport\InboundReference;
 use IntrAgile\EInvoicing\Transport\Peppol\ParticipantId;
 use IntrAgile\EInvoicing\Transport\SendResult;
+use IntrAgile\EInvoicing\Transport\Timestamp;
 use InvalidArgumentException;
 use Psr\Http\Message\ResponseInterface;
 
@@ -375,7 +376,7 @@ final class ResponseMapper
                 continue;
             }
 
-            return [$this->failure($delivery['failure'] ?? null), $this->time($delivery['statusChangedAt'] ?? null)];
+            return [$this->failure($delivery['failure'] ?? null), Timestamp::parse($delivery['statusChangedAt'] ?? null)];
         }
 
         return [null, null];
@@ -402,7 +403,7 @@ final class ResponseMapper
         if (! is_string($id) || $id === '') {
             throw $this->unexpected($response, 'The Recommand response lists a document without an id');
         }
-        $receivedAt = $this->time($document['createdAt'] ?? null)
+        $receivedAt = Timestamp::parse($document['createdAt'] ?? null)
             ?? throw $this->unexpected($response, sprintf('The Recommand document "%s" has no valid createdAt time (ISO 8601 with a time zone)', $id));
 
         return new InboundReference(
@@ -428,27 +429,6 @@ final class ResponseMapper
         } catch (InvalidArgumentException) {
             return null;
         }
-    }
-
-    /**
-     * The time of an ISO 8601 timestamp with a time zone, in the DATE_ATOM form
-     * (2026-11-12T08:02:00+00:00) or with milliseconds (2026-11-12T07:45:10.000Z); null for any
-     * other value, including a date that does not exist.
-     */
-    private function time(mixed $value): ?DateTimeImmutable
-    {
-        if (! is_string($value) || $value === '') {
-            return null;
-        }
-        foreach ([DATE_ATOM, DATE_RFC3339_EXTENDED] as $format) {
-            $time = DateTimeImmutable::createFromFormat($format, $value);
-            $errors = DateTimeImmutable::getLastErrors();
-            if ($time !== false && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0))) {
-                return $time;
-            }
-        }
-
-        return null;
     }
 
     private static function optionalString(mixed $value): ?string

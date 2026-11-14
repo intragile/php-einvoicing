@@ -1,0 +1,14 @@
+{
+    "invoice": {
+        "id": 482914,
+        "type": "IssuedInvoice",
+        "number": "INV-2026-002",
+        "state": "error",
+        "state_updated_at": "2026-11-12T08:01:12.000Z",
+        "document_type_code": "xml.ubl.invoice.bis3",
+        "error_code": "PEPPOL_NO_RECEIVER",
+        "error_message": "The receiver is not registered in the Peppol network.",
+        "created_at": "2026-11-12T08:01:00.000Z",
+        "updated_at": "2026-11-12T08:01:12.000Z"
+    }
+}
