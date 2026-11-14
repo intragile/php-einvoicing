@@ -76,7 +76,7 @@ final class TotalsCalculator
      * (EN16931-UBL-validation.xslt), so check() and the official validator give the same verdict.
      * That includes the artefact's tolerances, which are looser than the rule texts. XPath round()
      * rounds half towards positive infinity, so the artefact's round(x * 100) div 100 is mirrored
-     * with RoundingMode::HALF_CEILING. A line without BT-131 counts with its computed net amount.
+     * with RoundingMode::HalfCeiling. A line without BT-131 counts with its computed net amount.
      * Without BG-22 only BR-CO-17 is evaluated.
      *
      * @return list<string>
@@ -231,8 +231,8 @@ final class TotalsCalculator
     private static function brCo17(VatBreakdown $entry): bool
     {
         $rate = $entry->rate;
-        if ($rate === null || $rate->toScale(0, RoundingMode::HALF_CEILING)->isZero()) {
-            return $entry->taxAmount->toScale(0, RoundingMode::HALF_CEILING)->isZero();
+        if ($rate === null || $rate->toScale(0, RoundingMode::HalfCeiling)->isZero()) {
+            return $entry->taxAmount->toScale(0, RoundingMode::HalfCeiling)->isZero();
         }
 
         $product = $entry->taxableAmount->abs()->multipliedBy($rate);
@@ -247,7 +247,7 @@ final class TotalsCalculator
      */
     private static function xpathRound2(BigDecimal $value): BigDecimal
     {
-        return $value->toScale(Rounding::SCALE, RoundingMode::HALF_CEILING);
+        return $value->toScale(Rounding::SCALE, RoundingMode::HalfCeiling);
     }
 
     /**

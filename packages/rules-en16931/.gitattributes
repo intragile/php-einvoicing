@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+# Everything else ships in the Composer dist archive.
+/.gitattributes export-ignore

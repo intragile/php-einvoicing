@@ -14,7 +14,7 @@ final class Rounding
 {
     public const int SCALE = 2;
 
-    public const RoundingMode MODE = RoundingMode::HALF_UP;
+    public const RoundingMode MODE = RoundingMode::HalfUp;
 
     public static function amount(BigDecimal $value): BigDecimal
     {

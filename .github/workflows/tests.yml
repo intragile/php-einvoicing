@@ -28,6 +28,22 @@ jobs:
       - run: composer compile-rules -- --check
       - run: vendor/bin/phpstan analyse --memory-limit=1G
 
+  prefer-lowest:
+    # The lowest versions the constraints allow, so that a lower bound that is too low fails here.
+    runs-on: ubuntu-latest
+    name: PHP 8.3 / prefer-lowest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: dom, libxml, mbstring, zip, zlib
+          coverage: none
+      - run: composer validate --strict
+      - run: composer update --prefer-lowest --prefer-stable --prefer-dist --no-interaction --no-progress
+      - run: composer fetch-official
+      - run: vendor/bin/phpunit
+
   pint:
     runs-on: ubuntu-latest
     steps:

@@ -1,0 +1,6 @@
+* text=auto eol=lf
+# The schemas are unmodified copies of the KoSIT ones, kept byte for byte.
+/schemas/** -text -eol
+
+# Everything else ships in the Composer dist archive.
+/.gitattributes export-ignore

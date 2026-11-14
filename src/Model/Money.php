@@ -44,7 +44,7 @@ final readonly class Money
      */
     public function rounded(int $scale = 2): self
     {
-        return new self($this->amount->toScale($scale, RoundingMode::HALF_UP), $this->currency);
+        return new self($this->amount->toScale($scale, RoundingMode::HalfUp), $this->currency);
     }
 
     public function isEqualTo(self $other): bool

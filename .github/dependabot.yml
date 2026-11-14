@@ -14,8 +14,8 @@ updates:
     # widen adds a new release to a constraint instead of replacing the old one.
     versioning-strategy: widen
     ignore:
-      # brick/math 0.x minors are breaking: 0.15 is not compatible with the upper-case
-      # RoundingMode cases this package uses, so it is upgraded by hand, never widened.
+      # brick/math 0.x minors are breaking, so a new minor is tested and upgraded by hand,
+      # never widened.
       - dependency-name: brick/math
         versions: [">=0.15"]
     groups:

@@ -15,8 +15,8 @@ distributed under the [Apache License 2.0](LICENSE) with the attributions in [NO
 | Release metadata in the files | Factur-X 1.09.2, released 2026-08-04, effective 2026-09-01 |
 | Schemas | `validator/src/main/resources/schema/ZF_250`, 20 files, aggregate SHA-256 `a66ac39854336a759c27a9289319146c4889c1e4acfb5d3e33ea1cc0bcfeba55` |
 | Schematron | `validator/src/main/resources/schematron/ZF_250`, 10 files, aggregate SHA-256 `84b15df7dbddde67134d073dcc0bfc69ed96b11c97997da5f542f44039899184` |
-| `LICENSE` | `LICENSE` of the repository (Apache-2.0), SHA-256 `ba98dd76bda1e82034791438bb931145f85e5db3975852a015344ad5990fa21b` |
-| `NOTICE` | the repository `NOTICE` (SHA-256 `9225d07c21aa4a404ac53372f04c9945b8e1e0d47f466036d27a09527373c6cf`) with the FeRD and FNFE-MPE attribution added |
+| `LICENSE` | the Apache License 2.0 text of the repository `LICENSE` (SHA-256 `ba98dd76bda1e82034791438bb931145f85e5db3975852a015344ad5990fa21b`), without its "EXTERNAL COMPONENTS" section |
+| `NOTICE` | the repository `NOTICE` (SHA-256 `9225d07c21aa4a404ac53372f04c9945b8e1e0d47f466036d27a09527373c6cf`) with the FeRD and FNFE-MPE attribution added, followed by the "EXTERNAL COMPONENTS" section of the repository `LICENSE`, unchanged |
 
 The aggregate is `find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256`,
 run inside the repository folder. The sources are also committed in the `php-einvoicing`

@@ -13,6 +13,10 @@
     "type": "library",
     "license": "Apache-2.0",
     "homepage": "https://intragile.eu",
+    "support": {
+        "issues": "https://github.com/intragile/php-einvoicing/issues",
+        "source": "https://github.com/intragile/php-einvoicing"
+    },
     "authors": [
         {
             "name": "IntrAgile Kft.",
@@ -22,6 +26,9 @@
     ],
     "require": {
         "php": "^8.3"
+    },
+    "conflict": {
+        "intragile/php-einvoicing": "<1.0 || >=2.0"
     },
     "autoload": {
         "psr-4": {
