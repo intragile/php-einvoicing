@@ -13,10 +13,11 @@
          (docker/kosit/run.sh), the verapdf group needs Docker and the veraPDF image
          (docker/verapdf/run.sh), the network group reaches the internet, the recommand-live
          group needs Recommand API credentials, the b2brouter-live group needs a B2Brouter sandbox
-         API key and the performance group asserts wall-clock bounds
+         API key, the einvoicebe-live group needs an e-invoice.be sandbox API key and the
+         performance group asserts wall-clock bounds
          that can flake on a loaded machine; run them explicitly with the group option of PHPUnit. -->
     <groups>
-        <exclude><group>oracle</group><group>kosit-oracle</group><group>verapdf</group><group>network</group><group>recommand-live</group><group>b2brouter-live</group><group>performance</group></exclude>
+        <exclude><group>oracle</group><group>kosit-oracle</group><group>verapdf</group><group>network</group><group>recommand-live</group><group>b2brouter-live</group><group>einvoicebe-live</group><group>performance</group></exclude>
     </groups>
     <!-- The suite needs about 160 MB on PHP 8.3, above the stock 128M limit of PHP images. -->
     <php>
