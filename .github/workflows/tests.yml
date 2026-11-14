@@ -29,7 +29,9 @@ jobs:
       - run: vendor/bin/phpstan analyse --memory-limit=1G
 
   prefer-lowest:
-    # The lowest versions the constraints allow, so that a lower bound that is too low fails here.
+    # Installs the lowest versions the constraints allow, so a lower bound that is too low fails
+    # here. Composer skips releases with known security advisories, so each floor in composer.json
+    # is kept at the lowest release this job can actually install.
     runs-on: ubuntu-latest
     name: PHP 8.3 / prefer-lowest
     steps:
