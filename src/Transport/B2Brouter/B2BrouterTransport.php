@@ -155,7 +155,9 @@ final class B2BrouterTransport implements InboundSource, Transport
             );
             $listed = $this->mapper->inboundReferences($this->get($url));
             foreach ($listed as $reference) {
-                // An invoice acknowledged meanwhile shifts the offsets, so one may be listed twice.
+                // An invoice inserted ahead of the offset meanwhile shifts the list back, so one may
+                // be listed twice. One acknowledged meanwhile shifts it forward, so one may be
+                // skipped; the next poll lists it.
                 $references[$reference->documentId] ??= $reference;
             }
             if (count($listed) < self::PAGE_SIZE) {
@@ -175,7 +177,8 @@ final class B2BrouterTransport implements InboundSource, Transport
      * id and the time of the fetch; pending() reports the time B2Brouter received the invoice.
      *
      * @throws UnexpectedResponse when the invoice is unknown, B2Brouter redirects to another
-     *                            host or more than once, or the response exceeds the size cap
+     *                            host, more than once or with a status other than 302, or the
+     *                            response exceeds the size cap
      * @throws TransportUnavailable when the request failed without an answer; it is safe to retry
      * @throws TransportException when B2Brouter refused the request
      * @throws UnsafeXml when the document carries a DOCTYPE declaration
@@ -190,9 +193,12 @@ final class B2BrouterTransport implements InboundSource, Transport
         $response = $this->get($url, self::ACCEPT_DOCUMENT);
         if ($response->getStatusCode() === 302) {
             $response = $this->get($this->redirectTarget($response, $url), self::ACCEPT_DOCUMENT);
-            if ($response->getStatusCode() >= 300 && $response->getStatusCode() <= 399) {
+            if (self::isRedirect($response)) {
                 throw self::refusedRedirect($response, sprintf('B2Brouter redirected the original document of invoice "%s" more than once', $documentId));
             }
+        } elseif (self::isRedirect($response)) {
+            // Only a 302 is followed; any other redirect is refused without quoting its body.
+            throw self::refusedRedirect($response, sprintf('B2Brouter answered the original document of invoice "%s" with a redirect other than 302, so it was not followed', $documentId));
         }
         $xml = $this->mapper->originalDocument($response, $documentId);
 
@@ -296,6 +302,11 @@ final class B2BrouterTransport implements InboundSource, Transport
     private static function refusedRedirect(ResponseInterface $response, string $reason): UnexpectedResponse
     {
         return UnexpectedResponse::forResponse($response, $reason, '');
+    }
+
+    private static function isRedirect(ResponseInterface $response): bool
+    {
+        return $response->getStatusCode() >= 300 && $response->getStatusCode() <= 399;
     }
 
     private function invoiceUrl(string $invoiceId): string

@@ -90,7 +90,8 @@ final class ResponseMapper
     {
         $status = $response->getStatusCode();
         if ($status === 302) {
-            throw $this->unexpected($response, sprintf('B2Brouter invoice "%s" is a received invoice, not a sent one, so it has no delivery status', $invoiceId));
+            // No body excerpt: a redirect body usually repeats the Location, which may carry a token.
+            throw UnexpectedResponse::forResponse($response, sprintf('B2Brouter invoice "%s" is a received invoice, not a sent one, so it has no delivery status', $invoiceId), '');
         }
         if ($status !== 200) {
             throw $this->readFailure($response, sprintf('Querying the status of B2Brouter invoice "%s"', $invoiceId));
@@ -278,6 +279,12 @@ final class ResponseMapper
      */
     private function readFailure(ResponseInterface $response, string $operation): TransportException
     {
+        $status = $response->getStatusCode();
+        if ($status >= 300 && $status <= 399) {
+            // No body excerpt: a redirect body usually repeats the Location, which may carry a token.
+            return UnexpectedResponse::forResponse($response, sprintf('%s failed: B2Brouter answered with a redirect, which is not followed', $operation), '');
+        }
+
         return ReadFailure::of($response, 'B2Brouter', $operation, $this->redactor);
     }
 

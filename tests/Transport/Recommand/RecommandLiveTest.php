@@ -157,7 +157,7 @@ final class RecommandLiveTest extends TestCase
     {
         $response = $this->http->send('GET', $this->config->baseUrl.$path, ['Authorization' => $this->config->authorization()]);
         $body = (string) $response->getBody();
-        self::assertSame(200, $response->getStatusCode(), sprintf('GET %s answered HTTP %d: %s', $path, $response->getStatusCode(), substr($body, 0, 300)));
+        self::assertSame(200, $response->getStatusCode(), LiveTransport::excerpt($this->config->redactor(), 'GET '.$path, $response));
 
         $data = json_decode($body, true);
         self::assertIsArray($data, sprintf('GET %s did not answer JSON.', $path));

@@ -129,6 +129,18 @@ final class B2BrouterStatusTest extends TestCase
         self::assertCount(1, $recorder->requests());
     }
 
+    public function test_status_redirect_keeps_no_body_excerpt(): void
+    {
+        $recorder = new RecordingHttpClient(new Response(302, ['Location' => self::BASE.'/received_invoices/900101?token=abc'], '<a href="/received_invoices/900101?token=abc">moved</a>'));
+
+        $exception = self::capture(fn () => self::transport($recorder)->status('900101'));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertSame('', $exception->bodyExcerpt);
+        self::assertStringNotContainsString('token=abc', $exception->getMessage());
+        self::assertCount(1, $recorder->requests());
+    }
+
     public function test_status_404_is_unexpected(): void
     {
         $exception = self::capture(fn () => self::transport(new RecordingHttpClient(self::fixture(404, 'error-404.json')))->status('1'));

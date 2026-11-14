@@ -222,6 +222,30 @@ final class B2BrouterInboundTest extends TestCase
         self::assertSame('', $exception->bodyExcerpt);
     }
 
+    public function test_redirect_other_than_302_is_refused_without_excerpt(): void
+    {
+        $recorder = new RecordingHttpClient(new Response(307, ['Location' => self::BASE.'/storage/a.xml?token=abc'], '<a href="/storage/a.xml?token=abc">moved</a>'));
+
+        $exception = self::capture(fn () => self::transport($recorder)->fetch('900101'));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertSame(307, $exception->status);
+        self::assertSame('', $exception->bodyExcerpt);
+        self::assertStringNotContainsString('token=abc', $exception->getMessage());
+        self::assertCount(1, $recorder->requests());
+    }
+
+    public function test_pending_redirect_keeps_no_body_excerpt(): void
+    {
+        $recorder = new RecordingHttpClient(new Response(301, ['Location' => self::BASE.'/elsewhere?token=abc'], '<a href="/elsewhere?token=abc">moved</a>'));
+
+        $exception = self::capture(fn () => self::transport($recorder)->pending());
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertSame('', $exception->bodyExcerpt);
+        self::assertCount(1, $recorder->requests());
+    }
+
     public function test_second_redirect_is_refused(): void
     {
         $recorder = new RecordingHttpClient(

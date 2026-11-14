@@ -464,7 +464,9 @@ final class ResponseMapper
     }
 
     /**
-     * True for an absolute https URL with a DNS host name and without user info or whitespace.
+     * True for an absolute https URL with a host and without user info or whitespace. The host is
+     * only checked to consist of dot-separated letters, digits and hyphens: IP literals and
+     * localhost pass, and no host is allow-listed yet.
      */
     private static function isHttpsUrl(string $url): bool
     {

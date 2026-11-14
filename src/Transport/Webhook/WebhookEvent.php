@@ -21,7 +21,12 @@ final readonly class WebhookEvent
         public string $documentId,
         /** The provider account the event belongs to (company, account or tenant id), when the notification names one. */
         public ?string $accountId,
-        /** The same for every retry of one delivery; use it to drop duplicates. */
+        /**
+         * The same for every retry of one delivery; use it to drop duplicates. It identifies
+         * retries, not authenticity: for some providers it comes from an unsigned header (Recommand
+         * X-Idempotency-Key, B2Brouter X-B2Brouter-Delivery-Id), so it is no defence against
+         * replays and must not be treated as authenticated; keep final states final.
+         */
         public string $deduplicationKey,
         /** The document's delivery state; null when the provider did not say, so read the status. */
         public ?DeliveryState $deliveryState,
