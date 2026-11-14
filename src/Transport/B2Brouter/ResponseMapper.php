@@ -10,12 +10,11 @@ use IntrAgile\EInvoicing\Transport\DeliveryStatus;
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
-use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
-use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\FailureCategory;
 use IntrAgile\EInvoicing\Transport\Http\JsonResponse;
+use IntrAgile\EInvoicing\Transport\Http\ReadFailure;
 use IntrAgile\EInvoicing\Transport\Http\Redactor;
 use IntrAgile\EInvoicing\Transport\InboundReference;
 use IntrAgile\EInvoicing\Transport\SendResult;
@@ -279,31 +278,7 @@ final class ResponseMapper
      */
     private function readFailure(ResponseInterface $response, string $operation): TransportException
     {
-        $status = $response->getStatusCode();
-
-        if ($status === 401 || $status === 403) {
-            return new AuthenticationFailed(sprintf(
-                '%s failed: B2Brouter refused the API key or its permission (HTTP %d).',
-                $operation,
-                $status,
-            ));
-        }
-        if ($status === 404) {
-            return $this->unexpected($response, sprintf('%s failed: B2Brouter does not know it', $operation));
-        }
-        if ($status === 429) {
-            $retryAfter = trim($response->getHeaderLine('Retry-After'));
-
-            return new RateLimited(
-                sprintf('%s failed: B2Brouter rate limit reached (HTTP 429).', $operation),
-                ctype_digit($retryAfter) ? (int) $retryAfter : null,
-            );
-        }
-        if ($status >= 500 && $status <= 599) {
-            return new TransportUnavailable(sprintf('%s failed: B2Brouter is unavailable (HTTP %d).', $operation, $status));
-        }
-
-        return $this->unexpected($response, sprintf('%s failed with an unexpected status from B2Brouter', $operation));
+        return ReadFailure::of($response, 'B2Brouter', $operation, $this->redactor);
     }
 
     /**
