@@ -6,7 +6,6 @@ namespace IntrAgile\EInvoicing\Transport\Recommand;
 
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
-use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Transport\DeliveryStatus;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
@@ -17,7 +16,7 @@ use IntrAgile\EInvoicing\Transport\InboundDocument;
 use IntrAgile\EInvoicing\Transport\InboundReference;
 use IntrAgile\EInvoicing\Transport\InboundSource;
 use IntrAgile\EInvoicing\Transport\OutboundDocument;
-use IntrAgile\EInvoicing\Transport\Sbdh\EnvelopeReader;
+use IntrAgile\EInvoicing\Transport\Sbdh\InboundXml;
 use IntrAgile\EInvoicing\Transport\SendResult;
 use IntrAgile\EInvoicing\Transport\Transport;
 use InvalidArgumentException;
@@ -130,17 +129,7 @@ final class RecommandTransport implements InboundSource, Transport
 
         [$reference, $xml] = $this->mapper->inboundDocument($this->get($this->documentUrl($documentId)), $documentId);
 
-        if (EnvelopeReader::isEnvelopeStream($xml)) {
-            // The reader parses the envelope once with SafeXml and serialises the payload from the
-            // parsed tree, so the payload needs no second parse.
-            [$envelope, $payload] = (new EnvelopeReader)->unwrap($xml);
-
-            return new InboundDocument($reference, $payload, $envelope);
-        }
-
-        SafeXml::load($xml);
-
-        return new InboundDocument($reference, $xml);
+        return InboundXml::document($reference, $xml);
     }
 
     /**

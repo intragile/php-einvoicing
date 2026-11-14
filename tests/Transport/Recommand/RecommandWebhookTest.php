@@ -9,6 +9,8 @@ use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\FailureCategory;
 use IntrAgile\EInvoicing\Transport\Recommand\RecommandWebhook;
+use IntrAgile\EInvoicing\Transport\Webhook\WebhookKind;
+use IntrAgile\EInvoicing\Transport\Webhook\WebhookParser;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -47,7 +49,64 @@ final class RecommandWebhookTest extends TestCase
     #[DataProvider('signatureCases')]
     public function test_webhook_signature_cases(string $rawBody, ?string $header, bool $expected): void
     {
-        self::assertSame($expected, (new RecommandWebhook(self::SECRET))->verify($rawBody, $header));
+        $headers = $header === null ? [] : ['X-Signature' => $header];
+
+        self::assertSame($expected, (new RecommandWebhook(self::SECRET))->verify($rawBody, $headers));
+    }
+
+    public function test_webhook_is_a_parser(): void
+    {
+        self::assertInstanceOf(WebhookParser::class, new RecommandWebhook(self::SECRET));
+    }
+
+    public function test_parse_returns_neutral_event(): void
+    {
+        $raw = self::read('webhook-received.json');
+
+        $event = (new RecommandWebhook(self::SECRET))->parse($raw, [
+            'X-Signature' => self::sign($raw),
+            'X-Idempotency-Key' => 'idem_01abc',
+        ]);
+
+        self::assertSame(WebhookKind::DocumentReceived, $event->kind);
+        self::assertSame('document.received', $event->type);
+        self::assertSame('doc_01inboundfirst', $event->documentId);
+        self::assertSame('c_01example', $event->accountId);
+        self::assertSame('idem_01abc', $event->deduplicationKey);
+    }
+
+    /**
+     * @return iterable<string, array{array<string, string|list<string>>}>
+     */
+    public static function unusableIdempotencyHeaders(): iterable
+    {
+        yield 'missing' => [[]];
+        yield 'blank' => [['X-Idempotency-Key' => ' ']];
+        yield 'repeated' => [['X-Idempotency-Key' => ['idem_01abc', 'idem_01abc']]];
+    }
+
+    /**
+     * @param  array<string, string|list<string>>  $headers
+     */
+    #[DataProvider('unusableIdempotencyHeaders')]
+    public function test_deduplication_key_falls_back_to_type_and_document_id(array $headers): void
+    {
+        $raw = self::read('webhook-received.json');
+
+        $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)] + $headers);
+
+        self::assertSame('document.received:doc_01inboundfirst', $event->deduplicationKey);
+    }
+
+    public function test_two_identical_signature_headers_are_refused(): void
+    {
+        $raw = self::read('webhook-received.json');
+        $headers = ['X-Signature' => [self::sign($raw), self::sign($raw)]];
+
+        $webhook = new RecommandWebhook(self::SECRET);
+
+        self::assertFalse($webhook->verify($raw, $headers));
+        self::assertInstanceOf(AuthenticationFailed::class, self::capture(fn () => $webhook->parse($raw, $headers)));
     }
 
     public function test_received_event_is_parsed(): void
@@ -58,8 +117,7 @@ final class RecommandWebhookTest extends TestCase
 
         self::assertSame('document.received', $event->type);
         self::assertSame('doc_01inboundfirst', $event->documentId);
-        self::assertSame('c_01example', $event->companyId);
-        self::assertNull($event->idempotencyKey);
+        self::assertSame('c_01example', $event->accountId);
         self::assertNull($event->deliveryState);
         self::assertNull($event->failure);
     }
@@ -84,15 +142,16 @@ final class RecommandWebhookTest extends TestCase
             $name => 'idem_01abc',
         ]);
 
-        self::assertSame('idem_01abc', $event->idempotencyKey);
+        self::assertSame('idem_01abc', $event->deduplicationKey);
     }
 
-    public function test_status_event_maps_delivery_state_and_failure(): void
+    public function test_status_event_maps_delivery_state(): void
     {
         $raw = self::read('webhook-status.json');
 
         $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)]);
 
+        self::assertSame(WebhookKind::DeliveryChanged, $event->kind);
         self::assertSame('document.delivery_status_changed', $event->type);
         self::assertSame('doc_01failed', $event->documentId);
         self::assertSame(DeliveryState::Failed, $event->deliveryState);
@@ -108,6 +167,7 @@ final class RecommandWebhookTest extends TestCase
 
         $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)]);
 
+        self::assertSame(WebhookKind::DeliveryChanged, $event->kind);
         self::assertSame(DeliveryState::Delivered, $event->deliveryState);
         self::assertNull($event->failure);
     }
@@ -138,15 +198,16 @@ final class RecommandWebhookTest extends TestCase
         self::assertSame(DeliveryState::Unknown, $event->deliveryState);
     }
 
-    public function test_unknown_event_type_and_status_are_kept(): void
+    public function test_unknown_type_is_other(): void
     {
         $raw = '{"eventType":"document.teleported","documentId":"doc_01","deliveryStatus":"somewhere"}';
 
         $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)]);
 
+        self::assertSame(WebhookKind::Other, $event->kind);
         self::assertSame('document.teleported', $event->type);
         self::assertSame('doc_01', $event->documentId);
-        self::assertNull($event->companyId);
+        self::assertNull($event->accountId);
         self::assertSame(DeliveryState::Unknown, $event->deliveryState);
     }
 
@@ -179,6 +240,7 @@ final class RecommandWebhookTest extends TestCase
     {
         yield 'not JSON' => ['not json'];
         yield 'JSON scalar' => ['"document.received"'];
+        yield 'JSON array' => ['["document.received"]'];
         yield 'no event type' => ['{"documentId":"doc_01"}'];
         yield 'empty event type' => ['{"eventType":"","documentId":"doc_01"}'];
         yield 'no document id' => ['{"eventType":"document.received"}'];

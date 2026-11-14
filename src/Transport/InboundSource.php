@@ -9,6 +9,9 @@ use IntrAgile\EInvoicing\Transport\Exception\TransportException;
 /**
  * Received business documents waiting to be processed. A document stays pending until it is
  * acknowledged, so a consumer that fails halfway sees it again.
+ *
+ * Consumers de-duplicate on the document id: a source whose provider cannot record
+ * acknowledgements may list an acknowledged document again.
  */
 interface InboundSource
 {

@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Transport\Recommand;
 
 use Closure;
+use IntrAgile\EInvoicing\Transport\Http\ApiKey;
+use IntrAgile\EInvoicing\Transport\Http\BaseUrl;
 use IntrAgile\EInvoicing\Transport\Http\HttpClient;
+use IntrAgile\EInvoicing\Transport\Http\Redactor;
 use InvalidArgumentException;
 use SensitiveParameter;
 
@@ -21,13 +24,15 @@ final readonly class RecommandConfig
     public const DEFAULT_BASE_URL = 'https://app.recommand.eu';
 
     /** Shortest accepted API key id and secret; Recommand issues much longer ones. */
-    public const MIN_CREDENTIAL_LENGTH = 8;
+    public const MIN_CREDENTIAL_LENGTH = ApiKey::MIN_LENGTH;
 
     /** The base URL without a trailing slash. */
     public string $baseUrl;
 
     /** @var Closure(): array{string, string} */
     private Closure $credentials;
+
+    private Redactor $redactor;
 
     /** The Recommand company id of the sending company, without surrounding whitespace. */
     public string $companyId;
@@ -54,8 +59,10 @@ final readonly class RecommandConfig
         if ($this->companyId === '') {
             throw new InvalidArgumentException('The Recommand company id must not be empty.');
         }
-        $this->baseUrl = self::assertBaseUrl($baseUrl);
+        $this->baseUrl = BaseUrl::normalize($baseUrl, 'Recommand base URL');
         $this->credentials = static fn (): array => [$apiKeyId, $secret];
+        // The pair's Base64 form, which the Authorization header carries, is one of its variants.
+        $this->redactor = new Redactor([$apiKeyId.':'.$secret, $apiKeyId, $secret]);
     }
 
     /**
@@ -84,16 +91,17 @@ final readonly class RecommandConfig
      */
     public function redact(string $text): string
     {
-        [$apiKeyId, $secret] = ($this->credentials)();
-        $pair = $apiKeyId.':'.$secret;
-        $secrets = [base64_encode($pair), $pair];
-        foreach ([$secret, $apiKeyId] as $credential) {
-            array_push($secrets, $credential, rawurlencode($credential), base64_encode($credential));
-        }
-        // Longest first, so that the encoded pair and the pair go before their parts.
-        usort($secrets, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
+        return $this->redactor->redact($text);
+    }
 
-        return str_replace($secrets, '[redacted]', $text);
+    /**
+     * The redactor for the API key id, the secret and the Basic pair.
+     *
+     * @internal
+     */
+    public function redactor(): Redactor
+    {
+        return $this->redactor;
     }
 
     /**
@@ -107,26 +115,5 @@ final readonly class RecommandConfig
             'companyId' => $this->companyId,
             'baseUrl' => $this->baseUrl,
         ];
-    }
-
-    private static function assertBaseUrl(string $baseUrl): string
-    {
-        $parts = parse_url($baseUrl);
-        if (
-            $parts === false
-            || strtolower($parts['scheme'] ?? '') !== 'https'
-            || ($parts['host'] ?? '') === ''
-            || isset($parts['user'])
-            || isset($parts['pass'])
-            || isset($parts['query'])
-            || isset($parts['fragment'])
-        ) {
-            throw new InvalidArgumentException(sprintf(
-                'The Recommand base URL "%s" must be an https:// URL without user info, query or fragment.',
-                preg_replace('#//[^/@]*@#', '//[redacted]@', $baseUrl),
-            ));
-        }
-
-        return rtrim($baseUrl, '/');
     }
 }

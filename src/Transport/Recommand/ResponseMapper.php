@@ -222,16 +222,7 @@ final class ResponseMapper
      */
     public function sanitize(UnexpectedResponse $exception, ?string $body = null): UnexpectedResponse
     {
-        $excerpt = $body === null
-            ? $this->config->redact($exception->bodyExcerpt)
-            : substr($this->config->redact($body), 0, UnexpectedResponse::EXCERPT_BYTES);
-
-        return new UnexpectedResponse(
-            $this->config->redact($exception->getMessage()),
-            $exception->status,
-            $excerpt,
-            $exception->getPrevious(),
-        );
+        return $this->config->redactor()->sanitize($exception, $body);
     }
 
     private function sendFailure(ResponseInterface $response, ParticipantId $receiver): TransportException
@@ -467,11 +458,7 @@ final class ResponseMapper
 
     private function unexpected(ResponseInterface $response, string $reason): UnexpectedResponse
     {
-        return UnexpectedResponse::forResponse(
-            $response,
-            $this->config->redact($reason),
-            $this->config->redact((string) $response->getBody()),
-        );
+        return $this->config->redactor()->unexpected($response, $reason);
     }
 
     /**
@@ -539,13 +526,6 @@ final class ResponseMapper
      */
     private function redactValue(mixed $value): mixed
     {
-        if (is_string($value)) {
-            return $this->config->redact($value);
-        }
-        if (is_array($value)) {
-            return array_map($this->redactValue(...), $value);
-        }
-
-        return $value;
+        return $this->config->redactor()->redactValue($value);
     }
 }

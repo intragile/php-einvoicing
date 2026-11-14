@@ -8,8 +8,11 @@ use Closure;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
+use IntrAgile\EInvoicing\Transport\Webhook\WebhookEvent;
+use IntrAgile\EInvoicing\Transport\Webhook\WebhookInput;
+use IntrAgile\EInvoicing\Transport\Webhook\WebhookKind;
+use IntrAgile\EInvoicing\Transport\Webhook\WebhookParser;
 use InvalidArgumentException;
-use JsonException;
 use SensitiveParameter;
 
 /**
@@ -20,8 +23,10 @@ use SensitiveParameter;
  * decoded and encoded again no longer matches its signature. The secret is kept inside a closure,
  * so it stays out of var_export(), print_r(), var_dump() and json_encode() output.
  */
-final class RecommandWebhook
+final class RecommandWebhook implements WebhookParser
 {
+    private const PROVIDER = 'Recommand';
+
     private const SIGNATURE_HEADER = 'X-Signature';
 
     private const IDEMPOTENCY_HEADER = 'X-Idempotency-Key';
@@ -43,12 +48,15 @@ final class RecommandWebhook
     }
 
     /**
-     * Whether the signature header is a valid signature of the raw body. The header must start
-     * with exactly "sha256=" followed by 64 hexadecimal digits in either case; the comparison
-     * takes constant time. An empty body is never valid.
+     * Whether the X-Signature header is a valid signature of the raw body. The header must appear
+     * exactly once and start with exactly "sha256=" followed by 64 hexadecimal digits in either
+     * case; the comparison takes constant time. An empty body is never valid.
+     *
+     * @param  array<string, string|list<string>>  $headers
      */
-    public function verify(string $rawBody, ?string $signatureHeader): bool
+    public function verify(string $rawBody, array $headers): bool
     {
+        $signatureHeader = WebhookInput::header($headers, self::SIGNATURE_HEADER);
         if ($rawBody === '' || $signatureHeader === null || ! str_starts_with($signatureHeader, self::SIGNATURE_PREFIX)) {
             return false;
         }
@@ -63,6 +71,11 @@ final class RecommandWebhook
     /**
      * The event of a signed notification. Header names are matched case-insensitively.
      *
+     * "document.received" is DocumentReceived; "document.sent" and
+     * "document.delivery_status_changed" are DeliveryChanged; any other type is Other. The
+     * deduplication key is the X-Idempotency-Key header, or "<type>:<documentId>" when it is
+     * missing, blank or repeated.
+     *
      * Only document events are supported: a notification without a documentId, such as
      * "company.verification", raises UnexpectedResponse even when its signature is valid. Catch it
      * and still answer the delivery with 2xx when such events should be ignored rather than retried.
@@ -74,28 +87,22 @@ final class RecommandWebhook
      */
     public function parse(string $rawBody, array $headers): WebhookEvent
     {
-        if (! $this->verify($rawBody, self::header($headers, self::SIGNATURE_HEADER))) {
+        if (! $this->verify($rawBody, $headers)) {
             throw new AuthenticationFailed('The Recommand webhook notification is refused: its X-Signature header is missing or does not match the body.');
         }
 
-        try {
-            $data = json_decode($rawBody, true, 512, JSON_THROW_ON_ERROR);
-        } catch (JsonException $exception) {
-            throw self::malformed('is not valid JSON', $rawBody, $exception);
-        }
-        if (! is_array($data)) {
-            throw self::malformed('is not a JSON object', $rawBody);
-        }
+        $data = WebhookInput::object($rawBody, self::PROVIDER);
 
         $type = $data['eventType'] ?? null;
         if (! is_string($type) || $type === '') {
-            throw self::malformed('has no eventType', $rawBody);
+            throw WebhookInput::malformed(self::PROVIDER, 'has no eventType', $rawBody);
         }
         $documentId = $data['documentId'] ?? null;
         if (! is_string($documentId) || $documentId === '') {
-            throw self::malformed('has no documentId', $rawBody);
+            throw WebhookInput::malformed(self::PROVIDER, 'has no documentId', $rawBody);
         }
         $companyId = $data['companyId'] ?? null;
+        $idempotencyKey = WebhookInput::header($headers, self::IDEMPOTENCY_HEADER);
 
         // The failure belongs to one delivery; only a Peppol delivery is reported, as in the
         // document status.
@@ -109,13 +116,23 @@ final class RecommandWebhook
         }
 
         return new WebhookEvent(
+            self::kind($type),
             $type,
             $documentId,
             is_string($companyId) && $companyId !== '' ? $companyId : null,
-            self::header($headers, self::IDEMPOTENCY_HEADER),
+            $idempotencyKey !== null && trim($idempotencyKey) !== '' ? $idempotencyKey : $type.':'.$documentId,
             $state,
             $peppolDelivery ? ResponseMapper::failureOf($data['failure'] ?? null) : null,
         );
+    }
+
+    private static function kind(string $type): WebhookKind
+    {
+        return match ($type) {
+            'document.received' => WebhookKind::DocumentReceived,
+            'document.sent', 'document.delivery_status_changed' => WebhookKind::DeliveryChanged,
+            default => WebhookKind::Other,
+        };
     }
 
     /**
@@ -134,34 +151,5 @@ final class RecommandWebhook
     public function __debugInfo(): array
     {
         return ['secret' => '[redacted]'];
-    }
-
-    /**
-     * The value of a header, matched case-insensitively, or null when it is missing or carries
-     * different values.
-     *
-     * @param  array<string, string|list<string>>  $headers
-     */
-    private static function header(array $headers, string $name): ?string
-    {
-        $values = [];
-        foreach ($headers as $key => $value) {
-            if (strcasecmp((string) $key, $name) === 0) {
-                array_push($values, ...(is_array($value) ? $value : [$value]));
-            }
-        }
-        $values = array_values(array_unique($values));
-
-        return count($values) === 1 ? $values[0] : null;
-    }
-
-    private static function malformed(string $what, string $rawBody, ?JsonException $previous = null): UnexpectedResponse
-    {
-        return new UnexpectedResponse(
-            sprintf('The Recommand webhook notification %s.', $what),
-            0,
-            substr($rawBody, 0, UnexpectedResponse::EXCERPT_BYTES),
-            $previous,
-        );
     }
 }

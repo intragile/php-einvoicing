@@ -51,8 +51,6 @@ final class HttpClient
     /** Secrets shorter than this are not redacted. */
     private const MIN_SECRET_LENGTH = 8;
 
-    private const REDACTED = '[redacted]';
-
     /**
      * The configured secrets, kept in a closure so that they stay out of var_export(), print_r(),
      * var_dump() and json_encode() output.
@@ -103,7 +101,7 @@ final class HttpClient
      */
     public function __debugInfo(): array
     {
-        return ['maxResponseBytes' => (string) $this->maxResponseBytes, 'secrets' => '[redacted]'];
+        return ['maxResponseBytes' => (string) $this->maxResponseBytes, 'secrets' => Redactor::REDACTED];
     }
 
     /**
@@ -199,11 +197,9 @@ final class HttpClient
         }
         $secrets[] = $request->getUri()->getUserInfo();
         $secrets[] = $request->getUri()->getQuery();
-        $secrets = array_filter($secrets, static fn (string $secret): bool => trim($secret) !== '');
-        // Longest first, so that a whole header value is replaced before its credential part.
-        usort($secrets, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
 
-        return str_replace($secrets, self::REDACTED, $text);
+        // Longest first, so that a whole header value is replaced before its credential part.
+        return Redactor::replace($text, $secrets);
     }
 
     /**
@@ -213,12 +209,7 @@ final class HttpClient
      */
     private function secretVariants(): array
     {
-        $variants = [];
-        foreach (($this->secrets)() as $secret) {
-            array_push($variants, $secret, rawurlencode($secret), base64_encode($secret));
-        }
-
-        return $variants;
+        return Redactor::variants(($this->secrets)());
     }
 
     /**
