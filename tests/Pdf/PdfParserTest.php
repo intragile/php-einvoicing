@@ -622,6 +622,64 @@ final class PdfParserTest extends TestCase
         trigger_error('after the guard', E_USER_WARNING);
     }
 
+    public function test_guard_leaves_deprecations_to_php(): void
+    {
+        $reporting = error_reporting(E_ALL);
+        $display = ini_set('display_errors', '0');
+        $log = ini_set('log_errors', '0');
+        error_clear_last();
+        try {
+            $result = PdfParser::guarded(static function (): int {
+                trigger_error('a future deprecation', E_USER_DEPRECATED);
+
+                return 42;
+            });
+        } finally {
+            error_reporting($reporting);
+            ini_set('display_errors', (string) $display);
+            ini_set('log_errors', (string) $log);
+        }
+
+        self::assertSame(42, $result);
+        self::assertSame('a future deprecation', error_get_last()['message'] ?? null);
+    }
+
+    public function test_guard_converts_masked_and_suppressed_warnings(): void
+    {
+        $reporting = error_reporting(E_ALL & ~E_USER_NOTICE);
+        try {
+            PdfParser::guarded(static function (): void {
+                trigger_error('a masked notice', E_USER_NOTICE);
+            });
+            self::fail('The masked notice passed the guard.');
+        } catch (UnreadablePdf $e) {
+            self::assertSame('Unreadable PDF: a masked notice', $e->getMessage());
+        } finally {
+            error_reporting($reporting);
+        }
+
+        $this->expectException(UnreadablePdf::class);
+        $this->expectExceptionMessage('Unreadable PDF: a suppressed warning');
+        PdfParser::guarded(static function (): void {
+            @trigger_error('a suppressed warning', E_USER_WARNING);
+        });
+    }
+
+    public function test_document_reports_skipped_object_streams(): void
+    {
+        $pdf = (new PdfBuilder('1.5'))
+            ->objectStream(5, [1 => self::CATALOG, 2 => self::PAGES])
+            ->objectStream(6, [3 => '(lost)'])
+            ->trailer('/Root 1 0 R')
+            ->xrefStream();
+        $at = (int) strpos($pdf, "6 0 obj\n");
+        $broken = substr($pdf, 0, $at).preg_replace('~/Filter /FlateDecode~', '/Filter /LZWDecode', substr($pdf, $at), 1);
+        $broken = (string) preg_replace('/startxref\n\d+/', "startxref\n1", $broken);
+
+        self::assertSame(1, PdfDocument::parse($broken)->skippedObjectStreams());
+        self::assertSame(0, PdfDocument::parse($pdf)->skippedObjectStreams());
+    }
+
     /**
      * A catalog, a page tree and an xref stream of $size rows (W [1 $width 2], PNG Up) whose rows
      * between the page tree and the stream itself are free, after $padding bytes of comment.

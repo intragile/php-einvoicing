@@ -90,7 +90,11 @@ final class Filters
      */
     private static function inflateWith(int $encoding, string $data, int $maxBytes, int &$inflated): string
     {
-        set_error_handler(static function (int $severity, string $message): never {
+        set_error_handler(static function (int $severity, string $message): bool {
+            if (PdfParser::leftToPhp($severity)) {
+                return false;
+            }
+
             throw UnreadablePdf::malformed('Corrupt FlateDecode data: '.$message);
         });
         try {

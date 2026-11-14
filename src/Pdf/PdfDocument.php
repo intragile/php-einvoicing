@@ -82,6 +82,15 @@ final class PdfDocument
         return $this->parser->xref()->startXref;
     }
 
+    /**
+     * The number of object streams that index reconstruction could not decode. The objects they
+     * hold resolve to null. Always 0 when the file's own index was used.
+     */
+    public function skippedObjectStreams(): int
+    {
+        return $this->parser->xref()->skippedObjectStreams;
+    }
+
     /** True when the newest cross-reference section is an xref stream. */
     public function usesXrefStream(): bool
     {

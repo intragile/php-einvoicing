@@ -31,7 +31,7 @@ All notable changes to this project are documented here. The format follows
   `SmpClient::DEFAULT_MAX_BYTES`; `EnvelopeReader::isEnvelopeStream()`.
 - **Validation:** `DynamicError::$ruleSet` names the rule set that raised the error
   (`"<id> <version>"`).
-- **PDF:** `CrossReference::$skippedObjectStreams` counts the object streams skipped while an
+- **PDF:** `PdfDocument::skippedObjectStreams()` counts the object streams skipped while an
   index is reconstructed.
 - **Rule installer:** `PartialInstall::$backupPaths` lists the backups left in the rules folder.
 - **Documentation:** a test compiles every PHP sample of the READMEs and `docs/*.md` and runs the
@@ -256,6 +256,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **PDF:** a PHP deprecation raised while a PDF or Factur-X file is read no longer turns into
+  `UnreadablePdf`; it goes to PHP's own error handling. Warnings and notices still do, even when
+  masked or suppressed.
 - **Transport:** `HttpClient` redacts a response body before it cuts the 500-byte excerpt, so a
   secret across the cut is replaced whole.
 - **Peppol identifiers:** a participant identifier that is not valid UTF-8 is refused with a clear

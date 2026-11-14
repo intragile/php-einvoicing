@@ -13,6 +13,7 @@ use IntrAgile\EInvoicing\Pdf\Exception\UnreadablePdf;
 use IntrAgile\EInvoicing\Pdf\Exception\UnsupportedPdfFeature;
 use IntrAgile\EInvoicing\Pdf\PdfParser;
 use IntrAgile\EInvoicing\Syntax\FacturX\AfRelationship;
+use IntrAgile\EInvoicing\Syntax\FacturX\FacturXDocument;
 use IntrAgile\EInvoicing\Syntax\FacturX\FacturXPdfReader;
 use IntrAgile\EInvoicing\Syntax\FacturX\FacturXPdfWriter;
 use IntrAgile\EInvoicing\Syntax\FacturX\FacturXProfile;
@@ -20,6 +21,7 @@ use IntrAgile\EInvoicing\Syntax\FacturX\FacturXXmlWriter;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
 use IntrAgile\EInvoicing\Tests\Support\PdfBuilder;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 
 final class FacturXPdfReaderTest extends TestCase
@@ -282,6 +284,37 @@ final class FacturXPdfReaderTest extends TestCase
         self::assertSame(AfRelationship::Alternative, $document->relationship);
     }
 
+    /**
+     * The guard around read() turns a PHP warning raised anywhere inside it, here while a class
+     * is autoloaded, into UnreadablePdf. The process is fresh, so FacturXDocument is first
+     * loaded inside the guard.
+     */
+    #[RunInSeparateProcess]
+    public function test_warning_inside_read_becomes_unreadable_pdf(): void
+    {
+        $this->expectException(UnreadablePdf::class);
+        $this->expectExceptionMessage('Unreadable PDF: raised while autoloading');
+
+        $this->readWhileAutoloadingRaises(E_USER_WARNING);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_deprecation_inside_read_is_left_to_php(): void
+    {
+        $display = ini_set('display_errors', '0');
+        $log = ini_set('log_errors', '0');
+        error_clear_last();
+        try {
+            $document = $this->readWhileAutoloadingRaises(E_USER_DEPRECATED);
+        } finally {
+            ini_set('display_errors', (string) $display);
+            ini_set('log_errors', (string) $log);
+        }
+
+        self::assertSame(self::xml(FacturXProfile::En16931), $document->xml);
+        self::assertSame('raised while autoloading', error_get_last()['message'] ?? null);
+    }
+
     public function test_corrupt_xmp_warns_and_a_breached_limit_throws(): void
     {
         $xml = self::xml(FacturXProfile::En16931);
@@ -443,6 +476,24 @@ final class FacturXPdfReaderTest extends TestCase
             } catch (UnsupportedDocument|UnreadablePdf|EncryptedPdf|UnsupportedPdfFeature) {
                 $this->addToAssertionCount(1);
             }
+        }
+    }
+
+    /** Reads a valid Factur-X PDF while the first autoload of FacturXDocument raises $severity. */
+    private function readWhileAutoloadingRaises(int $severity): FacturXDocument
+    {
+        $pdf = (new FacturXPdfWriter)->embed(self::basePdf(), self::xml(FacturXProfile::En16931))->pdf;
+        self::assertFalse(class_exists(FacturXDocument::class, false), 'FacturXDocument is already loaded.');
+        $loader = static function (string $class) use ($severity): void {
+            if ($class === FacturXDocument::class) {
+                trigger_error('raised while autoloading', $severity);
+            }
+        };
+        spl_autoload_register($loader, prepend: true);
+        try {
+            return (new FacturXPdfReader)->read($pdf);
+        } finally {
+            spl_autoload_unregister($loader);
         }
     }
 

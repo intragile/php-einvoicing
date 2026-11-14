@@ -132,6 +132,7 @@ final class PdfParser
      * Runs $parse with PHP warnings and engine errors (TypeError, ValueError, ArithmeticError and
      * the like) turned into UnreadablePdf, so no damaged input can surface as a PHP diagnostic.
      * The engine error is chained as the previous exception; other exceptions pass unchanged.
+     * Deprecations go to PHP's own handling.
      *
      * @internal Used by the PDF and Factur-X entry points.
      *
@@ -146,7 +147,11 @@ final class PdfParser
      */
     public static function guarded(callable $parse): mixed
     {
-        set_error_handler(static function (int $severity, string $message): never {
+        set_error_handler(static function (int $severity, string $message): bool {
+            if (self::leftToPhp($severity)) {
+                return false;
+            }
+
             throw UnreadablePdf::malformed('Unreadable PDF: '.$message);
         });
         try {
@@ -156,6 +161,20 @@ final class PdfParser
         } finally {
             restore_error_handler();
         }
+    }
+
+    /**
+     * True for a diagnostic the guards hand back to PHP's own handling instead of turning it into
+     * UnreadablePdf: a deprecation, which concerns the code rather than the input. Warnings and
+     * notices are converted even when error_reporting() masks them or the @ operator suppresses
+     * them, because test runners and frameworks mask them while their own handler is active, and
+     * damaged input must not pass silently.
+     *
+     * @internal Used by the error handlers of this namespace.
+     */
+    public static function leftToPhp(int $severity): bool
+    {
+        return $severity === E_DEPRECATED || $severity === E_USER_DEPRECATED;
     }
 
     public function xref(): CrossReference
