@@ -98,7 +98,7 @@ final class ValidatingTransportTest extends TestCase
         $invoice = TotalsCalculator::complete(InvoiceFactory::mixedVat());
 
         return $invoice
-            ->withProcessControl(new ProcessControl('urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0', PeppolBis3::PROCESS))
+            ->withProcessControl(new ProcessControl(PeppolBis3::CUSTOMIZATION, PeppolBis3::PROCESS))
             ->withSeller(self::withAddress($invoice->seller, new ElectronicAddress('0123456789', ElectronicAddressScheme::C_0208)))
             ->withBuyer(self::withAddress($invoice->buyer, new ElectronicAddress('DE123456789', ElectronicAddressScheme::C_9930)));
     }

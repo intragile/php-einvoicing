@@ -372,8 +372,9 @@ Two limits matter here:
   passes without any envelope check, because no official rule matches it. Its envelope is checked
   structurally only: `EnvelopeWriter` takes the sender and receiver from the CII electronic
   addresses and checks that `Standard` and `Type` name the payload root.
-- The rules check the sender and receiver ids only, not the invoice. Validate the invoice with
-  `Validator::peppol()` as well.
+- The rules check the sender and receiver ids only, not the invoice. Validate the invoice as
+  well, with `PeppolPayloadValidator`: it applies the BIS rules to a BIS invoice and the KoSIT
+  XRechnung rules to an XRechnung invoice.
 
 The envelope rules are compiled by `einvoicing-rules install peppol` together with the invoice
 rules, so a rules folder now holds **five** files. A folder installed by an earlier version holds

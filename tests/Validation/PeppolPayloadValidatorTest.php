@@ -41,7 +41,7 @@ use PHPUnit\Framework\TestCase;
 
 final class PeppolPayloadValidatorTest extends TestCase
 {
-    private const BIS = 'urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0';
+    private const BIS = PeppolBis3::CUSTOMIZATION;
 
     public function test_routes_bis_to_bis_validator(): void
     {

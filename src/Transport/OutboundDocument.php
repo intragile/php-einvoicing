@@ -9,6 +9,7 @@ use DOMXPath;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Peppol\PeppolDocumentTypes;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Syntax\Syntax;
@@ -35,17 +36,6 @@ final readonly class OutboundDocument
 
     private const RAM = 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100';
 
-    /** Specification identifier (BT-24) of Peppol BIS Billing 3.0. */
-    private const BIS = 'urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0';
-
-    /** BIS Billing 3.0 document type of each UBL root element, by "<namespace>|<local name>". */
-    private const BIS_DOCUMENT_TYPES = [
-        'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2|Invoice' => PeppolBis3::INVOICE,
-        'urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2|CreditNote' => PeppolBis3::CREDIT_NOTE,
-    ];
-
-    private const CII_ROOT = self::CII.'|CrossIndustryInvoice';
-
     private const CII_AGREEMENT = 'rsm:SupplyChainTradeTransaction/ram:ApplicableHeaderTradeAgreement/';
 
     public function __construct(
@@ -71,7 +61,7 @@ final readonly class OutboundDocument
      *
      * - a UBL Invoice or CreditNote with the Peppol BIS Billing 3.0 identifier;
      * - an XRechnung 3.0 UBL Invoice, UBL CreditNote or CII CrossIndustryInvoice, or an XRechnung
-     *   3.0 Extension UBL Invoice or CII CrossIndustryInvoice (XRechnungPeppol::documentTypes()).
+     *   3.0 Extension UBL Invoice or CII CrossIndustryInvoice (PeppolDocumentTypes, XRechnungPeppol).
      *
      * The sender comes from the seller electronic address (BT-34), the receiver from the buyer
      * electronic address (BT-49), the process from the business process type (BT-23; Peppol
@@ -89,9 +79,9 @@ final readonly class OutboundDocument
     {
         $root = SafeXml::load($xml)->documentElement
             ?? throw new UnsupportedDocument('The document has no root element.');
-        $rootKey = $root->namespaceURI.'|'.$root->localName;
-        $isUbl = isset(self::BIS_DOCUMENT_TYPES[$rootKey]);
-        if (! $isUbl && $rootKey !== self::CII_ROOT) {
+        $rootKey = PeppolDocumentTypes::rootKey($root);
+        $isUbl = PeppolDocumentTypes::isUbl($rootKey);
+        if (! $isUbl && $rootKey !== PeppolDocumentTypes::CII_ROOT) {
             throw new UnsupportedDocument(sprintf(
                 'The document root {%s}%s is not a UBL Invoice or CreditNote or a CII CrossIndustryInvoice.',
                 (string) $root->namespaceURI,
@@ -105,18 +95,23 @@ final readonly class OutboundDocument
         $xpath->registerNamespace('rsm', self::CII);
         $xpath->registerNamespace('ram', self::RAM);
 
-        // Read untrimmed: the document type is chosen by an exact match.
-        $specification = self::first($xpath, $root, $isUbl
-            ? 'cbc:CustomizationID'
-            : 'rsm:ExchangedDocumentContext/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID')->textContent ?? '';
+        // Untrimmed: the document type is chosen by an exact match.
+        $specification = PeppolDocumentTypes::specification($root) ?? '';
         if (str_contains($specification, 'selfbilling')) {
             throw new UnsupportedDocument(sprintf(
                 'The document is a self-billing invoice or credit note (%s); self-billing is not sent over Peppol by this version.',
                 $specification,
             ));
         }
-        $documentType = self::documentType($root, $rootKey, $specification);
-        $isXRechnung = ! in_array($documentType, self::BIS_DOCUMENT_TYPES, true);
+        $documentType = PeppolDocumentTypes::resolve($rootKey, $specification) ?? throw new UnsupportedDocument(sprintf(
+            'The document {%s}%s with the specification identifier (BT-24) "%s" is not sent over Peppol by this version.%s Sendable are %s',
+            (string) $root->namespaceURI,
+            (string) $root->localName,
+            $specification,
+            PeppolDocumentTypes::refusalReason($rootKey, $specification),
+            PeppolDocumentTypes::sendable(),
+        ));
+        $isXRechnung = PeppolDocumentTypes::isXRechnung($documentType);
 
         if ($isUbl) {
             $sender = self::endpoint($xpath, $root, 'cac:AccountingSupplierParty/cac:Party/cbc:EndpointID', 'seller', 'BT-34');
@@ -172,40 +167,6 @@ final readonly class OutboundDocument
             Syntax::Ubl => (new UblWriter)->write($invoice),
             Syntax::Cii => (new CiiWriter)->write($invoice),
         }, $countryC1);
-    }
-
-    /**
-     * The Peppol document type of a document element and specification identifier pair.
-     *
-     * @throws UnsupportedDocument when the pair is not sendable; the message lists the sendable ones
-     */
-    private static function documentType(DOMElement $root, string $rootKey, string $specification): string
-    {
-        if ($specification === self::BIS && isset(self::BIS_DOCUMENT_TYPES[$rootKey])) {
-            return self::BIS_DOCUMENT_TYPES[$rootKey];
-        }
-        $xrechnung = XRechnungPeppol::documentTypes()[$rootKey.'|'.$specification] ?? null;
-        if ($xrechnung !== null) {
-            return $xrechnung;
-        }
-
-        $reason = match (true) {
-            $specification === XRechnung::CVD => ' The XRechnung CVD has no Peppol document type.',
-            $specification === XRechnung::EXTENSION && $rootKey === 'urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2|CreditNote' => ' The XRechnung UBL Credit Note Extension document type is deprecated in Peppol Code Lists v9.7; send the credit note as an XRechnung 3.0 Extension CII document or without the extension.',
-            $specification === UblWriter::SPECIFICATION_IDENTIFIER => ' Writers use this identifier for an invoice without process control; give the invoice the process control of the specification to send.',
-            default => '',
-        };
-
-        throw new UnsupportedDocument(sprintf(
-            'The document {%s}%s with the specification identifier (BT-24) "%s" is not sent over Peppol by this version.%s Sendable are a UBL Invoice or CreditNote with %s (Peppol BIS Billing 3.0), a UBL Invoice, UBL CreditNote or CII CrossIndustryInvoice with %s (XRechnung 3.0), and a UBL Invoice or CII CrossIndustryInvoice with %s (XRechnung 3.0 Extension).',
-            (string) $root->namespaceURI,
-            (string) $root->localName,
-            $specification,
-            $reason,
-            self::BIS,
-            XRechnung::CIUS,
-            XRechnung::EXTENSION,
-        ));
     }
 
     private static function endpoint(DOMXPath $xpath, DOMElement $root, string $path, string $role, string $term): ParticipantId

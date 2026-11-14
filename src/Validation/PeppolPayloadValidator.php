@@ -4,15 +4,12 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Validation;
 
-use DOMElement;
-use DOMXPath;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+use IntrAgile\EInvoicing\Peppol\PeppolDocumentTypes;
 use IntrAgile\EInvoicing\Rules\XRechnung\RuleFiles as XRechnungRuleFiles;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
-use IntrAgile\EInvoicing\Syntax\XRechnung;
-use IntrAgile\EInvoicing\Transport\Peppol\XRechnungPeppol;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungValidator;
 
@@ -22,23 +19,13 @@ use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungValidator;
  * validator.
  *
  * The validator is chosen by the exact pair of document element and specification identifier
- * (BT-24), the same pairs OutboundDocument::fromXml() sends. Any other document is refused, so
- * that nothing is sent that was not checked against its own rules.
+ * (BT-24) that PeppolDocumentTypes defines, the same pairs the Peppol transport sends. Any other
+ * document is refused, so that nothing is sent that was not checked against its own rules.
  *
  * Usage: PeppolPayloadValidator::create($peppolRulesDir)->validate($xml).
  */
 final class PeppolPayloadValidator implements DocumentValidator
 {
-    /** Specification identifier (BT-24) of Peppol BIS Billing 3.0. */
-    private const BIS = 'urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0';
-
-    private const UBL_ROOTS = [
-        'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2|Invoice',
-        'urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2|CreditNote',
-    ];
-
-    private const CII = 'urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100';
-
     private const COMPOSER_COMMAND = 'composer require intragile/einvoicing-rules-xrechnung';
 
     /**
@@ -77,20 +64,14 @@ final class PeppolPayloadValidator implements DocumentValidator
     {
         $root = SafeXml::load($xml)->documentElement
             ?? throw new UnsupportedDocument('The document has no root element.');
-        $rootKey = $root->namespaceURI.'|'.$root->localName;
-        $xpath = new DOMXPath($root->ownerDocument ?? throw new UnsupportedDocument('The document has no owner.'));
-        $xpath->registerNamespace('cbc', 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2');
-        $xpath->registerNamespace('rsm', self::CII);
-        $xpath->registerNamespace('ram', 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100');
-        $isUbl = in_array($rootKey, self::UBL_ROOTS, true);
-        $nodes = $xpath->query($isUbl ? 'cbc:CustomizationID' : 'rsm:ExchangedDocumentContext/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID', $root);
-        $node = $nodes === false ? null : $nodes->item(0);
-        $specification = $node instanceof DOMElement ? $node->textContent : null;
+        $rootKey = PeppolDocumentTypes::rootKey($root);
+        $specification = PeppolDocumentTypes::specification($root);
+        $documentType = PeppolDocumentTypes::resolve($rootKey, $specification);
 
-        if ($isUbl && $specification === self::BIS) {
+        if ($documentType !== null && ! PeppolDocumentTypes::isXRechnung($documentType)) {
             return $this->bis->validate($xml);
         }
-        if ($specification !== null && isset(XRechnungPeppol::documentTypes()[$rootKey.'|'.$specification])) {
+        if ($documentType !== null) {
             $validator = $this->xrechnung
                 ?? throw new RulesNotInstalled('Validating an XRechnung document for Peppol needs the KoSIT XRechnung rules. Run: '.self::COMPOSER_COMMAND);
 
@@ -98,13 +79,11 @@ final class PeppolPayloadValidator implements DocumentValidator
         }
 
         throw new UnsupportedDocument(sprintf(
-            'The document {%s}%s with the specification identifier (BT-24) "%s" is not a Peppol document this library validates. Accepted are a UBL Invoice or CreditNote with %s (Peppol BIS Billing 3.0), a UBL Invoice, UBL CreditNote or CII CrossIndustryInvoice with %s (XRechnung 3.0), and a UBL Invoice or CII CrossIndustryInvoice with %s (XRechnung 3.0 Extension).',
+            'The document {%s}%s with the specification identifier (BT-24) "%s" is not a Peppol document this library validates. Accepted are %s',
             (string) $root->namespaceURI,
             (string) $root->localName,
             $specification ?? '',
-            self::BIS,
-            XRechnung::CIUS,
-            XRechnung::EXTENSION,
+            PeppolDocumentTypes::sendable(),
         ));
     }
 }
