@@ -73,9 +73,10 @@ final class LiveTransportTest extends TestCase
         yield 'recommand company id' => [$recommandRedactor, 'c_FAKECOMPANY000'];
         yield 'recommand receiving company id' => [$recommandRedactor, 'c_FAKERECEIVER00'];
 
-        $b2brouterRedactor = B2BrouterLiveTest::redactorFor(new B2BrouterConfig('test_FAKEKEY000000', 78234123));
+        $b2brouterRedactor = B2BrouterLiveTest::redactorFor(new B2BrouterConfig('test_FAKEKEY000000', 78234123), 'HU12345676');
         yield 'b2brouter api key' => [$b2brouterRedactor, 'test_FAKEKEY000000'];
         yield 'b2brouter account id' => [$b2brouterRedactor, '78234123'];
+        yield 'b2brouter account tax identifier' => [$b2brouterRedactor, 'HU12345676'];
 
         $company = ParticipantId::parse('0208:0000000097');
         $einvoicebeRedactor = EInvoiceBeLiveTest::redactorFor(new EInvoiceBeConfig('FAKEEINVOICEKEY0000'), $company);
@@ -154,6 +155,26 @@ final class LiveTransportTest extends TestCase
             $report = $validator->validate($xml);
             self::assertTrue($report->isValid(), $case.': '.print_r($report, true));
         }
+    }
+
+    public function test_with_party_company_keeps_bis3_valid(): void
+    {
+        $xml = LiveTransport::withPartyCompany(
+            LiveTransport::baseExample('LIVE-0123456789ab', ParticipantId::parse('0088:9508397101047'), ParticipantId::parse('9910:HU12345676')),
+            'AccountingSupplierParty',
+            'HU12345676',
+            'hu',
+        );
+
+        $dom = new DOMDocument;
+        $dom->loadXML($xml);
+        $xpath = new DOMXPath($dom);
+        self::assertSame('HU12345676', $xpath->evaluate('string(//*[local-name()="AccountingSupplierParty"]//*[local-name()="PartyTaxScheme"]/*[local-name()="CompanyID"])'));
+        self::assertSame('HU', $xpath->evaluate('string(//*[local-name()="AccountingSupplierParty"]//*[local-name()="PostalAddress"]//*[local-name()="IdentificationCode"])'));
+        self::assertSame('SE', $xpath->evaluate('string(//*[local-name()="AccountingCustomerParty"]//*[local-name()="PostalAddress"]//*[local-name()="IdentificationCode"])'));
+
+        $report = PeppolPayloadValidator::create(InstalledRules::dir())->validate($xml);
+        self::assertTrue($report->isValid(), print_r($report, true));
     }
 
     public function test_invoice_number_of_ignores_nested_ids(): void

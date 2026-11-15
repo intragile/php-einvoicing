@@ -237,6 +237,44 @@ final class LiveTransport
     }
 
     /**
+     * The invoice with the company of one party replaced: its VAT identifier, its country and, when
+     * the party has one, its legal registration identifier. Every other node, and the other party,
+     * stay as they are.
+     *
+     * @param  string  $party  AccountingSupplierParty or AccountingCustomerParty
+     */
+    public static function withPartyCompany(string $xml, string $party, string $vatId, string $countryCode): string
+    {
+        Assert::assertContains($party, ['AccountingSupplierParty', 'AccountingCustomerParty']);
+
+        $dom = new DOMDocument;
+        $dom->loadXML($xml, LIBXML_NONET);
+        $xpath = new DOMXPath($dom);
+        $xpath->registerNamespace('cac', self::NS_CAC);
+        $xpath->registerNamespace('cbc', self::NS_CBC);
+        $base = sprintf('/*/cac:%s/cac:Party', $party);
+
+        $vat = $xpath->query($base.'/cac:PartyTaxScheme[cac:TaxScheme/cbc:ID="VAT"]/cbc:CompanyID');
+        $vatNode = $vat === false ? null : $vat->item(0);
+        Assert::assertInstanceOf(DOMElement::class, $vatNode);
+        $vatNode->textContent = $vatId;
+
+        $country = $xpath->query($base.'/cac:PostalAddress/cac:Country/cbc:IdentificationCode');
+        $countryNode = $country === false ? null : $country->item(0);
+        Assert::assertInstanceOf(DOMElement::class, $countryNode);
+        $countryNode->textContent = strtoupper($countryCode);
+
+        $legal = $xpath->query($base.'/cac:PartyLegalEntity/cbc:CompanyID');
+        $legalNode = $legal === false ? null : $legal->item(0);
+        if ($legalNode instanceof DOMElement) {
+            $legalNode->removeAttribute('schemeID');
+            $legalNode->textContent = $vatId;
+        }
+
+        return (string) $dom->saveXML();
+    }
+
+    /**
      * The invoice with the seller and buyer electronic addresses set to the given participants.
      */
     private static function routed(Invoice $invoice, ParticipantId $buyer, ParticipantId $seller): Invoice

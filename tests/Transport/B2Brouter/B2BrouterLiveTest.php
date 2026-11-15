@@ -34,11 +34,13 @@ use Psr\Http\Message\ResponseInterface;
  * and 0088:9506215594996 end delivered (the second is refused afterwards, a business response),
  * 0088:9500047420799 fails with PEPPOL_NO_RECEIVER. Inbound documents are not simulated, so the
  * inbox is seeded by importing a document as a received invoice. Each run gives every invoice a
- * unique number. The seller is the one in the Peppol base example.
+ * unique number. The parties are the Peppol base example's, except that the sandbox account's
+ * company replaces the seller (sent invoices) or the buyer (seeded inbox), because B2Brouter
+ * requires its account company to be a party of every invoice.
  *
  * Two findings are printed rather than asserted: the document type codes that mention XRechnung,
  * and whether the delivered ("legal") document of a sent invoice equals the XML that was sent.
- * Output never contains the API key or the account id.
+ * Output never contains the API key, the account id or the account's tax identifier.
  */
 #[Group('b2brouter-live')]
 final class B2BrouterLiveTest extends TestCase
@@ -55,6 +57,15 @@ final class B2BrouterLiveTest extends TestCase
 
     private Redactor $redactor;
 
+    /** Tax identifier of the sandbox account's company, with its country prefix. */
+    private string $companyTin;
+
+    /** Lowercase ISO 3166-1 alpha-2 country of the sandbox account's company. */
+    private string $companyCountry;
+
+    /** The account company as a Peppol participant, or null when the account has no TIN scheme. */
+    private ?ParticipantId $companyParticipant = null;
+
     /**
      * Why the configuration must not be used by the live test, or null when it is a sandbox key.
      * The message names neither the key nor the account.
@@ -67,21 +78,27 @@ final class B2BrouterLiveTest extends TestCase
     }
 
     /**
-     * Every value the live test keeps out of its output: the API key and the account id.
+     * Every value the live test keeps out of its output: the API key, the account id and, once it
+     * is known, the account company's tax identifier.
      *
      * @return list<string>
      */
-    public static function secretsFor(B2BrouterConfig $config): array
+    public static function secretsFor(B2BrouterConfig $config, ?string $companyTin = null): array
     {
-        return [...$config->secrets(), (string) $config->accountId];
+        $secrets = [...$config->secrets(), (string) $config->accountId];
+        if ($companyTin !== null && $companyTin !== '') {
+            $secrets[] = $companyTin;
+        }
+
+        return $secrets;
     }
 
     /**
      * The redactor for the values of secretsFor().
      */
-    public static function redactorFor(B2BrouterConfig $config): Redactor
+    public static function redactorFor(B2BrouterConfig $config, ?string $companyTin = null): Redactor
     {
-        return new Redactor(self::secretsFor($config));
+        return new Redactor(self::secretsFor($config, $companyTin));
     }
 
     protected function setUp(): void
@@ -100,10 +117,28 @@ final class B2BrouterLiveTest extends TestCase
         }
 
         // The account id is kept out of output as well as the key.
-        $secrets = self::secretsFor($this->config);
-        $this->redactor = self::redactorFor($this->config);
         $factory = new Psr17Factory;
-        $this->http = (new HttpClient(new StreamHttpClient(30.0), $factory, $factory))->withSecrets($secrets);
+        $this->redactor = self::redactorFor($this->config);
+        $this->http = (new HttpClient(new StreamHttpClient(30.0), $factory, $factory))->withSecrets(self::secretsFor($this->config));
+
+        // B2Brouter requires the account's own company to be a party of every invoice.
+        $response = $this->request('GET', sprintf('/accounts/%d', $this->config->accountId));
+        self::assertSame(200, $response->getStatusCode(), LiveTransport::excerpt($this->redactor, 'GET /accounts/{account}', $response));
+        $data = json_decode((string) $response->getBody(), true);
+        $account = is_array($data) && is_array($data['account'] ?? null) ? $data['account'] : [];
+        $tin = $account['tin_value'] ?? null;
+        $country = $account['country'] ?? null;
+        if (! is_string($tin) || $tin === '' || ! is_string($country) || $country === '') {
+            self::fail(LiveTransport::excerpt($this->redactor, 'GET /accounts/{account} lacks tin_value or country', $response));
+        }
+        $this->companyTin = $tin;
+        $this->companyCountry = $country;
+        $scheme = $account['tin_scheme'] ?? null;
+        $this->companyParticipant = is_string($scheme) && $scheme !== '' ? ParticipantId::parse($scheme.':'.$tin) : null;
+
+        // The tax identifier is kept out of output as well as the key and the account id.
+        $this->redactor = self::redactorFor($this->config, $tin);
+        $this->http = $this->http->withSecrets(self::secretsFor($this->config, $tin));
     }
 
     public function test_sandbox_recipients_reach_their_simulated_outcomes(): void
@@ -112,7 +147,12 @@ final class B2BrouterLiveTest extends TestCase
         $xml = [];
         $ids = [];
         foreach ([self::DELIVERED_RECIPIENT, self::REFUSED_RECIPIENT, self::UNKNOWN_RECIPIENT] as $recipient) {
-            $xml[$recipient] = LiveTransport::baseExample(LiveTransport::invoiceNumber(), ParticipantId::parse($recipient));
+            $xml[$recipient] = LiveTransport::withPartyCompany(
+                LiveTransport::baseExample(LiveTransport::invoiceNumber(), ParticipantId::parse($recipient), $this->companyParticipant),
+                'AccountingSupplierParty',
+                $this->companyTin,
+                $this->companyCountry,
+            );
             $result = $transport->send(OutboundDocument::fromXml($xml[$recipient]));
             self::assertNotSame('', $result->documentId);
             $ids[$recipient] = $result->documentId;
@@ -149,7 +189,12 @@ final class B2BrouterLiveTest extends TestCase
             'POST',
             sprintf('/accounts/%d/invoices/import?issued=false', $this->config->accountId),
             ['Content-Type' => 'application/octet-stream'],
-            LiveTransport::baseExample($invoiceNumber, ParticipantId::parse(self::DELIVERED_RECIPIENT)),
+            LiveTransport::withPartyCompany(
+                LiveTransport::baseExample($invoiceNumber, $this->companyParticipant ?? ParticipantId::parse(self::DELIVERED_RECIPIENT)),
+                'AccountingCustomerParty',
+                $this->companyTin,
+                $this->companyCountry,
+            ),
         );
         self::assertSame(201, $import->getStatusCode(), LiveTransport::excerpt($this->redactor, 'The import of the received invoice', $import));
         $imported = json_decode((string) $import->getBody(), true);
