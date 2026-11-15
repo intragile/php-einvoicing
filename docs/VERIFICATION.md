@@ -77,6 +77,25 @@ Each run merges its verdicts into `build/release-gate/summary.json` (not committ
 SHA-256 of the artefact file wherever a document was read from one. The release-artefacts run
 writes new PDFs (new hashes), so the table above holds only for the files listed here.
 
+## D2: Recommand over the Peppol test network
+
+Run on 2026-11-15 against a Recommand playground created with `useTestNetwork: true`, so the
+documents travelled over the real Peppol test infrastructure (AS4). The sending and receiving
+participant is one fictitious test company of the playground (a send to itself through the test
+network); its identifier is not listed here. The company verification that Recommand requires was
+the simulated verification a playground offers.
+
+| Group | Commit | Document | AS4 message id | Delivery state | Received | Acknowledged |
+|---|---|---|---|---|---|---|
+| core `recommand-live` | `787676d` | Peppol BIS Billing 3.0 UBL | `29855931-42d0-4578-9602-b8a60a464a13@phase4` | Delivered | yes | yes |
+| core `recommand-live` | `787676d` | XRechnung 3.0 UBL | `bdf22e78-749f-4dbf-88eb-cd9ef14ff44d@phase4` | Delivered | yes | yes |
+| core `recommand-live` | `787676d` | XRechnung 3.0 CII | `feea0532-c69d-40de-bf2a-6558c5b32e3f@phase4` | Delivered | yes | yes |
+| bridge `recommand-live` (laravel-einvoicing) | `4f5e86a` | Peppol BIS Billing 3.0 UBL | `e4b67831-8e1c-4409-af88-06dcb311bcd4@phase4` | delivered | n/a | n/a |
+
+The core run also passed `test_playground_send_status_pending_and_acknowledge` (4 tests, 35
+assertions). The XRechnung document types were registered on the receiving company by the test
+(`RECOMMAND_SETUP_DOCTYPES=1`).
+
 ---
 
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
