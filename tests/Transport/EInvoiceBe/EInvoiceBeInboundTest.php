@@ -23,7 +23,7 @@ final class EInvoiceBeInboundTest extends TestCase
 
     private const DOC = 'doc-In0000000001';
 
-    private const SIGNED_URL = 'https://storage.example.com/einvoice-docs/tenant-42/doc-In0000000001.xml?X-Amz-Expires=3600&X-Amz-Signature=FAKESIGNATURE0123456789abcdef';
+    private const SIGNED_URL = 'https://0123456789abcdef0123456789abcdef.eu.r2.cloudflarestorage.com/tenant-ubl-documents/tenant-42/doc-In0000000001.xml?X-Amz-Expires=3600&X-Amz-Signature=FAKESIGNATURE0123456789abcdef';
 
     public function test_transport_is_an_inbound_source(): void
     {
@@ -177,12 +177,12 @@ final class EInvoiceBeInboundTest extends TestCase
      */
     public static function badSignedUrls(): iterable
     {
-        yield 'plain http' => ['http://storage.example.com/doc.xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
-        yield 'relative' => ['/einvoice-docs/doc.xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'plain http' => ['http://0123456789abcdef0123456789abcdef.eu.r2.cloudflarestorage.com/doc.xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'relative' => ['/tenant-ubl-documents/doc.xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
         yield 'no host' => ['https:///doc.xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
-        yield 'user info' => ['https://user:FAKESIGNATURE0123456789abcdef@storage.example.com/doc.xml'];
-        yield 'unparsable' => ['https://[storage.example.com/doc.xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
-        yield 'whitespace' => ['https://storage.example.com/doc .xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'user info' => ['https://user:FAKESIGNATURE0123456789abcdef@0123456789abcdef0123456789abcdef.eu.r2.cloudflarestorage.com/doc.xml'];
+        yield 'unparsable' => ['https://[0123456789abcdef0123456789abcdef.eu.r2.cloudflarestorage.com/doc.xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'whitespace' => ['https://0123456789abcdef0123456789abcdef.eu.r2.cloudflarestorage.com/doc .xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
         yield 'IPv6 literal' => ['https://[::1]/doc.xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
         yield 'missing' => [null];
         yield 'not a string' => [42];
@@ -215,6 +215,10 @@ final class EInvoiceBeInboundTest extends TestCase
         yield 'shorthand IPv4' => ['https://127.1/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
         yield 'decimal IPv4' => ['https://2130706433/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
         yield 'hexadecimal IPv4' => ['https://0x7f.1/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'foreign host' => ['https://storage.example/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'allowed suffix as a label of a foreign host' => ['https://evil.r2.cloudflarestorage.com.attacker.example/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'bare allowed suffix' => ['https://r2.cloudflarestorage.com/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'parent of the allowed suffix' => ['https://cloudflarestorage.com/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
         yield 'hexadecimal last label' => ['https://1.0x7f/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
     }
 
@@ -236,6 +240,31 @@ final class EInvoiceBeInboundTest extends TestCase
         self::assertStringNotContainsString('FAKESIGNATURE0123456789abcdef', $exception->getMessage());
     }
 
+    #[DataProvider('allowedSignedUrlHosts')]
+    public function test_signed_url_on_the_storage_host_is_downloaded(string $url): void
+    {
+        $data = self::decoded('ubl-200.json');
+        $data['signed_url'] = $url;
+        $recorder = new RecordingHttpClient(self::json(200, $data), new Response(200, [], self::read('inbound-ubl.xml')));
+
+        try {
+            self::transport($recorder)->fetch(self::DOC);
+        } catch (\Throwable) {
+            // Only the request that reaches the download host matters here.
+        }
+
+        self::assertCount(2, $recorder->requests());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function allowedSignedUrlHosts(): iterable
+    {
+        yield 'storage host' => ['https://0123456789abcdef0123456789abcdef.eu.r2.cloudflarestorage.com/tenant-ubl-documents/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'storage host in capitals' => ['https://0123456789ABCDEF0123456789ABCDEF.EU.R2.CLOUDFLARESTORAGE.COM/tenant-ubl-documents/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+    }
+
     public function test_signed_url_is_redacted(): void
     {
         $echo = '<Error><Code>AccessDenied</Code><Message>Request has expired</Message><Url>'.self::SIGNED_URL.'</Url>'
@@ -248,7 +277,7 @@ final class EInvoiceBeInboundTest extends TestCase
         self::assertStringContainsString('HTTP 403', $exception->getMessage());
         self::assertSame('', $exception->bodyExcerpt);
         self::assertStringNotContainsString('FAKESIGNATURE', $exception->getMessage());
-        self::assertStringNotContainsString('storage.example.com', $exception->getMessage());
+        self::assertStringNotContainsString('0123456789abcdef0123456789abcdef.eu.r2.cloudflarestorage.com', $exception->getMessage());
 
         foreach ([
             new Response(503, [], $echo),
@@ -260,7 +289,7 @@ final class EInvoiceBeInboundTest extends TestCase
                 .($exception->getPrevious()?->getMessage() ?? '');
 
             self::assertStringNotContainsString('FAKESIGNATURE', $text);
-            self::assertStringNotContainsString('storage.example.com/einvoice-docs', $text);
+            self::assertStringNotContainsString('0123456789abcdef0123456789abcdef.eu.r2.cloudflarestorage.com/tenant-ubl-documents', $text);
         }
     }
 

@@ -34,6 +34,9 @@ final class ResponseMapper
 {
     private const PROVIDER = 'e-invoice.be';
 
+    /** The storage host observed for e-invoice.be signed download URLs (Cloudflare R2). */
+    private const SIGNED_URL_HOST_SUFFIXES = ['.r2.cloudflarestorage.com'];
+
     /**
      * The shape of an e-invoice.be document id, inferred from the published examples ("doc-…");
      * every id is checked against it before it becomes part of a URL.
@@ -493,21 +496,32 @@ final class ResponseMapper
     }
 
     /**
-     * False for a host that points at the local machine or skips name resolution: an IP literal,
-     * "localhost" or a name under ".localhost", compared case-insensitively. A host whose last
-     * label does not start with a letter is refused too, because resolvers read shorthand and
-     * numeric forms such as "127.1", "2130706433" or "0x7f.1" as IPv4 addresses; no top-level
-     * domain starts with a digit. No host is allow-listed yet.
+     * True for a host under one of the allow-listed storage suffixes (SIGNED_URL_HOST_SUFFIXES),
+     * compared case-insensitively and without a trailing dot, with at least one label before the
+     * suffix. The signed URL comes from a response body and is fetched without the API key, so
+     * only the provider's storage host may be reached: this keeps the driver from being steered
+     * to internal hosts (SSRF). IP literals, "localhost" and hosts whose last label does not
+     * start with a letter are refused as well, because resolvers read shorthand and numeric
+     * forms such as "127.1", "2130706433" or "0x7f.1" as IPv4 addresses.
      */
     private static function isAllowedHost(string $host): bool
     {
-        $host = strtolower($host);
+        $host = rtrim(strtolower($host), '.');
         $lastLabel = substr($host, (int) strrpos('.'.$host, '.'));
 
-        return filter_var(trim($host, '[]'), FILTER_VALIDATE_IP) === false
-            && preg_match('/\A[a-z]/', $lastLabel) === 1
-            && $host !== 'localhost'
-            && ! str_ends_with($host, '.localhost');
+        if (filter_var(trim($host, '[]'), FILTER_VALIDATE_IP) !== false
+            || preg_match('/\A[a-z]/', $lastLabel) !== 1
+            || $host === 'localhost'
+            || str_ends_with($host, '.localhost')) {
+            return false;
+        }
+        foreach (self::SIGNED_URL_HOST_SUFFIXES as $suffix) {
+            if (str_ends_with($host, $suffix) && strlen($host) > strlen($suffix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -2,7 +2,7 @@
   "id": "doc-In0000000001",
   "file_name": "doc-In0000000001.xml",
   "file_size": 345,
-  "signed_url": "https://storage.example.com/einvoice-docs/tenant-42/doc-In0000000001.xml?X-Amz-Expires=3600&X-Amz-Signature=FAKESIGNATURE0123456789abcdef",
+  "signed_url": "https://0123456789abcdef0123456789abcdef.eu.r2.cloudflarestorage.com/tenant-ubl-documents/tenant-42/doc-In0000000001.xml?X-Amz-Expires=3600&X-Amz-Signature=FAKESIGNATURE0123456789abcdef",
   "sender_peppol_scheme": "0208",
   "sender_peppol_id": "0987654321",
   "receiver_peppol_scheme": "0208",

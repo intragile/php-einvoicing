@@ -712,7 +712,9 @@ as processed and no unread filter, so:
 - The inbox reports no Peppol participants or document type, so `sender`, `receiver` and
   `documentType` are `null`; `receivedAt` is the inbox entry's time.
 - `fetch()` reads the document's UBL record, then downloads the document from its signed URL
-  **without the API key**, over https only. The signed URL is a credential and is kept out of
+  **without the API key**, over https only and only from `*.r2.cloudflarestorage.com` (the
+  storage host observed on 2026-11-15); any other host fails with "The signed download URL host
+  is not allowed." The signed URL is a credential and is kept out of
   every message. When the record carries a SHA-256 file hash, the download must match it. An SBDH
   is removed when present. The reference carries the sender and receiver of the record.
 - `acknowledge()` checks the id and records nothing remotely.
