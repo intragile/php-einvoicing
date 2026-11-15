@@ -9,6 +9,8 @@ use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use IntrAgile\EInvoicing\CodeList\ElectronicAddressScheme;
+use IntrAgile\EInvoicing\Exception\UnsafeXml;
+use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Model\ElectronicAddress;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\Party;
@@ -18,10 +20,16 @@ use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\DeliveryStatus;
+use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\Http\Redactor;
+use IntrAgile\EInvoicing\Transport\InboundSource;
 use IntrAgile\EInvoicing\Transport\Peppol\ParticipantId;
 use PHPUnit\Framework\Assert;
+use PHPUnit\Framework\AssertionFailedError;
+use PHPUnit\Framework\IncompleteTest;
+use PHPUnit\Framework\SkippedTest;
 use Psr\Http\Message\ResponseInterface;
+use Throwable;
 
 /**
  * Helpers shared by the opt-in live tests of the transport drivers.
@@ -113,6 +121,66 @@ final class LiveTransport
     public static function bis3(string $number, ParticipantId $buyer, ParticipantId $seller): string
     {
         return (new UblWriter)->write(self::routed(ReleaseInvoices::bis3($number), $buyer, $seller));
+    }
+
+    /**
+     * Runs the body and turns any failure or exception into a test failure whose message has the
+     * redacted values removed. A skip or an incomplete mark passes through unchanged.
+     *
+     * @param  Closure(): void  $body
+     */
+    public static function failRedacted(Redactor $redactor, Closure $body): void
+    {
+        try {
+            $body();
+        } catch (SkippedTest|IncompleteTest $mark) {
+            throw $mark;
+        } catch (AssertionFailedError $failure) {
+            Assert::fail($redactor->redact($failure->getMessage()));
+        } catch (Throwable $exception) {
+            Assert::fail($redactor->redact($exception::class.': '.$exception->getMessage()));
+        }
+    }
+
+    /**
+     * The id of the inbox entry that is the sent document, read a bounded number of times: the
+     * entry with the sent document id, or the entry from the sender whose invoice number (BT-1)
+     * matches. Each other entry is fetched at most once; one that cannot be read (malformed,
+     * unsafe or refused by the source) belongs to someone else and is skipped.
+     */
+    public static function awaitInbound(InboundSource $inbox, string $sentId, ParticipantId $sender, string $invoiceNumber, int $attempts, int $waitSeconds): ?string
+    {
+        /** @var array<string, true> $checked */
+        $checked = [];
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            if ($attempt > 1) {
+                sleep($waitSeconds);
+            }
+            foreach ($inbox->pending() as $reference) {
+                if ($reference->documentId === $sentId) {
+                    return $reference->documentId;
+                }
+                if (isset($checked[$reference->documentId]) || ($reference->sender !== null && ! $reference->sender->equals($sender))) {
+                    continue;
+                }
+                $checked[$reference->documentId] = true;
+                try {
+                    $xml = $inbox->fetch($reference->documentId)->xml;
+                } catch (Throwable $exception) {
+                    // Only a document that cannot be read is skipped; any other failure ends the search.
+                    if ($exception instanceof UnsupportedDocument || $exception instanceof UnsafeXml || $exception instanceof UnexpectedResponse) {
+                        continue;
+                    }
+
+                    throw $exception;
+                }
+                if (self::invoiceNumberOf($xml) === $invoiceNumber) {
+                    return $reference->documentId;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

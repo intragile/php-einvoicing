@@ -110,6 +110,27 @@ final class EInvoiceBeLiveTest extends TestCase
             : 'The live test sends only to the company itself: the sender and the receiver must both be the first Peppol id of GET /api/me/.';
     }
 
+    /**
+     * Every value the live test keeps out of its output: the API key and, once known, the
+     * company's Peppol id.
+     *
+     * @return list<string>
+     */
+    public static function secretsFor(EInvoiceBeConfig $config, ?ParticipantId $company = null): array
+    {
+        return $company === null
+            ? $config->secrets()
+            : [...$config->secrets(), $company->value, $company->icd.':'.$company->value];
+    }
+
+    /**
+     * The redactor for the values of secretsFor().
+     */
+    public static function redactorFor(EInvoiceBeConfig $config, ?ParticipantId $company = null): Redactor
+    {
+        return $config->redactor()->with(self::secretsFor($config, $company));
+    }
+
     protected function setUp(): void
     {
         $apiKey = (string) getenv('EINVOICEBE_API_KEY');
@@ -125,7 +146,7 @@ final class EInvoiceBeLiveTest extends TestCase
         $factory = new Psr17Factory;
         $this->counter = new RequestCounter(new StreamHttpClient(30.0));
         $this->http = (new HttpClient($this->counter, $factory, $factory))->withSecrets($this->config->secrets());
-        $this->redactor = $this->config->redactor();
+        $this->redactor = self::redactorFor($this->config);
 
         $response = $this->request('GET', '/api/me/');
         self::assertSame(200, $response->getStatusCode(), LiveTransport::excerpt($this->redactor, 'GET /api/me/', $response));
@@ -140,8 +161,8 @@ final class EInvoiceBeLiveTest extends TestCase
         $this->company = $company;
 
         // The company's Peppol id is kept out of output as well as the key.
-        $secrets = [...$this->config->secrets(), $company->value, $company->icd.':'.$company->value];
-        $this->redactor = $this->redactor->with($secrets);
+        $secrets = self::secretsFor($this->config, $company);
+        $this->redactor = self::redactorFor($this->config, $company);
         $this->http = $this->http->withSecrets($secrets);
     }
 

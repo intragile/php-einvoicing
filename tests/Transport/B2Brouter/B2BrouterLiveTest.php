@@ -66,6 +66,24 @@ final class B2BrouterLiveTest extends TestCase
             : 'B2BROUTER_API_KEY does not start with "test_"; the live test runs only against the B2Brouter sandbox and refuses a production or staging key.';
     }
 
+    /**
+     * Every value the live test keeps out of its output: the API key and the account id.
+     *
+     * @return list<string>
+     */
+    public static function secretsFor(B2BrouterConfig $config): array
+    {
+        return [...$config->secrets(), (string) $config->accountId];
+    }
+
+    /**
+     * The redactor for the values of secretsFor().
+     */
+    public static function redactorFor(B2BrouterConfig $config): Redactor
+    {
+        return new Redactor(self::secretsFor($config));
+    }
+
     protected function setUp(): void
     {
         $apiKey = (string) getenv('B2BROUTER_API_KEY');
@@ -82,8 +100,8 @@ final class B2BrouterLiveTest extends TestCase
         }
 
         // The account id is kept out of output as well as the key.
-        $secrets = [...$this->config->secrets(), (string) $this->config->accountId];
-        $this->redactor = new Redactor($secrets);
+        $secrets = self::secretsFor($this->config);
+        $this->redactor = self::redactorFor($this->config);
         $factory = new Psr17Factory;
         $this->http = (new HttpClient(new StreamHttpClient(30.0), $factory, $factory))->withSecrets($secrets);
     }

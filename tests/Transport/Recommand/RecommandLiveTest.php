@@ -64,6 +64,8 @@ final class RecommandLiveTest extends TestCase
 
     private const REFUSAL = 'The API key does not belong to a playground team; the live test refuses to send from a production team.';
 
+    private const NO_TEST_NETWORK = 'The playground does not use the Peppol test network; create one with useTestNetwork: true.';
+
     private const TAG = 'recommand-live';
 
     private RecommandConfig $config;
@@ -80,6 +82,42 @@ final class RecommandLiveTest extends TestCase
      */
     public static function playgroundRefusal(HttpClient $http, RecommandConfig $config): ?string
     {
+        $playground = self::playground($http, $config);
+
+        return is_string($playground) ? $playground : null;
+    }
+
+    /**
+     * Null when GET /api/v1/playgrounds/current reports a playground team on the Peppol test
+     * network, otherwise why the test-network case refuses to send. It makes only that one GET
+     * request.
+     */
+    public static function networkRefusal(HttpClient $http, RecommandConfig $config): ?string
+    {
+        $playground = self::playground($http, $config);
+        if (is_string($playground)) {
+            return $playground;
+        }
+
+        return ($playground['useTestNetwork'] ?? null) === true ? null : self::NO_TEST_NETWORK;
+    }
+
+    /**
+     * The redactor for every value a Recommand live test keeps out of its output: the API key id,
+     * the secret, the Basic pair and the sending and receiving company ids.
+     */
+    public static function redactorFor(RecommandConfig $config, RecommandConfig $receiverConfig): Redactor
+    {
+        return $config->redactor()->with([$config->companyId, $receiverConfig->companyId]);
+    }
+
+    /**
+     * The playground object of GET /api/v1/playgrounds/current, or why the live test refuses.
+     *
+     * @return array<mixed>|string
+     */
+    private static function playground(HttpClient $http, RecommandConfig $config): array|string
+    {
         $response = $http->send('GET', $config->baseUrl.'/api/v1/playgrounds/current', [
             'Authorization' => $config->authorization(),
             'Accept' => 'application/json',
@@ -91,7 +129,7 @@ final class RecommandLiveTest extends TestCase
         $data = json_decode((string) $response->getBody(), true);
 
         return is_array($data) && ($data['success'] ?? null) === true && is_array($data['playground'] ?? null)
-            ? null
+            ? $data['playground']
             : self::REFUSAL;
     }
 
@@ -110,7 +148,7 @@ final class RecommandLiveTest extends TestCase
         $this->config = new RecommandConfig($keyId, $secret, $companyId, $baseUrl);
         $this->receiverConfig = new RecommandConfig($keyId, $secret, $receiverCompanyId !== '' ? $receiverCompanyId : $companyId, $baseUrl);
         // Company ids are kept out of output as well as the credentials.
-        $this->redactor = $this->config->redactor()->with([$this->config->companyId, $this->receiverConfig->companyId]);
+        $this->redactor = self::redactorFor($this->config, $this->receiverConfig);
         $factory = new Psr17Factory;
         $this->http = (new HttpClient(new StreamHttpClient(30.0), $factory, $factory))
             ->withSecrets([$keyId, $secret, $this->config->companyId, $this->receiverConfig->companyId]);
@@ -179,16 +217,20 @@ final class RecommandLiveTest extends TestCase
     #[DataProvider('networkCases')]
     public function test_test_network_send_receive(string $case): void
     {
-        $refusal = self::playgroundRefusal($this->http, $this->config);
+        $refusal = self::networkRefusal($this->http, $this->config);
         if ($refusal !== null) {
             self::fail($refusal);
         }
-        $playground = $this->getJson('/api/v1/playgrounds/current');
-        self::assertTrue(
-            is_array($playground['playground'] ?? null) && ($playground['playground']['useTestNetwork'] ?? null) === true,
-            'The playground does not use the Peppol test network; create one with useTestNetwork: true.',
-        );
 
+        // Exception messages may carry a company id in a URL, so every failure is redacted.
+        LiveTransport::failRedacted($this->redactor, fn () => $this->sendAndReceive($case));
+    }
+
+    /**
+     * One test-network case after the guard: send, delivery, receipt, fetch and acknowledgement.
+     */
+    private function sendAndReceive(string $case): void
+    {
         if ($case !== 'bis3-ubl') {
             $this->ensureXRechnungDocumentTypes();
         }
@@ -222,7 +264,7 @@ final class RecommandLiveTest extends TestCase
         self::assertSame(DeliveryState::Delivered, $status->state, $this->redactor->redact((string) $status->failure?->message));
 
         $inbox = new RecommandTransport($this->receiverConfig, $this->http);
-        $received = $this->awaitInbound($inbox, $result->documentId, $sender, $invoiceNumber);
+        $received = LiveTransport::awaitInbound($inbox, $result->documentId, $sender, $invoiceNumber, self::NETWORK_INBOX_ATTEMPTS, self::NETWORK_INBOX_WAIT_SECONDS);
         LiveTransport::report(self::TAG, sprintf('%s received=%s', $case, $received === null ? 'no' : 'yes'), $this->redactor);
         self::assertNotNull($received, sprintf(
             'Invoice %s did not reach the receiving inbox within %d seconds.',
@@ -283,34 +325,6 @@ final class RecommandLiveTest extends TestCase
         $prefix = DocumentTypeId::SCHEME.'::';
 
         return str_starts_with($id, $prefix) ? substr($id, strlen($prefix)) : $id;
-    }
-
-    /**
-     * The id of the inbox entry carrying the invoice number, read a bounded number of times.
-     */
-    private function awaitInbound(RecommandTransport $inbox, string $sentId, ParticipantId $sender, string $invoiceNumber): ?string
-    {
-        /** @var array<string, true> $checked */
-        $checked = [];
-        for ($attempt = 1; $attempt <= self::NETWORK_INBOX_ATTEMPTS; $attempt++) {
-            if ($attempt > 1) {
-                sleep(self::NETWORK_INBOX_WAIT_SECONDS);
-            }
-            foreach ($inbox->pending() as $reference) {
-                if ($reference->documentId === $sentId) {
-                    return $reference->documentId;
-                }
-                if (isset($checked[$reference->documentId]) || ($reference->sender !== null && ! $reference->sender->equals($sender))) {
-                    continue;
-                }
-                $checked[$reference->documentId] = true;
-                if (LiveTransport::invoiceNumberOf($inbox->fetch($reference->documentId)->xml) === $invoiceNumber) {
-                    return $reference->documentId;
-                }
-            }
-        }
-
-        return null;
     }
 
     /**

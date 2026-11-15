@@ -4,21 +4,35 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Support;
 
+use DateTimeImmutable;
 use DOMDocument;
 use DOMXPath;
+use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Syntax\Syntax;
+use IntrAgile\EInvoicing\Tests\Transport\B2Brouter\B2BrouterLiveTest;
+use IntrAgile\EInvoicing\Tests\Transport\EInvoiceBe\EInvoiceBeLiveTest;
+use IntrAgile\EInvoicing\Tests\Transport\Recommand\RecommandLiveTest;
 use IntrAgile\EInvoicing\Tests\Validation\Peppol\InstalledRules;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
 use IntrAgile\EInvoicing\Transport\EInvoiceBe\EInvoiceBeConfig;
+use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
+use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\Http\Redactor;
+use IntrAgile\EInvoicing\Transport\InboundDocument;
+use IntrAgile\EInvoicing\Transport\InboundReference;
+use IntrAgile\EInvoicing\Transport\InboundSource;
 use IntrAgile\EInvoicing\Transport\OutboundDocument;
 use IntrAgile\EInvoicing\Transport\Peppol\ParticipantId;
 use IntrAgile\EInvoicing\Transport\Peppol\PeppolBis3;
 use IntrAgile\EInvoicing\Transport\Peppol\XRechnungPeppol;
 use IntrAgile\EInvoicing\Transport\Recommand\RecommandConfig;
 use IntrAgile\EInvoicing\Validation\PeppolPayloadValidator;
+use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\SkippedTest;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
+use Throwable;
 
 final class LiveTransportTest extends TestCase
 {
@@ -48,22 +62,27 @@ final class LiveTransportTest extends TestCase
      */
     public static function configuredSecrets(): iterable
     {
+        // Each redactor comes from the factory the live test's setUp() uses, so a live test that
+        // stops redacting one of its ids fails here.
         $recommand = new RecommandConfig('FAKEKEYID0000000', 'FAKESECRET000000', 'c_FAKECOMPANY000');
-        $recommandRedactor = $recommand->redactor()->with(['c_FAKECOMPANY000']);
+        $receiver = new RecommandConfig('FAKEKEYID0000000', 'FAKESECRET000000', 'c_FAKERECEIVER00');
+        $recommandRedactor = RecommandLiveTest::redactorFor($recommand, $receiver);
         yield 'recommand api key id' => [$recommandRedactor, 'FAKEKEYID0000000'];
         yield 'recommand secret' => [$recommandRedactor, 'FAKESECRET000000'];
         yield 'recommand basic pair' => [$recommandRedactor, base64_encode('FAKEKEYID0000000:FAKESECRET000000')];
         yield 'recommand company id' => [$recommandRedactor, 'c_FAKECOMPANY000'];
+        yield 'recommand receiving company id' => [$recommandRedactor, 'c_FAKERECEIVER00'];
 
-        $b2brouter = new B2BrouterConfig('test_FAKEKEY000000', 78234123);
-        $b2brouterRedactor = new Redactor([...$b2brouter->secrets(), '78234123']);
+        $b2brouterRedactor = B2BrouterLiveTest::redactorFor(new B2BrouterConfig('test_FAKEKEY000000', 78234123));
         yield 'b2brouter api key' => [$b2brouterRedactor, 'test_FAKEKEY000000'];
         yield 'b2brouter account id' => [$b2brouterRedactor, '78234123'];
 
-        $einvoicebe = new EInvoiceBeConfig('FAKEEINVOICEKEY0000');
-        $einvoicebeRedactor = $einvoicebe->redactor()->with(['tenant-FAKE00000']);
+        $company = ParticipantId::parse('0208:0000000097');
+        $einvoicebeRedactor = EInvoiceBeLiveTest::redactorFor(new EInvoiceBeConfig('FAKEEINVOICEKEY0000'), $company);
         yield 'einvoicebe api key' => [$einvoicebeRedactor, 'FAKEEINVOICEKEY0000'];
-        yield 'einvoicebe tenant id' => [$einvoicebeRedactor, 'tenant-FAKE00000'];
+        yield 'einvoicebe company peppol id' => [$einvoicebeRedactor, '0208:0000000097'];
+        yield 'einvoicebe company peppol id value' => [$einvoicebeRedactor, '0000000097'];
+        yield 'einvoicebe api key before the company is known' => [EInvoiceBeLiveTest::redactorFor(new EInvoiceBeConfig('FAKEEINVOICEKEY0000')), 'FAKEEINVOICEKEY0000'];
     }
 
     #[DataProvider('configuredSecrets')]
@@ -147,6 +166,114 @@ final class LiveTransportTest extends TestCase
         self::assertGreaterThan(1, $ids->length);
         self::assertSame('LIVE-aaaaaaaaaaaa', LiveTransport::invoiceNumberOf((string) $dom->saveXML()));
         self::assertNull(LiveTransport::invoiceNumberOf('<Other/>'));
+    }
+
+    public function test_fail_redacted_removes_secrets_from_exceptions_and_failures(): void
+    {
+        $redactor = new Redactor(['c_FAKECOMPANY000']);
+        $bodies = [
+            'exception' => static function (): void {
+                throw new RuntimeException('GET https://app.recommand.eu/api/v1/companies/c_FAKECOMPANY000/identifiers failed');
+            },
+            'failure' => static function (): void {
+                self::fail('inbox of c_FAKECOMPANY000 is empty');
+            },
+        ];
+
+        foreach ($bodies as $name => $body) {
+            $failure = self::caught(static fn () => LiveTransport::failRedacted($redactor, $body));
+            self::assertInstanceOf(AssertionFailedError::class, $failure, $name);
+            self::assertStringNotContainsString('c_FAKECOMPANY000', $failure->getMessage(), $name);
+            self::assertStringContainsString(Redactor::REDACTED, $failure->getMessage(), $name);
+        }
+    }
+
+    public function test_fail_redacted_passes_a_skip_through(): void
+    {
+        $skip = self::caught(static fn () => LiveTransport::failRedacted(new Redactor(['c_FAKECOMPANY000']), static function (): void {
+            self::markTestSkipped('not configured');
+        }));
+
+        self::assertInstanceOf(SkippedTest::class, $skip);
+    }
+
+    public function test_await_inbound_skips_foreign_entries_that_cannot_be_read(): void
+    {
+        $sender = ParticipantId::parse('9930:DE000000097');
+        $ours = LiveTransport::xrechnung(Syntax::Ubl, 'LIVE-0123456789ab', ParticipantId::parse('0208:0000000097'), $sender);
+        $inbox = self::inbox([
+            'broken' => new UnsupportedDocument('The document is not well-formed XML.'),
+            'gone' => new UnexpectedResponse('Recommand answered HTTP 404.', 404),
+            'other' => LiveTransport::xrechnung(Syntax::Ubl, 'LIVE-ffffffffffff', ParticipantId::parse('0208:0000000097'), $sender),
+            'ours' => $ours,
+        ], $sender);
+
+        self::assertSame('ours', LiveTransport::awaitInbound($inbox, 'sent-id', $sender, 'LIVE-0123456789ab', 1, 0));
+    }
+
+    public function test_await_inbound_returns_the_sent_id_without_fetching(): void
+    {
+        $sender = ParticipantId::parse('9930:DE000000097');
+        $inbox = self::inbox(['sent-id' => new UnsupportedDocument('never fetched')], $sender);
+
+        self::assertSame('sent-id', LiveTransport::awaitInbound($inbox, 'sent-id', $sender, 'LIVE-0123456789ab', 1, 0));
+    }
+
+    public function test_await_inbound_gives_up_after_its_attempts_and_fails_on_unavailable_source(): void
+    {
+        $sender = ParticipantId::parse('9930:DE000000097');
+        $other = LiveTransport::xrechnung(Syntax::Ubl, 'LIVE-ffffffffffff', ParticipantId::parse('0208:0000000097'), $sender);
+
+        self::assertNull(LiveTransport::awaitInbound(self::inbox(['other' => $other], $sender), 'sent-id', $sender, 'LIVE-0123456789ab', 2, 0));
+
+        $unavailable = self::inbox(['flaky' => new TransportUnavailable('Recommand did not answer.')], $sender);
+        $this->expectException(TransportUnavailable::class);
+        LiveTransport::awaitInbound($unavailable, 'sent-id', $sender, 'LIVE-0123456789ab', 1, 0);
+    }
+
+    /**
+     * An inbox listing the given entries from the sender; fetch() answers with the XML or throws.
+     *
+     * @param  array<string, string|Throwable>  $entries  document id => XML or exception
+     */
+    private static function inbox(array $entries, ParticipantId $sender): InboundSource
+    {
+        return new class($entries, $sender) implements InboundSource
+        {
+            /** @param array<string, string|Throwable> $entries */
+            public function __construct(private readonly array $entries, private readonly ParticipantId $sender) {}
+
+            public function pending(): array
+            {
+                return array_map(
+                    fn (string $id): InboundReference => new InboundReference($id, $this->sender, null, null, new DateTimeImmutable),
+                    array_map(strval(...), array_keys($this->entries)),
+                );
+            }
+
+            public function fetch(string $documentId): InboundDocument
+            {
+                $entry = $this->entries[$documentId];
+                if ($entry instanceof Throwable) {
+                    throw $entry;
+                }
+
+                return new InboundDocument(new InboundReference($documentId, $this->sender, null, null, new DateTimeImmutable), $entry);
+            }
+
+            public function acknowledge(string $documentId): void {}
+        };
+    }
+
+    private static function caught(callable $run): ?Throwable
+    {
+        try {
+            $run();
+        } catch (Throwable $caught) {
+            return $caught;
+        }
+
+        return null;
     }
 
     private function written(): string

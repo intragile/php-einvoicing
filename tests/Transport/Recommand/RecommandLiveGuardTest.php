@@ -57,6 +57,37 @@ final class RecommandLiveGuardTest extends TestCase
         self::assertSame(0, self::countMethod($client, 'POST'));
     }
 
+    public function test_test_network_refuses_a_playground_off_the_test_network_before_any_post(): void
+    {
+        $client = new RecordingHttpClient(new Response(200, ['Content-Type' => 'application/json'], '{"success":true,"playground":{"id":"pg_FAKE","isPlayground":true,"useTestNetwork":false}}'));
+
+        $refusal = RecommandLiveTest::networkRefusal(self::http($client), self::config());
+
+        self::assertSame('The playground does not use the Peppol test network; create one with useTestNetwork: true.', $refusal);
+        self::assertSame(0, self::countMethod($client, 'POST'));
+        self::assertCount(1, $client->requests());
+    }
+
+    public function test_test_network_refuses_without_playground_or_success(): void
+    {
+        foreach (['{"success":true,"playground":null}', '{"success":false,"playground":{"useTestNetwork":true}}'] as $body) {
+            $client = new RecordingHttpClient(new Response(200, ['Content-Type' => 'application/json'], $body));
+
+            $refusal = RecommandLiveTest::networkRefusal(self::http($client), self::config());
+
+            self::assertSame('The API key does not belong to a playground team; the live test refuses to send from a production team.', $refusal, $body);
+            self::assertSame(0, self::countMethod($client, 'POST'));
+        }
+    }
+
+    public function test_test_network_accepts_a_test_network_playground(): void
+    {
+        $client = new RecordingHttpClient(new Response(200, ['Content-Type' => 'application/json'], '{"success":true,"playground":{"id":"pg_FAKE","isPlayground":true,"useTestNetwork":true}}'));
+
+        self::assertNull(RecommandLiveTest::networkRefusal(self::http($client), self::config()));
+        self::assertCount(1, $client->requests());
+    }
+
     private static function config(): RecommandConfig
     {
         return new RecommandConfig(self::KEY_ID, self::SECRET, self::COMPANY_ID);
