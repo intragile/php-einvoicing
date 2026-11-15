@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Transport\Http;
 
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Tests\Support\RecordingHttpClient;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
@@ -25,6 +26,8 @@ use RuntimeException;
 
 final class HttpClientTest extends TestCase
 {
+    use CapturesThrowable;
+
     private const AUTHORIZATION = 'Basic a2V5LWlkOnRvcC1zZWNyZXQ=';
 
     private const SECRET = 'secret_01topsecretvalue';
@@ -324,16 +327,6 @@ final class HttpClientTest extends TestCase
         $factory = new Psr17Factory;
 
         return new HttpClient($recorder, $factory, $factory);
-    }
-
-    private static function capture(callable $action): \Throwable
-    {
-        try {
-            $action();
-        } catch (\Throwable $exception) {
-            return $exception;
-        }
-        self::fail('No exception was thrown.');
     }
 
     /**

@@ -110,8 +110,8 @@ final readonly class RecommandConfig
     public function __debugInfo(): array
     {
         return [
-            'apiKeyId' => '[redacted]',
-            'secret' => '[redacted]',
+            'apiKeyId' => Redactor::REDACTED,
+            'secret' => Redactor::REDACTED,
             'companyId' => $this->companyId,
             'baseUrl' => $this->baseUrl,
         ];

@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Tests\Transport\Directory;
 
 use Closure;
 use DateTimeImmutable;
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Tests\Support\RecordingHttpClient;
 use IntrAgile\EInvoicing\Transport\Directory\DirectoryClient;
 use IntrAgile\EInvoicing\Transport\Directory\DirectoryEnvironment;
@@ -24,6 +25,8 @@ use PHPUnit\Framework\TestCase;
 
 final class DirectoryClientTest extends TestCase
 {
+    use CapturesThrowable;
+
     private const EMPTY = '{"version":"1.0","total-result-count":0,"used-result-count":0,"matches":[]}';
 
     public function test_find_sends_the_exact_query_string(): void
@@ -328,16 +331,6 @@ final class DirectoryClientTest extends TestCase
 
         self::assertSame('ab', $query->name);
         self::assertSame('HU', $query->country);
-    }
-
-    private static function capture(callable $action): \Throwable
-    {
-        try {
-            $action();
-        } catch (\Throwable $exception) {
-            return $exception;
-        }
-        self::fail('No exception was thrown.');
     }
 
     private static function fixture(): string

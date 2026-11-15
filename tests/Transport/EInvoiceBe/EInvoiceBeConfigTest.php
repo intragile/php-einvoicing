@@ -4,14 +4,16 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Transport\EInvoiceBe;
 
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Transport\EInvoiceBe\EInvoiceBeConfig;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Throwable;
 
 final class EInvoiceBeConfigTest extends TestCase
 {
+    use CapturesThrowable;
+
     private const KEY = 'test_FAKEKEY000000';
 
     public function test_defaults(): void
@@ -125,15 +127,5 @@ final class EInvoiceBeConfigTest extends TestCase
         }
         self::assertStringContainsString('21', print_r($config, true));
         self::assertStringContainsString('api.e-invoice.be', print_r($config, true));
-    }
-
-    private static function capture(callable $action): Throwable
-    {
-        try {
-            $action();
-        } catch (Throwable $exception) {
-            return $exception;
-        }
-        self::fail('No exception was thrown.');
     }
 }

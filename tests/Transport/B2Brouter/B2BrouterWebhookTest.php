@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Transport\B2Brouter;
 
 use DateTimeImmutable;
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterWebhook;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
@@ -13,10 +14,11 @@ use IntrAgile\EInvoicing\Transport\Webhook\WebhookKind;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Throwable;
 
 final class B2BrouterWebhookTest extends TestCase
 {
+    use CapturesThrowable;
+
     private const SECRET = 'whsec_FAKESECRET000000';
 
     private const TIMESTAMP = 1_732_530_076;
@@ -48,16 +50,6 @@ final class B2BrouterWebhookTest extends TestCase
         return ['X-B2Brouter-Signature' => self::signature($body)] + $extra;
     }
 
-    private static function capture(callable $callable): Throwable
-    {
-        try {
-            $callable();
-        } catch (Throwable $exception) {
-            return $exception;
-        }
-        self::fail('No exception was thrown.');
-    }
-
     public function test_valid_signature_verifies(): void
     {
         $body = self::stateChangeBody();
@@ -70,6 +62,14 @@ final class B2BrouterWebhookTest extends TestCase
         self::assertFalse($webhook->verify($body, ['X-B2Brouter-Signature' => self::signature($body, self::TIMESTAMP, 'whsec_OTHERFAKE000000')]));
         self::assertFalse($webhook->verify($body, ['X-B2Brouter-Signature' => 't='.(self::TIMESTAMP + 1).',s='.$expected]), 'the timestamp is part of the signed payload');
         self::assertFalse($webhook->verify('', ['X-B2Brouter-Signature' => self::signature('')]), 'an empty body is never valid');
+    }
+
+    public function test_known_answer_signature(): void
+    {
+        // HMAC-SHA256 of "1700000000.{"a":1}" under "whsec_test", computed outside this code base.
+        $header = 't=1700000000,s=38877139021993b830af32feea6e18a8da83eb2f6e49ee50bd9e4cf4ca4d3789';
+
+        self::assertTrue((new B2BrouterWebhook('whsec_test'))->verify('{"a":1}', ['X-B2Brouter-Signature' => $header]));
     }
 
     public function test_signature_over_reencoded_body_fails(): void
@@ -237,6 +237,35 @@ final class B2BrouterWebhookTest extends TestCase
         $body = self::body(['code' => 'issued_invoice.state_change', 'data' => $data]);
 
         self::assertSame($expected, (new B2BrouterWebhook(self::SECRET))->parse($body, self::headers($body))->accountId);
+    }
+
+    public function test_account_and_delivery_ids_are_trimmed(): void
+    {
+        $body = self::body(['code' => 'issued_invoice.state_change', 'data' => ['invoice_id' => 85373, 'account_id' => " acc_9\t", 'state' => 'sent']]);
+
+        $event = (new B2BrouterWebhook(self::SECRET))->parse($body, self::headers($body, ['X-B2Brouter-Delivery-Id' => " 184467\n"]));
+
+        self::assertSame('acc_9', $event->accountId);
+        self::assertSame('184467', $event->deduplicationKey);
+    }
+
+    /**
+     * @return iterable<string, array{mixed}>
+     */
+    public static function nonStringStates(): iterable
+    {
+        yield 'null' => [null];
+        yield 'integer' => [5];
+        yield 'boolean' => [true];
+        yield 'object' => [['name' => 'sent']];
+    }
+
+    #[DataProvider('nonStringStates')]
+    public function test_non_string_state_is_absent(mixed $state): void
+    {
+        $body = self::body(['code' => 'issued_invoice.state_change', 'data' => ['invoice_id' => 85373, 'state' => $state]]);
+
+        self::assertNull((new B2BrouterWebhook(self::SECRET))->parse($body, self::headers($body))->deliveryState);
     }
 
     public function test_dedup_key_prefers_delivery_id(): void

@@ -8,6 +8,7 @@ use Closure;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
+use IntrAgile\EInvoicing\Transport\Http\Redactor;
 use IntrAgile\EInvoicing\Transport\Webhook\WebhookEvent;
 use IntrAgile\EInvoicing\Transport\Webhook\WebhookInput;
 use IntrAgile\EInvoicing\Transport\Webhook\WebhookKind;
@@ -102,8 +103,8 @@ final class RecommandWebhook implements WebhookParser
         if (! is_string($documentId) || $documentId === '') {
             throw WebhookInput::malformed(self::PROVIDER, 'has no documentId', $rawBody);
         }
-        $companyId = $data['companyId'] ?? null;
-        $idempotencyKey = WebhookInput::header($headers, self::IDEMPOTENCY_HEADER);
+        $companyId = is_string($data['companyId'] ?? null) ? trim($data['companyId']) : '';
+        $idempotencyKey = trim(WebhookInput::header($headers, self::IDEMPOTENCY_HEADER) ?? '');
 
         // The failure belongs to one delivery; only a Peppol delivery is reported, as in the
         // document status.
@@ -120,8 +121,8 @@ final class RecommandWebhook implements WebhookParser
             self::kind($type),
             $type,
             $documentId,
-            is_string($companyId) && $companyId !== '' ? $companyId : null,
-            $idempotencyKey !== null && trim($idempotencyKey) !== '' ? $idempotencyKey : $type.':'.$documentId.':'.($state->value ?? ''),
+            $companyId === '' ? null : $companyId,
+            $idempotencyKey !== '' ? $idempotencyKey : $type.':'.$documentId.':'.($state->value ?? ''),
             $state,
             $peppolDelivery ? ResponseMapper::failureOf($data['failure'] ?? null) : null,
         );
@@ -151,6 +152,6 @@ final class RecommandWebhook implements WebhookParser
      */
     public function __debugInfo(): array
     {
-        return ['secret' => '[redacted]'];
+        return ['secret' => Redactor::REDACTED];
     }
 }

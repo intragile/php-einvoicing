@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\Tests\Transport\Recommand;
 use DateTimeImmutable;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Tests\Support\RecordingHttpClient;
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
@@ -29,10 +30,11 @@ use PHPUnit\Framework\TestCase;
 use Psr\Http\Client\NetworkExceptionInterface;
 use Psr\Http\Message\RequestInterface;
 use RuntimeException;
-use Throwable;
 
 final class RecommandInboundTest extends TestCase
 {
+    use CapturesThrowable;
+
     private const KEY_ID = 'key_01testkey';
 
     private const SECRET = 'secret_01topsecretvalue';
@@ -395,16 +397,6 @@ final class RecommandInboundTest extends TestCase
         self::assertIsString($contents);
 
         return $contents;
-    }
-
-    private static function capture(callable $action): Throwable
-    {
-        try {
-            $action();
-        } catch (Throwable $exception) {
-            return $exception;
-        }
-        self::fail('No exception was thrown.');
     }
 
     private static function networkException(string $message): NetworkExceptionInterface

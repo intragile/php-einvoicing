@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Transport\Recommand;
 
 use DateTimeImmutable;
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Tests\Support\RecordingHttpClient;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
@@ -38,6 +39,8 @@ use Throwable;
 
 final class RecommandSendTest extends TestCase
 {
+    use CapturesThrowable;
+
     private const KEY_ID = 'key_01testkey';
 
     private const SECRET = 'secret_01topsecretvalue';
@@ -535,16 +538,6 @@ final class RecommandSendTest extends TestCase
         self::assertIsString($contents);
 
         return $contents;
-    }
-
-    private static function capture(callable $action): Throwable
-    {
-        try {
-            $action();
-        } catch (Throwable $exception) {
-            return $exception;
-        }
-        self::fail('No exception was thrown.');
     }
 
     private static function networkException(string $message): NetworkExceptionInterface

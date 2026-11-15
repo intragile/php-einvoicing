@@ -201,6 +201,20 @@ final class EInvoiceBeSendTest extends TestCase
         self::assertCount(1, $recorder->requests());
     }
 
+    public function test_404_on_upload_has_dedicated_message(): void
+    {
+        $recorder = new RecordingHttpClient(self::fixture(404, 'error-404.json'));
+
+        $exception = self::capture(fn () => self::transport($recorder)->send(self::document()));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString('HTTP 404', $exception->getMessage());
+        self::assertStringContainsString('upload endpoint', $exception->getMessage());
+        self::assertStringContainsString('check the configured base URL and API version', $exception->getMessage());
+        self::assertStringNotContainsString('does not know it', $exception->getMessage());
+        self::assertCount(1, $recorder->requests());
+    }
+
     /**
      * @return iterable<string, array{Response, class-string, list<string>}>
      */

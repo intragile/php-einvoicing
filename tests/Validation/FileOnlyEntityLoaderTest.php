@@ -92,6 +92,29 @@ final class FileOnlyEntityLoaderTest extends TestCase
         }
     }
 
+    public function test_previous_loader_is_restored_after_a_normal_run(): void
+    {
+        file_put_contents($this->scratch.'/imported.xsd', self::importedSchema());
+        $main = $this->mainSchema('imported.xsd');
+        $sentinel = static fn (?string $public, string $system): ?string => null;
+        $previous = libxml_get_external_entity_loader();
+        libxml_set_external_entity_loader($sentinel);
+        try {
+            $seen = null;
+            $valid = FileOnlyEntityLoader::run(static function () use ($main, &$seen): bool {
+                $seen = libxml_get_external_entity_loader();
+
+                return self::document()->schemaValidate($main);
+            }, $refused);
+
+            self::assertTrue($valid);
+            self::assertNotSame($sentinel, $seen, 'the temporary loader is active during the run');
+            self::assertSame($sentinel, libxml_get_external_entity_loader());
+        } finally {
+            libxml_set_external_entity_loader($previous);
+        }
+    }
+
     private static function fails(string $message): bool
     {
         throw new RuntimeException($message);

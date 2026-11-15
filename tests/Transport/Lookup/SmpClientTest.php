@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Tests\Transport\Lookup;
 
 use DateTimeImmutable;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Tests\Support\HostileXml;
 use IntrAgile\EInvoicing\Tests\Support\RecordingHttpClient;
 use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
@@ -23,6 +24,8 @@ use PHPUnit\Framework\TestCase;
 
 final class SmpClientTest extends TestCase
 {
+    use CapturesThrowable;
+
     private const PARTICIPANT_SEGMENT = 'iso6523-actorid-upis%3A%3A0208%3A0123456789';
 
     private const INVOICE_SEGMENT = 'busdox-docid-qns%3A%3Aurn%3Aoasis%3Anames%3Aspecification%3Aubl%3Aschema%3Axsd%3AInvoice-2%3A%3AInvoice%23%23urn%3Acen.eu%3Aen16931%3A2017%23compliant%23urn%3Afdc%3Apeppol.eu%3A2017%3Apoacc%3Abilling%3A3.0%3A%3A2.1';
@@ -244,6 +247,18 @@ final class SmpClientTest extends TestCase
         self::assertSame([PeppolBis3::INVOICE], $types);
     }
 
+    public function test_href_scheme_prefix_is_stripped_case_insensitively(): void
+    {
+        $segment = 'BUSDOX-DOCID-QNS%3A%3A'.rawurlencode(PeppolBis3::INVOICE);
+        $xml = '<ServiceGroup xmlns="http://busdox.org/serviceMetadata/publishing/1.0/"><ServiceMetadataReferenceCollection>'
+            .'<ServiceMetadataReference href="https://smp.example/peppol/'.self::PARTICIPANT_SEGMENT.'/services/'.$segment.'"/>'
+            .'</ServiceMetadataReferenceCollection></ServiceGroup>';
+
+        $types = self::client(new RecordingHttpClient(new Response(200, [], $xml)))->documentTypes('https://smp.example/', self::participant());
+
+        self::assertSame([PeppolBis3::INVOICE], $types);
+    }
+
     public function test_size_cap_is_configurable(): void
     {
         $this->expectException(UnexpectedResponse::class);
@@ -288,16 +303,6 @@ final class SmpClientTest extends TestCase
         $this->expectException(UnexpectedResponse::class);
 
         self::client(new RecordingHttpClient(new Response(200, [], $xml)))->endpoints('https://smp.example/', self::participant(), new DocumentTypeId(PeppolBis3::INVOICE));
-    }
-
-    private static function capture(callable $action): \Throwable
-    {
-        try {
-            $action();
-        } catch (\Throwable $exception) {
-            return $exception;
-        }
-        self::fail('No exception was thrown.');
     }
 
     private static function client(RecordingHttpClient $recorder): SmpClient

@@ -183,6 +183,7 @@ final class EInvoiceBeInboundTest extends TestCase
         yield 'user info' => ['https://user:FAKESIGNATURE0123456789abcdef@storage.example.com/doc.xml'];
         yield 'unparsable' => ['https://[storage.example.com/doc.xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
         yield 'whitespace' => ['https://storage.example.com/doc .xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'IPv6 literal' => ['https://[::1]/doc.xml?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
         yield 'missing' => [null];
         yield 'not a string' => [42];
     }
@@ -200,6 +201,35 @@ final class EInvoiceBeInboundTest extends TestCase
         self::assertStringContainsString('signed', $exception->getMessage());
         self::assertCount(1, $recorder->requests());
         self::assertStringNotContainsString('FAKESIGNATURE0123456789abcdef', $exception->getMessage().$exception->bodyExcerpt);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unsafeSignedUrlHosts(): iterable
+    {
+        yield 'IPv4 literal' => ['https://127.0.0.1/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'localhost' => ['https://localhost/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'localhost subdomain' => ['https://a.localhost/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'localhost in capitals' => ['https://A.LocalHost/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+    }
+
+    #[DataProvider('unsafeSignedUrlHosts')]
+    public function test_signed_url_with_unsafe_host_is_refused(string $url): void
+    {
+        $data = self::decoded('ubl-200.json');
+        $data['signed_url'] = $url;
+        $recorder = new RecordingHttpClient(self::json(200, $data));
+
+        $exception = self::capture(fn () => self::transport($recorder)->fetch(self::DOC));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        // UnexpectedResponse appends the status to the reason.
+        self::assertSame('The signed download URL host is not allowed (HTTP 200).', $exception->getMessage());
+        self::assertCount(1, $recorder->requests());
+        self::assertSame('', $exception->bodyExcerpt);
+        self::assertStringNotContainsString((string) parse_url($url, PHP_URL_HOST), $exception->getMessage());
+        self::assertStringNotContainsString('FAKESIGNATURE0123456789abcdef', $exception->getMessage());
     }
 
     public function test_signed_url_is_redacted(): void

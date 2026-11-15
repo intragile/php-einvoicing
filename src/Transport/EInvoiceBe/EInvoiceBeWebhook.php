@@ -8,6 +8,7 @@ use Closure;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
+use IntrAgile\EInvoicing\Transport\Http\Redactor;
 use IntrAgile\EInvoicing\Transport\Webhook\WebhookEvent;
 use IntrAgile\EInvoicing\Transport\Webhook\WebhookInput;
 use IntrAgile\EInvoicing\Transport\Webhook\WebhookKind;
@@ -70,13 +71,13 @@ final class EInvoiceBeWebhook implements WebhookParser
      * "document.received" is DocumentReceived. "document.sent" is DeliveryChanged with the state
      * Delivered. "document.sent.failed" is DeliveryChanged without a state, so read the status,
      * which also reports the failure. "document.received.failed" and any other type are Other. The
-     * document id is data.document_id; the account id is tenant_id, or null when the notification
-     * names none.
+     * document id is data.document_id, which must have the form "doc-<letters and digits>"; the
+     * account id is tenant_id, trimmed, or null when the notification names none.
      *
      * The deduplication key is "<type>:<document id>": the event id changes with every attempt of
      * one delivery, so it cannot be used.
      *
-     * Only document events are supported: a notification without a data.document_id raises
+     * Only document events are supported: a notification without a valid data.document_id raises
      * UnexpectedResponse even when its signature is valid. Catch it and still answer the delivery
      * with 2xx when such events should be ignored rather than retried.
      *
@@ -100,10 +101,10 @@ final class EInvoiceBeWebhook implements WebhookParser
         }
         $data = $notification['data'] ?? null;
         $documentId = is_array($data) && ! array_is_list($data) ? ($data['document_id'] ?? null) : null;
-        if (! is_string($documentId) || trim($documentId) === '') {
-            throw WebhookInput::malformed(self::PROVIDER, 'has no document id (data.document_id)', $rawBody);
+        if (! is_string($documentId) || ! ResponseMapper::isDocumentId($documentId)) {
+            throw WebhookInput::malformed(self::PROVIDER, 'has no document id of the form "doc-<letters and digits>" (data.document_id)', $rawBody);
         }
-        $tenantId = $notification['tenant_id'] ?? null;
+        $tenantId = is_string($notification['tenant_id'] ?? null) ? trim($notification['tenant_id']) : '';
 
         [$kind, $state] = match ($type) {
             'document.received' => [WebhookKind::DocumentReceived, null],
@@ -116,7 +117,7 @@ final class EInvoiceBeWebhook implements WebhookParser
             $kind,
             $type,
             $documentId,
-            is_string($tenantId) && trim($tenantId) !== '' ? $tenantId : null,
+            $tenantId === '' ? null : $tenantId,
             $type.':'.$documentId,
             $state,
             null,
@@ -150,6 +151,6 @@ final class EInvoiceBeWebhook implements WebhookParser
      */
     public function __debugInfo(): array
     {
-        return ['secret' => '[redacted]'];
+        return ['secret' => Redactor::REDACTED];
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Transport\B2Brouter;
 
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Tests\Support\RecordingHttpClient;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterTransport;
@@ -14,13 +15,14 @@ use Nyholm\Psr7\Response;
 use Psr\Http\Client\NetworkExceptionInterface;
 use Psr\Http\Message\RequestInterface;
 use RuntimeException;
-use Throwable;
 
 /**
  * Shared helpers of the B2Brouter driver tests.
  */
 trait B2BrouterFixtures
 {
+    use CapturesThrowable;
+
     private const KEY = 'test_FAKEKEY000000';
 
     private const ACCOUNT = 4711;
@@ -74,16 +76,6 @@ trait B2BrouterFixtures
         self::assertIsString($contents);
 
         return $contents;
-    }
-
-    private static function capture(callable $action): Throwable
-    {
-        try {
-            $action();
-        } catch (Throwable $exception) {
-            return $exception;
-        }
-        self::fail('No exception was thrown.');
     }
 
     private static function networkException(string $message): NetworkExceptionInterface

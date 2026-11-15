@@ -296,7 +296,8 @@ final class SmpClient
         }
         $segment = rawurldecode(substr($path, (int) strrpos($path, '/') + 1));
         $prefix = DocumentTypeId::SCHEME.'::';
-        if (str_starts_with($segment, $prefix)) {
+        // Identifier schemes are case-insensitive under the Peppol Policy for use of Identifiers.
+        if (strncasecmp($segment, $prefix, strlen($prefix)) === 0) {
             $segment = substr($segment, strlen($prefix));
         }
 

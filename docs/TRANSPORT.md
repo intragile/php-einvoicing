@@ -610,7 +610,8 @@ $webhook = new B2BrouterWebhook($webhookSecret);         // no timestamp check (
 $webhook = new B2BrouterWebhook($webhookSecret, 300);    // refuse a signed time more than 300 s from now
 ```
 
-- The secret is the web hook's signing secret (`signing_secret` in B2Brouter's web hook object).
+- The secret is the web hook's signing secret (`signing_secret` in B2Brouter's web hook object;
+  B2Brouter's guide calls it `signature_key`).
 - B2Brouter signs with `X-B2Brouter-Signature: t=<unix time>,s=<hex>`, an HMAC-SHA256 of
   `"<t>.<raw body>"`. The header must appear exactly once and match that form exactly; pass the
   body exactly as received.

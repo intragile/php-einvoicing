@@ -105,6 +105,13 @@ final class ResponseMapper
         if ($status === 415 || $status === 422) {
             throw $this->rejected($response, sprintf('e-invoice.be rejected %s (HTTP %d)', $subject, $status));
         }
+        if ($status === 404) {
+            // The upload endpoint takes no id, so a 404 means the request went to the wrong place.
+            throw $this->unexpected($response, sprintf(
+                '%s failed: e-invoice.be answered HTTP 404 for the upload endpoint; check the configured base URL and API version',
+                $operation,
+            ));
+        }
         if ($status >= 500 && $status <= 599) {
             // The draft may have been created before the server error, or behind a failing gateway.
             throw new OutcomeUnknown(sprintf(
@@ -288,6 +295,9 @@ final class ResponseMapper
                 $documentId,
             ));
         }
+        if (! self::isAllowedHost((string) parse_url($url, PHP_URL_HOST))) {
+            throw self::withoutBody($response, 'The signed download URL host is not allowed.');
+        }
         $hash = $record['file_hash'] ?? null;
 
         return [
@@ -465,8 +475,8 @@ final class ResponseMapper
 
     /**
      * True for an absolute https URL with a host and without user info or whitespace. The host is
-     * only checked to consist of dot-separated letters, digits and hyphens: IP literals and
-     * localhost pass, and no host is allow-listed yet.
+     * only checked to consist of dot-separated letters, digits and hyphens; isAllowedHost() then
+     * refuses IP literals and localhost.
      */
     private static function isHttpsUrl(string $url): bool
     {
@@ -480,6 +490,20 @@ final class ResponseMapper
             && preg_match('/\A(?:[A-Za-z0-9-]+\.)*[A-Za-z0-9-]+\z/', $parts['host'] ?? '') === 1
             && ! isset($parts['user'])
             && ! isset($parts['pass']);
+    }
+
+    /**
+     * False for a host that points at the local machine or skips name resolution: an IP literal,
+     * "localhost" or a name under ".localhost", compared case-insensitively. No host is
+     * allow-listed yet.
+     */
+    private static function isAllowedHost(string $host): bool
+    {
+        $host = strtolower($host);
+
+        return filter_var(trim($host, '[]'), FILTER_VALIDATE_IP) === false
+            && $host !== 'localhost'
+            && ! str_ends_with($host, '.localhost');
     }
 
     /**

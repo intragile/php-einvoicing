@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Transport\B2Brouter;
 
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
 use IntrAgile\EInvoicing\Transport\Peppol\PeppolBis3;
 use IntrAgile\EInvoicing\Transport\Peppol\XRechnungPeppol;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Throwable;
 
 final class B2BrouterConfigTest extends TestCase
 {
+    use CapturesThrowable;
+
     private const KEY = 'test_FAKEKEY000000';
 
     public function test_defaults(): void
@@ -176,15 +178,5 @@ final class B2BrouterConfigTest extends TestCase
     private static function dump(B2BrouterConfig $config): array
     {
         return $config->__debugInfo();
-    }
-
-    private static function capture(callable $action): Throwable
-    {
-        try {
-            $action();
-        } catch (Throwable $exception) {
-            return $exception;
-        }
-        self::fail('No exception was thrown.');
     }
 }

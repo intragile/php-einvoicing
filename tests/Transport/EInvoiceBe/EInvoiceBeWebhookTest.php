@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Transport\EInvoiceBe;
 
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\EInvoiceBe\CanonicalJson;
 use IntrAgile\EInvoicing\Transport\EInvoiceBe\EInvoiceBeWebhook;
@@ -13,10 +14,11 @@ use IntrAgile\EInvoicing\Transport\Webhook\WebhookKind;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Throwable;
 
 final class EInvoiceBeWebhookTest extends TestCase
 {
+    use CapturesThrowable;
+
     /**
      * The secret and signature of the e-invoice.be test vector, published on
      * https://docs.e-invoice.be/essentials/webhooks.md ("Test vector"; research note
@@ -54,16 +56,6 @@ final class EInvoiceBeWebhookTest extends TestCase
     private static function headers(string $body, string $secret = self::SECRET): array
     {
         return ['X-Signature' => 'sha256='.hash_hmac('sha256', CanonicalJson::fromRaw($body), $secret)];
-    }
-
-    private static function capture(callable $callable): Throwable
-    {
-        try {
-            $callable();
-        } catch (Throwable $exception) {
-            return $exception;
-        }
-        self::fail('No exception was thrown.');
     }
 
     public function test_documented_vector_verifies(): void
@@ -267,6 +259,37 @@ final class EInvoiceBeWebhookTest extends TestCase
 
         self::assertInstanceOf(UnexpectedResponse::class, $exception);
         self::assertStringContainsString('e-invoice.be webhook notification '.$message, $exception->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function documentIdsOutsidePattern(): iterable
+    {
+        yield 'path traversal' => ['../x'];
+        yield 'underscore' => ['doc_1'];
+        yield 'padded' => [' doc-1 '];
+    }
+
+    #[DataProvider('documentIdsOutsidePattern')]
+    public function test_document_id_outside_doc_pattern_is_refused(string $documentId): void
+    {
+        $body = self::body('document.sent', ['data' => ['document_id' => $documentId]]);
+
+        $exception = self::capture(fn () => (new EInvoiceBeWebhook(self::SECRET))->parse($body, self::headers($body)));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString(
+            'e-invoice.be webhook notification has no document id of the form "doc-<letters and digits>" (data.document_id)',
+            $exception->getMessage(),
+        );
+    }
+
+    public function test_tenant_id_is_trimmed(): void
+    {
+        $body = self::body('document.received', ['tenant_id' => " ten-FAKETENANT01\t"]);
+
+        self::assertSame('ten-FAKETENANT01', (new EInvoiceBeWebhook(self::SECRET))->parse($body, self::headers($body))->accountId);
     }
 
     public function test_secret_must_not_be_empty(): void

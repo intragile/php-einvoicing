@@ -8,6 +8,7 @@ use Closure;
 use DateTimeImmutable;
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
+use IntrAgile\EInvoicing\Transport\Http\Redactor;
 use IntrAgile\EInvoicing\Transport\Webhook\WebhookEvent;
 use IntrAgile\EInvoicing\Transport\Webhook\WebhookInput;
 use IntrAgile\EInvoicing\Transport\Webhook\WebhookKind;
@@ -139,7 +140,8 @@ final class B2BrouterWebhook implements WebhookParser
             'received_invoice.created' => WebhookKind::DocumentReceived,
             default => WebhookKind::Other,
         };
-        $state = $kind === WebhookKind::DeliveryChanged && array_key_exists('state', $data)
+        // A state that is not a string says nothing about the delivery, like a missing one.
+        $state = $kind === WebhookKind::DeliveryChanged && is_string($data['state'] ?? null)
             ? ResponseMapper::stateOf($data['state'])
             : null;
 
@@ -160,8 +162,8 @@ final class B2BrouterWebhook implements WebhookParser
      */
     private static function deduplicationKey(array $headers, string $code, string $invoiceId, array $data): string
     {
-        $deliveryId = WebhookInput::header($headers, self::DELIVERY_ID_HEADER);
-        if ($deliveryId !== null && trim($deliveryId) !== '') {
+        $deliveryId = trim(WebhookInput::header($headers, self::DELIVERY_ID_HEADER) ?? '');
+        if ($deliveryId !== '') {
             return $deliveryId;
         }
         $eventId = self::scalarText($data['event_id'] ?? null);
@@ -186,12 +188,15 @@ final class B2BrouterWebhook implements WebhookParser
     }
 
     /**
-     * The account id as a string when it is a non-blank string or a positive integer, else null.
+     * The account id as a string when it is a non-blank string, trimmed, or a positive integer;
+     * null otherwise.
      */
     private static function accountId(mixed $value): ?string
     {
         if (is_string($value)) {
-            return trim($value) === '' ? null : $value;
+            $value = trim($value);
+
+            return $value === '' ? null : $value;
         }
 
         return is_int($value) && $value > 0 ? (string) $value : null;
@@ -214,6 +219,6 @@ final class B2BrouterWebhook implements WebhookParser
      */
     public function __debugInfo(): array
     {
-        return ['secret' => '[redacted]', 'toleranceSeconds' => $this->toleranceSeconds];
+        return ['secret' => Redactor::REDACTED, 'toleranceSeconds' => $this->toleranceSeconds];
     }
 }

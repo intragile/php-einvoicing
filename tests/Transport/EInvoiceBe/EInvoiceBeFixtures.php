@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Transport\EInvoiceBe;
 
 use DateTimeImmutable;
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Tests\Support\RecordingHttpClient;
 use IntrAgile\EInvoicing\Transport\EInvoiceBe\EInvoiceBeConfig;
 use IntrAgile\EInvoicing\Transport\EInvoiceBe\EInvoiceBeTransport;
@@ -15,13 +16,14 @@ use Nyholm\Psr7\Response;
 use Psr\Http\Client\NetworkExceptionInterface;
 use Psr\Http\Message\RequestInterface;
 use RuntimeException;
-use Throwable;
 
 /**
  * Shared helpers of the e-invoice.be driver tests.
  */
 trait EInvoiceBeFixtures
 {
+    use CapturesThrowable;
+
     private const KEY = 'test_FAKEKEY000000';
 
     private const BASE = 'https://api.e-invoice.be';
@@ -79,16 +81,6 @@ trait EInvoiceBeFixtures
         self::assertIsString($contents);
 
         return $contents;
-    }
-
-    private static function capture(callable $action): Throwable
-    {
-        try {
-            $action();
-        } catch (Throwable $exception) {
-            return $exception;
-        }
-        self::fail('No exception was thrown.');
     }
 
     private static function networkException(string $message): NetworkExceptionInterface

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Transport\Recommand;
 
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
@@ -14,10 +15,11 @@ use IntrAgile\EInvoicing\Transport\Webhook\WebhookParser;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Throwable;
 
 final class RecommandWebhookTest extends TestCase
 {
+    use CapturesThrowable;
+
     private const SECRET = 'whsec_01topsecretvalue';
 
     /**
@@ -96,6 +98,19 @@ final class RecommandWebhookTest extends TestCase
         $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw)] + $headers);
 
         self::assertSame('document.received:doc_01inboundfirst:', $event->deduplicationKey);
+    }
+
+    public function test_company_and_idempotency_key_are_trimmed(): void
+    {
+        $raw = '{"eventType":"document.sent","documentId":"doc_01","teamId":"t","companyId":" c_01example\t","deliveryStatus":"delivered"}';
+
+        $event = (new RecommandWebhook(self::SECRET))->parse($raw, ['X-Signature' => self::sign($raw), 'X-Idempotency-Key' => " idem_01abc\n"]);
+
+        self::assertSame('c_01example', $event->accountId);
+        self::assertSame('idem_01abc', $event->deduplicationKey);
+
+        $blank = '{"eventType":"document.sent","documentId":"doc_01","teamId":"t","companyId":"  ","deliveryStatus":"delivered"}';
+        self::assertNull((new RecommandWebhook(self::SECRET))->parse($blank, ['X-Signature' => self::sign($blank)])->accountId);
     }
 
     public function test_fallback_key_differs_per_delivery_state(): void
@@ -298,15 +313,5 @@ final class RecommandWebhookTest extends TestCase
         self::assertIsString($contents);
 
         return $contents;
-    }
-
-    private static function capture(callable $action): Throwable
-    {
-        try {
-            $action();
-        } catch (Throwable $exception) {
-            return $exception;
-        }
-        self::fail('No exception was thrown.');
     }
 }
