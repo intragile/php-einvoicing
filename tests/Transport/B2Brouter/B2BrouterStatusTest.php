@@ -101,6 +101,33 @@ final class B2BrouterStatusTest extends TestCase
         self::assertSame('Leaked [redacted]', $status->failure->message);
     }
 
+    public function test_failure_message_falls_back_to_errors_list(): void
+    {
+        $body = ['invoice' => ['id' => 1, 'state' => 'error', 'error_code' => null, 'error_message' => null, 'errors' => [
+            ['error' => 'Validation failed: You cannot send invoices dated from a closed fiscal year'],
+            'Second '.self::KEY,
+            ['other' => 'ignored'],
+            42,
+        ]]];
+
+        $status = self::transport(new RecordingHttpClient(self::json(200, $body)))->status('1');
+
+        self::assertSame(DeliveryState::Failed, $status->state);
+        self::assertNotNull($status->failure);
+        self::assertSame(FailureCategory::Transport, $status->failure->category);
+        self::assertSame('Validation failed: You cannot send invoices dated from a closed fiscal year; Second [redacted]', $status->failure->message);
+    }
+
+    public function test_failure_message_is_null_without_message_or_errors(): void
+    {
+        $body = ['invoice' => ['id' => 1, 'state' => 'error', 'error_code' => null, 'error_message' => null, 'errors' => []]];
+
+        $status = self::transport(new RecordingHttpClient(self::json(200, $body)))->status('1');
+
+        self::assertNotNull($status->failure);
+        self::assertNull($status->failure->message);
+    }
+
     public function test_invalid_is_a_validation_failure(): void
     {
         $data = self::decoded('invoice-error.json');
