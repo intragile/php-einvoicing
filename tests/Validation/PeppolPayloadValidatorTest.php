@@ -4,34 +4,17 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Validation;
 
-use DateTimeImmutable;
-use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
-use IntrAgile\EInvoicing\CodeList\CountryCode;
-use IntrAgile\EInvoicing\CodeList\CurrencyCode;
-use IntrAgile\EInvoicing\CodeList\ElectronicAddressScheme;
 use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
-use IntrAgile\EInvoicing\CodeList\PaymentMeansCode;
-use IntrAgile\EInvoicing\CodeList\UnitCode;
-use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
-use IntrAgile\EInvoicing\Model\Contact;
-use IntrAgile\EInvoicing\Model\CreditTransfer;
-use IntrAgile\EInvoicing\Model\ElectronicAddress;
 use IntrAgile\EInvoicing\Model\Invoice;
-use IntrAgile\EInvoicing\Model\InvoiceLine;
-use IntrAgile\EInvoicing\Model\Item;
-use IntrAgile\EInvoicing\Model\LineVat;
-use IntrAgile\EInvoicing\Model\Party;
-use IntrAgile\EInvoicing\Model\PaymentInstructions;
-use IntrAgile\EInvoicing\Model\PostalAddress;
 use IntrAgile\EInvoicing\Model\PrecedingInvoiceReference;
-use IntrAgile\EInvoicing\Model\Price;
 use IntrAgile\EInvoicing\Model\ProcessControl;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Syntax\XRechnung;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Support\RecordingValidator;
+use IntrAgile\EInvoicing\Tests\Support\ReleaseInvoices;
 use IntrAgile\EInvoicing\Tests\Validation\Peppol\InstalledRules;
 use IntrAgile\EInvoicing\Transport\Peppol\PeppolBis3;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
@@ -181,43 +164,7 @@ final class PeppolPayloadValidatorTest extends TestCase
 
     private static function germanInvoice(string $specification): Invoice
     {
-        return TotalsCalculator::complete(new Invoice(
-            number: 'RE-2026-0815',
-            issueDate: new DateTimeImmutable('2026-11-13'),
-            type: InvoiceTypeCode::C_380,
-            currency: CurrencyCode::EUR,
-            seller: new Party(
-                name: 'Muster Software GmbH',
-                vatIdentifier: 'DE123456789',
-                electronicAddress: new ElectronicAddress('DE123456789', ElectronicAddressScheme::C_9930),
-                address: new PostalAddress(country: CountryCode::DE, line1: 'Lindenstraße 12', city: 'Berlin', postCode: '10115'),
-                contact: new Contact(name: 'Erika Mustermann', phone: '+49 30 1234567', email: 'erika.mustermann@muster-software.example'),
-            ),
-            buyer: new Party(
-                name: 'Beispiel Handel AG',
-                electronicAddress: new ElectronicAddress('04011000-12345-34', ElectronicAddressScheme::C_0204),
-                address: new PostalAddress(country: CountryCode::DE, line1: 'Marktplatz 3', city: 'Köln', postCode: '50667'),
-            ),
-            lines: [
-                new InvoiceLine(
-                    id: '1',
-                    quantity: '10',
-                    unit: UnitCode::HUR,
-                    price: new Price(netPrice: '95.00'),
-                    item: new Item(name: 'Softwareentwicklung'),
-                    vat: new LineVat(category: VatCategory::StandardRate, rate: '19'),
-                ),
-            ],
-            dueDate: new DateTimeImmutable('2026-12-13'),
-            buyerReference: '04011000-12345-34',
-            paymentTerms: 'Zahlbar innerhalb von 30 Tagen ohne Abzug.',
-            processControl: new ProcessControl($specification, PeppolBis3::PROCESS),
-            payment: new PaymentInstructions(
-                meansCode: PaymentMeansCode::C_58,
-                remittanceInformation: 'RE-2026-0815',
-                creditTransfers: [new CreditTransfer(accountIdentifier: 'DE75512108001245126199', accountName: 'Muster Software GmbH')],
-            ),
-        ));
+        return ReleaseInvoices::bis3(ReleaseInvoices::INVOICE_NUMBER)->withProcessControl(new ProcessControl($specification, PeppolBis3::PROCESS));
     }
 
     private static function creditNote(Invoice $invoice): Invoice

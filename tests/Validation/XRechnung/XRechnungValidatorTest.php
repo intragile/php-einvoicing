@@ -5,28 +5,10 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Validation\XRechnung;
 
 use Composer\Autoload\ClassLoader;
-use DateTimeImmutable;
-use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
-use IntrAgile\EInvoicing\CodeList\CountryCode;
-use IntrAgile\EInvoicing\CodeList\CurrencyCode;
-use IntrAgile\EInvoicing\CodeList\ElectronicAddressScheme;
 use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
-use IntrAgile\EInvoicing\CodeList\PaymentMeansCode;
-use IntrAgile\EInvoicing\CodeList\UnitCode;
-use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
-use IntrAgile\EInvoicing\Model\Contact;
-use IntrAgile\EInvoicing\Model\CreditTransfer;
-use IntrAgile\EInvoicing\Model\ElectronicAddress;
 use IntrAgile\EInvoicing\Model\Invoice;
-use IntrAgile\EInvoicing\Model\InvoiceLine;
-use IntrAgile\EInvoicing\Model\Item;
-use IntrAgile\EInvoicing\Model\LineVat;
-use IntrAgile\EInvoicing\Model\Party;
-use IntrAgile\EInvoicing\Model\PaymentInstructions;
-use IntrAgile\EInvoicing\Model\PostalAddress;
-use IntrAgile\EInvoicing\Model\Price;
 use IntrAgile\EInvoicing\Rules\En16931\RuleFiles as En16931RuleFiles;
 use IntrAgile\EInvoicing\Rules\XRechnung\RuleFiles;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiReader;
@@ -35,6 +17,7 @@ use IntrAgile\EInvoicing\Syntax\Syntax;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblReader;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Syntax\XRechnung;
+use IntrAgile\EInvoicing\Tests\Support\ReleaseInvoices;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\Finding;
 use IntrAgile\EInvoicing\Validation\Severity;
@@ -276,7 +259,7 @@ final class XRechnungValidatorTest extends TestCase
     #[DataProvider('syntaxes')]
     public function test_model_written_as_xrechnung_is_valid(Syntax $syntax): void
     {
-        $invoice = TotalsCalculator::complete(self::germanDomesticInvoice());
+        $invoice = ReleaseInvoices::germanDomestic();
         $xml = $syntax === Syntax::Ubl ? (new UblWriter)->write($invoice) : (new CiiWriter)->write($invoice);
 
         $report = self::validator()->validate($xml);
@@ -321,47 +304,6 @@ final class XRechnungValidatorTest extends TestCase
         }
 
         self::assertSame([], $failures, implode("\n", $failures));
-    }
-
-    private static function germanDomesticInvoice(): Invoice
-    {
-        return new Invoice(
-            number: 'RE-2026-0815',
-            issueDate: new DateTimeImmutable('2026-11-13'),
-            type: InvoiceTypeCode::C_380,
-            currency: CurrencyCode::EUR,
-            seller: new Party(
-                name: 'Muster Software GmbH',
-                vatIdentifier: 'DE123456789',
-                electronicAddress: new ElectronicAddress('rechnung@muster-software.example', ElectronicAddressScheme::EM),
-                address: new PostalAddress(country: CountryCode::DE, line1: 'Lindenstraße 12', city: 'Berlin', postCode: '10115'),
-                contact: new Contact(name: 'Erika Mustermann', phone: '+49 30 1234567', email: 'erika.mustermann@muster-software.example'),
-            ),
-            buyer: new Party(
-                name: 'Beispiel Handel AG',
-                electronicAddress: new ElectronicAddress('eingang@beispiel-handel.example', ElectronicAddressScheme::EM),
-                address: new PostalAddress(country: CountryCode::DE, line1: 'Marktplatz 3', city: 'Köln', postCode: '50667'),
-            ),
-            lines: [
-                new InvoiceLine(
-                    id: '1',
-                    quantity: '10',
-                    unit: UnitCode::HUR,
-                    price: new Price(netPrice: '95.00'),
-                    item: new Item(name: 'Softwareentwicklung'),
-                    vat: new LineVat(category: VatCategory::StandardRate, rate: '19'),
-                ),
-            ],
-            dueDate: new DateTimeImmutable('2026-12-13'),
-            buyerReference: '04011000-12345-34',
-            paymentTerms: 'Zahlbar innerhalb von 30 Tagen ohne Abzug.',
-            processControl: XRechnung::processControl(),
-            payment: new PaymentInstructions(
-                meansCode: PaymentMeansCode::C_58,
-                remittanceInformation: 'RE-2026-0815',
-                creditTransfers: [new CreditTransfer(accountIdentifier: 'DE75512108001245126199', accountName: 'Muster Software GmbH')],
-            ),
-        );
     }
 
     /**
