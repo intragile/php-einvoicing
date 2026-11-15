@@ -14,7 +14,7 @@ final class HtmlRenderingTest extends TestCase
     {
         $html = HtmlRendering::render(ReleaseInvoices::germanDomestic());
 
-        foreach (['Muster Software GmbH', 'Beispiel Handel AG', 'RE-2026-0815', '2026-11-13', '2026-12-13', 'Softwareentwicklung', '19 %', '950.00', '180.50', '1130.50'] as $value) {
+        foreach (['Muster Software GmbH', 'Beispiel Handel AG', 'RE-2026-0815', '2026-11-13', '2026-12-13', '<th>Delivery date</th><td>2026-11-12</td>', 'Softwareentwicklung', '19 %', '950.00', '180.50', '1130.50'] as $value) {
             self::assertStringContainsString($value, $html);
         }
     }

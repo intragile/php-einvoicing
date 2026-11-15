@@ -75,6 +75,7 @@ final class HtmlRendering
             .'<tr><th>Number</th><td>'.self::e($invoice->number).'</td></tr>'
             .'<tr><th>Issue date</th><td>'.self::date($invoice->issueDate).'</td></tr>'
             .'<tr><th>Due date</th><td>'.self::date($invoice->dueDate).'</td></tr>'
+            .($invoice->delivery?->actualDeliveryDate !== null ? '<tr><th>Delivery date</th><td>'.self::date($invoice->delivery->actualDeliveryDate).'</td></tr>' : '')
             .'<tr><th>Buyer reference</th><td>'.self::e($invoice->buyerReference ?? '').'</td></tr>'
             .$preceding
             .'<tr><th>Currency</th><td>'.self::e($currency).'</td></tr>'

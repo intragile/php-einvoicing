@@ -15,6 +15,7 @@ use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Model\Contact;
 use IntrAgile\EInvoicing\Model\CreditTransfer;
+use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\ElectronicAddress;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\InvoiceLine;
@@ -36,7 +37,8 @@ use IntrAgile\EInvoicing\Transport\Peppol\PeppolBis3;
  * tests and the import into accounting software.
  *
  * Every invoice is a German domestic sale (10 hours of software development at 95.00 EUR, 19 %
- * VAT, 1130.50 EUR due) with its totals completed by TotalsCalculator.
+ * VAT, 1130.50 EUR due) with its totals completed by TotalsCalculator. It states the date of
+ * supply (BT-72), which a German invoice must show (section 14(4) no. 6 UStG).
  */
 final class ReleaseInvoices
 {
@@ -45,6 +47,9 @@ final class ReleaseInvoices
 
     /** Number of the release credit note. */
     public const CREDIT_NOTE_NUMBER = 'GS-2026-0042';
+
+    /** Date of supply (BT-72): the day the development work was completed. */
+    public const DELIVERY_DATE = '2026-11-12';
 
     /** Buyer reference (BT-10): a Leitweg-ID, which XRechnung requires. */
     private const LEITWEG_ID = '04011000-12345-34';
@@ -135,6 +140,7 @@ final class ReleaseInvoices
             ],
             dueDate: new DateTimeImmutable('2026-12-13'),
             buyerReference: self::LEITWEG_ID,
+            delivery: new Delivery(actualDeliveryDate: new DateTimeImmutable(self::DELIVERY_DATE)),
             paymentTerms: 'Zahlbar innerhalb von 30 Tagen ohne Abzug.',
             processControl: $processControl,
             payment: new PaymentInstructions(
