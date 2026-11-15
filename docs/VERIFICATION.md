@@ -59,17 +59,23 @@ invoice now states its date of supply (BT-72), which a German invoice must show 
 is unchanged, so an invoice without delivery data still gets this warning from the official rules
 (and from our validator, whose verdict matches them).
 
-To repeat the gate (Docker with the KoSIT, SaxonC and veraPDF images, and Google Chrome):
+To repeat the gate (Docker with the KoSIT, SaxonC and veraPDF images, and Google Chrome; the KoSIT
+and SaxonC runners already pass `--fail-on-skipped`, and the KoSIT runner also
+`--fail-on-empty-test-suite`):
 
 ```sh
 CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-    vendor/bin/phpunit --colors=never --group release-artefacts
-KOSIT_SKIP_BUILD=1 docker/kosit/run-release-gate.sh
-ORACLE_SKIP_BUILD=1 docker/oracle/run.sh 8.5 --group release-gate --filter test_official_facturx_xslt_passes_own_output
-vendor/bin/phpunit --colors=never --group release-gate --filter test_verapdf
+    timeout 300 vendor/bin/phpunit --colors=never --group release-artefacts
+KOSIT_SKIP_BUILD=1 timeout 900 docker/kosit/run-release-gate.sh
+ORACLE_SKIP_BUILD=1 timeout 700 docker/oracle/run.sh 8.5 --colors=never --group release-gate \
+    --filter test_official_facturx_xslt_passes_own_output --fail-on-empty-test-suite
+timeout 2100 vendor/bin/phpunit --colors=never --group release-gate --filter test_verapdf \
+    --fail-on-skipped --fail-on-empty-test-suite
 ```
 
-Each run merges its verdicts into `build/release-gate/summary.json` (not committed).
+Each run merges its verdicts into `build/release-gate/summary.json` (not committed), with the
+SHA-256 of the artefact file wherever a document was read from one. The release-artefacts run
+writes new PDFs (new hashes), so the table above holds only for the files listed here.
 
 ---
 

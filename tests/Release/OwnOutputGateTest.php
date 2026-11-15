@@ -46,6 +46,13 @@ final class OwnOutputGateTest extends TestCase
     /** Bound of the veraPDF run: the runner's own default bound (VERAPDF_TIMEOUT) plus a margin. */
     private const float VERAPDF_TIMEOUT = 1800.0 + 120.0;
 
+    /*
+     * The validator versions recorded in summary.json are not read from the validators: they are
+     * bound to the pinned images, php-einvoicing-kosit:1.6.3 with the XRechnung configuration
+     * 2026-08-31 (docker/kosit/Dockerfile and run-release-gate.sh) and verapdf/cli:v1.30.3
+     * (docker/verapdf/run.sh), and the Factur-X 1.09.2 rule files (Fixtures). Update them together
+     * with the image tags.
+     */
     private const string KOSIT = 'KoSIT validator';
 
     private const string KOSIT_VERSION = '1.6.3, XRechnung configuration 2026-08-31';
@@ -123,24 +130,30 @@ final class OwnOutputGateTest extends TestCase
         self::assertSame(self::DOCUMENT_KEYS, array_keys($documents));
 
         if ($key === self::ZUGFERD_XRECHNUNG) {
-            $document = (new FacturXPdfReader)->read(self::artefact(ReleaseArtefactsTest::XRECHNUNG_PDF));
+            $pdf = self::artefact(ReleaseArtefactsTest::XRECHNUNG_PDF);
+            $document = (new FacturXPdfReader)->read($pdf);
             self::assertSame(FacturXProfile::XRechnung, $document->profile);
             $xml = $document->xml;
+            // The XRechnung ZUGFeRD PDF carries exactly the writer output.
+            self::assertSame((new FacturXXmlWriter)->write(ReleaseInvoices::germanDomestic(), FacturXProfile::XRechnung)->xml, $xml);
             $name = ReleaseArtefactsTest::XRECHNUNG_PDF.' (embedded XML)';
+            $sha256 = hash('sha256', $pdf);
         } elseif (isset(self::XML_ARTEFACTS[$key])) {
             $xml = self::artefact(self::XML_ARTEFACTS[$key]);
             self::assertSame($documents[$key], $xml, self::XML_ARTEFACTS[$key].' differs from the writer output.');
             $name = self::XML_ARTEFACTS[$key];
+            $sha256 = hash('sha256', $xml);
         } else {
             $xml = $documents[$key];
             $name = $key.' (writer output)';
+            $sha256 = null;
         }
 
         $report = $client->check($xml);
         $result = $report->accepted
             ? 'accepted (scenario: '.$report->scenario.')'
             : 'rejected (scenario: '.($report->scenario ?? 'none').'): '.implode(', ', $report->verdict);
-        self::record($name, self::KOSIT, self::KOSIT_VERSION, $result);
+        self::record($name, self::KOSIT, self::KOSIT_VERSION, $result, $sha256);
 
         self::assertTrue($report->accepted, "{$name}: {$result}");
         self::assertStringContainsString('XRechnung', (string) $report->scenario, $name);
@@ -152,6 +165,7 @@ final class OwnOutputGateTest extends TestCase
         if (! OfficialRules::available()) {
             self::markTestSkipped('The SaxonC-HE PHP extension is not loaded; run docker/oracle/run.sh.');
         }
+        self::assertSame(['Minimum', 'BasicWl', 'Basic', 'En16931', 'Extended'], array_keys(self::facturxCases()));
         $profile = constant(FacturXProfile::class.'::'.$case);
         self::assertInstanceOf(FacturXProfile::class, $profile);
         $key = $profile->ruleProfile();
@@ -159,15 +173,18 @@ final class OwnOutputGateTest extends TestCase
 
         $xml = (new FacturXXmlWriter)->write(ReleaseInvoices::germanDomestic(), $profile)->xml;
         $name = ReleaseInvoices::INVOICE_NUMBER." Factur-X {$key} (writer output)";
+        $sha256 = null;
         if ($profile === FacturXProfile::En16931) {
             // The EN 16931 ZUGFeRD PDF carries exactly this XML.
-            self::assertSame($xml, (new FacturXPdfReader)->read(self::artefact(ReleaseArtefactsTest::EN16931_PDF))->xml);
+            $pdf = self::artefact(ReleaseArtefactsTest::EN16931_PDF);
+            self::assertSame($xml, (new FacturXPdfReader)->read($pdf)->xml);
             $name = ReleaseArtefactsTest::EN16931_PDF.' (embedded XML)';
+            $sha256 = hash('sha256', $pdf);
         }
 
         $verdict = OfficialRules::verdict(OfficialRules::run(Fixtures::facturxXslt($key), $xml, true, 'fatal', 'FX-REPORT'));
         $result = $verdict === [] ? 'passed: no failed assert, no fired report' : 'failed: '.implode(', ', $verdict);
-        self::record($name, self::FACTURX, self::FACTURX_VERSION.', SaxonC-HE extension '.self::saxonVersion(), $result);
+        self::record($name, self::FACTURX, self::FACTURX_VERSION.', SaxonC-HE extension '.self::saxonVersion(), $result, $sha256);
 
         self::assertSame([], $verdict, $name);
     }
@@ -185,8 +202,11 @@ final class OwnOutputGateTest extends TestCase
             unlink($stale);
         }
         $pdfs = [ReleaseArtefactsTest::EN16931_PDF, ReleaseArtefactsTest::XRECHNUNG_PDF];
+        $hashes = [];
         foreach ($pdfs as $file) {
-            self::put($dir.'/'.$file, self::artefact($file));
+            $bytes = self::artefact($file);
+            $hashes[$file] = hash('sha256', $bytes);
+            self::put($dir.'/'.$file, $bytes);
         }
 
         $run = Process::run(['bash', self::VERAPDF_RUNNER, $dir], self::VERAPDF_TIMEOUT);
@@ -199,7 +219,7 @@ final class OwnOutputGateTest extends TestCase
             $verdict = $verdicts[$file] ?? self::fail("veraPDF reported nothing for {$file}.");
             $result = ($verdict['compliant'] ? 'compliant' : 'not compliant')." ({$verdict['profile']})"
                 .($verdict['failed'] === [] ? '' : ': '.implode(', ', $verdict['failed']));
-            self::record($file, self::VERAPDF, self::VERAPDF_VERSION.", core {$version}", $result);
+            self::record($file, self::VERAPDF, self::VERAPDF_VERSION.", core {$version}", $result, $hashes[$file]);
         }
         foreach ($pdfs as $file) {
             self::assertSame(self::VERAPDF_PROFILE, $verdicts[$file]['profile'], $file);
@@ -276,8 +296,11 @@ final class OwnOutputGateTest extends TestCase
      * Merges one verdict into summary.json, keyed by document and validator. Three processes (the
      * KoSIT run, the SaxonC container and the veraPDF run) write the file, so it is read and
      * rewritten under an exclusive lock and never truncated before the read.
+     *
+     * @param  string|null  $sha256  the SHA-256 of the artefact file the document was read from;
+     *                               null for writer output that is not an artefact
      */
-    private static function record(string $document, string $validator, string $version, string $result): void
+    private static function record(string $document, string $validator, string $version, string $result, ?string $sha256 = null): void
     {
         self::makeDir(self::GATE_DIR);
         $path = self::GATE_DIR.'/summary.json';
@@ -300,7 +323,11 @@ final class OwnOutputGateTest extends TestCase
                     $merged[] = $entry;
                 }
             }
-            $merged[] = ['document' => $document, 'validator' => $validator, 'version' => $version, 'result' => $result];
+            $entry = ['document' => $document, 'validator' => $validator, 'version' => $version, 'result' => $result];
+            if ($sha256 !== null) {
+                $entry['sha256'] = $sha256;
+            }
+            $merged[] = $entry;
             $json = json_encode($merged, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n";
             if (! ftruncate($handle, 0) || ! rewind($handle) || fwrite($handle, $json) !== strlen($json) || ! fflush($handle)) {
                 throw new RuntimeException("Cannot write {$path}.");

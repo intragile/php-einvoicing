@@ -52,4 +52,4 @@ done
 
 cd "$root"
 KOSIT_ORACLE_URL="$url" timeout "${KOSIT_RUN_TIMEOUT:-900}" \
-    "$php" vendor/bin/phpunit --colors=never --group release-gate --filter test_kosit_accepts_own_xrechnung_output --fail-on-skipped "$@"
+    "$php" vendor/bin/phpunit --colors=never --group release-gate --filter test_kosit_accepts_own_xrechnung_output --fail-on-skipped --fail-on-empty-test-suite "$@"
