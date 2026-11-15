@@ -21,6 +21,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
+use Throwable;
 
 /**
  * Sends, queries, lists, fetches and acknowledges invoices through a real B2Brouter sandbox.
@@ -50,6 +51,9 @@ final class B2BrouterLiveTest extends TestCase
     private const REFUSED_RECIPIENT = '0088:9506215594996';
 
     private const UNKNOWN_RECIPIENT = '0088:9500047420799';
+
+    /** B2Brouter validates the buyer's identifiers; this is a synthetic, checksum-valid Swedish VAT number. */
+    private const BUYER_VAT = 'SE556000000101';
 
     private B2BrouterConfig $config;
 
@@ -123,22 +127,37 @@ final class B2BrouterLiveTest extends TestCase
 
         // B2Brouter requires the account's own company to be a party of every invoice.
         $response = $this->request('GET', sprintf('/accounts/%d', $this->config->accountId));
-        self::assertSame(200, $response->getStatusCode(), LiveTransport::excerpt($this->redactor, 'GET /accounts/{account}', $response));
         $data = json_decode((string) $response->getBody(), true);
         $account = is_array($data) && is_array($data['account'] ?? null) ? $data['account'] : [];
         $tin = $account['tin_value'] ?? null;
         $country = $account['country'] ?? null;
-        if (! is_string($tin) || $tin === '' || ! is_string($country) || $country === '') {
-            self::fail(LiveTransport::excerpt($this->redactor, 'GET /accounts/{account} lacks tin_value or country', $response));
-        }
-        $this->companyTin = $tin;
-        $this->companyCountry = $country;
-        $scheme = $account['tin_scheme'] ?? null;
-        $this->companyParticipant = is_string($scheme) && $scheme !== '' ? ParticipantId::parse($scheme.':'.$tin) : null;
+        $known = is_string($tin) && $tin !== '' ? $tin : null;
 
         // The tax identifier is kept out of output as well as the key and the account id.
-        $this->redactor = self::redactorFor($this->config, $tin);
-        $this->http = $this->http->withSecrets(self::secretsFor($this->config, $tin));
+        if ($known !== null) {
+            $this->redactor = self::redactorFor($this->config, $known);
+            $this->http = $this->http->withSecrets(self::secretsFor($this->config, $known));
+        }
+        self::assertSame(200, $response->getStatusCode(), LiveTransport::excerpt($this->redactor, 'GET /accounts/{account}', $response));
+        $missing = array_keys(array_filter(
+            ['tin_value' => $known, 'country' => is_string($country) && $country !== '' ? $country : null],
+            static fn (?string $value): bool => $value === null,
+        ));
+        if ($missing !== [] || $known === null || ! is_string($country)) {
+            self::fail('GET /accounts/{account} lacks '.implode(' and ', $missing).'.');
+        }
+        $this->companyTin = $known;
+        $this->companyCountry = $country;
+
+        $scheme = $account['tin_scheme'] ?? null;
+        $this->companyParticipant = null;
+        if (is_string($scheme) && $scheme !== '') {
+            try {
+                $this->companyParticipant = ParticipantId::parse($scheme.':'.$known);
+            } catch (Throwable $exception) {
+                self::fail($this->redactor->redact('The account tin_scheme and tin_value are not a Peppol participant id: '.$exception->getMessage()));
+            }
+        }
     }
 
     public function test_sandbox_recipients_reach_their_simulated_outcomes(): void
@@ -148,10 +167,15 @@ final class B2BrouterLiveTest extends TestCase
         $ids = [];
         foreach ([self::DELIVERED_RECIPIENT, self::REFUSED_RECIPIENT, self::UNKNOWN_RECIPIENT] as $recipient) {
             $xml[$recipient] = LiveTransport::withPartyCompany(
-                LiveTransport::baseExample(LiveTransport::invoiceNumber(), ParticipantId::parse($recipient), $this->companyParticipant),
-                'AccountingSupplierParty',
-                $this->companyTin,
-                $this->companyCountry,
+                LiveTransport::withPartyCompany(
+                    LiveTransport::baseExample(LiveTransport::invoiceNumber(), ParticipantId::parse($recipient), $this->companyParticipant),
+                    'AccountingSupplierParty',
+                    $this->companyTin,
+                    $this->companyCountry,
+                ),
+                'AccountingCustomerParty',
+                self::BUYER_VAT,
+                'se',
             );
             $result = $transport->send(OutboundDocument::fromXml($xml[$recipient]));
             self::assertNotSame('', $result->documentId);

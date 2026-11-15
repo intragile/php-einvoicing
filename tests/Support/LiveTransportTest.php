@@ -160,10 +160,15 @@ final class LiveTransportTest extends TestCase
     public function test_with_party_company_keeps_bis3_valid(): void
     {
         $xml = LiveTransport::withPartyCompany(
-            LiveTransport::baseExample('LIVE-0123456789ab', ParticipantId::parse('0088:9508397101047'), ParticipantId::parse('9910:HU12345676')),
-            'AccountingSupplierParty',
-            'HU12345676',
-            'hu',
+            LiveTransport::withPartyCompany(
+                LiveTransport::baseExample('LIVE-0123456789ab', ParticipantId::parse('0088:9508397101047'), ParticipantId::parse('9910:HU12345676')),
+                'AccountingSupplierParty',
+                'HU12345676',
+                'hu',
+            ),
+            'AccountingCustomerParty',
+            'SE556000000101',
+            'se',
         );
 
         $dom = new DOMDocument;
@@ -172,6 +177,12 @@ final class LiveTransportTest extends TestCase
         self::assertSame('HU12345676', $xpath->evaluate('string(//*[local-name()="AccountingSupplierParty"]//*[local-name()="PartyTaxScheme"]/*[local-name()="CompanyID"])'));
         self::assertSame('HU', $xpath->evaluate('string(//*[local-name()="AccountingSupplierParty"]//*[local-name()="PostalAddress"]//*[local-name()="IdentificationCode"])'));
         self::assertSame('SE', $xpath->evaluate('string(//*[local-name()="AccountingCustomerParty"]//*[local-name()="PostalAddress"]//*[local-name()="IdentificationCode"])'));
+        self::assertSame('SE556000000101', $xpath->evaluate('string(//*[local-name()="AccountingCustomerParty"]//*[local-name()="PartyTaxScheme"]/*[local-name()="CompanyID"])'));
+        $legal = '//*[local-name()="AccountingCustomerParty"]//*[local-name()="PartyLegalEntity"]/*[local-name()="CompanyID"]';
+        self::assertSame('SE556000000101', $xpath->evaluate('string('.$legal.')'));
+        self::assertSame(0.0, $xpath->evaluate('count('.$legal.'/@schemeID)'));
+        $supplierLegal = '//*[local-name()="AccountingSupplierParty"]//*[local-name()="PartyLegalEntity"]/*[local-name()="CompanyID"]';
+        self::assertSame('HU12345676', $xpath->evaluate('string('.$supplierLegal.')'));
 
         $report = PeppolPayloadValidator::create(InstalledRules::dir())->validate($xml);
         self::assertTrue($report->isValid(), print_r($report, true));
