@@ -35,17 +35,28 @@ final class ReleaseArtefactsTest extends TestCase
     /** Fixed modification date written into the PDFs by the Factur-X writer. */
     private const MODIFIED = '2026-11-13T00:00:00Z';
 
-    private const EN16931_PDF = 'RE-2026-0815-zugferd-en16931.pdf';
+    public const EN16931_PDF = ReleaseInvoices::INVOICE_NUMBER.'-zugferd-en16931.pdf';
 
-    private const XRECHNUNG_PDF = 'RE-2026-0815-zugferd-xrechnung.pdf';
+    public const XRECHNUNG_PDF = ReleaseInvoices::INVOICE_NUMBER.'-zugferd-xrechnung.pdf';
 
-    private const UBL_XML = 'RE-2026-0815-xrechnung-ubl.xml';
+    public const UBL_XML = ReleaseInvoices::INVOICE_NUMBER.'-xrechnung-ubl.xml';
 
-    private const CII_XML = 'RE-2026-0815-xrechnung-cii.xml';
+    public const CII_XML = ReleaseInvoices::INVOICE_NUMBER.'-xrechnung-cii.xml';
 
-    private const CREDIT_NOTE_XML = 'GS-2026-0042-xrechnung-ubl-creditnote.xml';
+    public const CREDIT_NOTE_XML = ReleaseInvoices::CREDIT_NOTE_NUMBER.'-xrechnung-ubl-creditnote.xml';
 
-    private const SUMS = 'SHA256SUMS';
+    /**
+     * The only warning the Factur-X writer may give for the Chrome print: Chrome declares no
+     * PDF/A part, so the writer adds the declaration without converting the content. veraPDF
+     * checks the result in the release gate.
+     */
+    private const EXPECTED_WARNINGS = [
+        'The input PDF declares no PDF/A conformance (its XMP metadata has no pdfaid:part). Factur-X requires '
+            .'PDF/A-3; the declaration was added, but the PDF was not converted and will not pass PDF/A validation unless '
+            .'its content already conforms.',
+    ];
+
+    public const SUMS = 'SHA256SUMS';
 
     public function test_writes_artefacts_with_checksums(): void
     {
@@ -67,7 +78,7 @@ final class ReleaseArtefactsTest extends TestCase
         foreach ([self::EN16931_PDF => FacturXProfile::En16931, self::XRECHNUNG_PDF => FacturXProfile::XRechnung] as $file => $profile) {
             $document = $reader->read(self::contents(self::dir().'/'.$file));
             self::assertSame($profile, $document->profile, $file);
-            self::assertSame('RE-2026-0815', $document->invoice()->invoice->number, $file);
+            self::assertSame(ReleaseInvoices::INVOICE_NUMBER, $document->invoice()->invoice->number, $file);
         }
 
         $lines = file(self::dir().'/'.self::SUMS, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
@@ -114,7 +125,10 @@ final class ReleaseArtefactsTest extends TestCase
     {
         $xml = (new FacturXXmlWriter)->write($invoice, $profile)->xml;
 
-        return (new FacturXPdfWriter)->embed($pdf, $xml, $profile, modified: new DateTimeImmutable(self::MODIFIED))->pdf;
+        $result = (new FacturXPdfWriter)->embed($pdf, $xml, $profile, modified: new DateTimeImmutable(self::MODIFIED));
+        self::assertSame(self::EXPECTED_WARNINGS, $result->warnings, $profile->value);
+
+        return $result->pdf;
     }
 
     private static function print(string $chrome, Invoice $invoice, string $tmp): string
@@ -129,7 +143,7 @@ final class ReleaseArtefactsTest extends TestCase
             '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--no-pdf-header-footer',
             '--user-data-dir='.$tmp.'/chrome-profile',
             '--print-to-pdf='.$pdf,
-            'file://'.$html,
+            'file://'.str_replace('%2F', '/', rawurlencode($html)),
         ], self::CHROME_TIMEOUT);
         if ($result['status'] !== 0 || ! is_file($pdf)) {
             throw new RuntimeException("Headless Chrome did not print the PDF (exit status {$result['status']}):\n{$result['stdout']}{$result['stderr']}");
