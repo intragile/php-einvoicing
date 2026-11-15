@@ -157,6 +157,24 @@ final class LiveTransportTest extends TestCase
         }
     }
 
+    public function test_base_example_is_dated_today_and_keeps_the_gaps(): void
+    {
+        $xml = LiveTransport::baseExample('LIVE-0123456789ab', ParticipantId::parse('0088:9508397101047'));
+        $dom = new DOMDocument;
+        $dom->loadXML($xml);
+        $xpath = new DOMXPath($dom);
+        $date = static function (string $name) use ($xpath): DateTimeImmutable {
+            $value = $xpath->evaluate('string(/*/*[local-name()="'.$name.'"])');
+            self::assertIsString($value);
+
+            return new DateTimeImmutable($value);
+        };
+
+        self::assertSame(gmdate('Y-m-d'), $date('IssueDate')->format('Y-m-d'));
+        self::assertSame(18, (int) $date('IssueDate')->diff($date('DueDate'))->format('%a'));
+        self::assertTrue(PeppolPayloadValidator::create(InstalledRules::dir())->validate($xml)->isValid());
+    }
+
     public function test_with_party_company_keeps_bis3_valid(): void
     {
         $xml = LiveTransport::withPartyCompany(

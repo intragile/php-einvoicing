@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Support;
 
 use Closure;
+use DateTimeImmutable;
+use DateTimeZone;
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
@@ -203,7 +205,9 @@ final class LiveTransport
 
     /**
      * The Peppol base example with the invoice number and the buyer electronic address replaced,
-     * and the seller electronic address too when one is given.
+     * and the seller electronic address too when one is given. Every date in the document is
+     * shifted by the same number of days so the issue date is today (UTC), because providers
+     * refuse invoices dated in a closed fiscal year.
      */
     public static function baseExample(string $invoiceNumber, ParticipantId $buyer, ?ParticipantId $seller = null): string
     {
@@ -221,6 +225,8 @@ final class LiveTransport
         Assert::assertInstanceOf(DOMElement::class, $id);
         $id->textContent = $invoiceNumber;
 
+        self::dateToday($xpath);
+
         $parties = ['AccountingCustomerParty' => $buyer];
         if ($seller !== null) {
             $parties['AccountingSupplierParty'] = $seller;
@@ -234,6 +240,34 @@ final class LiveTransport
         }
 
         return (string) $dom->saveXML();
+    }
+
+    /**
+     * Shifts every YYYY-MM-DD element whose name ends in "Date" by the days between the issue date
+     * and today (UTC).
+     */
+    private static function dateToday(DOMXPath $xpath): void
+    {
+        $issue = $xpath->query('/*/cbc:IssueDate');
+        $issueNode = $issue === false ? null : $issue->item(0);
+        Assert::assertInstanceOf(DOMElement::class, $issueNode);
+        $original = DateTimeImmutable::createFromFormat('!Y-m-d', trim($issueNode->textContent), new DateTimeZone('UTC'));
+        Assert::assertInstanceOf(DateTimeImmutable::class, $original);
+        $today = new DateTimeImmutable(gmdate('Y-m-d'), new DateTimeZone('UTC'));
+        $interval = $original->diff($today);
+        $days = (int) $interval->format('%R%a');
+
+        $nodes = $xpath->query('//*[substring(local-name(), string-length(local-name()) - 3) = "Date"]');
+        foreach ($nodes === false ? [] : $nodes as $node) {
+            if (! $node instanceof DOMElement) {
+                continue;
+            }
+            $text = trim($node->textContent);
+            $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $text) === 1 ? DateTimeImmutable::createFromFormat('!Y-m-d', $text, new DateTimeZone('UTC')) : false;
+            if ($date !== false) {
+                $node->textContent = $date->modify(sprintf('%+d days', $days))->format('Y-m-d');
+            }
+        }
     }
 
     /**
