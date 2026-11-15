@@ -350,7 +350,11 @@ final class ResponseMapper
             return null;
         }
         $code = self::text($invoice['error_code'] ?? null);
-        $message = self::text($invoice['error_message'] ?? null) ?? $this->listedErrors($invoice['errors'] ?? null);
+        $message = self::text($invoice['error_message'] ?? null);
+        $listed = $message === null;
+        if ($listed) {
+            $message = $this->listedErrors($invoice['errors'] ?? null);
+        }
         $category = match (true) {
             $state === 'invalid' => FailureCategory::Validation,
             $code === self::NO_RECEIVER,
@@ -360,14 +364,22 @@ final class ResponseMapper
 
         return new DeliveryFailure(
             $category,
-            $message === null ? null : $this->redactor->redact($message),
+            $message === null ? null : $this->shortened($this->redactor->redact($message), $listed),
             $code === null ? null : $this->redactor->redact($code),
         );
     }
 
     /**
-     * The messages of an errors list joined with "; ", or null when it has none. An entry is either
-     * a string or an object with a string "error"; anything else is ignored.
+     * The text cut to QUOTED_BYTES when asked to, so a long errors list stays a short message.
+     */
+    private function shortened(string $text, bool $cut): string
+    {
+        return $cut && strlen($text) > self::QUOTED_BYTES ? mb_strcut($text, 0, self::QUOTED_BYTES, 'UTF-8').'...' : $text;
+    }
+
+    /**
+     * The raw (not yet redacted) messages of an errors list joined with "; ", or null when it has
+     * none. An entry is either a string or an object with a string "error"; anything else is ignored.
      */
     private function listedErrors(mixed $errors): ?string
     {
@@ -384,9 +396,8 @@ final class ResponseMapper
         if ($messages === []) {
             return null;
         }
-        $message = $this->redactor->redact(implode('; ', $messages));
 
-        return strlen($message) > self::QUOTED_BYTES ? mb_strcut($message, 0, self::QUOTED_BYTES, 'UTF-8').'...' : $message;
+        return implode('; ', $messages);
     }
 
     /**

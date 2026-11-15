@@ -577,7 +577,7 @@ answers it with a redirect, which is never followed).
 |---|---|---|
 | `new`, `sending` | `Pending` | |
 | `sent`, `registered`, `read`, `accepted`, `refused`, `received`, `allegedly_paid`, `paid`, `closed` | `Delivered` | |
-| `error` | `Failed` | `recipient_not_found` for the error code `PEPPOL_NO_RECEIVER`, else `transport`; with B2Brouter's `error_message` and `error_code` |
+| `error` | `Failed` | `recipient_not_found` for the error code `PEPPOL_NO_RECEIVER`, or, without an error code, for a message saying the recipient is "not registered to receive" (the sandbox's report), else `transport`; with B2Brouter's `error_message` and `error_code` |
 | `invalid` | `Failed` | `validation` |
 | any other state (for example `annulled`, `expired`) or none | `Unknown` | |
 

@@ -129,6 +129,20 @@ final class B2BrouterStatusTest extends TestCase
         self::assertStringContainsString('not registered to receive', (string) $status->failure->message);
     }
 
+    public function test_unregistered_recipient_phrase_is_matched_before_the_message_is_shortened(): void
+    {
+        $body = ['invoice' => ['id' => 1, 'state' => 'error', 'error_code' => null, 'error_message' => null, 'errors' => [
+            ['error' => str_repeat('x', 400)],
+            ['error' => 'Recipient is not registered to receive this document'],
+        ]]];
+
+        $status = self::transport(new RecordingHttpClient(self::json(200, $body)))->status('1');
+
+        self::assertNotNull($status->failure);
+        self::assertSame(FailureCategory::RecipientNotFound, $status->failure->category);
+        self::assertLessThanOrEqual(303, strlen((string) $status->failure->message));
+    }
+
     public function test_unregistered_recipient_message_with_another_code_stays_a_transport_failure(): void
     {
         $status = self::transport(new RecordingHttpClient(self::json(200, self::unregistered('X_OTHER'))))->status('1');
