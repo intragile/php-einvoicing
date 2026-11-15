@@ -96,6 +96,38 @@ The core run also passed `test_playground_send_status_pending_and_acknowledge` (
 assertions). The XRechnung document types were registered on the receiving company by the test
 (`RECOMMAND_SETUP_DOCTYPES=1`).
 
+## D2b–D2c: provider sandboxes (simulated network)
+
+Run on 2026-11-15. Neither sandbox puts a document on the Peppol network: these runs prove the
+provider API contract against the provider's own simulation, not Peppol delivery.
+
+### B2Brouter sandbox (`b2brouter-live`, commit `5317f3b`, 3 tests, 63 assertions)
+
+| Scenario | Provider state | Our state | Inbox |
+|---|---|---|---|
+| send to test recipient `0088:9508397101047` | `registered` | Delivered | n/a |
+| send to test recipient `0088:9506215594996` | `registered` → `refused` | Delivered (refusal is a business response) | n/a |
+| send to test recipient `0088:9500047420799` | `error`, reason only in `errors` ("Recipient is not registered to receive this document (sandbox simulation)"), no `error_code` | Failed, `recipient_not_found` | n/a |
+| received invoice seeded by import (`issued=false`) | received | n/a | pending → fetched (number matches) → acknowledged → no longer pending |
+
+Observed live and fixed in the 04d fix commits: B2Brouter requires the account's own company as
+seller (sent) or buyer (received), validates the buyer's tax identifiers, refuses invoices dated
+in a closed fiscal year, and reports some failures only in the `errors` list. The document type
+list offers XRechnung 3.0 codes for UBL and CII. `GET /invoices/{id}/as/legal` answered HTTP 422
+in the sandbox, so the delivered document could not be compared with the sent one.
+
+### e-invoice.be sandbox company (`einvoicebe-live`, commit `787676d`, 3 tests, 18 assertions)
+
+| Scenario | Provider state | Our state | Inbox |
+|---|---|---|---|
+| send to self (sandbox: delivered by e-mail) | `SENT` | Delivered | n/a |
+| inbound seeded with the app's "Simulate received document" (release BIS 3 invoice `SIM-202611151344`) | `RECEIVED` | n/a | pending → fetched through the signed URL (number matches) → acknowledged |
+
+The signed download URL pointed to Cloudflare R2 storage (`*.eu.r2.cloudflarestorage.com`); the
+driver now downloads only from `*.r2.cloudflarestorage.com` over https. `GET /api/me/` reports no
+field that marks a sandbox company, so the live test keeps its explicit
+`EINVOICEBE_SANDBOX_CONFIRMED=1` opt-in.
+
 ---
 
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
