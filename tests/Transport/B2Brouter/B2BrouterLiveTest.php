@@ -117,7 +117,7 @@ final class B2BrouterLiveTest extends TestCase
             'GET /invoices/{id}/as/legal answered HTTP %d; the body is %s the sent XML.',
             $legal->getStatusCode(),
             (string) $legal->getBody() === $xml[self::DELIVERED_RECIPIENT] ? 'byte-identical to' : 'NOT byte-identical to',
-        ));
+        ), $this->redactor);
     }
 
     public function test_seeded_inbox_pending_fetch_and_acknowledge(): void
@@ -162,7 +162,7 @@ final class B2BrouterLiveTest extends TestCase
                 $codes[] = $code;
             }
         }
-        LiveTransport::report('b2brouter-live', 'Document type codes containing "xrechnung": '.($codes === [] ? '(none)' : implode(', ', $codes)));
+        LiveTransport::report('b2brouter-live', 'Document type codes containing "xrechnung": '.($codes === [] ? '(none)' : implode(', ', $codes)), $this->redactor);
         $this->addToAssertionCount(1);
     }
 

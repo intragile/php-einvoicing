@@ -197,8 +197,8 @@ final class EInvoiceBeLiveTest extends TestCase
         sort($fields);
         $plan = $this->me['plan'] ?? null;
 
-        LiveTransport::report('einvoicebe-live', 'GET /api/me/ fields: '.implode(', ', $fields));
-        LiveTransport::report('einvoicebe-live', 'plan: '.(is_string($plan) && preg_match('/\A[A-Za-z0-9_-]{1,40}\z/', $plan) === 1 ? $plan : '(not a short plain string)'));
+        LiveTransport::report('einvoicebe-live', 'GET /api/me/ fields: '.implode(', ', $fields), $this->redactor);
+        LiveTransport::report('einvoicebe-live', 'plan: '.(is_string($plan) && preg_match('/\A[A-Za-z0-9_-]{1,40}\z/', $plan) === 1 ? $plan : '(not a short plain string)'), $this->redactor);
         $this->addToAssertionCount(1);
     }
 

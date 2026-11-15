@@ -8,6 +8,13 @@ use Closure;
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
+use IntrAgile\EInvoicing\CodeList\ElectronicAddressScheme;
+use IntrAgile\EInvoicing\Model\ElectronicAddress;
+use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\Party;
+use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
+use IntrAgile\EInvoicing\Syntax\Syntax;
+use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\DeliveryStatus;
@@ -64,11 +71,66 @@ final class LiveTransport
     }
 
     /**
-     * Writes a finding of a live test to STDERR, tagged with the test's group.
+     * Where report() writes; null means STDERR. Tests point it at a memory stream.
+     *
+     * @internal
+     *
+     * @var resource|null
      */
-    public static function report(string $tag, string $line): void
+    public static $stream = null;
+
+    /**
+     * Writes a finding of a live test to STDERR, tagged with the test's group. With a redactor
+     * the line is redacted first, so no configured key or account id reaches the output.
+     */
+    public static function report(string $tag, string $line, ?Redactor $redactor = null): void
     {
-        fwrite(STDERR, PHP_EOL.'['.$tag.'] '.$line.PHP_EOL);
+        if ($redactor !== null) {
+            $line = $redactor->redact($line);
+        }
+
+        fwrite(self::$stream ?? STDERR, PHP_EOL.'['.$tag.'] '.$line.PHP_EOL);
+    }
+
+    /**
+     * The XRechnung release invoice with the given number, sent from the seller participant to
+     * the buyer participant, written in the given syntax.
+     */
+    public static function xrechnung(Syntax $syntax, string $number, ParticipantId $buyer, ParticipantId $seller): string
+    {
+        $invoice = self::routed(ReleaseInvoices::germanDomestic($number), $buyer, $seller);
+
+        return match ($syntax) {
+            Syntax::Ubl => (new UblWriter)->write($invoice),
+            Syntax::Cii => (new CiiWriter)->write($invoice),
+        };
+    }
+
+    /**
+     * The Peppol BIS Billing 3.0 release invoice with the given number, sent from the seller
+     * participant to the buyer participant, written as UBL.
+     */
+    public static function bis3(string $number, ParticipantId $buyer, ParticipantId $seller): string
+    {
+        return (new UblWriter)->write(self::routed(ReleaseInvoices::bis3($number), $buyer, $seller));
+    }
+
+    /**
+     * The invoice number (BT-1) of a UBL or CII invoice, or null when the document has none.
+     */
+    public static function invoiceNumberOf(string $xml): ?string
+    {
+        $dom = new DOMDocument;
+        if (! @$dom->loadXML($xml, LIBXML_NONET)) {
+            return null;
+        }
+        $nodes = (new DOMXPath($dom))->query(
+            '/*[local-name()="Invoice" or local-name()="CreditNote"]/*[local-name()="ID"]'
+            .' | /*[local-name()="CrossIndustryInvoice"]/*[local-name()="ExchangedDocument"]/*[local-name()="ID"]',
+        );
+        $node = $nodes === false ? null : $nodes->item(0);
+
+        return $node instanceof DOMElement ? trim($node->textContent) : null;
     }
 
     /**
@@ -104,5 +166,34 @@ final class LiveTransport
         }
 
         return (string) $dom->saveXML();
+    }
+
+    /**
+     * The invoice with the seller and buyer electronic addresses set to the given participants.
+     */
+    private static function routed(Invoice $invoice, ParticipantId $buyer, ParticipantId $seller): Invoice
+    {
+        return $invoice
+            ->withSeller(self::reachedAt($invoice->seller, $seller))
+            ->withBuyer(self::reachedAt($invoice->buyer, $buyer));
+    }
+
+    private static function reachedAt(Party $party, ParticipantId $participant): Party
+    {
+        $scheme = ElectronicAddressScheme::tryFrom($participant->icd);
+        Assert::assertNotNull($scheme, sprintf('The participant scheme %s is not an electronic address scheme.', $participant->icd));
+
+        return new Party(
+            name: $party->name,
+            tradingName: $party->tradingName,
+            identifiers: $party->identifiers,
+            legalRegistration: $party->legalRegistration,
+            vatIdentifier: $party->vatIdentifier,
+            taxRegistration: $party->taxRegistration,
+            additionalLegalInformation: $party->additionalLegalInformation,
+            electronicAddress: new ElectronicAddress($participant->value, $scheme),
+            address: $party->address,
+            contact: $party->contact,
+        );
     }
 }
