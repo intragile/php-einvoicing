@@ -24,6 +24,8 @@ use LogicException;
  * Both the transport (OutboundDocument) and the validation (PeppolPayloadValidator) use this
  * class, so that what is sent and what is validated cannot drift apart. The user-facing names of
  * the document type identifiers are PeppolBis3 and XRechnungPeppol in the transport namespace.
+ *
+ * @internal Used by the transport and validation layers; not covered by the BC promise.
  */
 final class PeppolDocumentTypes
 {

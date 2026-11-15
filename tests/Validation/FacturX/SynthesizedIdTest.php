@@ -28,6 +28,10 @@ final class SynthesizedIdTest extends TestCase
         foreach (RuleFiles::profiles() as $profile) {
             [$explicit[$profile], $synthesized[$profile]] = self::sourceIds($profile);
             self::assertNotEmpty($synthesized[$profile], $profile);
+            // Within one profile every id names exactly one rule; array_unique below only merges
+            // ids shared across profiles.
+            $ids = [...$explicit[$profile], ...$synthesized[$profile]];
+            self::assertSame(count($ids), count(array_unique($ids)), $profile);
 
             $compiled = [];
             foreach (RuleSet::fromFile(RuleFiles::rules($profile))->patterns() as $pattern) {

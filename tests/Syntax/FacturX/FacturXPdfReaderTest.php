@@ -315,6 +315,34 @@ final class FacturXPdfReaderTest extends TestCase
         self::assertSame('raised while autoloading', error_get_last()['message'] ?? null);
     }
 
+    /**
+     * A reconstructed PDF whose object stream cannot be decoded still yields the invoice when the
+     * catalog and the embedded file lie outside it, and the missing objects are reported.
+     */
+    public function test_skipped_object_streams_are_reported_as_warning(): void
+    {
+        $xml = self::xml(FacturXProfile::En16931);
+        $pdf = (new PdfBuilder('1.5'))
+            ->object(1, '<< /Type /Catalog /Pages 2 0 R /AF [6 0 R] >>')
+            ->object(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>')
+            ->object(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>')
+            ->object(6, '<< /Type /Filespec /F (factur-x.xml) /UF (factur-x.xml) /AFRelationship /Data /EF << /F 7 0 R >> >>')
+            ->stream(7, '/Type /EmbeddedFile /Subtype /text#2Fxml', $xml, flate: true)
+            ->objectStream(9, [4 => '(packed)'])
+            ->trailer('/Root 1 0 R')
+            ->xrefStream();
+        // An unresolvable indirect /Filter makes the object stream undecodable, and a broken
+        // startxref forces reconstruction.
+        $broken = (string) preg_replace('/startxref\n\d+/', "startxref\n1", str_replace('/Type /ObjStm /N 1 /First 4 /Filter /FlateDecode', '/Type /ObjStm /N 1 /First 4 /Filter 77 0 R', $pdf));
+        self::assertStringContainsString('/Filter 77 0 R', $broken);
+
+        $document = (new FacturXPdfReader)->read($broken);
+
+        self::assertSame($xml, $document->xml);
+        $skipped = array_values(array_filter($document->warnings, static fn (string $warning): bool => str_contains($warning, 'object stream')));
+        self::assertSame(['1 object stream(s) could not be decoded during reconstruction; objects inside them are missing.'], $skipped);
+    }
+
     public function test_corrupt_xmp_warns_and_a_breached_limit_throws(): void
     {
         $xml = self::xml(FacturXProfile::En16931);

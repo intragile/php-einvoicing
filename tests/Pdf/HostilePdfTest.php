@@ -55,7 +55,7 @@ final class HostilePdfTest extends TestCase
         $stream = $document->object(3);
         self::assertInstanceOf(PdfStream::class, $stream);
 
-        $this->assertRefusedQuickly(static fn () => $document->decodedStream($stream), 'exceeds');
+        $this->assertRefusedQuickly(static fn () => $document->decodedStream($stream), 'exceeds', '48 MiB per stream');
     }
 
     public function test_flate_bomb_in_object_stream_is_refused(): void
@@ -363,12 +363,12 @@ final class HostilePdfTest extends TestCase
     public function test_reconstruction_releases_each_decoded_object_stream(): void
     {
         self::limitMemory();
-        // 500k objects and one object stream that decodes to 63 MiB: index plus one stream fit.
+        // 500k objects and one object stream that decodes to 47 MiB: index plus one stream fit.
         $context = deflate_init(ZLIB_ENCODING_DEFLATE, ['level' => 9]);
         self::assertNotFalse($context);
         $payload = deflate_add($context, '2 0 ', ZLIB_NO_FLUSH);
         $spaces = str_repeat(' ', 1024 * 1024);
-        for ($i = 0; $i < 63; $i++) {
+        for ($i = 0; $i < 47; $i++) {
             $payload .= deflate_add($context, $spaces, ZLIB_NO_FLUSH);
         }
         $payload .= deflate_add($context, 'null', ZLIB_FINISH);
@@ -506,14 +506,14 @@ final class HostilePdfTest extends TestCase
     }
 
     /** @param Closure(): mixed $action */
-    private function assertRefusedQuickly(Closure $action, ?string $message = null): void
+    private function assertRefusedQuickly(Closure $action, string ...$messages): void
     {
         $started = hrtime(true);
         try {
             $action();
             self::fail('Expected UnreadablePdf');
         } catch (UnreadablePdf $e) {
-            if ($message !== null) {
+            foreach ($messages as $message) {
                 self::assertStringContainsStringIgnoringCase($message, $e->getMessage());
             }
         }

@@ -11,7 +11,7 @@ A PDF from a customer or supplier is untrusted input. The parser never uses `eva
 an external reference and never touches a file or the network. Damaged or hostile input raises
 `UnreadablePdf`, never a PHP error or warning, provided PHP's `memory_limit` leaves room for what
 a document needs: about the size of the PDF, plus up to about 30 MiB while the cross-reference
-index is built or rebuilt, plus the decoded streams being read (one at most 64 MiB, all of them at
+index is built or rebuilt, plus the decoded streams being read (one at most 48 MiB, all of them at
 most 256 MiB, see [Limits](#limits)). Building the index holds at most one decoded stream at a time.
 The hostile-input tests run at PHP's default `memory_limit` of 128M.
 
@@ -57,7 +57,7 @@ file, such as a decompression bomb or a cross-reference table that claims millio
 
 | Limit | Value |
 |---|---|
-| One decoded stream | 64 MiB |
+| One decoded stream | 48 MiB |
 | All decoded streams of a document together | 256 MiB |
 | Nesting of arrays and dictionaries | 64 levels |
 | `/Prev` links followed | 64 |

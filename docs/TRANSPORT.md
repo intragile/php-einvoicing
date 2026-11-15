@@ -291,7 +291,8 @@ match ($result->status) {
 - SMP answers are parsed with `SafeXml` (DOCTYPE refused) and capped at 2 MiB while they are
   read, so an oversized answer is not downloaded to the end. At most one SMP `Redirect` is
   followed. The `DocumentIdentifier` of an endpoint answer must repeat the requested document
-  type exactly (scheme and value, case-sensitive); an answer for another type gives `Unknown`.
+  type: the scheme in any case (Peppol identifier schemes are case-insensitive) and the value
+  exactly, case-sensitive; an answer for another type gives `Unknown`.
 - Only the first-ranked NAPTR record of the SML answer is used; the others are not tried.
 - **The SMP signature is not verified.** The endpoint data is only as trustworthy as the TLS
   connection to the SMP. Your access point verifies the receiver's certificate when it sends;

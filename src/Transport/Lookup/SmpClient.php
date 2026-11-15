@@ -30,8 +30,9 @@ use Psr\Http\Message\ResponseInterface;
  *
  * Responses larger than the size cap (2 MiB by default) are refused while they are read: the cap
  * is passed to the HttpClient for each request, so an oversized body is not read to the end.
- * The DocumentIdentifier of a ServiceMetadata answer must repeat the requested document type
- * exactly (scheme and value, case-sensitive); an answer for another document type is refused.
+ * The DocumentIdentifier of a ServiceMetadata answer must repeat the requested document type:
+ * the scheme in any case, as Peppol identifier schemes are case-insensitive, and the value
+ * exactly; an answer for another document type is refused.
  */
 final class SmpClient
 {
@@ -234,7 +235,9 @@ final class SmpClient
             ?? throw UnexpectedResponse::forResponse($response, 'The SMP ServiceInformation has no DocumentIdentifier');
         $scheme = $identifier->getAttribute('scheme');
         $value = trim($identifier->textContent);
-        if ($scheme !== DocumentTypeId::SCHEME || $value !== $requested->value) {
+        // Identifier schemes are case-insensitive under the Peppol Policy for use of Identifiers;
+        // the identifier value is compared exactly.
+        if (strcasecmp($scheme, DocumentTypeId::SCHEME) !== 0 || $value !== $requested->value) {
             throw UnexpectedResponse::forResponse($response, sprintf(
                 'The SMP DocumentIdentifier %s::%s does not match the requested document type %s',
                 addcslashes($scheme, "\0..\37\177"),

@@ -188,7 +188,6 @@ final class SmpClientTest extends TestCase
         $cases = [
             'other document type' => str_replace('xsd:Invoice-2::Invoice##', 'xsd:CreditNote-2::CreditNote##', $metadata),
             'other scheme' => str_replace('scheme="busdox-docid-qns"', 'scheme="peppol-doctype-wildcard"', $metadata),
-            'scheme in another case' => str_replace('scheme="busdox-docid-qns"', 'scheme="BUSDOX-DOCID-QNS"', $metadata),
             'value in another case' => str_replace('xsd:Invoice-2::Invoice##', 'xsd:invoice-2::Invoice##', $metadata),
         ];
 
@@ -200,6 +199,34 @@ final class SmpClientTest extends TestCase
             self::assertInstanceOf(UnexpectedResponse::class, $exception, $name);
             self::assertStringContainsString('DocumentIdentifier', $exception->getMessage(), $name);
         }
+    }
+
+    /**
+     * Peppol identifier schemes are case-insensitive, so an SMP may publish the document type
+     * scheme in any case; the identifier value itself is still compared exactly.
+     */
+    public function test_document_type_scheme_compare_is_case_insensitive(): void
+    {
+        $xml = str_replace('scheme="busdox-docid-qns"', 'scheme="BUSDOX-DOCID-QNS"', self::fixture('service-metadata.xml'));
+        self::assertStringContainsString('scheme="BUSDOX-DOCID-QNS"', $xml);
+
+        $endpoints = self::client(new RecordingHttpClient(new Response(200, [], $xml)))
+            ->endpoints('https://smp.example/', self::participant(), new DocumentTypeId(PeppolBis3::INVOICE));
+
+        self::assertCount(2, $endpoints);
+        self::assertSame(PeppolBis3::INVOICE, $endpoints[0]->documentType);
+    }
+
+    public function test_missing_document_type_scheme_is_refused(): void
+    {
+        $xml = str_replace('<ns2:DocumentIdentifier scheme="busdox-docid-qns">', '<ns2:DocumentIdentifier>', self::fixture('service-metadata.xml'));
+        self::assertStringContainsString('<ns2:DocumentIdentifier>', $xml);
+
+        $exception = self::capture(fn () => self::client(new RecordingHttpClient(new Response(200, [], $xml)))
+            ->endpoints('https://smp.example/', self::participant(), new DocumentTypeId(PeppolBis3::INVOICE)));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString('DocumentIdentifier', $exception->getMessage());
     }
 
     public function test_href_with_raw_hash_keeps_the_document_type(): void

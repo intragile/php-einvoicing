@@ -82,6 +82,9 @@ final class FacturXPdfReader
         }
 
         $warnings = [];
+        if (($skipped = $document->skippedObjectStreams()) > 0) {
+            $warnings[] = sprintf('%d object stream(s) could not be decoded during reconstruction; objects inside them are missing.', $skipped);
+        }
         $id = (new CiiDocument($dom))->text('rsm:ExchangedDocumentContext/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID');
         $profile = $id === null ? null : FacturXProfile::fromGuidelineId($id);
         if ($id === null) {
