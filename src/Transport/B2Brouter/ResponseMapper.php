@@ -41,6 +41,9 @@ final class ResponseMapper
     /** The B2Brouter error code of a receiver that is not on the Peppol network. */
     private const NO_RECEIVER = 'PEPPOL_NO_RECEIVER';
 
+    /** The sandbox reports an unregistered recipient only in the errors list, without an error code. */
+    private const NO_RECEIVER_MESSAGE = '/not registered to receive/i';
+
     /** Bytes of a provider error message quoted in an exception message. */
     private const QUOTED_BYTES = 300;
 
@@ -350,7 +353,8 @@ final class ResponseMapper
         $message = self::text($invoice['error_message'] ?? null) ?? $this->listedErrors($invoice['errors'] ?? null);
         $category = match (true) {
             $state === 'invalid' => FailureCategory::Validation,
-            $code === self::NO_RECEIVER => FailureCategory::RecipientNotFound,
+            $code === self::NO_RECEIVER,
+            $code === null && $message !== null && preg_match(self::NO_RECEIVER_MESSAGE, $message) === 1 => FailureCategory::RecipientNotFound,
             default => FailureCategory::Transport,
         };
 

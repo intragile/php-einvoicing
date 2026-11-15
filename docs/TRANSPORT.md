@@ -598,7 +598,7 @@ idempotent, so it is safe to repeat after an `OutcomeUnknown`.
 nothing reaches a real access point, and the SMP is never queried. Pre-created test recipients
 (GLN, scheme `0088`) give fixed outcomes: `0088:9508397101047` ends `registered`,
 `0088:9506215594996` ends `refused` (a business response, still `Delivered`), and
-`0088:9500047420799` fails with `PEPPOL_NO_RECEIVER`. Received documents are not simulated;
+`0088:9500047420799` fails with `PEPPOL_NO_RECEIVER`; the sandbox (observed 2026-11-15) reports it only in the `errors` list, without an error code, and the driver maps that message to `recipient_not_found`. Received documents are not simulated;
 importing a document as a received invoice seeds the inbox.
 
 ### B2Brouter webhooks

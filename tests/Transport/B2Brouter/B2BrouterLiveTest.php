@@ -191,7 +191,11 @@ final class B2BrouterLiveTest extends TestCase
         $unknown = LiveTransport::pollUntilFinal(static fn (): DeliveryStatus => $transport->status($ids[self::UNKNOWN_RECIPIENT]));
         self::assertSame(DeliveryState::Failed, $unknown->state);
         self::assertSame(FailureCategory::RecipientNotFound, $unknown->failure?->category);
-        self::assertSame('PEPPOL_NO_RECEIVER', $unknown->failure->providerCode);
+        // The documented code is PEPPOL_NO_RECEIVER; the sandbox may report the reason in the message only.
+        self::assertContains($unknown->failure->providerCode, ['PEPPOL_NO_RECEIVER', null]);
+        if ($unknown->failure->providerCode === null) {
+            self::assertStringContainsString('not registered to receive', (string) $unknown->failure->message);
+        }
 
         // Evidence for whether the delivered document can be compared with the sent one.
         $legal = $this->request('GET', sprintf('/invoices/%s/as/legal', rawurlencode($ids[self::DELIVERED_RECIPIENT])), ['Accept' => 'application/xml, */*;q=0.1']);

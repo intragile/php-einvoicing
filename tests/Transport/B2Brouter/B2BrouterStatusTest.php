@@ -118,6 +118,36 @@ final class B2BrouterStatusTest extends TestCase
         self::assertSame('Validation failed: You cannot send invoices dated from a closed fiscal year; Second [redacted]', $status->failure->message);
     }
 
+    public function test_unregistered_recipient_message_without_code_is_recipient_not_found(): void
+    {
+        $status = self::transport(new RecordingHttpClient(self::json(200, self::unregistered(null))))->status('1');
+
+        self::assertSame(DeliveryState::Failed, $status->state);
+        self::assertNotNull($status->failure);
+        self::assertSame(FailureCategory::RecipientNotFound, $status->failure->category);
+        self::assertNull($status->failure->providerCode);
+        self::assertStringContainsString('not registered to receive', (string) $status->failure->message);
+    }
+
+    public function test_unregistered_recipient_message_with_another_code_stays_a_transport_failure(): void
+    {
+        $status = self::transport(new RecordingHttpClient(self::json(200, self::unregistered('X_OTHER'))))->status('1');
+
+        self::assertNotNull($status->failure);
+        self::assertSame(FailureCategory::Transport, $status->failure->category);
+        self::assertSame('X_OTHER', $status->failure->providerCode);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function unregistered(?string $code): array
+    {
+        return ['invoice' => ['id' => 1, 'state' => 'error', 'error_code' => $code, 'error_message' => null, 'errors' => [
+            ['error' => 'Recipient is not registered to receive this document (sandbox simulation)'],
+        ]]];
+    }
+
     public function test_failure_message_is_null_without_message_or_errors(): void
     {
         $body = ['invoice' => ['id' => 1, 'state' => 'error', 'error_code' => null, 'error_message' => null, 'errors' => []]];
