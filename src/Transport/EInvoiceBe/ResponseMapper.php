@@ -494,14 +494,18 @@ final class ResponseMapper
 
     /**
      * False for a host that points at the local machine or skips name resolution: an IP literal,
-     * "localhost" or a name under ".localhost", compared case-insensitively. No host is
-     * allow-listed yet.
+     * "localhost" or a name under ".localhost", compared case-insensitively. A host whose last
+     * label does not start with a letter is refused too, because resolvers read shorthand and
+     * numeric forms such as "127.1", "2130706433" or "0x7f.1" as IPv4 addresses; no top-level
+     * domain starts with a digit. No host is allow-listed yet.
      */
     private static function isAllowedHost(string $host): bool
     {
         $host = strtolower($host);
+        $lastLabel = substr($host, (int) strrpos('.'.$host, '.'));
 
         return filter_var(trim($host, '[]'), FILTER_VALIDATE_IP) === false
+            && preg_match('/\A[a-z]/', $lastLabel) === 1
             && $host !== 'localhost'
             && ! str_ends_with($host, '.localhost');
     }

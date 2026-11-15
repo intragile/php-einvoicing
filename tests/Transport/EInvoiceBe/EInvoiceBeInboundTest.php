@@ -212,6 +212,10 @@ final class EInvoiceBeInboundTest extends TestCase
         yield 'localhost' => ['https://localhost/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
         yield 'localhost subdomain' => ['https://a.localhost/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
         yield 'localhost in capitals' => ['https://A.LocalHost/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'shorthand IPv4' => ['https://127.1/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'decimal IPv4' => ['https://2130706433/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'hexadecimal IPv4' => ['https://0x7f.1/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
+        yield 'hexadecimal last label' => ['https://1.0x7f/x?X-Amz-Signature=FAKESIGNATURE0123456789abcdef'];
     }
 
     #[DataProvider('unsafeSignedUrlHosts')]
