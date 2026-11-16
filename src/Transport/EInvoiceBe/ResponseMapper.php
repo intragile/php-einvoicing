@@ -497,8 +497,8 @@ final class ResponseMapper
 
     /**
      * True for a host under one of the allow-listed storage suffixes (SIGNED_URL_HOST_SUFFIXES),
-     * compared case-insensitively and without a trailing dot, with at least one label before the
-     * suffix. The signed URL comes from a response body and is fetched without the API key, so
+     * compared case-insensitively, with at least one label before the suffix. The host has already
+     * passed isHttpsUrl(), so it carries no brackets and no trailing dot. The signed URL comes from a response body and is fetched without the API key, so
      * only the provider's storage host may be reached: this keeps the driver from being steered
      * to internal hosts (SSRF). IP literals, "localhost" and hosts whose last label does not
      * start with a letter are refused as well, because resolvers read shorthand and numeric
@@ -506,10 +506,10 @@ final class ResponseMapper
      */
     private static function isAllowedHost(string $host): bool
     {
-        $host = rtrim(strtolower($host), '.');
+        $host = strtolower($host);
         $lastLabel = substr($host, (int) strrpos('.'.$host, '.'));
 
-        if (filter_var(trim($host, '[]'), FILTER_VALIDATE_IP) !== false
+        if (filter_var($host, FILTER_VALIDATE_IP) !== false
             || preg_match('/\A[a-z]/', $lastLabel) !== 1
             || $host === 'localhost'
             || str_ends_with($host, '.localhost')) {
