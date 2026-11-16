@@ -4,7 +4,17 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Transport\B2Brouter;
 
+use IntrAgile\EInvoicing\CodeList\CountryCode;
+use IntrAgile\EInvoicing\CodeList\ElectronicAddressScheme;
+use IntrAgile\EInvoicing\Model\ElectronicAddress;
+use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\Party;
+use IntrAgile\EInvoicing\Model\PostalAddress;
+use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
+use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
+use IntrAgile\EInvoicing\Syntax\XRechnung;
 use IntrAgile\EInvoicing\Tests\Support\LiveTransport;
+use IntrAgile\EInvoicing\Tests\Support\ReleaseInvoices;
 use IntrAgile\EInvoicing\Tests\Support\StreamHttpClient;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterTransport;
@@ -239,6 +249,45 @@ final class B2BrouterLiveTest extends TestCase
         self::assertNotContains($id, self::ids($transport->pending()));
     }
 
+    /**
+     * Every XRechnung 3.0 document type (UBL and CII invoice, both Extensions, UBL credit note)
+     * goes out with its default document type code, without any configured map, and reaches the
+     * delivered state.
+     */
+    public function test_xrechnung_sent_with_default_document_type_codes(): void
+    {
+        if ($this->companyParticipant === null) {
+            self::markTestSkipped('The sandbox account company has no TIN scheme, so it cannot be the Peppol sender.');
+        }
+        $transport = new B2BrouterTransport($this->config, $this->http);
+        $recipient = ParticipantId::parse(self::DELIVERED_RECIPIENT);
+
+        $documents = [
+            'UBL' => (new UblWriter)->write($this->fromAccountCompany(ReleaseInvoices::germanDomestic(LiveTransport::invoiceNumber()), $recipient)),
+            'CII' => (new CiiWriter)->write($this->fromAccountCompany(ReleaseInvoices::germanDomestic(LiveTransport::invoiceNumber()), $recipient)),
+            'UBL Extension' => (new UblWriter)->write($this->fromAccountCompany(
+                ReleaseInvoices::germanDomestic(LiveTransport::invoiceNumber())->withProcessControl(XRechnung::processControl(XRechnung::EXTENSION)),
+                $recipient,
+            )),
+            'CII Extension' => (new CiiWriter)->write($this->fromAccountCompany(
+                ReleaseInvoices::germanDomestic(LiveTransport::invoiceNumber())->withProcessControl(XRechnung::processControl(XRechnung::EXTENSION)),
+                $recipient,
+            )),
+            'UBL credit note' => (new UblWriter)->write($this->fromAccountCompany(ReleaseInvoices::germanCreditNote(LiveTransport::invoiceNumber()), $recipient)),
+        ];
+        $ids = [];
+        foreach ($documents as $label => $xml) {
+            $result = $transport->send(OutboundDocument::fromXml($xml));
+            self::assertNotSame('', $result->documentId, $label);
+            $ids[$label] = $result->documentId;
+        }
+        foreach ($ids as $label => $id) {
+            $status = LiveTransport::pollUntilFinal(static fn (): DeliveryStatus => $transport->status($id));
+            self::assertSame(DeliveryState::Delivered, $status->state, $label.': '.$this->redactor->redact((string) $status->failure?->message));
+            LiveTransport::report('b2brouter-live', 'XRechnung '.$label.' sent with the default document type code: delivered.', $this->redactor);
+        }
+    }
+
     public function test_report_xrechnung_document_type_codes(): void
     {
         $response = $this->request('GET', '/document_types');
@@ -255,6 +304,54 @@ final class B2BrouterLiveTest extends TestCase
         }
         LiveTransport::report('b2brouter-live', 'Document type codes containing "xrechnung": '.($codes === [] ? '(none)' : implode(', ', $codes)), $this->redactor);
         $this->addToAssertionCount(1);
+    }
+
+    /**
+     * The invoice with the sandbox account company as the seller, reached at its own Peppol
+     * participant, and a buyer with a checksum-valid VAT number reached at the given recipient.
+     * B2Brouter requires its account company to be a party of every invoice it sends.
+     */
+    private function fromAccountCompany(Invoice $invoice, ParticipantId $recipient): Invoice
+    {
+        $participant = $this->companyParticipant;
+        self::assertNotNull($participant);
+
+        return $invoice
+            ->withSeller(self::replaced(
+                $invoice->seller,
+                $this->companyTin,
+                CountryCode::from(strtoupper($this->companyCountry)),
+                $participant,
+            ))
+            ->withBuyer(self::replaced($invoice->buyer, self::BUYER_VAT, CountryCode::SE, $recipient));
+    }
+
+    private static function replaced(Party $party, string $vatId, CountryCode $country, ParticipantId $participant): Party
+    {
+        $scheme = ElectronicAddressScheme::tryFrom($participant->icd);
+        self::assertNotNull($scheme, sprintf('The participant scheme %s is not an electronic address scheme.', $participant->icd));
+        $address = $party->address;
+
+        return new Party(
+            name: $party->name,
+            tradingName: $party->tradingName,
+            identifiers: [],
+            legalRegistration: null,
+            vatIdentifier: $vatId,
+            taxRegistration: null,
+            additionalLegalInformation: $party->additionalLegalInformation,
+            electronicAddress: new ElectronicAddress($participant->value, $scheme),
+            address: $address === null ? new PostalAddress($country) : new PostalAddress(
+                $country,
+                $address->line1,
+                $address->line2,
+                $address->line3,
+                $address->city,
+                $address->postCode,
+                $address->subdivision,
+            ),
+            contact: $party->contact,
+        );
     }
 
     /**

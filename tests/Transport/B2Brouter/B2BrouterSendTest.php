@@ -25,6 +25,9 @@ use PHPUnit\Framework\TestCase;
 
 final class B2BrouterSendTest extends TestCase
 {
+    /** A Peppol document type the driver has no B2Brouter code for. */
+    private const ORDER = 'urn:oasis:names:specification:ubl:schema:xsd:Order-2::Order##urn:fdc:peppol.eu:poacc:trns:order:3::2.1';
+
     use B2BrouterFixtures;
 
     private const XML = '<?xml version="1.0" encoding="UTF-8"?><Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"'
@@ -68,12 +71,21 @@ final class B2BrouterSendTest extends TestCase
     {
         $recorder = new RecordingHttpClient;
 
-        $exception = self::capture(fn () => self::transport($recorder)->send(self::document(XRechnungPeppol::UBL_INVOICE)));
+        $exception = self::capture(fn () => self::transport($recorder)->send(self::document(self::ORDER)));
 
         self::assertInstanceOf(UnsupportedDocument::class, $exception);
-        self::assertStringContainsString(XRechnungPeppol::UBL_INVOICE, $exception->getMessage());
+        self::assertStringContainsString(self::ORDER, $exception->getMessage());
         self::assertStringContainsString('document type code', $exception->getMessage());
         self::assertSame([], $recorder->requests());
+    }
+
+    public function test_xrechnung_is_sent_with_its_default_code(): void
+    {
+        $recorder = new RecordingHttpClient(self::fixture(201, 'import-201.json'));
+
+        self::transport($recorder)->send(self::document(XRechnungPeppol::CII_INVOICE));
+
+        self::assertStringEndsWith('&document_type_code_for_contact=xml.cii.cross_industry_invoice.xrechnung.v3.0', (string) $recorder->requests()[0]->getUri());
     }
 
     public function test_configured_xrechnung_code_is_used(): void

@@ -554,35 +554,28 @@ the format of the document it transmits. The driver maps the Peppol document typ
 |---|---|
 | `PeppolBis3::INVOICE` | `xml.ubl.invoice.bis3` |
 | `PeppolBis3::CREDIT_NOTE` | `xml.ubl.credit_note.bis3` |
-| any other, for example XRechnung | only with a code you configure |
-
-Any other document type is refused with `UnsupportedDocument` before a request is made, unless
-`$documentTypeCodes` maps it (`[XRechnungPeppol::UBL_INVOICE => '<code>']`; codes are 3 to 100
-characters of `a-z`, `0-9`, `.` and `_`). The driver ships no XRechnung default: the defaults
-stay BIS 3 only until an XRechnung send has been live-tested (planned for 1.x). The sandbox's
-`GET /document_types` call listed these XRechnung 3.0 codes on 2026-11-16:
-
-| Document type | B2Brouter code |
-|---|---|
 | `XRechnungPeppol::UBL_INVOICE` | `xml.ubl.invoice.xrechnung.v3.0` |
 | `XRechnungPeppol::UBL_CREDIT_NOTE` | `xml.ubl.credit_note.xrechnung.v3.0` |
 | `XRechnungPeppol::CII_INVOICE` | `xml.cii.cross_industry_invoice.xrechnung.v3.0` |
 | `XRechnungPeppol::UBL_INVOICE_EXTENSION` | `xml.ubl.invoice.xrechnung.extension.v3.0` |
 | `XRechnungPeppol::CII_INVOICE_EXTENSION` | `xml.cii.cross_industry_invoice.xrechnung.extension.v3.0` |
+| any other | only with a code you configure |
 
-Configure the ones you send:
+Any other document type is refused with `UnsupportedDocument` before a request is made, unless
+`$documentTypeCodes` maps it; the map is merged over the defaults, so it can also replace one
+(codes are 3 to 100 characters of `a-z`, `0-9`, `.` and `_`):
 
 ```php
 $config = new B2BrouterConfig($apiKey, $accountId, documentTypeCodes: [
     XRechnungPeppol::UBL_INVOICE => 'xml.ubl.invoice.xrechnung.v3.0',
-    XRechnungPeppol::UBL_CREDIT_NOTE => 'xml.ubl.credit_note.xrechnung.v3.0',
 ]);
 ```
 
-The Laravel bridge takes the same map as `document_type_codes` in `config/einvoicing.php`. The
-list also has older versions (for example `xml.ubl.invoice.xrechnung.v22`), which are not
-XRechnung 3.0. Check the list of your own account before going live; these codes were not sent in
-a live test.
+The Laravel bridge takes the same map as `document_type_codes` in `config/einvoicing.php`.
+`GET /document_types` also lists older XRechnung versions (for example
+`xml.ubl.invoice.xrechnung.v22`), which the driver never picks by default. All five XRechnung 3.0
+defaults were sent to a sandbox test recipient on 2026-11-16 and reached the delivered state
+([VERIFICATION.md](VERIFICATION.md)).
 
 A send imports the XML into the account and queues it for sending in one request (`POST /accounts/{account}/invoices/import`, with `send_after_import`, `issued`, the
 transport `peppol` and the code).
@@ -864,8 +857,8 @@ SML and SMP lookups (and the rule download from GitHub).
 - **Three access point drivers today**: Recommand, B2Brouter and e-invoice.be; Storecove is
   planned. The `Transport`, `InboundSource` and `WebhookParser` interfaces are the
   extension point for others.
-- **e-invoice.be sends BIS Billing 3.0 UBL only**; B2Brouter sends XRechnung only with a document
-  type code you configure.
+- **e-invoice.be sends BIS Billing 3.0 UBL only**; B2Brouter sends BIS Billing 3.0 and XRechnung
+  3.0 by default, any other document type only with a document type code you configure.
 - **B2Brouter renders the delivered document itself**, so it may differ from the XML you validated.
 - **e-invoice.be cannot acknowledge** received documents; they are listed again until they fall
   out of the look-back.

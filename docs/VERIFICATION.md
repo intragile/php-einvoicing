@@ -114,9 +114,25 @@ Observed live and fixed in the 04d fix commits: B2Brouter requires the account's
 seller (sent) or buyer (received), validates the buyer's tax identifiers, refuses invoices dated
 in a closed fiscal year, and reports some failures only in the `errors` list. The document type
 list offers XRechnung 3.0 codes for UBL and CII (read again on 2026-11-16 and listed in
-[TRANSPORT.md](TRANSPORT.md)); none of them was sent live, so the driver defaults stay BIS 3 only
-until an XRechnung send is live-tested (1.x). `GET /invoices/{id}/as/legal` answered HTTP 422
+[TRANSPORT.md](TRANSPORT.md)). `GET /invoices/{id}/as/legal` answered HTTP 422
 in the sandbox, so the delivered document could not be compared with the sent one.
+
+### B2Brouter sandbox, XRechnung 3.0 (`b2brouter-live`, 2026-11-16, 1 test, 26 assertions)
+
+`test_xrechnung_sent_with_default_document_type_codes` sends the release invoice in all five
+XRechnung 3.0 document types with no configured code map, so each send uses the driver default.
+The account company is the seller and the buyer is test recipient `0088:9508397101047`.
+
+| Document type | Default code | Our state |
+|---|---|---|
+| UBL invoice | `xml.ubl.invoice.xrechnung.v3.0` | Delivered |
+| CII invoice | `xml.cii.cross_industry_invoice.xrechnung.v3.0` | Delivered |
+| UBL invoice, Extension | `xml.ubl.invoice.xrechnung.extension.v3.0` | Delivered |
+| CII invoice, Extension | `xml.cii.cross_industry_invoice.xrechnung.extension.v3.0` | Delivered |
+| UBL credit note | `xml.ubl.credit_note.xrechnung.v3.0` | Delivered |
+
+As in the run above, this proves the API contract against B2Brouter's simulation, not Peppol
+delivery.
 
 ### e-invoice.be sandbox company (`einvoicebe-live`, commit `787676d`, 3 tests, 18 assertions)
 

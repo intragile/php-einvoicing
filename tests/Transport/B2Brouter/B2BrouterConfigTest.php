@@ -14,6 +14,9 @@ use PHPUnit\Framework\TestCase;
 
 final class B2BrouterConfigTest extends TestCase
 {
+    /** A Peppol document type the driver has no B2Brouter code for. */
+    private const ORDER = 'urn:oasis:names:specification:ubl:schema:xsd:Order-2::Order##urn:fdc:peppol.eu:poacc:trns:order:3::2.1';
+
     use CapturesThrowable;
 
     private const KEY = 'test_FAKEKEY000000';
@@ -34,7 +37,12 @@ final class B2BrouterConfigTest extends TestCase
         self::assertSame([self::KEY], $config->secrets());
         self::assertSame('xml.ubl.invoice.bis3', $config->documentTypeCode(PeppolBis3::INVOICE));
         self::assertSame('xml.ubl.credit_note.bis3', $config->documentTypeCode(PeppolBis3::CREDIT_NOTE));
-        self::assertNull($config->documentTypeCode(XRechnungPeppol::UBL_INVOICE));
+        self::assertSame('xml.ubl.invoice.xrechnung.v3.0', $config->documentTypeCode(XRechnungPeppol::UBL_INVOICE));
+        self::assertSame('xml.ubl.credit_note.xrechnung.v3.0', $config->documentTypeCode(XRechnungPeppol::UBL_CREDIT_NOTE));
+        self::assertSame('xml.cii.cross_industry_invoice.xrechnung.v3.0', $config->documentTypeCode(XRechnungPeppol::CII_INVOICE));
+        self::assertSame('xml.ubl.invoice.xrechnung.extension.v3.0', $config->documentTypeCode(XRechnungPeppol::UBL_INVOICE_EXTENSION));
+        self::assertSame('xml.cii.cross_industry_invoice.xrechnung.extension.v3.0', $config->documentTypeCode(XRechnungPeppol::CII_INVOICE_EXTENSION));
+        self::assertNull($config->documentTypeCode(self::ORDER));
     }
 
     public function test_account_id_as_digits_and_trailing_slash(): void

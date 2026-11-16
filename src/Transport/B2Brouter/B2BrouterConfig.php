@@ -8,6 +8,7 @@ use IntrAgile\EInvoicing\Transport\Http\ApiKey;
 use IntrAgile\EInvoicing\Transport\Http\BaseUrl;
 use IntrAgile\EInvoicing\Transport\Http\Redactor;
 use IntrAgile\EInvoicing\Transport\Peppol\PeppolBis3;
+use IntrAgile\EInvoicing\Transport\Peppol\XRechnungPeppol;
 use InvalidArgumentException;
 use SensitiveParameter;
 
@@ -29,6 +30,11 @@ final readonly class B2BrouterConfig
     public const DEFAULT_DOCUMENT_TYPE_CODES = [
         PeppolBis3::INVOICE => 'xml.ubl.invoice.bis3',
         PeppolBis3::CREDIT_NOTE => 'xml.ubl.credit_note.bis3',
+        XRechnungPeppol::UBL_INVOICE => 'xml.ubl.invoice.xrechnung.v3.0',
+        XRechnungPeppol::UBL_CREDIT_NOTE => 'xml.ubl.credit_note.xrechnung.v3.0',
+        XRechnungPeppol::CII_INVOICE => 'xml.cii.cross_industry_invoice.xrechnung.v3.0',
+        XRechnungPeppol::UBL_INVOICE_EXTENSION => 'xml.ubl.invoice.xrechnung.extension.v3.0',
+        XRechnungPeppol::CII_INVOICE_EXTENSION => 'xml.cii.cross_industry_invoice.xrechnung.extension.v3.0',
     ];
 
     /** Prefix of the keys that B2Brouter routes to the sandbox. */
