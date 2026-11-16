@@ -16,7 +16,7 @@ of Finance (BMF) of 15 October 2024 and 15 October 2025.
 | Every business must be able to **receive** an e-invoice | 1 January 2025 | Marked primary ([P]) in our research, via the BMF letter of 15 October 2025 as summarised by IHK Köln |
 | **Issuing** is mandatory for businesses whose prior-year turnover is above EUR 800,000 | 1 January 2027 | same |
 | **Issuing** is mandatory for everyone | 1 January 2028 | same |
-| Paper and other invoice formats remain allowed during the transition | until 31 December 2026 | same |
+| Paper and other invoice formats remain allowed during the transition | until 31 December 2026 | same, but the research bullet carries no source tag: **UNVERIFIED** |
 | EDI invoices remain allowed during the transition | until the end of 2027 | **UNVERIFIED**: some sources say end of 2028 |
 | B2G: federal authorities require e-invoices (ZRE and OZG-RE, over Peppol) | since 2020 | long-standing and widely known; not re-checked by us |
 
@@ -63,9 +63,10 @@ PDF/A, and the writer embeds the XML ([docs/FACTURX.md](../FACTURX.md)). See
 ## Channels
 
 - **Peppol.** XRechnung 3.0 (UBL and CII) and the XRechnung 3.0 Extension go over Peppol under
-  their own document types, through the Recommand, B2Brouter and e-invoice.be drivers (see
-  [TRANSPORT.md](../TRANSPORT.md) for what each driver sends: e-invoice.be sends Peppol BIS
-  Billing 3.0 UBL only, and B2Brouter needs a configured document type code for XRechnung). The
+  their own document types, through the Recommand and B2Brouter drivers (B2Brouter needs a
+  configured document type code for XRechnung; see [TRANSPORT.md](../TRANSPORT.md) for what each
+  driver sends). The e-invoice.be driver is the exception: it sends Peppol BIS Billing 3.0 UBL
+  only. The
   receiver must be registered in its SMP for the XRechnung document type. Federal B2G invoices are
   received through ZRE and OZG-RE over Peppol.
 - **E-mail.** B2B invoices may be exchanged freely, for example as an XRechnung XML or a ZUGFeRD

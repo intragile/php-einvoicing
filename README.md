@@ -10,7 +10,7 @@ is needed at runtime.
 
 [Magyar nyelvű leírás → README.hu.md](README.hu.md)
 
-> **Status:** version 1.0.0, prepared for release (the date is filled in at tag time). What is verified, and how, is in [Verification](#verification) and [docs/VERIFICATION.md](docs/VERIFICATION.md).
+> **Status:** version 1.0.0, in preparation, not yet released (the release date is filled in at tag time). What is verified, and how, is in [Verification](#verification) and [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 ## What is in, and what is not
 
@@ -346,7 +346,7 @@ the invoice. `B2BrouterTransport` and `EInvoiceBeTransport` plug in the same way
 
 Recommand, B2Brouter and e-invoice.be are the available drivers; Storecove is planned.
 
-| Driver | Peppol test network | Provider sandbox | Status at release |
+| Driver | Peppol test network | Provider sandbox | Status |
 |---|---|---|---|
 | Recommand | yes (playground team with `useTestNetwork`) | yes | live-tested on the Peppol test network |
 | B2Brouter | no (the sandbox simulates the network) | yes, free | live-tested against the provider sandbox (simulated network) |

@@ -10,7 +10,7 @@ Futásidőben nincs szükség Javára.
 
 [English description → README.md](README.md)
 
-> **Állapot:** 1.0.0-s verzió, kiadásra előkészítve (a dátumot a címkézéskor töltjük ki). Mit és hogyan ellenőriztünk: [Ellenőrzés](#ellenőrzés) és [docs/VERIFICATION.md](docs/VERIFICATION.md) (angolul).
+> **Állapot:** 1.0.0-s verzió, előkészítés alatt, még nincs kiadva (a dátumot a címkézéskor töltjük ki). Mit és hogyan ellenőriztünk: [Ellenőrzés](#ellenőrzés) és [docs/VERIFICATION.md](docs/VERIFICATION.md) (angolul).
 
 ## Mi van benne, és mi nincs
 
@@ -359,7 +359,7 @@ számlából olvassa ki. A `B2BrouterTransport` és az `EInvoiceBeTransport` ugy
 
 Elérhető meghajtó a Recommand, a B2Brouter és az e-invoice.be; a Storecove tervezett.
 
-| Meghajtó | Peppol tesztháló | Szolgáltatói sandbox | Állapot a kiadáskor |
+| Meghajtó | Peppol tesztháló | Szolgáltatói sandbox | Állapot |
 |---|---|---|---|
 | Recommand | igen (playground csapat `useTestNetwork` beállítással) | igen | élesben tesztelve a Peppol teszthálózaton |
 | B2Brouter | nem (a sandbox szimulálja a hálózatot) | igen, ingyenes | élesben tesztelve a szolgáltatói sandbox ellen (szimulált hálózat) |
