@@ -43,7 +43,7 @@
         "ext-libxml": "*",
         "ext-mbstring": "*",
         "ext-zlib": "*",
-        "brick/math": "^0.14.8",
+        "brick/math": "^0.14.8 || ^1.0",
         "intragile/einvoicing-rules-en16931": "^1.0",
         "psr/http-client": "^1.0.1",
         "psr/http-factory": "^1.0",
