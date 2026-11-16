@@ -228,7 +228,7 @@ final class SchemaValidatorTest extends TestCase
 
         $warnings = [];
         set_error_handler(static function (int $level, string $message) use (&$warnings): bool {
-            $warnings[] = $message;
+            $warnings[] = [$level, $message];
 
             return true;
         });
@@ -240,7 +240,11 @@ final class SchemaValidatorTest extends TestCase
 
         self::assertSame([], $errors);
         self::assertCount(1, $warnings);
-        self::assertStringContainsString('not-there.txt', $warnings[0]);
+        // PHP 8.6 drops the file name from this message, so match the parts every version shares.
+        [$level, $message] = $warnings[0];
+        self::assertSame(E_WARNING, $level);
+        self::assertStringStartsWith('file_get_contents(', $message);
+        self::assertStringContainsString('Failed to open stream', $message);
     }
 
     public function test_previous_entity_loader_is_restored(): void

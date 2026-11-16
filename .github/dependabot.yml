@@ -18,6 +18,9 @@ updates:
       # never widened.
       - dependency-name: brick/math
         versions: [">=0.15"]
+      # The rule packages live in this repository as path repositories and are released
+      # together with the core, so Dependabot neither can nor should update them.
+      - dependency-name: intragile/einvoicing-rules-*
     groups:
       composer-dependencies:
         patterns: ["*"]

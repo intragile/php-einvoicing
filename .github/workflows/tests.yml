@@ -123,5 +123,7 @@ jobs:
             file_put_contents("composer.json", json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
           '
       - run: composer update --prefer-dist --no-interaction --no-progress --ignore-platform-req=php+
+      - name: Restore the committed composer.json for the packaging tests
+        run: git checkout -- composer.json
       - run: composer fetch-official
       - run: vendor/bin/phpunit
