@@ -351,7 +351,7 @@ Recommand, B2Brouter and e-invoice.be are the available drivers; Storecove is pl
 | Recommand | yes (playground team with `useTestNetwork`) | yes | live-tested on the Peppol test network |
 | B2Brouter | no (the sandbox simulates the network) | yes, free | live-tested against the provider sandbox (simulated network) |
 | e-invoice.be | no (the sandbox simulates the network) | yes, free | live-tested against the provider sandbox (simulated network) |
-| Storecove | unverified | 30-day, on request | planned |
+| Storecove | unverified | on request (sales contact) | planned |
 
 A test against a provider sandbox that simulates the network proves the provider's API contract,
 not delivery over Peppol; only Recommand can reach the Peppol test network. e-invoice.be sends

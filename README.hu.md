@@ -364,7 +364,7 @@ Elérhető meghajtó a Recommand, a B2Brouter és az e-invoice.be; a Storecove t
 | Recommand | igen (playground csapat `useTestNetwork` beállítással) | igen | élesben tesztelve a Peppol teszthálózaton |
 | B2Brouter | nem (a sandbox szimulálja a hálózatot) | igen, ingyenes | élesben tesztelve a szolgáltatói sandbox ellen (szimulált hálózat) |
 | e-invoice.be | nem (a sandbox szimulálja a hálózatot) | igen, ingyenes | élesben tesztelve a szolgáltatói sandbox ellen (szimulált hálózat) |
-| Storecove | nem ellenőrzött | 30 napos, kérésre | tervezett |
+| Storecove | nem ellenőrzött | kérésre (értékesítői kapcsolat) | tervezett |
 
 A hálózatot csak szimuláló szolgáltatói sandbox elleni teszt a szolgáltató API-szerződését
 igazolja, nem a Peppolon történő kézbesítést; a Peppol teszthálót csak a Recommand éri el. Az
