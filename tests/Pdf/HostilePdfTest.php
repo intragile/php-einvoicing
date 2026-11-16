@@ -56,7 +56,7 @@ final class HostilePdfTest extends TestCase
         $stream = $document->object(3);
         self::assertInstanceOf(PdfStream::class, $stream);
 
-        $this->assertRefusedQuickly(static fn () => $document->decodedStream($stream), 'exceeds', '48 MiB per stream');
+        $this->assertRefusedQuickly(static fn () => $document->decodedStream($stream), 'exceeds', '40 MiB per stream');
     }
 
     public function test_flate_bomb_in_object_stream_is_refused(): void
@@ -372,12 +372,13 @@ final class HostilePdfTest extends TestCase
     public function test_reconstruction_releases_each_decoded_object_stream(): void
     {
         self::limitMemory();
-        // 500k objects and one object stream that decodes to 47 MiB: index plus one stream fit.
+        // 500k objects and one object stream that decodes to 39 MiB, just under the 40 MiB cap:
+        // index plus one stream fit.
         $context = deflate_init(ZLIB_ENCODING_DEFLATE, ['level' => 9]);
         self::assertNotFalse($context);
         $payload = deflate_add($context, '2 0 ', ZLIB_NO_FLUSH);
         $spaces = str_repeat(' ', 1024 * 1024);
-        for ($i = 0; $i < 47; $i++) {
+        for ($i = 0; $i < 39; $i++) {
             $payload .= deflate_add($context, $spaces, ZLIB_NO_FLUSH);
         }
         $payload .= deflate_add($context, 'null', ZLIB_FINISH);

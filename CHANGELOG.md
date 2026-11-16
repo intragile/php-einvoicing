@@ -217,7 +217,7 @@ All notable changes to this project are documented here. The format follows
   `doc-<letters and digits>`; webhook account ids and deduplication keys of B2Brouter,
   e-invoice.be and Recommand are trimmed; a B2Brouter state-change webhook whose state is not a
   string gives a null delivery state.
-- **PDF:** the stream cap is 48 MiB (previously 64 MiB), so an index plus one decoded stream fit
+- **PDF:** the stream cap is 40 MiB (previously 64 MiB), so an index plus one decoded stream fit
   PHP's default 128M `memory_limit`; `FacturXPdfReader` reports object streams skipped during an
   index reconstruction as a warning.
 - **Participant lookup:** the SMP document type scheme and the `busdox-docid-qns::` prefix are

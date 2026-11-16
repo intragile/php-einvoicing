@@ -19,7 +19,7 @@ use IntrAgile\EInvoicing\Pdf\Exception\UnreadablePdf;
 final class PdfParser
 {
     /** The most bytes one stream may decode to. */
-    public const int MAX_STREAM_BYTES = 48 * 1024 * 1024;
+    public const int MAX_STREAM_BYTES = 40 * 1024 * 1024;
 
     /** The most bytes all streams of one document may decode to together. */
     public const int MAX_TOTAL_DECODED_BYTES = 256 * 1024 * 1024;
