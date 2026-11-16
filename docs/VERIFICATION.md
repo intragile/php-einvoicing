@@ -113,7 +113,9 @@ provider API contract against the provider's own simulation, not Peppol delivery
 Observed live and fixed in the 04d fix commits: B2Brouter requires the account's own company as
 seller (sent) or buyer (received), validates the buyer's tax identifiers, refuses invoices dated
 in a closed fiscal year, and reports some failures only in the `errors` list. The document type
-list offers XRechnung 3.0 codes for UBL and CII. `GET /invoices/{id}/as/legal` answered HTTP 422
+list offers XRechnung 3.0 codes for UBL and CII; the codes were not recorded here, and the driver
+defaults stay BIS 3 only until an XRechnung send is live-tested (1.x), see
+[TRANSPORT.md](TRANSPORT.md). `GET /invoices/{id}/as/legal` answered HTTP 422
 in the sandbox, so the delivered document could not be compared with the sent one.
 
 ### e-invoice.be sandbox company (`einvoicebe-live`, commit `787676d`, 3 tests, 18 assertions)

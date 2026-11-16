@@ -558,10 +558,22 @@ the format of the document it transmits. The driver maps the Peppol document typ
 
 Any other document type is refused with `UnsupportedDocument` before a request is made, unless
 `$documentTypeCodes` maps it (`[XRechnungPeppol::UBL_INVOICE => '<code>']`; codes are 3 to 100
-characters of `a-z`, `0-9`, `.` and `_`). B2Brouter documents no code for XRechnung 3.0 yet, only
-the old `xml.ubl.invoice.xrechnung.v22`; the codes of your account are listed by its
-`GET /document_types` call. A send imports the XML into the account and queues it for sending in
-one request (`POST /accounts/{account}/invoices/import`, with `send_after_import`, `issued`, the
+characters of `a-z`, `0-9`, `.` and `_`). The sandbox lists XRechnung 3.0 document type codes for
+UBL and CII on its `GET /document_types` call, but the driver ships no XRechnung default: the
+defaults stay BIS 3 only until an XRechnung send has been live-tested (planned for 1.x). Read the
+code of your account from that call and configure it yourself:
+
+```php
+$config = new B2BrouterConfig($apiKey, $accountId, documentTypeCodes: [
+    XRechnungPeppol::UBL_INVOICE => '<XRechnung 3.0 UBL code from GET /document_types>',
+]);
+```
+
+The Laravel bridge takes the same map as `document_type_codes` in `config/einvoicing.php`. The
+exact code strings were not recorded in the verification evidence, so none is quoted here. B2Brouter
+also lists the older `xml.ubl.invoice.xrechnung.v22`, which is not XRechnung 3.0.
+
+A send imports the XML into the account and queues it for sending in one request (`POST /accounts/{account}/invoices/import`, with `send_after_import`, `issued`, the
 transport `peppol` and the code).
 
 **Who builds the SBDH.** B2Brouter. The driver sends the bare invoice.
@@ -754,7 +766,8 @@ $webhook = new EInvoiceBeWebhook($webhookSecret);   // the "secret" of the webho
 - `document.received` is `DocumentReceived`. `document.sent` is `DeliveryChanged` with
   `Delivered`. `document.sent.failed` is `DeliveryChanged` **without a state**: read `status()`,
   which also gives the failure. `document.received.failed` and any other type are `Other`. A
-  signed notification without `data.document_id` throws `UnexpectedResponse`. The account id is
+  signed notification without `data.document_id`, or with an id not of the form `doc-…`, throws
+  `UnexpectedResponse`. The account id is
   `tenant_id`.
 - The deduplication key is `"<type>:<document id>"`, because the event id changes on every
   attempt. **This merges distinct events of the same type for one document**: a second
@@ -769,14 +782,15 @@ throws `RateLimited`, whose `retryAfterSeconds` is the `Retry-After` header; e-i
 it as the length of its rate window rather than the time until the limit resets. The driver does
 not throttle.
 
-**Not verified yet** (these are checked when the driver is first run against the sandbox):
+**Not verified** (the sandbox gave no answer, or the check needs production):
 
 - how long a signed download URL stays valid, which matters when the fetch is queued;
 - whether the UBL record of a received CII document serves it unchanged;
-- that document ids always have the form `doc-` followed by letters and digits;
 - that the record's file hash is a SHA-256 (a hash of another shape is ignored);
-- where e-invoice.be takes the envelope's `COUNTRY_C1` from;
-- whether `GET /api/me/` tells a sandbox company apart.
+- where e-invoice.be takes the envelope's `COUNTRY_C1` from.
+
+The sandbox returned document ids of the form `doc-…` on every live run, and `GET /api/me/` has
+no field that tells a sandbox company apart (see above).
 
 ## What is verified
 
