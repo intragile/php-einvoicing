@@ -50,9 +50,10 @@ container="einvoicing-verapdf-$$"
 # timeout stops only the docker client, not the container it started: kill the container itself.
 cleanup() {
     timeout 60 docker kill "$container" > /dev/null 2>&1 || true
-    timeout 60 docker rm --force "$container" > /dev/null 2>&1 || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 status=0
 timeout "${VERAPDF_TIMEOUT:-1800}" \

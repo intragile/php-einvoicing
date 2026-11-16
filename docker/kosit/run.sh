@@ -7,8 +7,9 @@
 #
 # KOSIT_PORT (default 8081) is the host port. KOSIT_SKIP_BUILD=1 reuses an existing image.
 # KOSIT_BUILD_TIMEOUT (default 900) and KOSIT_RUN_TIMEOUT (default 1800) in seconds bound the
-# build and the test run; the daemon gets 60 x 2 seconds to answer. PHP (default: php on the PATH) picks the
-# PHP binary. The container is removed on every exit.
+# build and the test run; the daemon gets 60 x 2 seconds to answer. PHP (default: php on the PATH)
+# picks the PHP binary. The container is removed on every exit, including INT and TERM (a signal
+# sent only to this script takes effect when the command it is waiting for returns).
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -29,10 +30,11 @@ if [ "${KOSIT_SKIP_BUILD:-0}" != "1" ]; then
 fi
 
 cleanup() {
-    timeout 60 docker kill "$container" > /dev/null 2>&1 || true
     timeout 60 docker rm --force "$container" > /dev/null 2>&1 || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 timeout 60 docker run --detach --name "$container" --publish "127.0.0.1:${port}:8080" "$image" > /dev/null
 
