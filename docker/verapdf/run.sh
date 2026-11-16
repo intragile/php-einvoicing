@@ -46,9 +46,17 @@ if [ "${#files[@]}" -eq 0 ]; then
     exit 2
 fi
 
+container="einvoicing-verapdf-$$"
+# timeout stops only the docker client, not the container it started: kill the container itself.
+cleanup() {
+    timeout 60 docker kill "$container" > /dev/null 2>&1 || true
+    timeout 60 docker rm --force "$container" > /dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
 status=0
 timeout "${VERAPDF_TIMEOUT:-1800}" \
-    docker run --rm --platform linux/amd64 --network none --mount "$mount" "$image" \
+    docker run --rm --name "$container" --platform linux/amd64 --network none --mount "$mount" "$image" \
     --format xml --flavour 0 --defaultflavour 3b "${files[@]}" > "$report.tmp" || status=$?
 
 # veraPDF exits with 1 when at least one file is not compliant; the report is complete then too.

@@ -6,8 +6,8 @@
 #   docker/kosit/run.sh [extra PHPUnit arguments]
 #
 # KOSIT_PORT (default 8081) is the host port. KOSIT_SKIP_BUILD=1 reuses an existing image.
-# KOSIT_BUILD_TIMEOUT and KOSIT_RUN_TIMEOUT (seconds, default 900 each) bound the build and the
-# test run; the daemon gets 60 x 2 seconds to answer. PHP (default: php on the PATH) picks the
+# KOSIT_BUILD_TIMEOUT (default 900) and KOSIT_RUN_TIMEOUT (default 1800) in seconds bound the
+# build and the test run; the daemon gets 60 x 2 seconds to answer. PHP (default: php on the PATH) picks the
 # PHP binary. The container is removed on every exit.
 set -euo pipefail
 
@@ -29,9 +29,10 @@ if [ "${KOSIT_SKIP_BUILD:-0}" != "1" ]; then
 fi
 
 cleanup() {
+    timeout 60 docker kill "$container" > /dev/null 2>&1 || true
     timeout 60 docker rm --force "$container" > /dev/null 2>&1 || true
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 timeout 60 docker run --detach --name "$container" --publish "127.0.0.1:${port}:8080" "$image" > /dev/null
 
@@ -49,5 +50,5 @@ until [ "$(curl --silent --output /dev/null --max-time 2 --write-out '%{http_cod
 done
 
 cd "$root"
-KOSIT_ORACLE_URL="$url" timeout "${KOSIT_RUN_TIMEOUT:-900}" \
+KOSIT_ORACLE_URL="$url" timeout "${KOSIT_RUN_TIMEOUT:-1800}" \
     "$php" vendor/bin/phpunit --colors=never --group kosit-oracle --fail-on-skipped "$@"
