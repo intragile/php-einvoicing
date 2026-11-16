@@ -128,6 +128,26 @@ driver now downloads only from `*.r2.cloudflarestorage.com` over https. `GET /ap
 field that marks a sandbox company, so the live test keeps its explicit
 `EINVOICEBE_SANDBOX_CONFIRMED=1` opt-in.
 
+## D3: import into Lexware Office
+
+Run on 2026-11-16 in a Lexware Office XL trial (web app; no version number is shown). The five
+release artefacts listed under D1 were uploaded unchanged (`shasum -a 256 -c SHA256SUMS`: all OK
+before the upload) through "Belege" as received documents. The documents were left in the state
+"zu prüfen" and not booked.
+
+| Artefact | SHA-256 (first 12) | Lexware document format | Fields checked | Result |
+|---|---|---|---|---|
+| `RE-2026-0815-xrechnung-ubl.xml` | `66f64425cfd8` | XML (XRechnung 3), E-Rechnung | seller, buyer with Leitweg-ID, number, type 380, issue/due/delivery date, line, VAT category S 19 %, net 950,00, VAT 180,50, gross and payable 1.130,50, SEPA IBAN, specification and process identifiers | all match `ReleaseInvoices` |
+| `RE-2026-0815-xrechnung-cii.xml` | `ec31cff8895d` | XML (XRechnung 3), E-Rechnung | seller, buyer with Leitweg-ID, number, type 380, issue/due date, VAT category S 19 %, net 950,00, VAT 180,50, gross and payable 1.130,50, SEPA IBAN | all match |
+| `GS-2026-0042-xrechnung-ubl-creditnote.xml` | `b18422a962f1` | XML (XRechnung 3), E-Rechnung, booked as "Ausgabenminderung" | seller, buyer, number, type 381, preceding invoice RE-2026-0815, VAT category S 19 %, net 950,00, VAT 180,50, gross 1.130,50 | all match |
+| `RE-2026-0815-zugferd-en16931.pdf` | `0774dfa63a5c` | PDF (ZUGFeRD 2 Comfort), E-Rechnung | data read from the embedded XML: supplier, number, issue and due date, gross 1.130,50 | all match |
+| `RE-2026-0815-zugferd-xrechnung.pdf` | `01e034064373` | PDF (ZUGFeRD 2 XRechnung), E-Rechnung | data read from the embedded XML: supplier, number, issue and due date, gross 1.130,50 | all match |
+
+Lexware recognised every file as an e-invoice and filled the document data from the structured
+data, not by text recognition. For the two XML invoices and the credit note it showed its own
+rendering of the XML, which was compared field by field; for the PDFs it showed the PDF page and
+filled the document data from the embedded XML.
+
 ---
 
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
