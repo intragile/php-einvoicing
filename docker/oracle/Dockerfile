@@ -3,8 +3,8 @@
 #
 #   docker build --build-arg PHP_VERSION=8.4 -t php-einvoicing-oracle:php8.4 docker/oracle
 #
-# The base images are pinned to exact patch tags (one stage per PHP version, so Dependabot
-# can bump each FROM line) and the SaxonC-HE download is pinned by SHA-256 per architecture.
+# The base images are pinned to exact patch tags (one stage per PHP version, each bumped by
+# hand on its own line) and the SaxonC-HE download is pinned by SHA-256 per architecture.
 # Build dependencies are installed and purged in the same layer to keep the image small.
 
 ARG PHP_VERSION=8.5

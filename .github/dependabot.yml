@@ -24,10 +24,5 @@ updates:
     groups:
       composer-dependencies:
         patterns: ["*"]
-  - package-ecosystem: docker
-    directory: /docker/oracle
-    schedule:
-      interval: monthly
-    groups:
-      oracle-base-images:
-        patterns: ["*"]
+  # docker/oracle is not listed: Dependabot's Docker Hub lookup of library/php fails with
+  # UNAUTHORIZED for this repository, so the oracle base images are bumped by hand.
