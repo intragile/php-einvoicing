@@ -41,6 +41,8 @@ final readonly class Money
 
     /**
      * Rounds half up to the given scale; EN 16931 amounts use two decimals (BR-DEC rules).
+     *
+     * @param  non-negative-int  $scale
      */
     public function rounded(int $scale = 2): self
     {
