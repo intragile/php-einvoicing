@@ -12,7 +12,8 @@ an external reference and never touches a file or the network. Damaged or hostil
 `UnreadablePdf`, never a PHP error or warning, provided PHP's `memory_limit` leaves room for what
 a document needs: about the size of the PDF, plus up to about 30 MiB while the cross-reference
 index is built or rebuilt, plus the decoded streams being read (one at most 40 MiB, all of
-them at most 256 MiB, see [Limits](#limits)). Building the index holds at most one decoded stream at a time.
+them at most 256 MiB, see [Limits](#limits)). Building the index holds at most one decoded
+stream at a time.
 The hostile-input tests run at PHP's default `memory_limit` of 128M.
 
 ## What the parser reads
