@@ -10,7 +10,7 @@ is needed at runtime.
 
 [Magyar nyelvű leírás → README.hu.md](README.hu.md)
 
-> **Status:** unreleased, under development. The API may still change.
+> **Status:** version 1.0.0, prepared for release (the date is filled in at tag time). What is verified, and how, is in [Verification](#verification) and [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 ## What is in, and what is not
 
@@ -35,13 +35,17 @@ Included today:
 - Peppol transport: sending and receiving through an access point, SML and SMP participant
   lookup, Peppol Directory search, webhook verification, and an SBDH envelope writer and reader
   ([Peppol transport](docs/TRANSPORT.md)). Recommand, B2Brouter and e-invoice.be are the
-  available drivers; Storecove is planned for 1.0.0 (follow-up). No driver is live-tested yet
+  available drivers; Storecove is planned. Recommand is live-tested on the Peppol test network;
+  B2Brouter and e-invoice.be are live-tested against the provider sandbox (simulated network)
   ([drivers](#drivers)).
 - ZUGFeRD / Factur-X 1.0 (profiles MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED and XRECHNUNG):
   writing the profile XML, embedding it into a PDF/A you supply, reading it back out of a hybrid
   PDF, and validating it, with the optional Apache-2.0 rules package
   `intragile/einvoicing-rules-facturx` ([ZUGFeRD / Factur-X](#zugferd--factur-x)). The PDF layer is
   pure PHP ([PDF layer](docs/PDF.md)).
+
+Country notes: [Germany](docs/countries/DE.md) (legal basis, formats, channels and what is
+verified).
 
 Not included: self-billing over Peppol, and CII under Peppol BIS Billing 3.0 (CII goes over
 Peppol only as XRechnung). Rendering the invoice PDF is out of scope: you supply the PDF. The
@@ -291,8 +295,10 @@ carry no lines, so reading them into the `Invoice` model throws `UnsupportedDocu
 still available. Validation runs the XML Schema first, and the Schematron still runs after an XSD
 failure. The format is verified offline: Schematron verdicts equal the official Factur-X 1.09.2
 XSLT (SaxonC) on 699 documents with 0 differences, PDF/A was checked with veraPDF 1.30.3, all 102
-PDFs of the Mustang corpus parse and all 61 FeRD example invoices are read. Nothing is verified in
-live exchanges yet. Details: [docs/FACTURX.md](docs/FACTURX.md).
+PDFs of the Mustang corpus parse and all 61 FeRD example invoices are read. The release invoice in
+every Factur-X profile also passed the official Factur-X Schematron, and both ZUGFeRD PDFs passed
+veraPDF and were imported into Lexware Office ([docs/VERIFICATION.md](docs/VERIFICATION.md)).
+ZUGFeRD PDFs are not sent over Peppol. Details: [docs/FACTURX.md](docs/FACTURX.md).
 
 ## Peppol BIS 3
 
@@ -338,21 +344,19 @@ the invoice. `B2BrouterTransport` and `EInvoiceBeTransport` plug in the same way
 
 ### Drivers
 
-Recommand, B2Brouter and e-invoice.be are the available drivers; Storecove is planned for 1.0.0
-(follow-up).
+Recommand, B2Brouter and e-invoice.be are the available drivers; Storecove is planned.
 
 | Driver | Peppol test network | Provider sandbox | Status at release |
 |---|---|---|---|
-| Recommand | yes (playground team with `useTestNetwork`) | yes | not live-tested (offline contract tests from the public API docs) |
-| B2Brouter | no (the sandbox simulates the network) | yes, free | not live-tested (offline contract tests from the public API docs) |
-| e-invoice.be | no (the sandbox simulates the network) | yes, free | not live-tested (offline contract tests from the public API docs) |
-| Storecove | unverified | 30-day, on request | planned for 1.0.0 |
+| Recommand | yes (playground team with `useTestNetwork`) | yes | live-tested on the Peppol test network |
+| B2Brouter | no (the sandbox simulates the network) | yes, free | live-tested against the provider sandbox (simulated network) |
+| e-invoice.be | no (the sandbox simulates the network) | yes, free | live-tested against the provider sandbox (simulated network) |
+| Storecove | unverified | 30-day, on request | planned |
 
 A test against a provider sandbox that simulates the network proves the provider's API contract,
 not delivery over Peppol; only Recommand can reach the Peppol test network. e-invoice.be sends
 Peppol BIS Billing 3.0 UBL only. B2Brouter renders the document it transmits from its own invoice
-model, so the delivered bytes may differ from your XML. Webhook signatures are verified offline
-against each provider's documented scheme, not live. Details per driver:
+model, so the delivered bytes may differ from your XML. Webhook signatures are verified offline against each provider's documented scheme (e-invoice.be also against its published test vector); webhooks were not live-tested. All three drivers are also tested offline against fixtures written from the providers' published API descriptions. The run results are in [docs/VERIFICATION.md](docs/VERIFICATION.md). Details per driver:
 [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 What can be sent: Peppol BIS Billing 3.0 as UBL Invoice or CreditNote, with the exact BIS
@@ -371,9 +375,7 @@ rules to an XRechnung document (which needs `intragile/einvoicing-rules-xrechnun
 says through `isRetryable()` whether retrying is safe; an `OutcomeUnknown` means the access point
 may have accepted the document, so check before resending. Participant lookup (SML and SMP), the
 Peppol Directory, receiving by polling or webhooks, the SBDH envelope, what is verified and the
-known limitations: [docs/TRANSPORT.md](docs/TRANSPORT.md). Live transmission is not verified
-yet for any driver; each is tested against fixtures written from the provider's published API
-description.
+known limitations: [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 ## Security: hostile XML
 
@@ -384,6 +386,42 @@ entities, network access and entity-expansion attacks (billion laughs) are there
 possible. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Verification
+
+The evidence of the release is in [docs/VERIFICATION.md](docs/VERIFICATION.md); it holds no
+credentials and no account identifiers.
+
+- **D1, offline release gate (2026-11-15).** The XRechnung documents (UBL invoice, UBL credit
+  note, CII, the Extension in UBL and CII) and the XML of the XRechnung ZUGFeRD PDF were accepted
+  by the KoSIT validator 1.6.3 (XRechnung configuration 2026-08-31). The Factur-X XML of every
+  profile from MINIMUM to EXTENDED gave no failed assert and no fired report in the official
+  Factur-X 1.09.2 Schematron (XSLT) run by SaxonC. Both ZUGFeRD PDFs are compliant with the
+  veraPDF 1.30.3 PDF/A-3b profile.
+- **D2, Recommand on the Peppol test network (2026-11-15).** Peppol BIS Billing 3.0 UBL,
+  XRechnung 3.0 UBL and XRechnung 3.0 CII were sent, delivered, received and acknowledged; the
+  Laravel bridge delivered one invoice through the same driver.
+- **D2b-D2c, provider sandboxes (2026-11-15).** B2Brouter and e-invoice.be were exercised
+  against their sandboxes, which simulate the network: sends, status, and the inbox round trip.
+  This proves the provider API contract, not delivery over Peppol.
+- **D3, Lexware Office import (2026-11-16).** The five release artefacts were imported unchanged
+  into Lexware Office; every file was recognised as an e-invoice and every checked field matched.
+- **Offline parity.** The validator's verdicts equal the official XSLT on 1,892 documents (CEN),
+  1,611 (Peppol), 584 (KoSIT, XRechnung) and 699 (Factur-X).
+- **Webhooks.** Signatures are verified offline against each provider's documented scheme
+  (e-invoice.be also against its published test vector); webhooks were not live-tested.
+
+### Known limits (deferred to 1.x)
+
+- No operator command yet for a `pending` outbound row whose status polls are used up (the
+  Laravel bridge documents how to resolve it at the access point).
+- e-invoice.be: the inbox is cut at the look-back on our side; the provider's `date_from` filter
+  is not used yet.
+- No guard against a second status-poll chain started by a stateless webhook (the extra chain
+  shares the document's attempt budget, so the total stays bounded).
+
+None of them is a correctness issue. The limits of each area are listed in its document, for
+example [Peppol transport](docs/TRANSPORT.md#known-limitations).
+
+### How the offline verdicts are checked
 
 - The official CEN example invoices (release
   [1.3.17](https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/tag/validation-1.3.17))

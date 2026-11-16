@@ -11,7 +11,7 @@ suite) fails when a file is missing or stale.
 | | |
 |---|---|
 | Project | [ConnectingEurope/eInvoicing-EN16931](https://github.com/ConnectingEurope/eInvoicing-EN16931) |
-| Release | [`validation-1.3.17`](https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/tag/validation-1.3.17) (2026-10-09) |
+| Release | [`validation-1.3.17`](https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/tag/validation-1.3.17) (published 2026-10-12; the Schematron header says 2026-10-09) |
 | UBL source | `schematron/codelist/EN16931-UBL-codes.sch` from `en16931-ubl-1.3.17.zip`, SHA-256 `933c2ec261f7fc219aa0c7fa9f0b67c7fe156600b6fbb9a0eb045f583d173bd9` |
 | CII source | `schematron/codelist/EN16931-CII-codes.sch` from `en16931-cii-1.3.17.zip`, SHA-256 `e9c574ac66e083822b14f7e948a2ce188a817ee05412a0c02f3471ae5cf23958` |
 | Local copy | `tests/fixtures/official/cen-1.3.17/{ubl,cii}/schematron/codelist/` (fetched by `bin/fetch-official.php`) |

@@ -4,14 +4,17 @@ Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
 This page explains how to send and receive invoices over Peppol with this package: sending through
 an access point (Recommand, B2Brouter and e-invoice.be are the available drivers; Storecove is
-planned for 1.0.0), looking up participants in the SML and their SMP, searching the Peppol
+planned), looking up participants in the SML and their SMP, searching the Peppol
 Directory, receiving documents by polling or webhooks, the errors and what to do about each, the
 SBDH envelope, and what is verified and what is not. The invoice format and its validation are
 described in [PEPPOL.md](PEPPOL.md).
 
-> **No driver is live-tested yet.** The Recommand, B2Brouter and e-invoice.be drivers are tested
-> offline against fixtures written by hand from each provider's published API description; see
-> [What is verified](#what-is-verified).
+> **Live testing, per driver.** Recommand is live-tested on the Peppol test network. B2Brouter and
+> e-invoice.be are live-tested against the provider sandbox (simulated network). All three are also
+> tested offline against fixtures written by hand from each provider's published API description.
+> Webhook signatures are verified offline against each provider's documented scheme (e-invoice.be
+> also against its published test vector); webhooks were not live-tested. The results are in
+> [VERIFICATION.md](VERIFICATION.md); see also [What is verified](#what-is-verified).
 
 ## Quick start
 
@@ -638,11 +641,16 @@ $webhook = new B2BrouterWebhook($webhookSecret, 300);    // refuse a signed time
 A 429 answer throws `RateLimited`; B2Brouter documents no `Retry-After` header, so
 `retryAfterSeconds` is usually `null` and you choose the wait. The driver does not throttle.
 
-**Not verified yet** (these are checked when the driver is first run against the sandbox):
+**Sandbox run of 2026-11-15** ([VERIFICATION.md](VERIFICATION.md)):
+sends to the three test recipients, the inbox round trip and the unregistered-recipient mapping
+behave as described above. The sandbox lists XRechnung 3.0 document type codes for UBL and CII.
+`GET /invoices/{id}/as/legal` answered HTTP 422, so the delivered document could not be compared
+with the sent XML.
+
+**Not verified** (the sandbox gave no answer, or the check needs production):
 
 - that a send is delivered to the buyer's electronic address (`cbc:EndpointID`);
 - whether the delivered "legal" document equals the XML sent;
-- which document type codes exist for XRechnung 3.0 UBL and CII;
 - whether a received document's original carries an SBDH (the driver unwraps one either way);
 - whether B2Brouter checks that the seller's tax id matches the account;
 - whether webhook retries are signed again;
@@ -778,12 +786,13 @@ not throttle.
 | Envelope rules | `Validator::peppolEnvelope()` against the official envelope Schematron compiled with the ISO skeleton and run by SaxonC-HE, on the 14 official envelope tests and 10 envelopes written by `EnvelopeWriter` (oracle group) | Same verdicts on all 24 |
 | SML and SMP lookup | Offline tests with scripted DNS answers and SMP fixtures; live test group `network` against the production SML and public SMPs (a known participant, its endpoints, a random unregistered id) | Live checks passed on 2026-11-12 |
 | Peppol Directory | Offline tests with recorded answers; one manual live search and lookup against the production Directory (no live test in the suite) | Manual check passed on 2026-11-12 |
-| Recommand driver | Offline tests with JSON fixtures **hand-written from Recommand's published API description** (OpenAPI document and source), not recorded from the live service | **Live transmission not yet verified** |
-| B2Brouter driver | Offline contract tests with JSON fixtures hand-written from B2Brouter's public API reference (OpenAPI 2026-06-26) and developer guides | **Not live-tested** |
-| e-invoice.be driver | Offline contract tests with JSON fixtures hand-written from e-invoice.be's public API reference (OpenAPI 1.1.0) and guides | **Not live-tested** |
-| Webhook signatures | Offline tests against each provider's documented signing scheme; e-invoice.be also against its published test vector | **Not live-tested** (needs a public HTTPS endpoint) |
+| Recommand driver | Offline tests with JSON fixtures hand-written from Recommand's published API description (OpenAPI document and source); live test group `recommand-live` | **Live-tested on the Peppol test network** (2026-11-15) |
+| B2Brouter driver | Offline contract tests with JSON fixtures hand-written from B2Brouter's public API reference (OpenAPI 2026-06-26) and developer guides; live test group `b2brouter-live` | **Live-tested against the provider sandbox (simulated network)** (2026-11-15) |
+| e-invoice.be driver | Offline contract tests with JSON fixtures hand-written from e-invoice.be's public API reference (OpenAPI 1.1.0) and guides; live test group `einvoicebe-live` | **Live-tested against the provider sandbox (simulated network)** (2026-11-15) |
+| Webhook signatures | Offline tests against each provider's documented signing scheme; e-invoice.be also against its published test vector | Verified offline; **webhooks were not live-tested** (needs a public HTTPS endpoint) |
 
-A live test group, `recommand-live`, sends the Peppol base example through a Recommand
+The run results are recorded in [VERIFICATION.md](VERIFICATION.md). A live test group,
+`recommand-live`, sends the Peppol base example through a Recommand
 playground team and then calls `status()`, `pending()`, `fetch()` and `acknowledge()`. It
 refuses to run against a production team. It needs `RECOMMAND_API_KEY_ID`,
 `RECOMMAND_API_SECRET` and `RECOMMAND_COMPANY_ID` and is skipped without them:
@@ -828,7 +837,7 @@ SML and SMP lookups (and the rule download from GitHub).
 - **Only the first-ranked NAPTR record** is tried.
 - **Directory rate limit** (2 requests per second) is enforced per `DirectoryClient` instance.
 - **Three access point drivers today**: Recommand, B2Brouter and e-invoice.be; Storecove is
-  planned for 1.0.0. The `Transport`, `InboundSource` and `WebhookParser` interfaces are the
+  planned. The `Transport`, `InboundSource` and `WebhookParser` interfaces are the
   extension point for others.
 - **e-invoice.be sends BIS Billing 3.0 UBL only**; B2Brouter sends XRechnung only with a document
   type code you configure.

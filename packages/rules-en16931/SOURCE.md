@@ -17,7 +17,7 @@ validator configuration is built on it.
 
 | Release | Archive | Preprocessed `.sch` | SHA-256 of the `.sch` |
 |---|---|---|---|
-| [`validation-1.3.17`](https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/tag/validation-1.3.17) (2026-10-09) | `en16931-ubl-1.3.17.zip` | `schematron/preprocessed/EN16931-UBL-validation-preprocessed.sch` | `eb27995ba7bace330475a0afd54a21bb0ebb050d55774949d5e10f65ecef7b95` |
+| [`validation-1.3.17`](https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/tag/validation-1.3.17) (published 2026-10-12; the Schematron header says 2026-10-09) | `en16931-ubl-1.3.17.zip` | `schematron/preprocessed/EN16931-UBL-validation-preprocessed.sch` | `eb27995ba7bace330475a0afd54a21bb0ebb050d55774949d5e10f65ecef7b95` |
 | | `en16931-cii-1.3.17.zip` | `schematron/preprocessed/EN16931-CII-validation-preprocessed.sch` | `74fa94df0513881b9c8e369650bb2282f9c8a30bb52ce4ce43d1219e88ccedc2` |
 | [`validation-1.3.16`](https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/tag/validation-1.3.16) (2026-04-13) | `en16931-ubl-1.3.16.zip` (SHA-256 `bafada015efbc5248bf5e05ad2191e1d9833ef96e9dd5f4bce420a747342da85`) | `schematron/preprocessed/EN16931-UBL-validation-preprocessed.sch` | `268d4f7a2688676695e6c69cba6fba69a6802604fee12cb544a6b30ff09555a3` |
 | | `en16931-cii-1.3.16.zip` (SHA-256 `1cd53cb8a84d38aedc82c0caede217da983a7934dd663f793a092fd66443c561`) | `schematron/preprocessed/EN16931-CII-validation-preprocessed.sch` | `54e0dc6d06cd7f17d268bb9696ff56f58d386ee28961c9bbef0a56718c400c89` |

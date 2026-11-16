@@ -10,7 +10,7 @@ Futásidőben nincs szükség Javára.
 
 [English description → README.md](README.md)
 
-> **Állapot:** kiadatlan, fejlesztés alatt. Az API még változhat.
+> **Állapot:** 1.0.0-s verzió, kiadásra előkészítve (a dátumot a címkézéskor töltjük ki). Mit és hogyan ellenőriztünk: [Ellenőrzés](#ellenőrzés) és [docs/VERIFICATION.md](docs/VERIFICATION.md) (angolul).
 
 ## Mi van benne, és mi nincs
 
@@ -35,13 +35,16 @@ Jelenleg tartalmazza:
 - Peppol-átvitel: küldés és fogadás hozzáférési ponton keresztül, résztvevő keresése az SML-ben
   és az SMP-ben, keresés a Peppol Directoryban, webhookok ellenőrzése, valamint SBDH-boríték írása
   és olvasása ([Peppol-átvitel](docs/TRANSPORT.md), angolul). Elérhető meghajtó a Recommand, a
-  B2Brouter és az e-invoice.be; a Storecove az 1.0.0-ra tervezett (külön lépésben). Egyik
-  meghajtót sem teszteltük még élesben ([meghajtók](#meghajtók)).
+  B2Brouter és az e-invoice.be; a Storecove tervezett. A Recommandot a Peppol teszthálózaton
+  teszteltük élesben; a B2Brouter és az e-invoice.be a szolgáltatói sandbox ellen van élesben
+  tesztelve (szimulált hálózat) ([meghajtók](#meghajtók)).
 - ZUGFeRD / Factur-X 1.0 (MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED és XRECHNUNG profil): a
   profil XML-jének írása, beágyazása egy általad adott PDF/A-ba, kiolvasása a hibrid PDF-ből és
   ellenőrzése, az opcionális, Apache-2.0 licencű `intragile/einvoicing-rules-facturx`
   szabálycsomaggal ([ZUGFeRD / Factur-X](#zugferd--factur-x)). A PDF-réteg tisztán PHP-s
   ([PDF-réteg](docs/PDF.md), angolul).
+
+Országjegyzetek: [Németország](docs/countries/DE.md) (jogalap, formátumok, csatornák és az ellenőrzés, angolul).
 
 Nincs benne: önszámlázó (self-billing) számlák küldése Peppolon, valamint CII a Peppol BIS
 Billing 3.0 szerint (CII Peppolon csak XRechnungként megy). A számla PDF-jének megjelenítése
@@ -303,8 +306,11 @@ modellbe olvasásuk `UnsupportedDocument` kivételt dob; az XML ettől még elé
 előbb az XML Schemát futtatja, a Schematron pedig XSD-hiba után is lefut. A formátumot offline
 ellenőriztük: a Schematron-eredmények 699 dokumentumon megegyeznek a hivatalos Factur-X 1.09.2
 XSLT-ével (SaxonC), 0 eltéréssel; a PDF/A-t a veraPDF 1.30.3-mal ellenőriztük, a Mustang-korpusz
-mind a 102 PDF-je beolvasható, és a 61 FeRD-mintaszámla mindegyike kiolvasható. Éles
-forgalomban még nem ellenőriztük. Részletek: [docs/FACTURX.md](docs/FACTURX.md), angolul.
+mind a 102 PDF-je beolvasható, és a 61 FeRD-mintaszámla mindegyike kiolvasható. A kiadási
+számla minden Factur-X profilban átment a hivatalos Factur-X Schematronon is, mindkét ZUGFeRD PDF
+átment a veraPDF-en, és be lettek importálva a Lexware Office-ba
+([docs/VERIFICATION.md](docs/VERIFICATION.md), angolul). A ZUGFeRD PDF-eket nem küldjük Peppolon.
+Részletek: [docs/FACTURX.md](docs/FACTURX.md), angolul.
 
 ## Peppol BIS 3
 
@@ -351,21 +357,20 @@ számlából olvassa ki. A `B2BrouterTransport` és az `EInvoiceBeTransport` ugy
 
 ### Meghajtók
 
-Elérhető meghajtó a Recommand, a B2Brouter és az e-invoice.be; a Storecove az 1.0.0-ra tervezett
-(külön lépésben).
+Elérhető meghajtó a Recommand, a B2Brouter és az e-invoice.be; a Storecove tervezett.
 
 | Meghajtó | Peppol tesztháló | Szolgáltatói sandbox | Állapot a kiadáskor |
 |---|---|---|---|
-| Recommand | igen (playground csapat `useTestNetwork` beállítással) | igen | élesben nem tesztelt (offline szerződéstesztek a nyilvános API-dokumentációból) |
-| B2Brouter | nem (a sandbox szimulálja a hálózatot) | igen, ingyenes | élesben nem tesztelt (offline szerződéstesztek a nyilvános API-dokumentációból) |
-| e-invoice.be | nem (a sandbox szimulálja a hálózatot) | igen, ingyenes | élesben nem tesztelt (offline szerződéstesztek a nyilvános API-dokumentációból) |
-| Storecove | nem ellenőrzött | 30 napos, kérésre | az 1.0.0-ra tervezett |
+| Recommand | igen (playground csapat `useTestNetwork` beállítással) | igen | élesben tesztelve a Peppol teszthálózaton |
+| B2Brouter | nem (a sandbox szimulálja a hálózatot) | igen, ingyenes | élesben tesztelve a szolgáltatói sandbox ellen (szimulált hálózat) |
+| e-invoice.be | nem (a sandbox szimulálja a hálózatot) | igen, ingyenes | élesben tesztelve a szolgáltatói sandbox ellen (szimulált hálózat) |
+| Storecove | nem ellenőrzött | 30 napos, kérésre | tervezett |
 
 A hálózatot csak szimuláló szolgáltatói sandbox elleni teszt a szolgáltató API-szerződését
 igazolja, nem a Peppolon történő kézbesítést; a Peppol teszthálót csak a Recommand éri el. Az
 e-invoice.be csak Peppol BIS Billing 3.0 UBL-t küld. A B2Brouter a továbbított dokumentumot a
 saját számlamodelljéből állítja elő, így a kézbesített bájtok eltérhetnek a te XML-edtől. A
-webhook-aláírásokat a szolgáltatók dokumentált sémája szerint offline ellenőrizzük, élesben nem.
+webhook-aláírásokat a szolgáltatók dokumentált sémája szerint offline ellenőrizzük (az e-invoice.be-ét a közzétett tesztvektorral is); a webhookokat nem teszteltük élesben. Mindhárom meghajtót offline is teszteljük a szolgáltatók közzétett API-leírásából írt mintaválaszokkal. A futtatások eredménye: [docs/VERIFICATION.md](docs/VERIFICATION.md) (angolul).
 Meghajtónkénti részletek: [docs/TRANSPORT.md](docs/TRANSPORT.md) (angolul).
 
 Mit lehet elküldeni: Peppol BIS Billing 3.0 számlát UBL Invoice vagy CreditNote formában, a
@@ -385,9 +390,7 @@ XRechnung dokumentumra a KoSIT XRechnung-szabályait alkalmazza (ehhez az
 biztonságos-e az újrapróbálás; az `OutcomeUnknown` azt jelenti, hogy a hozzáférési pont
 befogadhatta a dokumentumot, ezért újraküldés előtt ellenőrizd. Résztvevő keresése (SML és SMP),
 a Peppol Directory, fogadás lekérdezéssel vagy webhookkal, az SBDH-boríték, mit és hogyan
-ellenőriztünk, és az ismert korlátok: [docs/TRANSPORT.md](docs/TRANSPORT.md) (angolul). Az éles
-küldést egyik meghajtóval sem ellenőriztük még; mindegyiket a szolgáltató közzétett
-API-leírásából kézzel írt mintaválaszokkal teszteljük.
+ellenőriztünk, és az ismert korlátok: [docs/TRANSPORT.md](docs/TRANSPORT.md) (angolul). 
 
 ## Biztonság: rosszindulatú XML
 
@@ -399,6 +402,42 @@ entitás-kibontásos támadás (billion laughs) így nem lehetséges. Sérülék
 [SECURITY.md](SECURITY.md).
 
 ## Ellenőrzés
+
+A kiadás bizonyítékai a [docs/VERIFICATION.md](docs/VERIFICATION.md) fájlban vannak (angolul);
+nem tartalmaz hitelesítő adatot és fiókazonosítót.
+
+- **D1, offline kiadási kapu (2026-11-15).** Az XRechnung dokumentumokat (UBL számla, UBL
+  jóváíró, CII, az Extension UBL-ben és CII-ben) és az XRechnung ZUGFeRD PDF XML-jét a KoSIT
+  validator 1.6.3 (XRechnung konfiguráció 2026-08-31) elfogadta. A MINIMUM-tól az EXTENDED-ig
+  minden profil Factur-X XML-je üres eredményt adott a hivatalos Factur-X 1.09.2 Schematronon
+  (XSLT, SaxonC): nincs sikertelen assert és nincs kiváltott report. Mindkét ZUGFeRD PDF megfelel
+  a veraPDF 1.30.3 PDF/A-3b profiljának.
+- **D2, Recommand a Peppol teszthálózaton (2026-11-15).** A Peppol BIS Billing 3.0 UBL, az
+  XRechnung 3.0 UBL és az XRechnung 3.0 CII elküldve, kézbesítve, fogadva és nyugtázva; a Laravel
+  híd ugyanezzel a meghajtóval kézbesített egy számlát.
+- **D2b-D2c, szolgáltatói sandboxok (2026-11-15).** A B2Brouter és az e-invoice.be a hálózatot
+  szimuláló sandboxuk ellen: küldés, állapot és beérkező postafiók. Ez a szolgáltató
+  API-szerződését igazolja, nem a Peppolon történő kézbesítést.
+- **D3, import a Lexware Office-ba (2026-11-16).** Az öt kiadási fájl változtatás nélkül importálva;
+  minden fájlt e-számlaként ismert fel, és minden ellenőrzött mező egyezett.
+- **Offline egyezés.** A validátor eredményei megegyeznek a hivatalos XSLT-ével 1892 (CEN), 1611
+  (Peppol), 584 (KoSIT, XRechnung) és 699 (Factur-X) dokumentumon.
+- **Webhookok.** Az aláírásokat a szolgáltatók dokumentált sémája szerint offline ellenőrizzük
+  (az e-invoice.be-ét a közzétett tesztvektorral is); a webhookokat nem teszteltük élesben.
+
+### Ismert korlátok (1.x-re halasztva)
+
+- Még nincs operátori parancs olyan `pending` kimenő sorra, amelynek az állapotlekérései
+  elfogytak (a Laravel híd leírja, hogyan oldható fel a hozzáférési pontnál).
+- e-invoice.be: a postafiókot nálunk vágjuk a visszatekintési időnél; a szolgáltató `date_from`
+  szűrőjét még nem használjuk.
+- Nincs védelem arra, hogy egy állapotmentes webhook második állapotlekérési láncot indítson (az
+  extra lánc a dokumentum próbálkozási keretén osztozik, így az összes lekérés korlátos).
+
+Egyik sem helyességi hiba. Az egyes területek korlátai a saját dokumentumukban vannak, például
+[Peppol-átvitel](docs/TRANSPORT.md#known-limitations).
+
+### Az offline eredmények ellenőrzése
 
 - A hivatalos CEN mintaszámlák
   ([1.3.17-es kiadás](https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/tag/validation-1.3.17))

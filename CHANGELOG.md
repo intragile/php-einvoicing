@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0] - YYYY-MM-DD
 
 ### Added
 
@@ -15,23 +15,37 @@ All notable changes to this project are documented here. The format follows
   unwrapping, acknowledgement) and `B2BrouterWebhook` (`X-B2Brouter-Signature` over
   `"<t>.<raw body>"`, timestamp tolerance opt-in). BIS Billing 3.0 invoices and credit notes are
   sent by default; other document types need a configured B2Brouter document type code. The API
-  version `2026-06-26` is pinned. Opt-in sandbox test group `b2brouter-live`.
+  version `2026-06-26` is pinned. Opt-in sandbox test group `b2brouter-live`. Observed in the
+  sandbox: an unregistered-recipient failure is reported only in the `errors` list, without an
+  error code, and maps to `recipient_not_found`; `status()` reports the `errors` list when
+  `error_message` is empty.
 - **Peppol transport:** the e-invoice.be driver: `EInvoiceBeConfig`, `EInvoiceBeTransport` (upload
   and send of BIS Billing 3.0 UBL only, delivery status with the timeline's failure note, inbox
   listing back to a configurable look-back, download from the signed URL without the API key,
   local-only acknowledgement) and `EInvoiceBeWebhook`, which verifies `X-Signature` over the
   canonical JSON string of the event (`CanonicalJson`, Python `json.dumps(sort_keys=True)`; a
   number with a fraction fails closed). Opt-in sandbox test group `einvoicebe-live`, which needs
-  `EINVOICEBE_SANDBOX_CONFIRMED=1`.
+  `EINVOICEBE_SANDBOX_CONFIRMED=1`. A signed download URL is fetched over https only, from
+  `*.r2.cloudflarestorage.com` only (the host observed in the sandbox).
 - **Peppol transport:** provider-neutral webhooks in `IntrAgile\EInvoicing\Transport\Webhook`:
   the `WebhookParser` interface (`parse()`, `verify()`), `WebhookEvent` and `WebhookKind`
   (`DocumentReceived`, `DeliveryChanged`, `Other`). `RecommandWebhook`, `B2BrouterWebhook` and
   `EInvoiceBeWebhook` implement it. Webhooks are verified offline against each provider's
-  documented scheme, not live.
+  documented scheme (e-invoice.be also against its published test vector); webhooks were not
+  live-tested.
 - **Peppol transport:** the `InboundSource` contract states that consumers de-duplicate on the
   document id, because a provider that cannot record acknowledgements lists a document again.
 - **Documentation:** a section per driver in `docs/TRANSPORT.md` and a driver table in the README.
-  Live transmission is not verified for any driver yet; Storecove is planned for 1.0.0.
+  Recommand is live-tested on the Peppol test network; B2Brouter and e-invoice.be are live-tested
+  against the provider sandbox (simulated network). Storecove is planned.
+- **Documentation:** `docs/VERIFICATION.md` with the results of the offline release gate (KoSIT
+  1.6.3, the official Factur-X 1.09.2 Schematron through SaxonC, veraPDF 1.30.3), of the live
+  runs and of the import into Lexware Office; `docs/countries/DE.md`, the Germany country
+  document; a `CHANGELOG.md` in each rule package.
+- **Testing:** the opt-in groups `release-artefacts` and `release-gate` build and check the
+  release invoices (XRechnung and ZUGFeRD) with the official validators; the live groups
+  `recommand-live`, `b2brouter-live` and `einvoicebe-live` redact every configured secret and
+  refuse a production account.
 - **Peppol transport:** XRechnung over Peppol. `OutboundDocument::fromXml()` sends XRechnung 3.0
   (CIUS: UBL Invoice, UBL CreditNote and CII) and the XRechnung 3.0 Extension (UBL Invoice and
   CII) under their own Peppol document types (`XRechnungPeppol`, Peppol Code Lists v9.7), and
@@ -45,8 +59,9 @@ All notable changes to this project are documented here. The format follows
   identifier (BT-24) to the Peppol BIS rules or to `XRechnungValidator`. Without
   `intragile/einvoicing-rules-xrechnung`, an XRechnung document throws `RulesNotInstalled` naming
   the composer command.
-- **Peppol:** `IntrAgile\EInvoicing\Peppol\PeppolDocumentTypes`, the one document-type resolver
-  that sending and validation share, and `PeppolBis3::CUSTOMIZATION`.
+- **Peppol:** `IntrAgile\EInvoicing\Peppol\PeppolDocumentTypes` (`@internal`, outside the BC
+  promise), the one document-type resolver that sending and validation share, and
+  `PeppolBis3::CUSTOMIZATION`.
 - **Transport:** `HttpClient` takes the secrets to redact as a fifth constructor argument and
   through `withSecrets()`, and `send()` takes a per-request `$maxBytes` that can only lower the
   cap; `RecommandConfig::MIN_CREDENTIAL_LENGTH` and `RecommandConfig::redactingClient()`;
@@ -77,7 +92,8 @@ All notable changes to this project are documented here. The format follows
 - Factur-X conformance tests: the validator's verdicts equal the official Factur-X 1.09.2 XSLT
   (SaxonC) on 699 documents, PDF/A is checked with veraPDF 1.30.3 (optional `verapdf` group), all
   102 Mustang corpus PDFs parse and all 61 FeRD example invoices are read. Format verified
-  offline; nothing is verified in live exchanges.
+  offline and, in the release gate, with the official Factur-X Schematron and veraPDF; ZUGFeRD
+  PDFs are not sent over Peppol.
 - `docs/FACTURX.md` and `docs/PDF.md`.
 - EN 16931 code lists as backed enums in `IntrAgile\EInvoicing\CodeList`, generated from the
   CEN validation artefacts 1.3.17.
@@ -149,8 +165,8 @@ All notable changes to this project are documented here. The format follows
 - `RecommandTransport`: sending, delivery status, inbox polling, fetching (SBDH unwrapped) and
   acknowledging through the Recommand access point API; `RecommandWebhook` verifies the
   HMAC-SHA256 signature of webhook notifications and exposes a deduplication key. Tested offline
-  against fixtures written from the published API description; live transmission is not verified
-  yet (test group `recommand-live`).
+  against fixtures written from the published API description, and live on the Peppol test
+  network (test group `recommand-live`; Peppol BIS 3 UBL, XRechnung UBL and CII).
 - `EnvelopeWriter` and `EnvelopeReader`: the Peppol Business Message Envelope (SBDH), written in
   schema order with the participant ids exactly as in the invoice, and read by namespace.
 - `Validator::peppolEnvelope($dir)`: the official Peppol envelope rules (`BR-SBDH-1` to
@@ -176,9 +192,9 @@ All notable changes to this project are documented here. The format follows
 - A compiled CEN 1.3.16 build beside 1.3.17 in `intragile/einvoicing-rules-en16931`
   (`RuleFiles::ubl('1.3.16')`, `RuleFiles::cii('1.3.16')`, `RuleFiles::VERSIONS`), the release
   KoSIT pins.
-- `SchemaValidator`: XML Schema validation against a pinned XSD only, ignoring the instance's
-  schema location hints, with no network access (an import or include that is not a local file is refused), returning `SchemaError`s in document order; a
-  missing, unreadable or uncompilable schema throws `UnusableSchema`, never a finding.
+- `SchemaValidator`: XML Schema validation against a pinned XSD only, offline (a non-local import
+  or include is refused), returning `SchemaError`s in document order; an unusable schema throws
+  `UnusableSchema`, never a finding.
 - Schematron engine: `include` (confined to an include root, `Compiler::compile()` takes it as an
   optional argument), pattern `let`s as global variables visible to `xsl:function`s (a let that
   refers to a later one is a compile error), `name` and `value-of` in assert messages, and union
@@ -194,6 +210,18 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Transport (security):** e-invoice.be refuses a signed download URL whose host is an IP literal,
+  `localhost`, a name under `.localhost`, or a shorthand or numeric IPv4 form (`127.1`,
+  `2130706433`, `0x7f.1`), and an e-invoice.be 404 on upload names the base URL and API version.
+- **Transport:** e-invoice.be webhooks refuse a `data.document_id` that is not of the form
+  `doc-<letters and digits>`; webhook account ids and deduplication keys of B2Brouter,
+  e-invoice.be and Recommand are trimmed; a B2Brouter state-change webhook whose state is not a
+  string gives a null delivery state.
+- **PDF:** the stream cap is 48 MiB (previously 64 MiB), so an index plus one decoded stream fit
+  PHP's default 128M `memory_limit`; `FacturXPdfReader` reports object streams skipped during an
+  index reconstruction as a warning.
+- **Participant lookup:** the SMP document type scheme and the `busdox-docid-qns::` prefix are
+  compared case-insensitively.
 - **Peppol transport (public API):** `Recommand\WebhookEvent` is removed in favour of
   `Transport\Webhook\WebhookEvent`, which `RecommandWebhook::parse()` now returns. Its fields:
   `kind` (a `WebhookKind`) is new; `deduplicationKey` (always set) replaces `idempotencyKey`;
