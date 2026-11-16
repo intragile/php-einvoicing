@@ -10,7 +10,7 @@ is needed at runtime.
 
 [Magyar nyelvű leírás → README.hu.md](README.hu.md)
 
-> **Status:** version 1.0.0, released 2026-11-16. What is verified, and how, is in [Verification](#verification) and [docs/VERIFICATION.md](docs/VERIFICATION.md).
+> **Status:** version 1.0.1, released 2026-11-16. What is verified, and how, is in [Verification](#verification) and [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 ## What is in, and what is not
 

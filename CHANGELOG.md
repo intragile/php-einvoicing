@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-11-16
+
+### Changed
+
+- **B2Brouter:** XRechnung 3.0 documents are sent without configuration. `B2BrouterConfig` now
+  maps the five XRechnung 3.0 Peppol document types (UBL invoice, UBL credit note, CII invoice and
+  both Extensions) to their B2Brouter codes by default; a configured `$documentTypeCodes` map
+  still takes precedence. All five were sent to the B2Brouter sandbox and reached the delivered
+  state.
+
+### Fixed
+
+- The PHP 8.6 early-warning CI job checked a `composer.json` it had rewritten itself, and a test
+  expected a file name in a PHP warning that PHP 8.6 no longer includes. The suite now passes on
+  PHP 8.3 to 8.6.
+- Dependabot no longer tries to update the in-repository rule packages, which made its Composer
+  update run fail.
+
+### Internal
+
+- Removed dead code from the e-invoice.be signed-URL host check; behaviour is unchanged.
+
 ## [1.0.0] - 2026-11-16
 
 ### Added

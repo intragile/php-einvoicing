@@ -10,7 +10,7 @@ Futásidőben nincs szükség Javára.
 
 [English description → README.md](README.md)
 
-> **Állapot:** 1.0.0-s verzió, kiadva 2026-11-16-án. Mit és hogyan ellenőriztünk: [Ellenőrzés](#ellenőrzés) és [docs/VERIFICATION.md](docs/VERIFICATION.md) (angolul).
+> **Állapot:** 1.0.1-es verzió, kiadva 2026-11-16-án. Mit és hogyan ellenőriztünk: [Ellenőrzés](#ellenőrzés) és [docs/VERIFICATION.md](docs/VERIFICATION.md) (angolul).
 
 ## Mi van benne, és mi nincs
 
