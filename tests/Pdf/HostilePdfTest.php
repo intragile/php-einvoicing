@@ -18,9 +18,10 @@ use Throwable;
 /**
  * Inputs built to exhaust time or memory. Each must end in UnreadablePdf within a few CPU seconds,
  * without a PHP warning. Time is process CPU time (user + system), not wall clock, so a loaded or
- * slow machine does not fail a healthy run; the budgets sit far below what a quadratic parse costs. Tests marked to run in a separate process lower memory_limit to PHP's stock 128M
- * first, so exceeding it fails the test; the suite itself runs at 512M and may already use more
- * than 128M by the time they run.
+ * slow machine does not fail a healthy run; the budgets sit far below what a quadratic parse
+ * costs. Tests marked to run in a separate process lower memory_limit to PHP's stock 128M first,
+ * so exceeding it fails the test; the suite itself runs at 512M and may already use more than
+ * 128M by the time they run.
  */
 final class HostilePdfTest extends TestCase
 {
@@ -289,20 +290,12 @@ final class HostilePdfTest extends TestCase
     public function test_unterminated_streams_and_strings_do_not_make_reconstruction_quadratic(): void
     {
         self::limitMemory();
-        $streams = "%PDF-1.7\n".str_repeat("1 0 obj<<>>stream\n", 80_000);
-        $this->assertRefusedQuickly(static fn () => PdfDocument::parse($streams));
+        foreach (["1 0 obj<<>>stream\n", '1 0 obj('] as $unit) {
+            $this->assertRefusedQuickly(static fn () => PdfDocument::parse("%PDF-1.7\n".str_repeat($unit, 80_000)));
+            self::assertLinearCpu($unit);
+        }
 
-        // Doubling the input must roughly double the CPU time (linear ~2, quadratic ~4). The best of
-        // three runs per size keeps scheduler and allocator noise out of the ratio.
-        $small = min(array_map(static fn () => self::refusedCpuSeconds($streams), range(1, 3)));
-        $doubled = "%PDF-1.7\n".str_repeat("1 0 obj<<>>stream\n", 160_000);
-        $large = min(array_map(static fn () => self::refusedCpuSeconds($doubled), range(1, 3)));
-        unset($doubled);
-        self::assertLessThan(3.0, $large / max($small, 0.005), sprintf('2n/n CPU ratio (%.3f s -> %.3f s)', $small, $large));
-
-        $strings = "%PDF-1.7\n".str_repeat('1 0 obj(', 80_000);
-        $this->assertRefusedQuickly(static fn () => PdfDocument::parse($strings));
-
+        // Refused within a millisecond, so there is no growth to measure.
         $hex = "%PDF-1.7\n".str_repeat('1 0 obj<', 80_000);
         $this->assertRefusedQuickly(static fn () => PdfDocument::parse($hex));
     }
@@ -503,6 +496,25 @@ final class HostilePdfTest extends TestCase
 
         return $field('ru_utime.tv_sec') + $field('ru_stime.tv_sec')
             + ($field('ru_utime.tv_usec') + $field('ru_stime.tv_usec')) / 1e6;
+    }
+
+    /**
+     * Doubling the input must roughly double the CPU time (linear ~2, quadratic ~4). The best of
+     * three runs per size keeps scheduler and allocator noise out of the ratio.
+     */
+    private static function assertLinearCpu(string $unit): void
+    {
+        $small = "%PDF-1.7\n".str_repeat($unit, 80_000);
+        $smallSeconds = min(array_map(static fn () => self::refusedCpuSeconds($small), range(1, 3)));
+        unset($small);
+        $large = "%PDF-1.7\n".str_repeat($unit, 160_000);
+        $largeSeconds = min(array_map(static fn () => self::refusedCpuSeconds($large), range(1, 3)));
+
+        self::assertLessThan(
+            3.0,
+            $largeSeconds / max($smallSeconds, 0.005),
+            sprintf('2n/n CPU ratio for %s (%.3f s -> %.3f s)', json_encode($unit), $smallSeconds, $largeSeconds),
+        );
     }
 
     /** CPU seconds PdfDocument::parse() needs to refuse $pdf. */
