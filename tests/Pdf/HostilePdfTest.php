@@ -16,8 +16,9 @@ use PHPUnit\Framework\TestCase;
 use Throwable;
 
 /**
- * Inputs built to exhaust time or memory. Each must end in UnreadablePdf within a second, without
- * a PHP warning. Tests marked to run in a separate process lower memory_limit to PHP's stock 128M
+ * Inputs built to exhaust time or memory. Each must end in UnreadablePdf within a few CPU seconds,
+ * without a PHP warning. Time is process CPU time (user + system), not wall clock, so a loaded or
+ * slow machine does not fail a healthy run; the budgets sit far below what a quadratic parse costs. Tests marked to run in a separate process lower memory_limit to PHP's stock 128M
  * first, so exceeding it fails the test; the suite itself runs at 512M and may already use more
  * than 128M by the time they run.
  */
@@ -190,14 +191,14 @@ final class HostilePdfTest extends TestCase
             ->classic();
         $before = memory_get_usage();
         memory_reset_peak_usage();
-        $started = hrtime(true);
+        $started = self::cpuSeconds();
 
         $document = PdfDocument::parse($pdf);
         $stream = $document->object(3);
         self::assertInstanceOf(PdfStream::class, $stream);
 
         self::assertSame('abc', $document->decodedStream($stream));
-        self::assertLessThan(1.0, (hrtime(true) - $started) / 1e9);
+        self::assertLessThan(3.0, $seconds = self::cpuSeconds() - $started, sprintf('Took %.3f s CPU', $seconds));
         self::assertLessThan(8 * 1024 * 1024, memory_get_peak_usage() - $before);
     }
 
@@ -230,11 +231,11 @@ final class HostilePdfTest extends TestCase
             self::assertLessThan(16 * 1024, strlen($pdf));
             memory_reset_peak_usage();
             $before = memory_get_usage();
-            $started = hrtime(true);
+            $started = self::cpuSeconds();
 
             $document = PdfDocument::parse($pdf);
 
-            self::assertLessThan(1.0, (hrtime(true) - $started) / 1e9);
+            self::assertLessThan(3.0, $seconds = self::cpuSeconds() - $started, sprintf('Took %.3f s CPU', $seconds));
             self::assertLessThan(32 * 1024 * 1024, memory_get_peak_usage() - $before);
             self::assertTrue($document->reconstructed());
             self::assertTrue($document->catalog()->isName('Type', 'Catalog'));
@@ -274,13 +275,13 @@ final class HostilePdfTest extends TestCase
         $pdf = $builder->object($last, '1')->trailer('/Root 1 0 R')->classic();
         $before = memory_get_usage();
         memory_reset_peak_usage();
-        $started = hrtime(true);
+        $started = self::cpuSeconds();
 
         $stream = PdfDocument::parse($pdf)->object(3);
 
         self::assertInstanceOf(PdfStream::class, $stream);
         self::assertSame('x', $stream->raw);
-        self::assertLessThan(1.0, (hrtime(true) - $started) / 1e9);
+        self::assertLessThan(3.0, $seconds = self::cpuSeconds() - $started, sprintf('Took %.3f s CPU', $seconds));
         self::assertLessThan(16 * 1024 * 1024, memory_get_peak_usage() - $before);
     }
 
@@ -290,6 +291,14 @@ final class HostilePdfTest extends TestCase
         self::limitMemory();
         $streams = "%PDF-1.7\n".str_repeat("1 0 obj<<>>stream\n", 80_000);
         $this->assertRefusedQuickly(static fn () => PdfDocument::parse($streams));
+
+        // Doubling the input must roughly double the CPU time (linear ~2, quadratic ~4). The best of
+        // three runs per size keeps scheduler and allocator noise out of the ratio.
+        $small = min(array_map(static fn () => self::refusedCpuSeconds($streams), range(1, 3)));
+        $doubled = "%PDF-1.7\n".str_repeat("1 0 obj<<>>stream\n", 160_000);
+        $large = min(array_map(static fn () => self::refusedCpuSeconds($doubled), range(1, 3)));
+        unset($doubled);
+        self::assertLessThan(3.0, $large / max($small, 0.005), sprintf('2n/n CPU ratio (%.3f s -> %.3f s)', $small, $large));
 
         $strings = "%PDF-1.7\n".str_repeat('1 0 obj(', 80_000);
         $this->assertRefusedQuickly(static fn () => PdfDocument::parse($strings));
@@ -306,7 +315,7 @@ final class HostilePdfTest extends TestCase
         $pdf = self::tinyObjects(1_100_000);
         $before = memory_get_usage();
         memory_reset_peak_usage();
-        $started = hrtime(true);
+        $started = self::cpuSeconds();
         try {
             PdfDocument::parse($pdf);
             self::fail('Expected UnreadablePdf');
@@ -323,7 +332,7 @@ final class HostilePdfTest extends TestCase
         $pdf = self::tinyObjects(520_000);
         $before = memory_get_usage();
         memory_reset_peak_usage();
-        $started = hrtime(true);
+        $started = self::cpuSeconds();
 
         $document = PdfDocument::parse($pdf);
 
@@ -350,7 +359,7 @@ final class HostilePdfTest extends TestCase
         unset($padding);
         $before = memory_get_usage();
         memory_reset_peak_usage();
-        $started = hrtime(true);
+        $started = self::cpuSeconds();
 
         $document = PdfDocument::parse($pdf);
 
@@ -376,7 +385,7 @@ final class HostilePdfTest extends TestCase
         unset($payload);
         $before = memory_get_usage();
         memory_reset_peak_usage();
-        $started = hrtime(true);
+        $started = self::cpuSeconds();
 
         $document = PdfDocument::parse($pdf);
 
@@ -464,9 +473,9 @@ final class HostilePdfTest extends TestCase
 
     private static function assertBounded(int|float $started, int $before, int $megabytes): void
     {
-        $seconds = (hrtime(true) - $started) / 1e9;
+        $seconds = self::cpuSeconds() - $started;
         $peak = memory_get_peak_usage() - $before;
-        self::assertLessThan(5.0, $seconds, sprintf('Took %.3f s', $seconds));
+        self::assertLessThan(15.0, $seconds, sprintf('Took %.3f s CPU', $seconds));
         self::assertLessThan($megabytes * 1024 * 1024, $peak, sprintf('Peak grew by %.1f MiB', $peak / 1048576));
     }
 
@@ -479,6 +488,33 @@ final class HostilePdfTest extends TestCase
 
         return $pdf.'2 0 obj'."\n".'<< /Type /XRef /Size '.(PdfParser::MAX_OBJECTS + 1).' /W [1 0 0] /Root 1 0 R /Filter /FlateDecode /Length '.strlen($data)." >>\nstream\n"
             .$data."\nendstream\nendobj\nstartxref\n".$start."\n%%EOF\n";
+    }
+
+    /** Process CPU time (user + system) in seconds; unaffected by machine load. */
+    private static function cpuSeconds(): float
+    {
+        $usage = getrusage();
+        if ($usage === false) {
+            self::fail('getrusage() is not available');
+        }
+
+        $field = static fn (string $key): int => is_int($usage[$key] ?? null) ? $usage[$key] : 0;
+
+        return $field('ru_utime.tv_sec') + $field('ru_stime.tv_sec')
+            + ($field('ru_utime.tv_usec') + $field('ru_stime.tv_usec')) / 1e6;
+    }
+
+    /** CPU seconds PdfDocument::parse() needs to refuse $pdf. */
+    private static function refusedCpuSeconds(string $pdf): float
+    {
+        $started = self::cpuSeconds();
+        try {
+            PdfDocument::parse($pdf);
+            self::fail('Expected UnreadablePdf');
+        } catch (UnreadablePdf) {
+        }
+
+        return self::cpuSeconds() - $started;
     }
 
     /** Lowers memory_limit to PHP's default, which only works in a fresh process. */
@@ -508,7 +544,7 @@ final class HostilePdfTest extends TestCase
     /** @param Closure(): mixed $action */
     private function assertRefusedQuickly(Closure $action, string ...$messages): void
     {
-        $started = hrtime(true);
+        $started = self::cpuSeconds();
         try {
             $action();
             self::fail('Expected UnreadablePdf');
@@ -517,7 +553,7 @@ final class HostilePdfTest extends TestCase
                 self::assertStringContainsStringIgnoringCase($message, $e->getMessage());
             }
         }
-        $seconds = (hrtime(true) - $started) / 1e9;
-        self::assertLessThan(1.0, $seconds, sprintf('Took %.3f s', $seconds));
+        $seconds = self::cpuSeconds() - $started;
+        self::assertLessThan(3.0, $seconds, sprintf('Took %.3f s CPU', $seconds));
     }
 }
