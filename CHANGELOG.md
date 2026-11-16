@@ -277,10 +277,12 @@ All notable changes to this project are documented here. The format follows
   highest object number plus one.
 - **Rule installer:** backups are hard links and each file is replaced by an atomic rename;
   `PartialInstall` names the failed files and every backup left behind.
-- **Packaging:** the five packages share one version. The core requires
+- **Packaging:** the eight packages (five engine packages and three entry packages) share one
+  version. The core requires
   `intragile/einvoicing-rules-en16931` `^1.0` and `psr/http-client` `^1.0.1`, and conflicts with
   the optional rule packages outside `^1.0`; each rule package conflicts with cores outside
-  `^1.0`. The `rules-facturx` `LICENSE` is the plain Apache-2.0 text, with Mustang's external
+  `^1.0`; `brick/math` is allowed in `^0.14.8 || ^1.0`, since fresh Laravel 13 applications lock
+  version 1. The `rules-facturx` `LICENSE` is the plain Apache-2.0 text, with Mustang's external
   components note moved to `NOTICE`. The calculation code uses the camel-case `RoundingMode` cases
   (`Rounding::MODE` is `RoundingMode::HalfUp`).
 - **Validation:** `Validator::validateInvoice()` on the envelope validator throws
