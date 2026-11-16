@@ -6,7 +6,7 @@ The eight packages are released together with one version number. This package c
 its rule files change; the full history is in the
 [core CHANGELOG](https://github.com/intragile/php-einvoicing/blob/main/CHANGELOG.md).
 
-## [1.0.0] - YYYY-MM-DD
+## [1.0.0] - 2026-11-16
 
 ### Added
 
