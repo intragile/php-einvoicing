@@ -78,8 +78,8 @@ jobs:
       - run: composer fetch-official
       # The Factur-X parity test reads the FeRD examples, which are downloaded, never committed.
       - run: composer fetch-official -- --facturx-examples
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
         with:
           context: docker/oracle
           build-args: PHP_VERSION=${{ matrix.php }}
