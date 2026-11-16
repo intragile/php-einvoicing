@@ -14,8 +14,8 @@
     "license": "Apache-2.0",
     "homepage": "https://intragile.eu",
     "support": {
-        "issues": "https://github.com/intragile/php-einvoicing/issues",
-        "source": "https://github.com/intragile/php-einvoicing"
+        "issues": "https://github.com/intragile/einvoicing-rules-facturx/issues",
+        "source": "https://github.com/intragile/einvoicing-rules-facturx"
     },
     "authors": [
         {

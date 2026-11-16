@@ -13,8 +13,8 @@
     "license": "EUPL-1.2",
     "homepage": "https://intragile.eu",
     "support": {
-        "issues": "https://github.com/intragile/php-einvoicing/issues",
-        "source": "https://github.com/intragile/php-einvoicing"
+        "issues": "https://github.com/intragile/einvoicing-rules-en16931/issues",
+        "source": "https://github.com/intragile/einvoicing-rules-en16931"
     },
     "authors": [
         {

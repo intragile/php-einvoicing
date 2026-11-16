@@ -467,11 +467,12 @@ Egyik sem helyességi hiba. Az egyes területek korlátai a saját dokumentumukb
 
 ## Verziókezelés
 
-Az öt csomag (`intragile/php-einvoicing`, az `intragile/einvoicing-rules-en16931`,
-`intragile/einvoicing-rules-xrechnung` és `intragile/einvoicing-rules-facturx` szabálycsomag,
-valamint az `intragile/laravel-einvoicing`) mindig együtt, azonos verziószámmal jelenik meg, a
-szemantikus verziózás (Semantic Versioning) szerint. Mindegyikből ugyanazt a minor verziót
-használd. A szabálycsomagok Composer `conflict` bejegyzéssel kizárják a saját minor verziójuknál
+A nyolc csomag mindig együtt, azonos verziószámmal jelenik meg, a szemantikus verziózás
+(Semantic Versioning) szerint: az öt motorcsomag (`intragile/php-einvoicing`, az
+`intragile/einvoicing-rules-en16931`, `intragile/einvoicing-rules-xrechnung` és
+`intragile/einvoicing-rules-facturx` szabálycsomag, valamint az `intragile/laravel-einvoicing`) és a
+három belépő csomag (`intragile/laravel-xrechnung`, `intragile/laravel-zugferd` és
+`intragile/laravel-peppol`). Mindegyikből ugyanazt a minor verziót használd. A szabálycsomagok Composer `conflict` bejegyzéssel kizárják a saját minor verziójuknál
 régebbi (és a következő major) magot, így új szabályok sosem kerülnek olyan motor mellé, amely
 nem tudja futtatni őket.
 

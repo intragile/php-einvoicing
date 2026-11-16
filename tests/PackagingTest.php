@@ -110,8 +110,10 @@ final class PackagingTest extends TestCase
             $package = self::composer($dir);
 
             self::assertSame([self::CORE => self::RULE_CONFLICT], self::value($package, 'conflict'), $dir);
-            self::assertSame('https://github.com/intragile/php-einvoicing/issues', self::value($package, 'support', 'issues'), $dir);
-            self::assertSame('https://github.com/intragile/php-einvoicing', self::value($package, 'support', 'source'), $dir);
+            // Each rule package is published from its own split repository.
+            $repository = 'https://github.com/intragile/einvoicing-'.$dir;
+            self::assertSame($repository.'/issues', self::value($package, 'support', 'issues'), $dir);
+            self::assertSame($repository, self::value($package, 'support', 'source'), $dir);
             self::assertSame('https://intragile.eu', self::value($package, 'homepage'), $dir);
         }
     }

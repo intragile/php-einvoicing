@@ -2,7 +2,7 @@
 
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
-The five packages are released together with one version number. This package changes only when
+The eight packages are released together with one version number. This package changes only when
 its rule files change; the full history is in the
 [core CHANGELOG](https://github.com/intragile/php-einvoicing/blob/main/CHANGELOG.md).
 
