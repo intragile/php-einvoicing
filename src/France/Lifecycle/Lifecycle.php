@@ -17,12 +17,20 @@ use InvalidArgumentException;
  * The message identifier defaults to the pattern of the FNFE examples,
  * "{invoice number}_{status}_{receipt time YmdHis}#{invoice type}_{issue date Ymd}", with the
  * receipt time in French local time; the issue date part is left out when the reference has no
- * issue date. The message creation time and the status time are both set to the given time; use
- * the withers to change them, the name or any other field.
+ * issue date. When that identifier would exceed the 50 characters allowed (an invoice number of
+ * more than 18 characters when the issue date part is present), the fallback
+ * "{status}_{receipt time YmdHis}_{hash}" is used instead, where the hash is the first 30
+ * hexadecimal characters of the SHA-256 of the full pattern; it is 49 characters long and
+ * deterministic. The message creation time and the status time are both set to the given time;
+ * use the withers to change them, the name or any other field.
  */
 final class Lifecycle
 {
     private const TIME_ZONE = 'Europe/Paris';
+
+    private const MAX_ID_LENGTH = 50;
+
+    private const HASH_LENGTH = 30;
 
     private function __construct() {}
 
@@ -162,13 +170,20 @@ final class Lifecycle
 
     private static function defaultId(LifecycleStatus $status, InvoiceReference $invoice): string
     {
-        return sprintf(
+        $receivedAt = $invoice->receivedAt->setTimezone(new DateTimeZone(self::TIME_ZONE))->format('YmdHis');
+        $id = sprintf(
             '%s_%s_%s#%s%s',
             $invoice->number,
             $status->value,
-            $invoice->receivedAt->setTimezone(new DateTimeZone(self::TIME_ZONE))->format('YmdHis'),
+            $receivedAt,
             $invoice->type->value,
             $invoice->issueDate === null ? '' : '_'.$invoice->issueDate->format('Ymd'),
         );
+
+        if (mb_strlen($id) <= self::MAX_ID_LENGTH) {
+            return $id;
+        }
+
+        return sprintf('%s_%s_%s', $status->value, $receivedAt, substr(hash('sha256', $id), 0, self::HASH_LENGTH));
     }
 }

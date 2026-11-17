@@ -215,6 +215,46 @@ final class LifecycleMessageTest extends TestCase
         self::assertSame('F1_205_20250701151000#380', $message->id);
     }
 
+    public function test_nineteen_character_number_falls_back_to_a_hashed_id(): void
+    {
+        $number = 'F'.str_repeat('0', 18);
+        $full = $number.'_205_20250701151000#380_20250701';
+
+        self::assertSame(51, strlen($full));
+        self::assertSame('205_20250701151000_'.substr(hash('sha256', $full), 0, 30), $this->approvedFor($number)->id);
+    }
+
+    public function test_long_invoice_number_falls_back_to_a_hashed_id(): void
+    {
+        $number = str_repeat('F', 25).'0123456789';
+        self::assertSame(35, strlen($number));
+
+        $message = $this->approvedFor($number);
+        $full = $number.'_205_20250701151000#380_20250701';
+
+        self::assertSame('205_20250701151000_'.substr(hash('sha256', $full), 0, 30), $message->id);
+        self::assertSame(49, strlen($message->id));
+    }
+
+    public function test_fallback_id_is_deterministic(): void
+    {
+        $number = str_repeat('F', 25).'0123456789';
+
+        self::assertSame($this->approvedFor($number)->id, $this->approvedFor($number)->id);
+        self::assertNotSame($this->approvedFor($number)->id, $this->approvedFor(str_repeat('G', 25).'0123456789')->id);
+    }
+
+    public function test_longest_fitting_number_keeps_the_fnfe_pattern(): void
+    {
+        // The pattern adds 32 characters to the invoice number, so 18 is the longest that fits.
+        $number = 'F'.str_repeat('0', 17);
+
+        $message = $this->approvedFor($number);
+
+        self::assertSame($number.'_205_20250701151000#380_20250701', $message->id);
+        self::assertSame(50, strlen($message->id));
+    }
+
     public function test_explicit_id_overrides_the_default(): void
     {
         $message = Lifecycle::status(
@@ -340,5 +380,12 @@ final class LifecycleMessageTest extends TestCase
                 self::assertNotNull($message->details[0]->reason ?? null, $key);
             }
         }
+    }
+
+    private function approvedFor(string $number): LifecycleMessage
+    {
+        $invoice = new InvoiceReference($number, InvoiceTypeCode::C_380, LifecycleMessages::at('2025-07-01 15:10:00'), new DateTimeImmutable('2025-07-01'), null);
+
+        return Lifecycle::status(LifecycleStatus::Approved, $invoice, LifecycleMessages::platform(), LifecycleMessages::buyerIssuer(), [LifecycleMessages::seller()], LifecycleMessages::at('2025-07-02 10:00:00'));
     }
 }
