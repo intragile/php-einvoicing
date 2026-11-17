@@ -88,7 +88,7 @@ final class DocumentIndex
         $start = self::lowerBound($positions, $from + 1);
         $end = self::lowerBound($positions, $to + 1);
 
-        return array_slice($this->byName[$key], $start, $end - $start);
+        return array_slice($this->byName[$key] ?? [], $start, $end - $start);
     }
 
     /**

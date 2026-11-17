@@ -65,6 +65,12 @@ final class EvaluatorTest extends TestCase
         self::assertSame('()', $this->canonical('/ubl:Invoice/cbc:InvoiceLine'));
     }
 
+    public function test_descendant_name_absent_from_the_document_from_an_element_is_empty(): void
+    {
+        self::assertSame('()', $this->canonical('.//cbc:Note', $this->node('//cac:InvoiceLine[1]')));
+        self::assertSame('(xs:boolean:false)', $this->canonical('exists(..//cbc:Note)', $this->node('//cac:InvoiceLine[1]')));
+    }
+
     public function test_attribute_axis(): void
     {
         self::assertSame(
