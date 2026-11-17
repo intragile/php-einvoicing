@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\Tests\Validation\France;
 use IntrAgile\EInvoicing\Validation\France\FranceSources;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 
 final class FranceSourcesTest extends TestCase
 {
@@ -113,6 +114,27 @@ final class FranceSourcesTest extends TestCase
 
         $this->expectException(InvalidArgumentException::class);
         FranceSources::schemaRoot('nope');
+    }
+
+    /**
+     * The manifest is parsed once per process: after the first call, a planted cache value is
+     * returned as is, which shows the file is not read again.
+     */
+    public function test_manifest_is_parsed_once(): void
+    {
+        $first = FranceSources::files('schema');
+        $cache = new ReflectionProperty(FranceSources::class, 'manifest');
+        self::assertSame($first, $cache->getValue()['schema'] ?? null);
+
+        $planted = ['rules' => [], 'schema' => ['FNFE_RFE_INVOICE/planted.xsd' => str_repeat('0', 64)], 'oracle' => [], 'example' => []];
+        $original = $cache->getValue();
+        $cache->setValue(null, $planted);
+        try {
+            self::assertSame($planted['schema'], FranceSources::files('schema'));
+        } finally {
+            $cache->setValue(null, $original);
+        }
+        self::assertSame($first, FranceSources::files('schema'));
     }
 
     public function test_unknown_kind_is_rejected(): void

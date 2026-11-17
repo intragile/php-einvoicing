@@ -35,6 +35,9 @@ final class FranceSources
         'flux10' => 'FNFE_RFE_INVOICE/Flux10/xsd',
     ];
 
+    /** @var array<string, array<string, string>>|null parsed manifest, kind => path => SHA-256 */
+    private static ?array $manifest = null;
+
     /**
      * The Schematron sources the French rule sets are compiled from.
      *
@@ -135,9 +138,17 @@ final class FranceSources
     }
 
     /**
-     * @return array<string, array<string, string>> kind => path => SHA-256
+     * @return array<string, array<string, string>> kind => path => SHA-256, parsed once per process
      */
     private static function manifest(): array
+    {
+        return self::$manifest ??= self::parseManifest();
+    }
+
+    /**
+     * @return array<string, array<string, string>> kind => path => SHA-256
+     */
+    private static function parseManifest(): array
     {
         $lines = is_file(self::MANIFEST) ? file(self::MANIFEST, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : false;
         if ($lines === false) {
