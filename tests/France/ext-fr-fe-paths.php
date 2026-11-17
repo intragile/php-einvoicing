@@ -134,7 +134,8 @@ return [
         'cii' => $cii.'/ram:AssociatedDocumentLineDocument/ram:IncludedNote/ram:SubjectCode',
         'ubl' => $ubl.'/cbc:Note',
     ],
-    // Line amount with VAT; neither the specification nor the examples give a UBL element.
+    // Line amount with VAT; neither the specification nor the examples give a UBL element, so
+    // UblWriter refuses a line that carries one.
     'EXT-FR-FE-184' => [
         'cii' => $cii.'/ram:SpecifiedLineTradeSettlement/ram:SpecifiedTradeSettlementLineMonetarySummation/ram:GrandTotalAmount',
         'ubl' => null,

@@ -16,6 +16,8 @@ use IntrAgile\EInvoicing\CodeList\VatExemptionReason;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\France\FrenchInvoice;
+use IntrAgile\EInvoicing\France\FrenchProfile;
+use IntrAgile\EInvoicing\France\InformationalLine;
 use IntrAgile\EInvoicing\Model\AdditionalDocument;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentAllowance;
@@ -41,6 +43,11 @@ use IntrAgile\EInvoicing\Syntax\SafeXml;
  * occurrence is dropped and reported. Only data the model cannot do without (BT-1, BT-2, BT-3,
  * BT-5, the seller and buyer names, and per line BT-126, BT-129, BT-130, BT-146, BT-151 and
  * BT-153) makes a document unsupported.
+ *
+ * A French invoice gets the FrenchInvoice extension (see FrenchInvoice::fromProcessControl). In an
+ * EXTENDED-CTC-FR invoice, GROUP and INFORMATION lines become FrenchInvoice::$informationalLines,
+ * French line data becomes a FrenchLine extension of the invoice line, and when informational
+ * lines exist FrenchInvoice::$lineOrder records the document order of every line.
  */
 final class UblReader
 {
@@ -67,15 +74,23 @@ final class UblReader
         }
         [$allowances, $charges] = $this->allowancesAndCharges($d, $lines);
         [$totalVat, $totalVatInAccountingCurrency, $vatBreakdown] = $this->taxTotals($d, $currency, $taxCurrency);
+        $number = $d->requiredText('cbc:ID', $root, 'BT-1');
+        $processControl = $this->processControl($d);
+        $french = FrenchInvoice::fromProcessControl($processControl);
+        [$invoiceLines, $informationalLines, $lineOrder] = $this->lines(
+            $d,
+            $lines,
+            $french?->profile === FrenchProfile::ExtendedCtcFr ? $number : null,
+        );
 
         $invoice = new Invoice(
-            number: $d->requiredText('cbc:ID', $root, 'BT-1'),
+            number: $number,
             issueDate: $d->requiredDate('cbc:IssueDate', $root, 'BT-2'),
             type: $d->requiredCode(InvoiceTypeCode::class, $d->one($typeExpression), null, 'BT-3', $typeExpression, $root),
             currency: $currency,
             seller: $parties->party($this->requiredParty($d, 'cac:AccountingSupplierParty/cac:Party', 'BG-4'), PartyMapper::SELLER),
             buyer: $parties->party($this->requiredParty($d, 'cac:AccountingCustomerParty/cac:Party', 'BG-7'), PartyMapper::BUYER),
-            lines: $this->lines($d, $lines),
+            lines: $invoiceLines,
             taxCurrency: $taxCurrency,
             taxPointDate: $d->date('cbc:TaxPointDate'),
             taxPointDateCode: $d->token('cac:InvoicePeriod/cbc:DescriptionCode'),
@@ -92,7 +107,7 @@ final class UblReader
             buyerAccountingReference: $d->text('cbc:AccountingCost'),
             paymentTerms: $d->text('cac:PaymentTerms/cbc:Note'),
             notes: $this->notes($d),
-            processControl: $this->processControl($d),
+            processControl: $processControl,
             precedingInvoices: $this->precedingInvoices($d),
             payee: ($payee = $d->one('cac:PayeeParty')) === null ? null : $parties->party($payee, PartyMapper::PAYEE),
             taxRepresentative: ($representative = $d->one('cac:TaxRepresentativeParty')) === null
@@ -107,9 +122,10 @@ final class UblReader
             additionalDocuments: $additionalDocuments,
         );
 
-        $french = FrenchInvoice::fromProcessControl($invoice->processControl);
         if ($french !== null) {
-            $invoice = $invoice->withExtension($french);
+            $invoice = $invoice->withExtension($informationalLines === []
+                ? $french
+                : new FrenchInvoice($french->profile, $informationalLines, $lineOrder));
         }
 
         return new ReadResult(invoice: $invoice, ignored: $d->ignored());
@@ -122,19 +138,32 @@ final class UblReader
     }
 
     /**
-     * @return non-empty-list<InvoiceLine>
+     * The invoice lines, the informational lines of an EXTENDED-CTC-FR invoice and the document
+     * order of every line identifier.
+     *
+     * @param  ?string  $extendedInvoiceNumber  invoice number (BT-1) of an EXTENDED-CTC-FR
+     *                                          invoice; null for any other invoice
+     * @return array{non-empty-list<InvoiceLine>, list<InformationalLine>, list<string>}
      */
-    private function lines(UblDocument $d, LineMapper $mapper): array
+    private function lines(UblDocument $d, LineMapper $mapper, ?string $extendedInvoiceNumber): array
     {
-        $result = [];
-        foreach ($d->all($d->isCreditNote ? 'cac:CreditNoteLine' : 'cac:InvoiceLine') as $line) {
-            $result[] = $mapper->line($line);
+        $invoiceLines = [];
+        $informationalLines = [];
+        $order = [];
+        foreach ($d->all($d->isCreditNote ? 'cac:CreditNoteLine' : 'cac:InvoiceLine') as $element) {
+            $line = $extendedInvoiceNumber === null ? $mapper->line($element) : $mapper->extendedLine($element, $extendedInvoiceNumber);
+            if ($line instanceof InformationalLine) {
+                $informationalLines[] = $line;
+            } else {
+                $invoiceLines[] = $line;
+            }
+            $order[] = $line->id;
         }
-        if ($result === []) {
+        if ($invoiceLines === []) {
             throw new UnsupportedDocument('The document has no invoice lines (BG-25).');
         }
 
-        return $result;
+        return [$invoiceLines, $informationalLines, $order];
     }
 
     /**

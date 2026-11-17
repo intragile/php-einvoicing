@@ -405,11 +405,16 @@ final class Fixtures
      */
     public static function franceRfeRoot(): string
     {
-        if (! is_dir(self::FRANCE_RFE_DIR)) {
+        if (! self::hasFranceRfe()) {
             Assert::markTestSkipped('Run composer fetch-official -- --france');
         }
 
         return self::FRANCE_RFE_DIR;
+    }
+
+    public static function hasFranceRfe(): bool
+    {
+        return is_dir(self::FRANCE_RFE_DIR);
     }
 
     /**

@@ -13,7 +13,6 @@ use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentCharge;
 use IntrAgile\EInvoicing\Model\DocumentTotals;
 use IntrAgile\EInvoicing\Model\Invoice;
-use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Syntax\WriterGuard;
 use IntrAgile\EInvoicing\Syntax\XRechnung;
 use InvalidArgumentException;
@@ -123,7 +122,7 @@ final class CiiWriter
         $this->exchangedDocument($out, $root, $invoice);
 
         $transaction = $out->add($root, 'rsm:SupplyChainTradeTransaction');
-        foreach (self::orderedLines($invoice, $extended) as $line) {
+        foreach ($extended?->linesInDocumentOrder($invoice) ?? $invoice->lines as $line) {
             if ($line instanceof InformationalLine) {
                 $lines->informational($transaction, $line);
             } else {
@@ -135,26 +134,6 @@ final class CiiWriter
         $this->settlement($out, $parties, $lines, $transaction, $invoice, $totals);
 
         return $out->xml();
-    }
-
-    /**
-     * The invoice lines and, for an EXTENDED-CTC-FR invoice, its GROUP and INFORMATION lines in
-     * the French line order; without a line order, the invoice line order. FrenchGuard has checked
-     * that the line order lists every line once.
-     *
-     * @return list<InvoiceLine|InformationalLine>
-     */
-    private static function orderedLines(Invoice $invoice, ?FrenchInvoice $french): array
-    {
-        if ($french === null || $french->lineOrder === []) {
-            return $invoice->lines;
-        }
-        $byId = [];
-        foreach ([...$invoice->lines, ...$french->informationalLines] as $line) {
-            $byId[$line->id] = $line;
-        }
-
-        return array_map(static fn (string $id): InvoiceLine|InformationalLine => $byId[$id], $french->lineOrder);
     }
 
     /**

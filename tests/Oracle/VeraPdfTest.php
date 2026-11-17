@@ -15,6 +15,8 @@ use IntrAgile\EInvoicing\Syntax\FacturX\FacturXXmlWriter;
 use IntrAgile\EInvoicing\Syntax\FacturX\Xmp;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Pdf\MustangCorpusTest;
+use IntrAgile\EInvoicing\Tests\Support\FrenchInvoices;
+use IntrAgile\EInvoicing\Tests\Support\FrenchPdfCarrier;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
 use IntrAgile\EInvoicing\Tests\Support\Process;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -30,8 +32,9 @@ use RuntimeException;
  * The inputs are the corpus PDFs that declare a PDF/A part and carry no invoice, plus a PDF printed
  * by headless Chrome, which declares no PDF/A part: the writer declares PDF/A-3 without converting
  * the content. That the Chrome output passes proves no conversion; it shows only that this simple
- * page needed nothing beyond the metadata the writer adds. Inputs, outputs and the veraPDF report
- * are written to build/verapdf/ and never committed.
+ * page needed nothing beyond the metadata the writer adds. When the France_RFE examples are
+ * downloaded, an FNFE French Factur-X PDF without its invoice carries a French EXTENDED invoice
+ * too. Inputs, outputs and the veraPDF report are written to build/verapdf/ and never committed.
  */
 #[Group('verapdf')]
 final class VeraPdfTest extends TestCase
@@ -43,6 +46,8 @@ final class VeraPdfTest extends TestCase
     private const string CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
     private const string CHROME_CASE = 'chrome';
+
+    private const string FRENCH_CASE = 'french-extended';
 
     /** Bound of the Chrome print, in seconds. */
     private const int CHROME_TIMEOUT = 120;
@@ -168,6 +173,24 @@ final class VeraPdfTest extends TestCase
     }
 
     /**
+     * A French EXTENDED-CTC-FR invoice written as Factur-X EXTENDED and embedded into an FNFE
+     * French Factur-X PDF whose own invoice was removed (FrenchPdfCarrier): the carrier passes
+     * PDF/A-3b, and so must the output.
+     */
+    public function test_french_extended_output_keeps_the_input_verdict(): void
+    {
+        $report = self::report();
+        if (! isset($report['out-'.self::FRENCH_CASE.'.pdf'])) {
+            self::markTestSkipped('The France_RFE examples are not downloaded; run composer fetch-official -- --france.');
+        }
+        $input = $report['in-'.self::FRENCH_CASE.'.pdf'];
+        $output = $report['out-'.self::FRENCH_CASE.'.pdf'];
+
+        self::assertTrue($input['compliant'], "the carrier fails {$input['profile']}: ".implode(', ', $input['failed']));
+        self::assertTrue($output['compliant'], "the input passes {$input['profile']}, the output fails {$output['profile']}: ".implode(', ', $output['failed']));
+    }
+
+    /**
      * Writes every input and its output to the work folder, runs veraPDF once over the folder and
      * returns its verdict per file.
      *
@@ -194,10 +217,15 @@ final class VeraPdfTest extends TestCase
         }
 
         $xml = (new FacturXXmlWriter)->write(TotalsCalculator::complete(InvoiceFactory::mixedVat()), FacturXProfile::En16931)->xml;
+        $xmls = [];
+        if (Fixtures::hasFranceRfe()) {
+            $pdfs[self::FRENCH_CASE] = FrenchPdfCarrier::pdf();
+            $xmls[self::FRENCH_CASE] = (new FacturXXmlWriter)->write(FrenchInvoices::extendedCtcFr(), FacturXProfile::Extended)->xml;
+        }
         $writer = new FacturXPdfWriter;
         foreach ($pdfs as $slug => $pdf) {
             self::write("in-{$slug}.pdf", $pdf);
-            $result = $writer->embed($pdf, $xml, modified: new DateTimeImmutable('2026-01-01T00:00:00Z'));
+            $result = $writer->embed($pdf, $xmls[$slug] ?? $xml, modified: new DateTimeImmutable('2026-01-01T00:00:00Z'));
             self::$warnings[$slug] = $result->warnings;
             self::write("out-{$slug}.pdf", $result->pdf);
         }

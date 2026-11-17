@@ -34,6 +34,7 @@ use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Model\Item;
 use IntrAgile\EInvoicing\Model\LineVat;
 use IntrAgile\EInvoicing\Model\Party;
+use IntrAgile\EInvoicing\Model\Period;
 use IntrAgile\EInvoicing\Model\PostalAddress;
 use IntrAgile\EInvoicing\Model\PrecedingInvoiceReference;
 use IntrAgile\EInvoicing\Model\Price;
@@ -110,8 +111,11 @@ final class FrenchInvoices
      * EXTENDED-CTC-FR invoice modelled on the FNFE sub-line example: GROUP line 1 holds DETAIL
      * lines 2 and 3, INFORMATION line 4 follows. Line 2 has its own seller, VAT extras and two
      * invoiced object identifiers; line 3 a preceding invoice, a delivery and a note subject code.
+     *
+     * @param  bool  $amountWithVat  whether line 2 carries its amount with VAT (EXT-FR-FE-184),
+     *                               which UBL has no element for
      */
-    public static function extendedCtcFr(): Invoice
+    public static function extendedCtcFr(bool $amountWithVat = true): Invoice
     {
         $draft = self::draft(BillingFramework::B1);
         $seller = new LineSeller(
@@ -131,6 +135,7 @@ final class FrenchInvoices
                 item: new Item(name: 'LIVRE', description: 'MA PETITE HISTOIRE'),
                 vat: new LineVat(category: VatCategory::StandardRate, rate: '10'),
                 objectIdentifier: new Identifier('S1', 'AVV'),
+                period: new Period(start: new DateTimeImmutable('2026-10-01'), end: new DateTimeImmutable('2026-10-31')),
                 extensions: Extensions::none()->with(new FrenchLine(
                     parentLineId: '1',
                     subType: LineSubType::Detail,
@@ -138,7 +143,7 @@ final class FrenchInvoices
                     vatExemptionReason: 'TVA SUR LES DEBITS',
                     vatDueDateCode: '3',
                     vatAmount: '20.00',
-                    amountWithVat: '220.00',
+                    amountWithVat: $amountWithVat ? '220.00' : null,
                     objectIdentifiers: [new Identifier('F202600040', 'AFL')],
                 )),
             ),

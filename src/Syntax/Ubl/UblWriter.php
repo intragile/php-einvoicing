@@ -7,6 +7,9 @@ namespace IntrAgile\EInvoicing\Syntax\Ubl;
 use DOMElement;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
 use IntrAgile\EInvoicing\France\FrenchGuard;
+use IntrAgile\EInvoicing\France\FrenchInvoice;
+use IntrAgile\EInvoicing\France\FrenchProfile;
+use IntrAgile\EInvoicing\France\InformationalLine;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentAllowance;
 use IntrAgile\EInvoicing\Model\DocumentCharge;
@@ -36,6 +39,9 @@ use InvalidArgumentException;
  *   instructions, because UBL makes cbc:PaymentMeansCode mandatory (see PaymentWriter).
  *
  * UblReader recognises these placeholders (see Placeholder) and does not read them as data.
+ *
+ * An EXTENDED-CTC-FR invoice (FrenchInvoice with FrenchProfile::ExtendedCtcFr) is written with its
+ * French line data and its GROUP and INFORMATION lines, in the French line order (see LineWriter).
  */
 final class UblWriter
 {
@@ -54,7 +60,9 @@ final class UblWriter
      *                                  order reference (BT-13) is the order placeholder beside a
      *                                  sales order reference (BT-14); also when a French invoice
      *                                  holds more decimals than the French rules allow (see
-     *                                  FrenchGuard)
+     *                                  FrenchGuard), or when an EXTENDED-CTC-FR line holds what
+     *                                  UBL cannot carry, such as the line amount with VAT
+     *                                  (EXT-FR-FE-184; see LineWriter)
      */
     public function write(Invoice $invoice): string
     {
@@ -74,7 +82,9 @@ final class UblWriter
         $out = new UblOutput($creditNote);
         $root = $out->root;
         $parties = new PartyWriter($out);
-        $lines = new LineWriter($out, $invoice->currency, $creditNote);
+        $french = $invoice->extensions()->get(FrenchInvoice::class);
+        $extended = $french?->profile === FrenchProfile::ExtendedCtcFr ? $french : null;
+        $lines = new LineWriter($out, $invoice->currency, $creditNote, $extended === null ? null : $invoice->number);
 
         $this->header($out, $root, $invoice, $creditNote);
         $lines->period($root, $invoice->delivery?->invoicingPeriod, $invoice->taxPointDateCode);
@@ -104,8 +114,12 @@ final class UblWriter
         $this->taxTotals($out, $root, $invoice);
         $this->monetaryTotal($out, $root, $invoice->totals, $invoice->currency);
 
-        foreach ($invoice->lines as $line) {
-            $lines->line($root, $line);
+        foreach ($extended?->linesInDocumentOrder($invoice) ?? $invoice->lines as $line) {
+            if ($line instanceof InformationalLine) {
+                $lines->informational($root, $line);
+            } else {
+                $lines->line($root, $line);
+            }
         }
 
         return $out->xml();
