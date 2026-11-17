@@ -101,23 +101,36 @@ final class LineWriter
     /**
      * Writes a GROUP or INFORMATION line of an EXTENDED-CTC-FR invoice; every group but the
      * settlement, which the schema requires, is left out when it holds nothing.
+     *
+     * @throws InvalidArgumentException when the line has a VAT exemption reason or a VAT point date
+     *                                  code but no VAT, since CII carries both in the line VAT
      */
     public function informational(DOMElement $transaction, InformationalLine $line): void
     {
         $out = $this->out;
         $french = $line->french;
+        if ($line->vat === null && $french->vatExemptionReason !== null) {
+            throw new InvalidArgumentException(sprintf('Line "%s" has a VAT exemption reason (EXT-FR-FE-178) but no VAT category (BT-151).', $line->id));
+        }
+        if ($line->vat === null && $french->vatDueDateCode !== null) {
+            throw new InvalidArgumentException(sprintf(
+                'Line "%s" has a VAT point date code (EXT-FR-FE-180) but no VAT category (BT-151); CII carries the code in the line VAT.',
+                $line->id,
+            ));
+        }
+        $seller = self::sellerOrNull($french->seller);
 
         $element = $out->add($transaction, 'ram:IncludedSupplyChainTradeLineItem');
         $this->document($element, $line->id, $line->subType->value, $line->note, $french);
 
         $this->product($element, $line->item);
 
-        if ($line->price !== null || $french->seller !== null) {
+        if ($line->price !== null || $seller !== null) {
             $agreement = $out->add($element, 'ram:SpecifiedLineTradeAgreement');
             if ($line->price !== null) {
                 $this->price($agreement, $line->price);
             }
-            $this->seller($agreement, $french->seller);
+            $this->seller($agreement, $seller);
         }
 
         if ($line->quantity !== null || $french->delivery !== null) {
@@ -217,10 +230,12 @@ final class LineWriter
     }
 
     /**
-     * ram:ItemSellerTradeParty (EXT-FR-FE-164 to EXT-FR-FE-177) in TradePartyType order.
+     * ram:ItemSellerTradeParty (EXT-FR-FE-164 to EXT-FR-FE-177) in TradePartyType order; nothing
+     * for a seller without any data.
      */
     private function seller(DOMElement $agreement, ?LineSeller $seller): void
     {
+        $seller = self::sellerOrNull($seller);
         if ($seller === null) {
             return;
         }
@@ -235,6 +250,14 @@ final class LineWriter
         if ($seller->vatIdentifier !== null) {
             $out->text($out->add($party, 'ram:SpecifiedTaxRegistration'), 'ram:ID', $seller->vatIdentifier, ['schemeID' => 'VA']);
         }
+    }
+
+    /**
+     * The line seller, or null when it is absent or holds no data.
+     */
+    private static function sellerOrNull(?LineSeller $seller): ?LineSeller
+    {
+        return $seller === null || $seller == new LineSeller ? null : $seller;
     }
 
     /**

@@ -10,7 +10,10 @@ use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use IntrAgile\EInvoicing\France\FrenchInvoice;
+use IntrAgile\EInvoicing\France\FrenchLine;
 use IntrAgile\EInvoicing\France\FrenchProfile;
+use IntrAgile\EInvoicing\France\InformationalLine;
+use IntrAgile\EInvoicing\France\LineSeller;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiReader;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
@@ -19,6 +22,7 @@ use IntrAgile\EInvoicing\Tests\Support\FrenchInvoices;
 use IntrAgile\EInvoicing\Tests\Validation\France\InstalledFranceRules;
 use IntrAgile\EInvoicing\Validation\France\FranceValidator;
 use IntrAgile\EInvoicing\Validation\ValidationReport;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -82,6 +86,52 @@ final class ExtendedCtcFrCiiTest extends TestCase
         self::assertSame(['220.00'], $this->values($x, $settlement.'ram:SpecifiedTradeSettlementLineMonetarySummation/ram:GrandTotalAmount'));
         self::assertSame(['S1', 'F202600040'], $this->values($x, $settlement.'ram:AdditionalReferencedDocument/ram:IssuerAssignedID'));
         self::assertSame(['AVV', 'AFL'], $this->values($x, $settlement.'ram:AdditionalReferencedDocument/ram:ReferenceTypeCode'));
+    }
+
+    /**
+     * CII carries the line VAT exemption reason (EXT-FR-FE-178) and VAT point date code
+     * (EXT-FR-FE-180) only in the line VAT, so an informational line without VAT cannot carry
+     * them; the writer refuses them instead of dropping them.
+     */
+    public function test_informational_line_vat_extras_without_vat_are_refused(): void
+    {
+        foreach ([
+            'EXT-FR-FE-178' => new FrenchLine(vatExemptionReason: 'Exonération'),
+            'EXT-FR-FE-180' => new FrenchLine(vatDueDateCode: '3'),
+        ] as $term => $french) {
+            try {
+                (new CiiWriter)->write(self::withInformationFrench($french));
+                self::fail("Informational line VAT extra without VAT written: {$term}");
+            } catch (InvalidArgumentException $e) {
+                self::assertStringContainsString($term, $e->getMessage());
+                self::assertStringContainsString('BT-151', $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * A line seller without any data writes no ram:ItemSellerTradeParty, as UBL writes no
+     * cac:ManufacturerParty.
+     */
+    public function test_empty_line_seller_is_not_written(): void
+    {
+        $invoice = FrenchInvoices::extendedCtcFr();
+        [$second, $third] = $invoice->lines;
+        $french = $third->extensions()->get(FrenchLine::class);
+        self::assertNotNull($french);
+        $emptySeller = new FrenchLine(
+            parentLineId: $french->parentLineId,
+            subType: $french->subType,
+            seller: new LineSeller,
+            precedingInvoice: $french->precedingInvoice,
+            delivery: $french->delivery,
+            noteSubjectCode: $french->noteSubjectCode,
+        );
+
+        $x = $this->cii($invoice->withLines([$second, $third->withExtension($emptySeller)]));
+
+        self::assertSame(['LE VENDEUR'], $this->values($x, self::LINE.'/ram:SpecifiedLineTradeAgreement/ram:ItemSellerTradeParty/ram:Name'));
+        self::assertSame([], $this->values($x, self::LINE.'[3]/ram:SpecifiedLineTradeAgreement/ram:ItemSellerTradeParty'));
     }
 
     public function test_extended_data_round_trips(): void
@@ -255,6 +305,29 @@ final class ExtendedCtcFrCiiTest extends TestCase
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * The extendedCtcFr() invoice whose INFORMATION line (no VAT) carries the given French data.
+     */
+    private static function withInformationFrench(FrenchLine $french): Invoice
+    {
+        $invoice = FrenchInvoices::extendedCtcFr();
+        $extension = $invoice->extensions()->get(FrenchInvoice::class);
+        self::assertNotNull($extension);
+        [$group, $information] = $extension->informationalLines;
+        self::assertNull($information->vat);
+        $changed = new InformationalLine(
+            id: $information->id,
+            subType: $information->subType,
+            item: $information->item,
+            quantity: $information->quantity,
+            unit: $information->unit,
+            netAmount: $information->netAmount,
+            french: $french,
+        );
+
+        return $invoice->withExtension(new FrenchInvoice($extension->profile, [$group, $changed], $extension->lineOrder));
     }
 
     private function cii(Invoice $invoice): DOMXPath

@@ -162,6 +162,33 @@ final class ExtendedCtcFrUblTest extends TestCase
     }
 
     /**
+     * UBL carries the line VAT exemption reason (EXT-FR-FE-178) in the line VAT category, so an
+     * informational line without VAT cannot carry it.
+     */
+    public function test_informational_line_vat_exemption_reason_without_vat_is_refused(): void
+    {
+        $invoice = FrenchInvoices::extendedCtcFrUbl();
+        $french = $invoice->extensions()->get(FrenchInvoice::class);
+        self::assertNotNull($french);
+        [$group, $information] = $french->informationalLines;
+        self::assertNull($information->vat);
+        $withReason = new InformationalLine(
+            id: $information->id,
+            subType: $information->subType,
+            item: $information->item,
+            quantity: $information->quantity,
+            unit: $information->unit,
+            netAmount: $information->netAmount,
+            french: new FrenchLine(vatExemptionReason: 'Exonération'),
+        );
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Line "4" has a VAT exemption reason (EXT-FR-FE-178) but no VAT category (BT-151).');
+
+        (new UblWriter)->write($invoice->withExtension(new FrenchInvoice($french->profile, [$group, $withReason], $french->lineOrder)));
+    }
+
+    /**
      * A line billing reference carrying the invoice number (BT-1) holds the line structure, so a
      * preceding invoice with that number would be read back as no preceding invoice.
      */
