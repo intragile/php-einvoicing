@@ -48,22 +48,30 @@ use RuntimeException;
  * a recipe document goes through the rule set it targets; a mutation through the sets of its base.
  *
  * Ids: an SVRL entry without an id gets the id the compiled rule set gives the assert with the
- * same context and normalised test (FranceIds); OfficialRules marks such an entry with a hash of
- * exactly that key, which is mapped back here. An entry without a flag takes the compile default
- * of its rule set: "warning" for EXTENDED-CTC-FR CII, "fatal" otherwise.
+ * same context and normalised test (FranceIds). OfficialRules marks such an entry with a hash of
+ * its context and its raw SVRL @test, exactly as the report carries it; FranceIds keys are built
+ * from the compiled test with whitespace collapsed (and quantifier braces rendered as the
+ * stylesheet's attribute value template renders them), and each key is hashed the same way to map
+ * the marker back. Where the report's @test and the collapsed compiled test differ, the marker
+ * matches no key and the case fails with an exception naming the entry, never with a wrong id.
+ * An entry without a flag takes the compile default of its rule set: "warning" for
+ * EXTENDED-CTC-FR CII, "fatal" otherwise.
  *
  * When Saxon returns a report, the sorted sets of "<rule id> <flag>" strings must be identical
  * and our run must report no dynamic error. When Saxon stops with a dynamic error, our run must
  * report one with the same code. Two differences are accepted, both Saxon evaluating eagerly what
  * our lazy evaluation never needs (XPath 2.0 section 2.3.4 permits both; see the UserFunction
- * docblock):
- * - g6Allowed(): after many calls Saxon evaluates the unread locals of a function eagerly, so a
- *   CII or UBL date set to "X Y" stops it with FORG0001 in a cast; we report the date as BR-FR-03;
- * - ruleLetAllowed(): Saxon evaluates a single-valued rule-level let eagerly, so a Flux 10 amount
- *   set to "X Y" stops it with FORG0001 in a sum() that no evaluated assert path reads; we report
- *   the amount's format rule G1.14.
- * Their uses are pinned (test_allow_lists_are_used_as_pinned). A mismatch is written to
- * build/conformance-france/<case>/.
+ * docblock). They are named by their mechanism here; the engine notes call the first one "G6",
+ * which is unrelated to the G6.xx rules of Flux 10.
+ * - Eager function locals (eagerLocalAllowed()): after many calls Saxon evaluates the unread
+ *   locals of custom:is-valid-date-format eagerly, so a CII or UBL date set to "X Y" stops it with
+ *   FORG0001 in a cast; we report the BR-FR-03 rule of that date.
+ * - Eager rule let (eagerLetAllowed()): Saxon evaluates a single-valued rule-level let eagerly, so
+ *   a Flux 10 amount set to "X Y" stops it with FORG0001 in a sum() that no evaluated assert path
+ *   reads; we report the G1.14 format rule of that amount.
+ * Their uses are pinned (test_allow_lists_are_used_as_pinned). The pinned counts assume the
+ * corpus runs in its declaration order, which decides when Saxon's function calls warm up. A
+ * mismatch is written to build/conformance-france/<case>/.
  *
  * PHPUnit builds every data provider even when the oracle group is excluded, so the provider reads
  * the corpus only where the oracle can run (SaxonC loaded) and the France_RFE files have been
@@ -145,7 +153,7 @@ final class FranceConformanceTest extends TestCase
      * writes most dates as udt:DateTimeString and the preceding invoice date (BT-26) as
      * qdt:DateTimeString.
      */
-    private const G6_DATES = [
+    private const CHECKED_DATES = [
         self::UDT => ['DateTimeString'],
         self::QDT => ['DateTimeString'],
         self::CBC => ['IssueDate', 'TaxPointDate', 'DueDate', 'ActualDeliveryDate', 'StartDate', 'EndDate'],
@@ -157,11 +165,17 @@ final class FranceConformanceTest extends TestCase
         'PriceAmount', 'AllowanceChargeAmount', 'AllowanceChargeBaseAmount',
     ];
 
-    /** How often the whole corpus meets G6 on a CII date. */
-    private const G6_CII_USES = 26;
+    /** The date format rule of Flux 2, with its BT suffix. */
+    private const DATE_RULE = '/^BR-FR-03(_\S+)?$/';
 
-    /** @var array{g6-cii: int, g6-ubl: int, rule-let: int} uses of each allow-list entry */
-    private static array $allowed = ['g6-cii' => 0, 'g6-ubl' => 0, 'rule-let' => 0];
+    /** The amount format rule of Flux 10, with its ordinal. */
+    private const AMOUNT_RULE = '/^G1\.14(-\d+)?$/';
+
+    /** How often the whole corpus meets eager function locals on a CII date. */
+    private const EAGER_LOCAL_CII_USES = 26;
+
+    /** @var array{eager-local-cii: int, eager-local-ubl: int, eager-let: int} uses per entry */
+    private static array $allowed = ['eager-local-cii' => 0, 'eager-local-ubl' => 0, 'eager-let' => 0];
 
     private static int $parityRuns = 0;
 
@@ -272,7 +286,7 @@ final class FranceConformanceTest extends TestCase
                 return;
             }
             $target = self::target($base, $variant);
-            $entry = self::g6Allowed($error->errorCode, $ours, $target) ?? (self::ruleLetAllowed($set, $error, $ours, $target, $xml) ? 'rule-let' : null);
+            $entry = self::eagerLocalAllowed($set, $error->errorCode, $ours, $target, $xml) ?? (self::eagerLetAllowed($set, $error, $ours, $target, $xml) ? 'eager-let' : null);
             if ($entry !== null) {
                 self::$allowed[$entry]++;
                 $this->addToAssertionCount(1);
@@ -304,71 +318,80 @@ final class FranceConformanceTest extends TestCase
         ));
     }
 
-    public function test_g6_allow_list_is_used_only_for_its_pattern(): void
+    public function test_allow_lists_are_used_only_for_their_patterns(): void
     {
         self::requireCorpus();
-        $target = static fn (string $kind, string $namespace, string $local): array => ['kind' => $kind, 'namespace' => $namespace, 'local' => $local, 'index' => 4];
-        $cii = $target('text', self::UDT, 'DateTimeString');
-        $ubl = $target('text', self::CBC, 'IssueDate');
+
+        // Eager function locals: the date format rule BR-FR-03 of the mutated CII or UBL date.
+        $ciiBase = 'fnfe:FNFE_RFE_INVOICE/Z.example/TEST/CII/EN16931/UC1_F202500003_00-INV_20250701_EN16931_FX_CII_Commentee.xml';
+        $ublBase = 'fnfe:FNFE_RFE_INVOICE/Z.example/TEST/UBL/EN16931/UC1_F202500003_00-INV_20250701_EN16931_UBL_Commentee.xml';
+        $wlBase = 'fnfe:FNFE_RFE_INVOICE/Z.example/TEST/FX/BASICWL/Facture_F20260023-LE_FOURNISSEUR-POUR-LE_CLIENT_BASICWL_FX_CII_Commentee.xml';
+        $case = static fn (string $base, string $variant): array => [
+            self::target($base, $variant) ?? throw new RuntimeException("{$variant} is not a mutation."),
+            self::document($base, $variant),
+        ];
+        [$cii, $ciiXml] = $case($ciiBase, 'mutation:004-text-DateTimeString');
+        [$ubl, $ublXml] = $case($ublBase, 'mutation:004-text-IssueDate');
+        [$due, $dueXml] = $case($ublBase, 'mutation:005-text-DueDate');
+        [$preceding, $precedingXml] = $case($wlBase, 'mutation:183-text-DateTimeString');
         $ours = ['BR-FR-03_BT-2 fatal', 'BR-FR-CO-07_BT-9 fatal'];
 
-        // G6: CII and UBL dates.
-        self::assertSame('g6-cii', self::g6Allowed('FORG0001', $ours, $cii));
-        self::assertSame('g6-cii', self::g6Allowed('FORG0001', ['BR-FR-03_EXT-FR-FE-134 fatal'], $cii));
-        self::assertSame('g6-cii', self::g6Allowed('FORG0001', ['BR-FR-03_BT-26 fatal'], $target('text', self::QDT, 'DateTimeString')), 'BT-26');
-        self::assertSame('g6-ubl', self::g6Allowed('FORG0001', $ours, $ubl));
-        foreach (['TaxPointDate', 'DueDate', 'ActualDeliveryDate', 'StartDate', 'EndDate'] as $date) {
-            self::assertSame('g6-ubl', self::g6Allowed('FORG0001', ['BR-FR-03_BT-9 fatal'], $target('text', self::CBC, $date)), $date);
-        }
-        self::assertNull(self::g6Allowed('FOAR0001', $ours, $cii), 'another error code');
-        self::assertNull(self::g6Allowed('XPTY0004', $ours, $ubl), 'another error code');
-        self::assertNull(self::g6Allowed('FORG0001', ['BR-FR-CO-07_BT-9 fatal'], $cii), 'no BR-FR-03 finding');
-        self::assertNull(self::g6Allowed('FORG0001', [], $ubl), 'no finding');
-        self::assertNull(self::g6Allowed('FORG0001', ['BR-FR-030 fatal'], $cii), 'another rule');
-        self::assertNull(self::g6Allowed('FORG0001', $ours, $target('remove', self::UDT, 'DateTimeString')), 'the date removed, not changed');
-        self::assertNull(self::g6Allowed('FORG0001', $ours, $target('decimals', self::CBC, 'IssueDate')), 'not the "X Y" text');
-        self::assertNull(self::g6Allowed('FORG0001', $ours, $target('text', self::UDT, 'Indicator')), 'not a date');
-        self::assertNull(self::g6Allowed('FORG0001', $ours, $target('text', self::CBC, 'PayableAmount')), 'not a date');
-        self::assertNull(self::g6Allowed('FORG0001', $ours, $target('text', self::CBC, 'LatestDeliveryDate')), 'a cbc date the rules do not check');
-        self::assertNull(self::g6Allowed('FORG0001', $ours, $target('text', '', 'IssueDate')), 'IssueDate outside cbc');
-        self::assertNull(self::g6Allowed('FORG0001', $ours, $target('text', self::UDT, 'IssueDate')), 'IssueDate outside cbc');
-        self::assertNull(self::g6Allowed('FORG0001', $ours, $target('text', self::CBC, 'DateTimeString')), 'DateTimeString outside udt and qdt');
-        self::assertNull(self::g6Allowed('FORG0001', $ours, null), 'not a mutation');
+        self::assertSame(self::UDT, $cii['namespace']);
+        self::assertSame(self::QDT, $preceding['namespace']);
+        self::assertSame('eager-local-cii', self::eagerLocalAllowed('flux2-cii', 'FORG0001', $ours, $cii, $ciiXml));
+        self::assertSame('eager-local-cii', self::eagerLocalAllowed('flux2-cii', 'FORG0001', ['BR-FR-03_BT-26 fatal'], $preceding, $precedingXml), 'BT-26');
+        self::assertSame('eager-local-ubl', self::eagerLocalAllowed('flux2-ubl', 'FORG0001', $ours, $ubl, $ublXml));
+        self::assertSame('eager-local-ubl', self::eagerLocalAllowed('flux2-ubl', 'FORG0001', ['BR-FR-03_BT-9 fatal'], $due, $dueXml), 'BT-9');
 
-        // Rule-level let: the total checks of Flux 10 sum the amounts of their tax breakdown.
-        $base = 'fixture:flux10-base';
-        $amount = self::target($base, 'mutation:037-text-TaxableAmount') ?? throw new RuntimeException('Not a mutation.');
-        $xml = self::document($base, 'mutation:037-text-TaxableAmount');
+        self::assertNull(self::eagerLocalAllowed('flux2-ubl', 'FORG0001', ['BR-FR-03_BT-9 fatal'], $ubl, $ublXml), 'BR-FR-03 of another date');
+        self::assertNull(self::eagerLocalAllowed('flux2-cii', 'FORG0001', ['BR-FR-03_BT-26 fatal'], $cii, $ciiXml), 'BR-FR-03 of another date');
+        self::assertNull(self::eagerLocalAllowed('flux2-ubl', 'FORG0001', ['BR-FR-03_BT-2 warning'], $ubl, $ublXml), 'another severity');
+        self::assertNull(self::eagerLocalAllowed('flux2-cii', 'FOAR0001', $ours, $cii, $ciiXml), 'another error code');
+        self::assertNull(self::eagerLocalAllowed('flux2-ubl', 'XPTY0004', $ours, $ubl, $ublXml), 'another error code');
+        self::assertNull(self::eagerLocalAllowed('flux2-cii', 'FORG0001', ['BR-FR-CO-07_BT-9 fatal'], $cii, $ciiXml), 'no BR-FR-03 finding');
+        self::assertNull(self::eagerLocalAllowed('flux2-ubl', 'FORG0001', [], $ubl, $ublXml), 'no finding');
+        self::assertNull(self::eagerLocalAllowed('flux2-cii', 'FORG0001', ['BR-FR-030 fatal'], $cii, $ciiXml), 'another rule');
+        self::assertNull(self::eagerLocalAllowed('flux2-cii', 'FORG0001', $ours, ['kind' => 'remove'] + $cii, $ciiXml), 'the date removed, not changed');
+        self::assertNull(self::eagerLocalAllowed('flux2-ubl', 'FORG0001', $ours, ['kind' => 'decimals'] + $ubl, $ublXml), 'not the "X Y" text');
+        foreach ([[self::UDT, 'Indicator'], [self::CBC, 'PayableAmount'], [self::CBC, 'LatestDeliveryDate'], ['', 'IssueDate'], [self::UDT, 'IssueDate'], [self::CBC, 'DateTimeString']] as [$namespace, $local]) {
+            self::assertNull(self::eagerLocalAllowed('flux2-ubl', 'FORG0001', $ours, ['namespace' => $namespace, 'local' => $local] + $ubl, $ublXml), "{{$namespace}}{$local} is not a checked date");
+        }
+        self::assertNull(self::eagerLocalAllowed('flux2-cii', 'FORG0001', $ours, null, $ciiXml), 'not a mutation');
+
+        // Eager rule let: the total checks of Flux 10 sum the amounts of their tax breakdown.
+        [$amount, $xml] = $case('fixture:flux10-base', 'mutation:037-text-TaxableAmount');
         $module = 'file://'.realpath(Fixtures::franceRfeRoot().'/'.self::XSLT['flux10']);
         $error = static fn (string $code = 'FORG0001', ?int $line = 2861, ?string $where = null): OracleDynamicError => new OracleDynamicError($code, 'Cannot convert string "X Y" to double', $line, $where ?? $module);
         $format = ['G1.14-7 fatal'];
 
-        self::assertTrue(self::ruleLetAllowed('flux10', $error(), $format, $amount, $xml));
-        self::assertTrue(self::ruleLetAllowed('flux10', $error(), ['G1.14-7 fatal', 'G1.53 fatal'], $amount, $xml));
-        self::assertFalse(self::ruleLetAllowed('flux10', $error('XPTY0004'), $format, $amount, $xml), 'another error code');
-        self::assertFalse(self::ruleLetAllowed('flux10', $error(line: 2876), $format, $amount, $xml), 'located on an assert of the rule');
-        self::assertFalse(self::ruleLetAllowed('flux10', $error(line: 3914), $format, $amount, $xml), 'a rule whose lets do not read the amount');
-        self::assertFalse(self::ruleLetAllowed('flux10', $error(line: 1), $format, $amount, $xml), 'not a rule template');
-        self::assertFalse(self::ruleLetAllowed('flux10', $error(line: null), $format, $amount, $xml), 'no location');
-        self::assertFalse(self::ruleLetAllowed('flux10', $error(where: 'file:///elsewhere/Flux10.xslt'), $format, $amount, $xml), 'another stylesheet');
-        self::assertFalse(self::ruleLetAllowed('flux10', $error(), ['G1.14-9 fatal'], $amount, $xml), 'the format rule of another amount');
-        self::assertFalse(self::ruleLetAllowed('flux10', $error(), ['G1.14-7 warning'], $amount, $xml), 'another severity');
-        self::assertFalse(self::ruleLetAllowed('flux10', $error(), [], $amount, $xml), 'no finding');
-        self::assertFalse(self::ruleLetAllowed('flux10', $error(), $format, ['kind' => 'remove'] + $amount, $xml), 'the amount removed, not changed');
-        self::assertFalse(self::ruleLetAllowed('flux10', $error(), $format, ['local' => 'CurrencyCode'] + $amount, $xml), 'not an amount');
-        self::assertFalse(self::ruleLetAllowed('flux10', $error(), $format, null, $xml), 'not a mutation');
-        self::assertNull(self::g6Allowed('FORG0001', $format, $amount), 'G6 does not cover an amount');
-        self::assertFalse(self::ruleLetAllowed('flux2-cii', $error(), $ours, $cii, $xml), 'the rule-let entry does not cover a date');
+        self::assertTrue(self::eagerLetAllowed('flux10', $error(), $format, $amount, $xml));
+        self::assertTrue(self::eagerLetAllowed('flux10', $error(), ['G1.14-7 fatal', 'G1.53 fatal'], $amount, $xml));
+        self::assertFalse(self::eagerLetAllowed('flux10', $error('XPTY0004'), $format, $amount, $xml), 'another error code');
+        self::assertFalse(self::eagerLetAllowed('flux10', $error(line: 2876), $format, $amount, $xml), 'located on an assert of the rule');
+        self::assertFalse(self::eagerLetAllowed('flux10', $error(line: 3914), $format, $amount, $xml), 'a rule whose lets do not read the amount');
+        self::assertFalse(self::eagerLetAllowed('flux10', $error(line: 1), $format, $amount, $xml), 'not a rule template');
+        self::assertFalse(self::eagerLetAllowed('flux10', $error(line: null), $format, $amount, $xml), 'no location');
+        self::assertFalse(self::eagerLetAllowed('flux10', $error(where: 'file:///elsewhere/Flux10.xslt'), $format, $amount, $xml), 'another stylesheet');
+        self::assertFalse(self::eagerLetAllowed('flux10', $error(), ['G1.14-9 fatal'], $amount, $xml), 'the format rule of another amount');
+        self::assertFalse(self::eagerLetAllowed('flux10', $error(), ['G1.14-7 warning'], $amount, $xml), 'another severity');
+        self::assertFalse(self::eagerLetAllowed('flux10', $error(), [], $amount, $xml), 'no finding');
+        self::assertFalse(self::eagerLetAllowed('flux10', $error(), $format, ['kind' => 'remove'] + $amount, $xml), 'the amount removed, not changed');
+        self::assertFalse(self::eagerLetAllowed('flux10', $error(), $format, ['local' => 'CurrencyCode'] + $amount, $xml), 'not an amount');
+        self::assertFalse(self::eagerLetAllowed('flux10', $error(), $format, null, $xml), 'not a mutation');
+
+        // Neither entry covers the other's pattern.
+        self::assertNull(self::eagerLocalAllowed('flux10', 'FORG0001', $format, $amount, $xml), 'eager function locals do not cover an amount');
+        self::assertFalse(self::eagerLetAllowed('flux2-cii', $error(), $ours, $cii, $ciiXml), 'the eager rule let does not cover a date');
     }
 
     /**
-     * Each allow-list entry is used exactly as often as pinned when the whole corpus runs; a
-     * partial run (a filter) may use each at most that often.
+     * Each allow-list entry is used exactly as often as pinned when the whole corpus runs in its
+     * declaration order; a partial run (a filter) may use each at most that often.
      */
     public function test_allow_lists_are_used_as_pinned(): void
     {
         self::requireCorpus();
-        $pinned = ['g6-cii' => self::G6_CII_USES, 'g6-ubl' => 16, 'rule-let' => 4];
+        $pinned = ['eager-local-cii' => self::EAGER_LOCAL_CII_USES, 'eager-local-ubl' => 16, 'eager-let' => 4];
 
         if (self::$parityRuns === count(self::corpus())) {
             self::assertSame($pinned, self::$allowed);
@@ -381,23 +404,30 @@ final class FranceConformanceTest extends TestCase
     }
 
     /**
-     * The first accepted difference (G6): Saxon stops with FORG0001, our verdict contains
-     * BR-FR-03 and the document is a mutation that set the text of a date element (G6_DATES) to
-     * "X Y". Returns the entry ("g6-cii" or "g6-ubl"), or null when the case is not one.
+     * The first accepted difference, eager function locals: Saxon stops with FORG0001, the
+     * document is a mutation that set the text of a checked date element (CHECKED_DATES) to
+     * "X Y", and our verdict contains, as fatal, the date format rule BR-FR-03 of an assert whose
+     * rule context selects that element. Returns the entry ("eager-local-cii" or
+     * "eager-local-ubl"), or null when the case is not one.
      *
      * @param  list<string>  $ours
      * @param  Target|null  $target
-     * @return 'g6-cii'|'g6-ubl'|null
+     * @return 'eager-local-cii'|'eager-local-ubl'|null
      */
-    private static function g6Allowed(string $saxonErrorCode, array $ours, ?array $target): ?string
+    private static function eagerLocalAllowed(string $set, string $saxonErrorCode, array $ours, ?array $target, string $xml): ?string
     {
         if ($saxonErrorCode !== 'FORG0001' || $target === null || $target['kind'] !== 'text'
-            || ! in_array($target['local'], self::G6_DATES[$target['namespace']] ?? [], true)) {
+            || ! in_array($target['local'], self::CHECKED_DATES[$target['namespace']] ?? [], true)) {
             return null;
         }
-        foreach ($ours as $entry) {
-            if (preg_match('/^BR-FR-03(_\S*)? /', $entry) === 1) {
-                return $target['namespace'] === self::CBC ? 'g6-ubl' : 'g6-cii';
+        $document = self::parse($xml);
+        $leaf = self::leaves($document)[$target['index']] ?? null;
+        if ($leaf === null) {
+            return null;
+        }
+        foreach (self::ruleIdsSelecting($set, $document, $leaf, self::DATE_RULE) as $id) {
+            if (in_array("{$id} fatal", $ours, true)) {
+                return $target['namespace'] === self::CBC ? 'eager-local-ubl' : 'eager-local-cii';
             }
         }
 
@@ -405,7 +435,7 @@ final class FranceConformanceTest extends TestCase
     }
 
     /**
-     * The second accepted difference: Saxon evaluates a single-valued rule-level let eagerly,
+     * The second accepted difference, eager rule let: Saxon evaluates a single-valued rule-level let eagerly,
      * even on the first call, although no evaluated assert path reads it. All of these hold:
      * - Saxon stops with FORG0001, located on the start tag of a rule template of the rule set's
      *   own stylesheet (not on an assert instruction inside it);
@@ -418,7 +448,7 @@ final class FranceConformanceTest extends TestCase
      * @param  list<string>  $ours
      * @param  Target|null  $target
      */
-    private static function ruleLetAllowed(string $set, OracleDynamicError $error, array $ours, ?array $target, string $xml): bool
+    private static function eagerLetAllowed(string $set, OracleDynamicError $error, array $ours, ?array $target, string $xml): bool
     {
         if ($error->errorCode !== 'FORG0001' || $target === null || $target['kind'] !== 'text'
             || $target['namespace'] !== '' || ! in_array($target['local'], self::FLUX10_AMOUNTS, true)
@@ -440,7 +470,7 @@ final class FranceConformanceTest extends TestCase
             return false;
         }
 
-        foreach (self::formatRuleIds($set, $document, $leaf) as $id) {
+        foreach (self::ruleIdsSelecting($set, $document, $leaf, self::AMOUNT_RULE) as $id) {
             if (in_array("{$id} fatal", $ours, true)) {
                 return true;
             }
@@ -508,25 +538,34 @@ final class FranceConformanceTest extends TestCase
     }
 
     /**
-     * Our ids of the amount format rule (G1.14, with its ordinal) on the asserts whose rule
-     * context selects $leaf.
+     * Our ids matching $idPattern on the asserts whose rule context selects $leaf.
+     *
+     * A rule context is a match pattern: each relative alternative of it matches at any depth, so
+     * it is evaluated with "//" in front, with the prefixes of the rule set. A context XPath 1.0
+     * cannot evaluate selects nothing here, which can only withhold an allowance.
      *
      * @return list<string>
      */
-    private static function formatRuleIds(string $set, DOMDocument $document, DOMElement $leaf): array
+    private static function ruleIdsSelecting(string $set, DOMDocument $document, DOMElement $leaf, string $idPattern): array
     {
+        $ruleSet = self::ruleSet($set);
         $xpath = new DOMXPath($document);
+        foreach ($ruleSet->namespaces() as $prefix => $uri) {
+            $xpath->registerNamespace($prefix, $uri);
+        }
         $ids = [];
-        foreach (self::ruleSet($set)->patterns() as $pattern) {
+        foreach ($ruleSet->patterns() as $pattern) {
             foreach ($pattern['rules'] as $rule) {
-                // A context XPath 1.0 cannot evaluate selects nothing here.
-                $selected = @$xpath->query($rule['context']);
+                $alternatives = array_map(
+                    static fn (string $alternative): string => str_starts_with($alternative, '/') ? $alternative : '//'.$alternative,
+                    self::alternatives($rule['context']),
+                );
                 $hit = false;
-                foreach ($selected ?: [] as $node) {
+                foreach (@$xpath->query(implode(' | ', $alternatives)) ?: [] as $node) {
                     $hit = $hit || ($node instanceof DOMElement && $node->isSameNode($leaf));
                 }
                 foreach ($hit ? $rule['asserts'] : [] as $assert) {
-                    if (preg_match('/^G1\.14(-\d+)?$/', $assert['id']) === 1) {
+                    if (preg_match($idPattern, $assert['id']) === 1) {
                         $ids[] = $assert['id'];
                     }
                 }
@@ -534,6 +573,40 @@ final class FranceConformanceTest extends TestCase
         }
 
         return $ids;
+    }
+
+    /**
+     * The top-level alternatives of a union pattern, trimmed; a "|" inside brackets, parentheses
+     * or a string literal does not split.
+     *
+     * @return list<string>
+     */
+    private static function alternatives(string $pattern): array
+    {
+        $alternatives = [];
+        $depth = 0;
+        $quote = null;
+        $current = '';
+        foreach (str_split($pattern) as $char) {
+            if ($quote !== null) {
+                $quote = $char === $quote ? null : $quote;
+            } elseif ($char === '"' || $char === "'") {
+                $quote = $char;
+            } elseif ($char === '[' || $char === '(') {
+                $depth++;
+            } elseif ($char === ']' || $char === ')') {
+                $depth--;
+            } elseif ($char === '|' && $depth === 0) {
+                $alternatives[] = trim($current);
+                $current = '';
+
+                continue;
+            }
+            $current .= $char;
+        }
+        $alternatives[] = trim($current);
+
+        return $alternatives;
     }
 
     /**
