@@ -30,9 +30,11 @@ abstract class XmlOutput
 
     /**
      * @param  array<string, string>  $namespaces  namespace per prefix, declared on the root
+     * @param  string|null  $rootNamespace  namespace of the root element; null for a document
+     *                                      without a namespace
      * @param  string  $rootName  qualified root element name, with or without a prefix
      */
-    public function __construct(private readonly array $namespaces, string $rootNamespace, string $rootName)
+    public function __construct(private readonly array $namespaces, ?string $rootNamespace, string $rootName)
     {
         $this->document = new DOMDocument('1.0', 'UTF-8');
         $this->document->formatOutput = true;
