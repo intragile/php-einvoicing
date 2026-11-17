@@ -86,7 +86,7 @@ final class ExtendedCtcFrCiiTest extends TestCase
 
     public function test_extended_data_round_trips(): void
     {
-        $invoice = FrenchInvoices::extendedCtcFr();
+        $invoice = FrenchInvoices::extendedCtcFr(lineVatExemptionReason: 'TVA SUR LES DEBITS');
         $read = (new CiiReader)->read((new CiiWriter)->write($invoice));
 
         self::assertSame([], $read->ignored);

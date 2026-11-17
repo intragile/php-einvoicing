@@ -28,12 +28,17 @@ $detail2Amount = "{$transaction}/ram:IncludedSupplyChainTradeLineItem[2]/ram:Spe
 $settlement = "{$transaction}/ram:ApplicableHeaderTradeSettlement";
 $totals = "{$settlement}/ram:SpecifiedTradeSettlementHeaderMonetarySummation";
 
-$recipe = static fn (string $rule, array $edits): array => [
+$lineTaxCategory = "{$transaction}/ram:IncludedSupplyChainTradeLineItem/ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax/ram:CategoryCode";
+
+// Each recipe also carries a 'control': edits to the base alone that make the fork's own assert fire
+// on a schema-valid document, so a silent recipe cannot hide a fork assert that never fires.
+$recipe = static fn (string $rule, array $edits, array $control): array => [
     'set' => 'facturx-extended',
     'rule' => $rule,
     'base' => $base,
     'edits' => $edits,
     'fork' => 'silent',
+    'control' => $control,
 ];
 $groupTax = static fn (string $category, string $rate = '0'): array => [
     "{$groupSettlement}/ram:SpecifiedTradeSettlementLineMonetarySummation",
@@ -46,25 +51,39 @@ $recipes = [
     $recipe('BR-FXEXT-CO-10', [
         [$detail2Amount, 'set', '200.045'],
         ["{$totals}/ram:LineTotalAmount", 'set', '500.09'],
+    ], [
+        // BT-106 one euro above Σ BT-131.
+        ["{$totals}/ram:LineTotalAmount", 'set', '501.00'],
     ]),
     // Σ BT-99: 1.01 in the fork, 1.00 upstream; tolerance 1 charge × 0.01.
     $recipe('BR-FXEXT-CO-12', [
         ["{$settlement}/ram:SpecifiedTradePaymentTerms", 'before', '<ram:SpecifiedTradeAllowanceCharge><ram:ChargeIndicator><udt:Indicator>true</udt:Indicator></ram:ChargeIndicator><ram:ActualAmount>1.005</ram:ActualAmount><ram:Reason>FRAIS</ram:Reason><ram:CategoryTradeTax><ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>20</ram:RateApplicablePercent></ram:CategoryTradeTax></ram:SpecifiedTradeAllowanceCharge>'],
         ["{$totals}/ram:TaxBasisTotalAmount", 'before', '<ram:ChargeTotalAmount>1.02</ram:ChargeTotalAmount>'],
+    ], [
+        // BT-108 one euro above Σ BT-99.
+        ["{$settlement}/ram:SpecifiedTradePaymentTerms", 'before', '<ram:SpecifiedTradeAllowanceCharge><ram:ChargeIndicator><udt:Indicator>true</udt:Indicator></ram:ChargeIndicator><ram:ActualAmount>1.00</ram:ActualAmount><ram:Reason>FRAIS</ram:Reason><ram:CategoryTradeTax><ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>20</ram:RateApplicablePercent></ram:CategoryTradeTax></ram:SpecifiedTradeAllowanceCharge>'],
+        ["{$totals}/ram:TaxBasisTotalAmount", 'before', '<ram:ChargeTotalAmount>2.00</ram:ChargeTotalAmount>'],
     ]),
     // BT-109 against Σ BT-131: 500.05 in the fork, 500.04 upstream; tolerance 2 DETAIL lines × 0.01.
     $recipe('BR-FXEXT-CO-13', [
         [$detail2Amount, 'set', '200.045'],
         ["{$totals}/ram:TaxBasisTotalAmount", 'set', '500.07'],
+    ], [
+        // BT-109 one euro above Σ BT-131.
+        ["{$totals}/ram:TaxBasisTotalAmount", 'set', '501.00'],
     ]),
     // The base is all "S": move every S to Z, then give S to the GROUP line only.
     $recipe('BR-FXEXT-S-01', [
         ["{$transaction}//ram:CategoryCode[. = 'S']", 'set', 'Z'],
         $groupTax('S', '20'),
+    ], [
+        // The S breakdown stays, but no line uses S any more.
+        [$lineTaxCategory, 'set', 'Z'],
     ]),
 ];
 foreach (['Z' => 'Z', 'E' => 'E', 'AE' => 'AE', 'IC' => 'K', 'G' => 'G', 'O' => 'O', 'AF' => 'L', 'AG' => 'M'] as $id => $category) {
-    $recipes[] = $recipe("BR-FXEXT-{$id}-01", [$groupTax($category)]);
+    // The control gives the DETAIL lines a category the VAT breakdown does not list.
+    $recipes[] = $recipe("BR-FXEXT-{$id}-01", [$groupTax($category)], [[$lineTaxCategory, 'set', $category]]);
 }
 
 return $recipes;

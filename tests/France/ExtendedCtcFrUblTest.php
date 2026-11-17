@@ -95,7 +95,7 @@ final class ExtendedCtcFrUblTest extends TestCase
 
     public function test_extended_data_round_trips(): void
     {
-        $invoice = FrenchInvoices::extendedCtcFr(false);
+        $invoice = FrenchInvoices::extendedCtcFr(false, 'TVA SUR LES DEBITS');
         $read = (new UblReader)->read((new UblWriter)->write($invoice));
 
         self::assertSame([], $read->ignored);

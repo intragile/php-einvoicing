@@ -65,6 +65,10 @@ use RuntimeException;
  * - 'fork' (facturx-extended only, optional): 'fires' (default) when the FNFE Factur-X EXTENDED
  *   fork reports the rule and the rules-facturx EXTENDED rule set does not; 'silent' when only
  *   rules-facturx reports it. Either way the two rule sets must disagree on the document.
+ * - 'control' (facturx-extended only, required): a list of edits like 'edits', applied to the base
+ *   alone (not on top of 'edits'). It proves the fork's own assert can still fire: on the controlled
+ *   document, which must conform to the XML Schema, the fork reports the rule at a severity the
+ *   rule set compiles it with. A 'silent' recipe alone shows only that the fork is more lenient.
  *
  * test_recipe_fires_its_rule runs the target rule set on the edited document and passes when the
  * document still conforms to its schema and the rule id is reported at a severity the rule set
@@ -94,7 +98,7 @@ final class NegativeCorpusTest extends TestCase
         'BR-FXEXT-G-01', 'BR-FXEXT-O-01', 'BR-FXEXT-AF-01', 'BR-FXEXT-AG-01',
     ];
 
-    private const RECIPE_KEYS = ['set', 'rule', 'base', 'edits', 'fork'];
+    private const RECIPE_KEYS = ['set', 'rule', 'base', 'edits', 'fork', 'control'];
 
     private const FIXTURE_DIR = __DIR__.'/../../fixtures/france';
 
@@ -137,7 +141,7 @@ final class NegativeCorpusTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{array{set: string, rule: string, base: string, edits: list<array<int, string>>, fork?: string}}>
+     * @return iterable<string, array{array{set: string, rule: string, base: string, edits: list<array<int, string>>, fork?: string, control?: list<array<int, string>>}}>
      */
     public static function recipes(): iterable
     {
@@ -168,7 +172,7 @@ final class NegativeCorpusTest extends TestCase
     }
 
     /**
-     * @param  array{set: string, rule: string, base: string, edits: list<array<int, string>>, fork?: string}  $recipe
+     * @param  array{set: string, rule: string, base: string, edits: list<array<int, string>>, fork?: string, control?: list<array<int, string>>}  $recipe
      */
     #[DataProvider('recipes')]
     public function test_recipe_fires_its_rule(array $recipe): void
@@ -205,6 +209,14 @@ final class NegativeCorpusTest extends TestCase
         } else {
             self::assertTrue(! $fires && $upstreamFires, "{$recipe['rule']} must fire in rules-facturx only.\n{$message}");
         }
+
+        $control = $recipe['control'] ?? [];
+        self::assertNotSame([], $control, "{$recipe['rule']} needs a 'control' that makes the fork's own assert fire.");
+        $controlXml = Mutator::apply(self::load($recipe['base']), $control, $ruleSet->namespaces() + self::DEFAULT_NAMESPACES);
+        $controlFindings = (new Runner)->run($ruleSet, SafeXml::loadPreservingWhitespace($controlXml))->findings;
+        $controlSchemaErrors = array_values(array_filter(self::chain($controlXml), static fn (string $line): bool => str_starts_with($line, 'schema ')));
+        self::assertSame([], $controlSchemaErrors, "The control of {$recipe['rule']} breaks the XML Schema.");
+        self::assertTrue(self::fires($controlFindings, $recipe['rule'], $severities), "The control of {$recipe['rule']} does not fire in the fork. Findings:\n".self::describe($controlFindings));
     }
 
     #[DataProvider('keys')]
@@ -381,7 +393,7 @@ final class NegativeCorpusTest extends TestCase
     /**
      * The document a recipe produces: its base with its edits applied.
      *
-     * @param  array{set: string, rule: string, base: string, edits: list<array<int, string>>, fork?: string}  $recipe
+     * @param  array{set: string, rule: string, base: string, edits: list<array<int, string>>, fork?: string, control?: list<array<int, string>>}  $recipe
      */
     public static function edited(array $recipe): string
     {
@@ -442,7 +454,7 @@ final class NegativeCorpusTest extends TestCase
     }
 
     /**
-     * @return list<array{set: string, rule: string, base: string, edits: list<array<int, string>>, fork?: string}>
+     * @return list<array{set: string, rule: string, base: string, edits: list<array<int, string>>, fork?: string, control?: list<array<int, string>>}>
      */
     public static function allRecipes(): array
     {
@@ -457,7 +469,7 @@ final class NegativeCorpusTest extends TestCase
     /**
      * The recipes of cases/<key>.php, with their shape checked.
      *
-     * @return list<array{set: string, rule: string, base: string, edits: list<array<int, string>>, fork?: string}>
+     * @return list<array{set: string, rule: string, base: string, edits: list<array<int, string>>, fork?: string, control?: list<array<int, string>>}>
      */
     private static function recipesOf(string $key): array
     {
@@ -492,6 +504,18 @@ final class NegativeCorpusTest extends TestCase
                     throw new RuntimeException("{$where} ({$rule}): 'fork' is 'fires' or 'silent', and only for facturx-extended.");
                 }
                 $entry['fork'] = $recipe['fork'];
+            }
+            if (array_key_exists('control', $recipe)) {
+                $control = $recipe['control'];
+                if ($key !== 'facturx-extended' || ! is_array($control) || $control === [] || ! array_is_list($control)) {
+                    throw new RuntimeException("{$where} ({$rule}): 'control' is a non-empty list of edits, and only for facturx-extended.");
+                }
+                foreach ($control as $edit) {
+                    if (! is_array($edit) || ! array_is_list($edit) || count($edit) < 2 || count($edit) > 3 || array_filter($edit, is_string(...)) !== $edit) {
+                        throw new RuntimeException("{$where} ({$rule}) has a control edit that is not [XPath, operation, argument?] of strings.");
+                    }
+                }
+                $entry['control'] = $control;
             }
             $recipes[] = $entry;
         }

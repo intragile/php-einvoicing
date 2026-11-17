@@ -95,6 +95,7 @@ final class FrenchFacturXTest extends TestCase
         yield 'BASIC WL' => [FacturXProfile::BasicWl];
         yield 'BASIC' => [FacturXProfile::Basic];
         yield 'EN 16931' => [FacturXProfile::En16931];
+        yield 'XRECHNUNG' => [FacturXProfile::XRechnung];
     }
 
     #[DataProvider('profilesBelowExtended')]
