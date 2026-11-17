@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Transport\Webhook;
 
+use IntrAgile\EInvoicing\France\Lifecycle\LifecycleStatus;
 use IntrAgile\EInvoicing\Transport\DeliveryFailure;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 
@@ -32,5 +33,10 @@ final readonly class WebhookEvent
         public ?DeliveryState $deliveryState,
         /** Why the delivery failed, for events that report a failure. */
         public ?DeliveryFailure $failure,
+        /**
+         * The French lifecycle status (CDV code) the event reports, for providers that act as a
+         * French plateforme agréée; null when the event reports none.
+         */
+        public ?LifecycleStatus $lifecycleStatus = null,
     ) {}
 }

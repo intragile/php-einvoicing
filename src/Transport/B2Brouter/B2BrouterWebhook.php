@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Transport\B2Brouter;
 
 use Closure;
 use DateTimeImmutable;
+use IntrAgile\EInvoicing\Transport\B2Brouter\France\LifecycleMapping;
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\Http\Redactor;
@@ -99,6 +100,11 @@ final class B2BrouterWebhook implements WebhookParser
      * DocumentReceived; any other event with an invoice id is Other. The account id is
      * data.account_id, or null when the notification names none.
      *
+     * For an account that sends and receives French invoices, the lifecycle status is the French
+     * status (CDV code) that data.state stands for: for "issued_invoice.state_change" as the
+     * seller's status, for "received_invoice.state_change" (kind Other) as the buyer's response.
+     * It is null for any other event, and for a state that stands for no status.
+     *
      * The deduplication key is the X-B2Brouter-Delivery-Id header, the same on every attempt of
      * one delivery. When it is missing, blank or repeated, the key is
      * "<code>:<invoice id>:<data.event_id>", or "<code>:<invoice id>:<data.state>" (empty without
@@ -144,6 +150,13 @@ final class B2BrouterWebhook implements WebhookParser
         $state = $kind === WebhookKind::DeliveryChanged && is_string($data['state'] ?? null)
             ? ResponseMapper::stateOf($data['state'])
             : null;
+        $platformState = is_string($data['state'] ?? null) ? $data['state'] : null;
+        $lifecycleStatus = match (true) {
+            $platformState === null => null,
+            $code === 'issued_invoice.state_change' => LifecycleMapping::forIssued($platformState),
+            $code === 'received_invoice.state_change' => LifecycleMapping::forReceived($platformState),
+            default => null,
+        };
 
         return new WebhookEvent(
             $kind,
@@ -153,6 +166,7 @@ final class B2BrouterWebhook implements WebhookParser
             self::deduplicationKey($headers, $code, $invoiceId, $data),
             $state,
             null,
+            $lifecycleStatus,
         );
     }
 

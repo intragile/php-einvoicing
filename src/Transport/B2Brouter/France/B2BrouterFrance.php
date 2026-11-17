@@ -7,11 +7,15 @@ namespace IntrAgile\EInvoicing\Transport\B2Brouter\France;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
 use IntrAgile\EInvoicing\Transport\B2Brouter\ResponseMapper;
+use IntrAgile\EInvoicing\Transport\B2Brouter\SameOriginRedirect;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
+use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\Http\HttpClient;
 use IntrAgile\EInvoicing\Transport\SendResult;
+use InvalidArgumentException;
+use Psr\Http\Message\ResponseInterface;
 
 /**
  * Sends French invoices through B2Brouter acting as the sender's plateforme agréée.
@@ -85,5 +89,52 @@ final class B2BrouterFrance
         }
 
         return $this->mapper->sendResult($response, $document);
+    }
+
+    /**
+     * The state of an issued or received invoice at B2Brouter, with the French lifecycle status
+     * it stands for.
+     *
+     * B2Brouter answers a received invoice with a 302 redirect, which is followed once when it
+     * stays on the API host; the API key is sent to the target again.
+     *
+     * @throws UnexpectedResponse when the invoice is unknown, the body is not an invoice with a
+     *                            state, or B2Brouter redirects to another host, more than once or
+     *                            with a status other than 302
+     * @throws TransportUnavailable when a request failed without an answer; it is safe to retry
+     * @throws TransportException when B2Brouter refused the request
+     * @throws InvalidArgumentException when the id is not a B2Brouter invoice id (digits)
+     */
+    public function lifecycle(string $invoiceId): PlatformStatus
+    {
+        if (preg_match('/^[0-9]{1,20}\z/', $invoiceId) !== 1) {
+            throw new InvalidArgumentException('A B2Brouter invoice id consists of digits only.');
+        }
+
+        $url = sprintf('%s/invoices/%s', $this->config->baseUrl, $invoiceId);
+        $response = $this->get($url);
+        $redirected = $response->getStatusCode() === 302;
+        if ($redirected) {
+            $response = $this->get(SameOriginRedirect::target($response, $url, $this->config->baseUrl));
+            if (SameOriginRedirect::isRedirect($response)) {
+                throw SameOriginRedirect::refused($response, sprintf('B2Brouter redirected invoice "%s" more than once', $invoiceId));
+            }
+        }
+
+        // Any other redirect is refused by the mapper without quoting its body.
+        return $this->mapper->platformStatus($response, $invoiceId, $redirected);
+    }
+
+    /**
+     * @throws TransportUnavailable when the request failed without an answer
+     * @throws UnexpectedResponse when the response exceeds the size cap
+     */
+    private function get(string $url): ResponseInterface
+    {
+        try {
+            return $this->http->send('GET', $url, $this->config->headers());
+        } catch (UnexpectedResponse $exception) {
+            throw $this->config->redactor()->sanitize($exception);
+        }
     }
 }

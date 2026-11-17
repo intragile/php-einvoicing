@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Transport\B2Brouter\France;
 
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+use IntrAgile\EInvoicing\France\Lifecycle\StatusReason;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterErrors;
 use IntrAgile\EInvoicing\Transport\B2Brouter\ResponseMapper;
 use IntrAgile\EInvoicing\Transport\DeliveryFailure;
+use IntrAgile\EInvoicing\Transport\DeliveryStatus;
 use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
@@ -16,6 +18,7 @@ use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\Http\JsonResponse;
 use IntrAgile\EInvoicing\Transport\Http\Redactor;
 use IntrAgile\EInvoicing\Transport\SendResult;
+use IntrAgile\EInvoicing\Transport\Timestamp;
 use Psr\Http\Message\ResponseInterface;
 
 /**
@@ -93,6 +96,47 @@ final class FranceResponseMapper
     }
 
     /**
+     * The platform status of an invoice response.
+     *
+     * The invoice counts as received when its type is ReceivedInvoice. A response reached through
+     * B2Brouter's redirect for a received invoice has no documented shape: it is read with the same
+     * invoice reader and counts as received unless its type says IssuedInvoice.
+     *
+     * @param  bool  $redirected  whether the response is the target of a redirect
+     *
+     * @throws UnexpectedResponse when the body is not an invoice with a state, or the invoice is unknown
+     * @throws TransportException when B2Brouter refused the request
+     */
+    public function platformStatus(ResponseInterface $response, string $invoiceId, bool $redirected): PlatformStatus
+    {
+        if ($response->getStatusCode() !== 200) {
+            throw $this->errors->readFailure($response, sprintf('Querying the lifecycle status of B2Brouter invoice "%s"', $invoiceId));
+        }
+
+        $invoice = $this->errors->invoice($response);
+        $state = B2BrouterErrors::text($invoice['state'] ?? null)
+            ?? throw $this->redactor->unexpected($response, sprintf('The B2Brouter response for invoice "%s" has no state', $invoiceId));
+        $type = $invoice['type'] ?? null;
+        $received = $type === 'ReceivedInvoice' || ($redirected && $type !== 'IssuedInvoice');
+        $reason = $invoice['refuse_reason_code'] ?? null;
+
+        return new PlatformStatus(
+            $invoiceId,
+            $state,
+            $received ? LifecycleMapping::forReceived($state) : LifecycleMapping::forIssued($state),
+            new DeliveryStatus(
+                $invoiceId,
+                ResponseMapper::stateOf($state),
+                $this->failure($invoice),
+                Timestamp::parse($invoice['state_updated_at'] ?? null),
+            ),
+            is_string($reason) ? StatusReason::tryFrom($reason) : null,
+            self::taxReportIds($invoice['tax_report_ids'] ?? null),
+            $received,
+        );
+    }
+
+    /**
      * The failure of an invoice in a failed state, or null for any other state. The reason is
      * the errors list, which B2Brouter fills with the rejection reasons, or the error message
      * when the list is empty.
@@ -143,6 +187,28 @@ final class FranceResponseMapper
             : sprintf('B2Brouter keeps it as B2Brouter invoice %s in error state; it', $invoiceId);
 
         return $invoice.' must be corrected with a PATCH request or deleted in B2Brouter before the document is imported again, because a re-import of the same number is refused as a duplicate (parameter_taken on number).';
+    }
+
+    /**
+     * The tax report ids of an invoice: the positive integers of the list, as strings; anything
+     * else is ignored.
+     *
+     * @return list<string>
+     */
+    private static function taxReportIds(mixed $ids): array
+    {
+        if (! is_array($ids)) {
+            return [];
+        }
+        $taxReportIds = [];
+        foreach ($ids as $id) {
+            $text = B2BrouterErrors::id($id);
+            if ($text !== null) {
+                $taxReportIds[] = $text;
+            }
+        }
+
+        return $taxReportIds;
     }
 
     /**

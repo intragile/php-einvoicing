@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Transport\B2Brouter;
 
 use DateTimeImmutable;
+use IntrAgile\EInvoicing\France\Lifecycle\LifecycleStatus;
 use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterWebhook;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
@@ -207,6 +208,55 @@ final class B2BrouterWebhookTest extends TestCase
         self::assertSame('issued_invoice.paid', $event->type);
         self::assertSame('85373', $event->documentId);
         self::assertNull($event->deliveryState);
+    }
+
+    public function test_issued_state_change_carries_lifecycle_status(): void
+    {
+        $webhook = new B2BrouterWebhook(self::SECRET);
+        $body = self::body(['code' => 'issued_invoice.state_change', 'data' => ['invoice_id' => 85373, 'state' => 'paid']]);
+
+        $event = $webhook->parse($body, self::headers($body));
+
+        self::assertSame(WebhookKind::DeliveryChanged, $event->kind);
+        self::assertSame(DeliveryState::Delivered, $event->deliveryState);
+        self::assertSame(LifecycleStatus::Collected, $event->lifecycleStatus);
+
+        foreach (['sending' => null, 'annotated' => LifecycleStatus::Disputed, 'future_state' => null] as $state => $expected) {
+            $body = self::body(['code' => 'issued_invoice.state_change', 'data' => ['invoice_id' => 85373, 'state' => $state]]);
+            self::assertSame($expected, $webhook->parse($body, self::headers($body))->lifecycleStatus, $state);
+        }
+
+        $body = self::body(['code' => 'issued_invoice.state_change', 'data' => ['invoice_id' => 85373, 'state' => 7]]);
+        self::assertNull($webhook->parse($body, self::headers($body))->lifecycleStatus);
+
+        $body = self::body(['code' => 'issued_invoice.paid', 'data' => ['invoice_id' => 85373, 'state' => 'paid']]);
+        self::assertNull($webhook->parse($body, self::headers($body))->lifecycleStatus, 'other events carry none');
+    }
+
+    public function test_received_state_change_carries_lifecycle_status(): void
+    {
+        $webhook = new B2BrouterWebhook(self::SECRET);
+        $body = self::body(['code' => 'received_invoice.state_change', 'data' => ['invoice_id' => 99120, 'state' => 'accepted']]);
+
+        $event = $webhook->parse($body, self::headers($body));
+
+        self::assertSame(WebhookKind::Other, $event->kind);
+        self::assertSame('received_invoice.state_change', $event->type);
+        self::assertNull($event->deliveryState, 'a received invoice has no delivery state');
+        self::assertSame(LifecycleStatus::Approved, $event->lifecycleStatus);
+
+        foreach (['paid' => LifecycleStatus::PaymentSent, 'annotated' => null] as $state => $expected) {
+            $body = self::body(['code' => 'received_invoice.state_change', 'data' => ['invoice_id' => 99120, 'state' => $state]]);
+            self::assertSame($expected, $webhook->parse($body, self::headers($body))->lifecycleStatus, $state);
+        }
+    }
+
+    public function test_received_created_carries_no_lifecycle_status(): void
+    {
+        $webhook = new B2BrouterWebhook(self::SECRET);
+        $body = self::body(['code' => 'received_invoice.created', 'data' => ['invoice_id' => 99120, 'state' => 'accepted']]);
+
+        self::assertNull($webhook->parse($body, self::headers($body))->lifecycleStatus);
     }
 
     /**

@@ -192,13 +192,13 @@ final class B2BrouterTransport implements InboundSource, Transport
         $url = $this->invoiceUrl($documentId).'/as/original';
         $response = $this->get($url, self::ACCEPT_DOCUMENT);
         if ($response->getStatusCode() === 302) {
-            $response = $this->get($this->redirectTarget($response, $url), self::ACCEPT_DOCUMENT);
-            if (self::isRedirect($response)) {
-                throw self::refusedRedirect($response, sprintf('B2Brouter redirected the original document of invoice "%s" more than once', $documentId));
+            $response = $this->get(SameOriginRedirect::target($response, $url, $this->config->baseUrl), self::ACCEPT_DOCUMENT);
+            if (SameOriginRedirect::isRedirect($response)) {
+                throw SameOriginRedirect::refused($response, sprintf('B2Brouter redirected the original document of invoice "%s" more than once', $documentId));
             }
-        } elseif (self::isRedirect($response)) {
+        } elseif (SameOriginRedirect::isRedirect($response)) {
             // Only a 302 is followed; any other redirect is refused without quoting its body.
-            throw self::refusedRedirect($response, sprintf('B2Brouter answered the original document of invoice "%s" with a redirect other than 302, so it was not followed', $documentId));
+            throw SameOriginRedirect::refused($response, sprintf('B2Brouter answered the original document of invoice "%s" with a redirect other than 302, so it was not followed', $documentId));
         }
         $xml = $this->mapper->originalDocument($response, $documentId);
 
@@ -257,56 +257,6 @@ final class B2BrouterTransport implements InboundSource, Transport
         } catch (UnexpectedResponse $exception) {
             throw $this->mapper->sanitize($exception);
         }
-    }
-
-    /**
-     * The URL a redirect points to, when it stays on the https origin of the base URL; the API key
-     * is sent to it again.
-     *
-     * @throws UnexpectedResponse when the redirect has no usable Location or leaves that origin;
-     *                            neither the Location nor the body is quoted, as they may carry a token
-     */
-    private function redirectTarget(ResponseInterface $response, string $requestUrl): string
-    {
-        $location = trim($response->getHeaderLine('Location'));
-        $base = parse_url($this->config->baseUrl);
-        $origin = sprintf('https://%s%s', $base['host'] ?? '', isset($base['port']) ? ':'.$base['port'] : '');
-
-        if (str_starts_with($location, '/') && ! str_starts_with($location, '//')) {
-            $location = $origin.$location;
-        } elseif ($location !== '' && ! str_contains($location, ':') && ! str_starts_with($location, '//')) {
-            // A relative path, resolved against the directory of the request path.
-            $path = (string) parse_url($requestUrl, PHP_URL_PATH);
-            $location = $origin.substr($path, 0, (int) strrpos($path, '/') + 1).$location;
-        }
-
-        $target = $location === '' ? false : parse_url($location);
-        if (
-            $target === false
-            || strtolower($target['scheme'] ?? '') !== 'https'
-            || strtolower($target['host'] ?? '') !== strtolower($base['host'] ?? '')
-            || ($target['port'] ?? 443) !== ($base['port'] ?? 443)
-            || isset($target['user'])
-            || isset($target['pass'])
-        ) {
-            throw self::refusedRedirect($response, 'B2Brouter redirected the request away from its API host or without a usable Location, so the redirect was not followed');
-        }
-
-        return $location;
-    }
-
-    /**
-     * An UnexpectedResponse for a redirect that is not followed. It keeps no body excerpt, because
-     * a redirect body usually repeats the Location, which may carry a token.
-     */
-    private static function refusedRedirect(ResponseInterface $response, string $reason): UnexpectedResponse
-    {
-        return UnexpectedResponse::forResponse($response, $reason, '');
-    }
-
-    private static function isRedirect(ResponseInterface $response): bool
-    {
-        return $response->getStatusCode() >= 300 && $response->getStatusCode() <= 399;
     }
 
     private function invoiceUrl(string $invoiceId): string
