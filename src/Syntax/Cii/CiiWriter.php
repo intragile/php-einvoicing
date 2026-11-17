@@ -10,14 +10,21 @@ use IntrAgile\EInvoicing\Model\DocumentCharge;
 use IntrAgile\EInvoicing\Model\DocumentTotals;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Syntax\WriterGuard;
+use IntrAgile\EInvoicing\Syntax\XRechnung;
 use InvalidArgumentException;
 
 /**
- * Writes the EN 16931 model as a UN/CEFACT Cross Industry Invoice (D16B), following the CEN CII
+ * Writes the EN 16931 model as a UN/CEFACT Cross Industry Invoice, following the CEN CII
  * syntax binding (EN 16931-3-3). It is the inverse of CiiReader: reading the output gives back an
  * equal invoice.
  *
- * Elements appear in the order of the D16B schema sequences. Amounts are written as the model
+ * The target release is D22B by default, which allows several preceding invoice references
+ * (BG-3); CiiVersion::D16B writes strict D16B, which allows one. An invoice whose specification
+ * identifier (BT-24) starts with XRechnung::CIUS is always written as D16B, because XRechnung
+ * names that release. The D22B elements outside EN 16931 (product industry and model identifiers,
+ * batch identifiers, model name, advance payment invoice reference) are never written.
+ *
+ * Elements appear in the order of the D16B and D22B schema sequences. Amounts are written as the model
  * holds them, without a currency, except the two ram:TaxTotalAmount elements: the VAT total
  * (BT-110) carries the invoice currency (BT-5), the VAT total in accounting currency (BT-111)
  * carries BT-6. Invoices and credit notes share the root element; the type code (BT-3) tells
@@ -38,6 +45,8 @@ use InvalidArgumentException;
  */
 final class CiiWriter
 {
+    public function __construct(private readonly CiiVersion $version = CiiVersion::D22B) {}
+
     /**
      * Specification identifier (BT-24) written when the invoice carries no process control.
      */
@@ -63,8 +72,9 @@ final class CiiWriter
 
     /**
      * @throws InvalidArgumentException when the totals (BG-22) or a line net amount (BT-131) are
-     *                                  missing, or when the invoice holds what CII D16B cannot
-     *                                  carry: more than one preceding invoice (BG-3), a VAT point
+     *                                  missing, or when the invoice holds what the target release
+     *                                  cannot carry: more than one preceding invoice (BG-3) in
+     *                                  D16B, a VAT point
      *                                  date code (BT-8) outside the three the binding maps, or a
      *                                  VAT point date without a VAT breakdown; also when BT-111 has
      *                                  no VAT accounting currency (BT-6) other than BT-5, when a
@@ -77,7 +87,7 @@ final class CiiWriter
             ?? throw new InvalidArgumentException('The invoice has no document totals (BG-22); complete it with TotalsCalculator::complete() first.');
         WriterGuard::accountingCurrencyVat($invoice);
         WriterGuard::xmlText($invoice);
-        if (count($invoice->precedingInvoices) > 1) {
+        if (count($invoice->precedingInvoices) > 1 && $this->effectiveVersion($invoice) === CiiVersion::D16B) {
             throw new InvalidArgumentException(sprintf(
                 'CII D16B carries one preceding invoice reference (BG-3); the invoice has %d.',
                 count($invoice->precedingInvoices),
@@ -101,6 +111,16 @@ final class CiiWriter
         $this->settlement($out, $parties, $lines, $transaction, $invoice, $totals);
 
         return $out->xml();
+    }
+
+    /**
+     * XRechnung CII is D16B whatever the writer was configured with.
+     */
+    private function effectiveVersion(Invoice $invoice): CiiVersion
+    {
+        $specification = $invoice->processControl?->specificationIdentifier;
+
+        return $specification !== null && str_starts_with($specification, XRechnung::CIUS) ? CiiVersion::D16B : $this->version;
     }
 
     private function context(CiiOutput $out, DOMElement $root, Invoice $invoice): void

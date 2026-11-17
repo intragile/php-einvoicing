@@ -19,6 +19,7 @@ use IntrAgile\EInvoicing\Model\Price;
 use IntrAgile\EInvoicing\Model\ProcessControl;
 use IntrAgile\EInvoicing\Model\VatBreakdown;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiReader;
+use IntrAgile\EInvoicing\Syntax\Cii\CiiVersion;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
@@ -313,7 +314,7 @@ final class CiiRoundTripTest extends TestCase
         self::assertSame([], $read->ignored);
     }
 
-    public function test_several_preceding_invoices_are_refused(): void
+    public function test_several_preceding_invoices_are_refused_in_strict_d16b(): void
     {
         $invoice = TotalsCalculator::complete(InvoiceFactory::mixedVat())->withPrecedingInvoices([
             new PrecedingInvoiceReference(number: 'A-1'),
@@ -323,7 +324,7 @@ final class CiiRoundTripTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('BG-3');
 
-        (new CiiWriter)->write($invoice);
+        (new CiiWriter(CiiVersion::D16B))->write($invoice);
     }
 
     public function test_amounts_keep_their_scale(): void

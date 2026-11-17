@@ -27,7 +27,7 @@ final class PartyWriter
     public function __construct(private readonly CiiOutput $out) {}
 
     /**
-     * Writes the party into $party in the element order of the D16B TradePartyType.
+     * Writes the party into $party in the element order of the D16B and D22B TradePartyType.
      *
      * @param  PartyMapper::SELLER|PartyMapper::BUYER|PartyMapper::PAYEE|PartyMapper::TAX_REPRESENTATIVE  $role
      *
@@ -86,7 +86,7 @@ final class PartyWriter
     }
 
     /**
-     * Writes ram:PostalTradeAddress in the element order of the D16B TradeAddressType.
+     * Writes ram:PostalTradeAddress in the element order of the D16B and D22B TradeAddressType.
      */
     public function address(DOMElement $parent, ?PostalAddress $address): void
     {

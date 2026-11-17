@@ -11,7 +11,7 @@ use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Syntax\XmlDocument;
 
 /**
- * A loaded UN/CEFACT Cross Industry Invoice (D16B).
+ * A loaded UN/CEFACT Cross Industry Invoice (D16B or D22B).
  *
  * Dates are udt:DateTimeString, udt:DateString or qdt:DateTimeString elements in format 102
  * (CCYYMMDD), the only format the CEN binding allows; a missing format attribute is read as 102.
@@ -39,7 +39,7 @@ final class CiiDocument extends XmlDocument
 
         if ($root->namespaceURI !== self::RSM || $root->localName !== 'CrossIndustryInvoice') {
             throw new UnsupportedDocument(sprintf(
-                'Unsupported root element {%s}%s; expected a CII D16B CrossIndustryInvoice.',
+                'Unsupported root element {%s}%s; expected a CII CrossIndustryInvoice.',
                 (string) $root->namespaceURI,
                 (string) $root->localName,
             ));

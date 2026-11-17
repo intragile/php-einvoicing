@@ -32,7 +32,7 @@ use IntrAgile\EInvoicing\Syntax\ReadResult;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 
 /**
- * Reads a UN/CEFACT Cross Industry Invoice (D16B) into the EN 16931 model, following the CEN CII
+ * Reads a UN/CEFACT Cross Industry Invoice (D16B or D22B) into the EN 16931 model, following the CEN CII
  * syntax binding (EN 16931-3-3) as used by the validation artefacts 1.3.17.
  *
  * Invoices and credit notes share the root element; the type code (BT-3) tells them apart.

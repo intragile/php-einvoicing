@@ -105,6 +105,10 @@ $ubl = (new UblWriter)->write($invoice); // UBL 2.1 XML string
 $cii = (new CiiWriter)->write($invoice); // UN/CEFACT CII XML string
 ```
 
+`CiiWriter` targets UN/CEFACT CII D22B, which allows several preceding invoice references (BG-3).
+`new CiiWriter(CiiVersion::D16B)` writes strict D16B, which allows one. An invoice with the
+XRechnung specification identifier (BT-24) is always written as D16B.
+
 `TotalsCalculator::complete()` fills line net amounts and VAT breakdown entries you left empty
 and keeps the ones you set. It always recomputes the document totals, so they agree with the lines.
 A prepaid amount (BT-113) and a rounding amount (BT-114) go in as arguments, for example

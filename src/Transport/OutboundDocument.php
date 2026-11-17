@@ -10,6 +10,7 @@ use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Peppol\PeppolDocumentTypes;
+use IntrAgile\EInvoicing\Syntax\Cii\CiiVersion;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Syntax\Syntax;
@@ -165,7 +166,7 @@ final readonly class OutboundDocument
 
         return self::fromXml(match ($syntax) {
             Syntax::Ubl => (new UblWriter)->write($invoice),
-            Syntax::Cii => (new CiiWriter)->write($invoice),
+            Syntax::Cii => (new CiiWriter(CiiVersion::D16B))->write($invoice),
         }, $countryC1);
     }
 

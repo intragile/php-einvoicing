@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **CII:** `CiiWriter` targets UN/CEFACT D22B by default and writes every preceding invoice
+  reference (BG-3) as its own `ram:InvoiceReferencedDocument`. `new CiiWriter(CiiVersion::D16B)`
+  keeps strict D16B, which refuses more than one. An invoice whose specification identifier
+  (BT-24) starts with the XRechnung CIUS is always written as D16B. Output for invoices with at
+  most one BG-3 is unchanged.
+
 ## [1.0.2] - 2026-11-17
 
 ### Fixed
