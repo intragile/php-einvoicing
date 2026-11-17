@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Syntax\Cii;
 
 use DOMElement;
+use IntrAgile\EInvoicing\France\FrenchGuard;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentCharge;
 use IntrAgile\EInvoicing\Model\DocumentTotals;
@@ -78,8 +79,10 @@ final class CiiWriter
      *                                  date code (BT-8) outside the three the binding maps, or a
      *                                  VAT point date without a VAT breakdown; also when BT-111 has
      *                                  no VAT accounting currency (BT-6) other than BT-5, when a
-     *                                  buyer or payee has more than one identifier, or when text
-     *                                  cannot be written as XML 1.0
+     *                                  buyer or payee has more than one identifier, when text
+     *                                  cannot be written as XML 1.0, or when a French invoice
+     *                                  holds more decimals than the French rules allow (see
+     *                                  FrenchGuard)
      */
     public function write(Invoice $invoice): string
     {
@@ -87,6 +90,7 @@ final class CiiWriter
             ?? throw new InvalidArgumentException('The invoice has no document totals (BG-22); complete it with TotalsCalculator::complete() first.');
         WriterGuard::accountingCurrencyVat($invoice);
         WriterGuard::xmlText($invoice);
+        FrenchGuard::check($invoice);
         if (count($invoice->precedingInvoices) > 1 && $this->effectiveVersion($invoice) === CiiVersion::D16B) {
             throw new InvalidArgumentException(sprintf(
                 'CII D16B carries one preceding invoice reference (BG-3); the invoice has %d.',

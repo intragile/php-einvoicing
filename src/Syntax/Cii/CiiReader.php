@@ -16,6 +16,7 @@ use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\CodeList\VatExemptionReason;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+use IntrAgile\EInvoicing\France\FrenchInvoice;
 use IntrAgile\EInvoicing\Model\AdditionalDocument;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentAllowance;
@@ -116,6 +117,11 @@ final class CiiReader
             vatBreakdown: $this->vatBreakdown($d, $settlement),
             additionalDocuments: $additionalDocuments,
         );
+
+        $french = FrenchInvoice::fromProcessControl($invoice->processControl);
+        if ($french !== null) {
+            $invoice = $invoice->withExtension($french);
+        }
 
         return new ReadResult(invoice: $invoice, ignored: $d->ignored());
     }

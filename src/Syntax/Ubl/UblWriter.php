@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Syntax\Ubl;
 
 use DOMElement;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
+use IntrAgile\EInvoicing\France\FrenchGuard;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentAllowance;
 use IntrAgile\EInvoicing\Model\DocumentCharge;
@@ -51,7 +52,9 @@ final class UblWriter
      *                                  BT-5, when a buyer or payee has more than one identifier,
      *                                  when text cannot be written as XML 1.0, or when the purchase
      *                                  order reference (BT-13) is the order placeholder beside a
-     *                                  sales order reference (BT-14)
+     *                                  sales order reference (BT-14); also when a French invoice
+     *                                  holds more decimals than the French rules allow (see
+     *                                  FrenchGuard)
      */
     public function write(Invoice $invoice): string
     {
@@ -60,6 +63,7 @@ final class UblWriter
         }
         WriterGuard::accountingCurrencyVat($invoice);
         WriterGuard::xmlText($invoice);
+        FrenchGuard::check($invoice);
         if ($invoice->purchaseOrderReference === Placeholder::ORDER_ID && $invoice->salesOrderReference !== null) {
             throw new InvalidArgumentException(sprintf(
                 "The purchase order reference (BT-13) '%s' beside a sales order reference (BT-14) is the placeholder UBL writes when only BT-14 exists; it would be read back as absent.",
