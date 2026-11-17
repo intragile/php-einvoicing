@@ -1,0 +1,9 @@
+{
+    "error": {
+        "code": "resource_missing",
+        "message": "Company not found in directory",
+        "param": "id",
+        "request_log_url": "https://app.b2brouter.net/api_requests/0",
+        "type": "invalid_request_error"
+    }
+}

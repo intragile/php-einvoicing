@@ -1,0 +1,5 @@
+{
+    "status": "processing",
+    "message": "Querying directory. Please retry this request.",
+    "polling_url": "https://api.b2brouter.net/directory/fr/0002/100000009"
+}

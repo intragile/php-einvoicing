@@ -1,0 +1,29 @@
+{
+    "name": "Exemple Industries SA",
+    "email": null,
+    "website": null,
+    "address": "1 rue de l'Exemple",
+    "city": "Paris",
+    "postalcode": "75001",
+    "country": "fr",
+    "language": "fr",
+    "currency": "EUR",
+    "tin_scheme": "9957",
+    "tin_value": "FR88100000009",
+    "cin_scheme": "0002",
+    "cin_value": "100000009",
+    "pin_scheme": "0225",
+    "pin_value": "100000009",
+    "information_flags": [
+        "FR_ASSUJETTI_UNKNOWN"
+    ],
+    "source": [
+        "peppol"
+    ],
+    "invoice": {
+        "transport_type_code": null,
+        "document_type_code": null,
+        "other_document_type_codes": []
+    },
+    "organizational_units": []
+}

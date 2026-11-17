@@ -1,0 +1,46 @@
+{
+    "external_company": {
+        "name": "Exemple Services SAS",
+        "email": null,
+        "website": null,
+        "address": "1 rue de l'Exemple",
+        "city": "Paris",
+        "postalcode": "75001",
+        "country": "fr",
+        "language": "fr",
+        "currency": "EUR",
+        "tin_scheme": "9957",
+        "tin_value": "FR88100000009",
+        "cin_scheme": "0009",
+        "cin_value": "10000000900017",
+        "pin_scheme": "0225",
+        "pin_value": "100000009",
+        "information_flags": [
+            "FR_ASSUJETTI_ACTIVE"
+        ],
+        "source": [
+            "annuaire"
+        ],
+        "invoice": {
+            "transport_type_code": "peppol",
+            "document_type_code": "xml.ubl.invoice.frcius.v1",
+            "other_document_type_codes": [
+                "xml.ubl.invoice.fr.extension.v1"
+            ]
+        },
+        "credit_note": {
+            "transport_type_code": "peppol",
+            "document_type_code": "xml.ubl.credit_note.frcius.v1",
+            "other_document_type_codes": [
+                "xml.ubl.credit_note.fr.extension.v1"
+            ]
+        },
+        "organizational_units": [
+            {
+                "name": "Exemple Industries SA - Comptabilite",
+                "pin_scheme": "0225",
+                "pin_value": "100000009_10000000900017_COMPTA"
+            }
+        ]
+    }
+}
