@@ -8,6 +8,7 @@ use IntrAgile\EInvoicing\CodeList\TextSubjectCode;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\Note;
 use IntrAgile\EInvoicing\Model\ProcessControl;
+use InvalidArgumentException;
 
 /**
  * Static helpers for French invoices. The caller supplies all note wording.
@@ -22,13 +23,19 @@ final class France
     }
 
     /**
-     * Sets the process control and attaches the French invoice extension.
+     * Sets the process control and attaches the French invoice extension. An attached French
+     * extension keeps its GROUP and INFORMATION lines and its line order; only the profile changes.
+     *
+     * @throws InvalidArgumentException when the invoice has GROUP or INFORMATION lines and the
+     *                                  profile is not EXTENDED-CTC-FR
      */
     public static function mark(Invoice $invoice, BillingFramework $framework, FrenchProfile $profile = FrenchProfile::En16931): Invoice
     {
+        $existing = $invoice->extensions()->get(FrenchInvoice::class);
+
         return $invoice
             ->withProcessControl(self::processControl($framework, $profile))
-            ->withExtension(new FrenchInvoice($profile));
+            ->withExtension(new FrenchInvoice($profile, $existing->informationalLines ?? [], $existing->lineOrder ?? []));
     }
 
     /** Fixed recovery fee note (subject code PMT). */

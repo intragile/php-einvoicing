@@ -22,7 +22,10 @@ use IntrAgile\EInvoicing\Model\LineVat;
 use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\Price;
 use IntrAgile\EInvoicing\Model\ProcessControl;
+use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
 use IntrAgile\EInvoicing\Syntax\FacturX\FacturXProfile;
+use IntrAgile\EInvoicing\Tests\Support\FrenchInvoices;
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
 final class FranceTest extends TestCase
@@ -74,6 +77,35 @@ final class FranceTest extends TestCase
         self::assertInstanceOf(FrenchInvoice::class, $extension);
         self::assertSame(FrenchProfile::ExtendedCtcFr, $extension->profile);
         self::assertSame(FrenchProfile::En16931, (new FrenchInvoice)->profile);
+    }
+
+    /**
+     * Marking an invoice read with GROUP or INFORMATION lines changes only the profile; the
+     * sub-lines and the line order stay attached, so the writer still carries them.
+     */
+    public function test_mark_keeps_informational_lines_and_line_order(): void
+    {
+        $invoice = FrenchInvoices::extendedCtcFr();
+        $before = $invoice->extensions()->get(FrenchInvoice::class);
+        self::assertNotNull($before);
+        self::assertNotSame([], $before->informationalLines);
+
+        $marked = France::mark($invoice, BillingFramework::S1, FrenchProfile::ExtendedCtcFr);
+
+        $after = $marked->extensions()->get(FrenchInvoice::class);
+        self::assertNotNull($after);
+        self::assertSame(FrenchProfile::ExtendedCtcFr, $after->profile);
+        self::assertSame($before->informationalLines, $after->informationalLines);
+        self::assertSame($before->lineOrder, $after->lineOrder);
+        self::assertStringContainsString('<ram:LineID>4</ram:LineID>', (new CiiWriter)->write($marked));
+    }
+
+    public function test_mark_to_en16931_with_informational_lines_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('EXT-FR-FE-163');
+
+        France::mark(FrenchInvoices::extendedCtcFr(), BillingFramework::B1, FrenchProfile::En16931);
     }
 
     public function test_notes_carry_their_subject_codes(): void

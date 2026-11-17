@@ -222,22 +222,32 @@ $french = $invoice->extensions()->get(FrenchInvoice::class); // null for a non-F
 Factur-X EXTENDED gets the profile EXTENDED-CTC-FR, but its BT-24 stays the Factur-X EXTENDED
 guideline identifier the document carried. The UBL and CII writers write the model as given, so
 the standalone document keeps that BT-24, and `FranceValidator::validate()` refuses it. Set BT-24
-first, without replacing the extension (which holds the sub-lines):
+first with `France::mark()`, which keeps the GROUP and INFORMATION lines and the line order of the
+attached extension and changes only the profile:
 
+<!-- sample: run -->
 ```php
 use IntrAgile\EInvoicing\France\BillingFramework;
 use IntrAgile\EInvoicing\France\France;
 use IntrAgile\EInvoicing\France\FrenchProfile;
+use IntrAgile\EInvoicing\Syntax\Cii\CiiReader;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
+use IntrAgile\EInvoicing\Syntax\FacturX\FacturXProfile;
+use IntrAgile\EInvoicing\Syntax\FacturX\FacturXXmlWriter;
+use IntrAgile\EInvoicing\Syntax\Ubl\UblReader;
 
+// The Factur-X EXTENDED XML of a French invoice; usually (new FacturXPdfReader)->read($pdf).
+$source = (new UblReader)->read((string) file_get_contents('invoice.xml'))->invoice;
+$facturX = (new FacturXXmlWriter)->write(France::mark($source, BillingFramework::B1), FacturXProfile::Extended)->xml;
+
+$invoice = (new CiiReader)->read($facturX)->invoice; // EXTENDED-CTC-FR, BT-24 still Factur-X EXTENDED
 $framework = BillingFramework::from((string) $invoice->processControl?->businessProcessType);
-$invoice = $invoice->withProcessControl(France::processControl($framework, FrenchProfile::ExtendedCtcFr));
+$invoice = France::mark($invoice, $framework, FrenchProfile::ExtendedCtcFr);
 $cii = (new CiiWriter)->write($invoice);
 ```
 
-`France::mark()` would set the same BT-24 but also replace the `FrenchInvoice` extension with an
-empty one, dropping the GROUP and INFORMATION lines and the line order; the writer then refuses a
-DETAIL line whose parent was dropped.
+Marking an invoice that has GROUP or INFORMATION lines with another profile than EXTENDED-CTC-FR
+throws an `InvalidArgumentException`, because only that profile carries them.
 
 ## EXTENDED-CTC-FR lines
 
