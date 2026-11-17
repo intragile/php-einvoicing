@@ -15,8 +15,9 @@ use InvalidArgumentException;
  * Decimals are counted as the model holds them, so trailing zeros count.
  *
  * EXTENDED-CTC-FR lines: French line data (FrenchLine) needs the EXTENDED-CTC-FR profile, also on
- * an invoice without the FrenchInvoice extension, because no other profile carries it. A line
- * order, when given, lists every line identifier once, and each parent line identifier
+ * an invoice without the FrenchInvoice extension, because no other profile carries it. Regular
+ * and informational lines have distinct identifiers. A line order is given only for
+ * EXTENDED-CTC-FR and then lists every line identifier once, and each parent line identifier
  * (EXT-FR-FE-162) names another line of the invoice.
  *
  * The other checks apply only to invoices with the FrenchInvoice extension.
@@ -143,11 +144,21 @@ final class FrenchGuard
     }
 
     /**
-     * @throws InvalidArgumentException when the line order does not list every line once, or a
+     * @throws InvalidArgumentException when a line order is given for another profile than
+     *                                  EXTENDED-CTC-FR, when two lines share an identifier, when
+     *                                  the line order does not list every line once, or when a
      *                                  parent line identifier names no other line
      */
     private static function lineStructure(Invoice $invoice, FrenchInvoice $french): void
     {
+        if ($french->lineOrder !== [] && $french->profile !== FrenchProfile::ExtendedCtcFr) {
+            throw new InvalidArgumentException(sprintf(
+                'A French line order is written only for the EXTENDED-CTC-FR profile %s; the invoice has the profile %s.',
+                FrenchProfile::ExtendedCtcFr->value,
+                $french->profile->value,
+            ));
+        }
+
         /** @var list<array{string, ?string}> $lines identifier and parent line identifier */
         $lines = [];
         foreach ($invoice->lines as $line) {
@@ -157,6 +168,17 @@ final class FrenchGuard
             $lines[] = [$line->id, $line->french->parentLineId];
         }
         $ids = array_column($lines, 0);
+
+        // Each line, regular or informational, is addressed by its identifier: in the line order,
+        // as a parent line and when the lines are put in document order.
+        foreach (array_count_values($ids) as $id => $count) {
+            if ($count > 1) {
+                throw new InvalidArgumentException(sprintf(
+                    'Line identifier (BT-126) "%s" is used by more than one line; regular and GROUP or INFORMATION lines need distinct identifiers.',
+                    $id,
+                ));
+            }
+        }
 
         if ($french->lineOrder === [] && $french->informationalLines !== []) {
             throw new InvalidArgumentException('The French invoice has GROUP or INFORMATION lines but no line order; list every line identifier (BT-126) in document order.');

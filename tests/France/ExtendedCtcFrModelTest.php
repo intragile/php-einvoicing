@@ -108,6 +108,47 @@ final class ExtendedCtcFrModelTest extends TestCase
         }
     }
 
+    public function test_line_identifiers_must_be_unique(): void
+    {
+        $invoice = FrenchInvoices::extendedCtcFr();
+        $french = $invoice->extensions()->get(FrenchInvoice::class);
+        self::assertNotNull($french);
+        [$group, $information] = $french->informationalLines;
+        $sharedWithRegular = new InformationalLine(id: '2', subType: LineSubType::Information, item: $information->item);
+        $first = $invoice->lines[0];
+
+        foreach ([
+            'informational line shares a regular line id' => $invoice->withExtension(
+                new FrenchInvoice($french->profile, [$group, $sharedWithRegular], ['1', '2', '3', '2']),
+            ),
+            'two informational lines share an id' => $invoice->withExtension(
+                new FrenchInvoice($french->profile, [$group, self::group('1'), $information], ['1', '1', '2', '3', '4']),
+            ),
+            'two regular lines share an id' => $invoice
+                ->withLines([$first, $this->line('2')])
+                ->withExtension(new FrenchInvoice($french->profile, $french->informationalLines, ['1', '2', '2', '4'])),
+        ] as $case => $broken) {
+            try {
+                FrenchGuard::check($broken);
+                self::fail("Duplicate line identifier accepted: {$case}");
+            } catch (InvalidArgumentException $e) {
+                self::assertStringContainsString('Line identifier (BT-126) "', $e->getMessage(), $case);
+                self::assertStringContainsString('more than one line', $e->getMessage(), $case);
+            }
+        }
+    }
+
+    public function test_line_order_needs_extended_profile(): void
+    {
+        $invoice = FrenchInvoices::domesticB2b()->withExtension(new FrenchInvoice(FrenchProfile::En16931, [], ['2', '1']));
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('line order');
+        $this->expectExceptionMessage(FrenchProfile::ExtendedCtcFr->value);
+
+        FrenchGuard::check($invoice);
+    }
+
     public function test_line_order_may_be_empty_without_informational_lines(): void
     {
         $invoice = FrenchInvoices::domesticB2b();

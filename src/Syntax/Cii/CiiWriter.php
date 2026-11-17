@@ -81,8 +81,8 @@ final class CiiWriter
     /**
      * @throws InvalidArgumentException when the totals (BG-22) or a line net amount (BT-131) are
      *                                  missing, or when the invoice holds what the target release
-     *                                  cannot carry: more than one preceding invoice (BG-3) in
-     *                                  D16B, a VAT point
+     *                                  cannot carry: more than one preceding invoice (BG-3) or an
+     *                                  EXTENDED-CTC-FR invoice in D16B, a VAT point
      *                                  date code (BT-8) outside the three the binding maps, or a
      *                                  VAT point date without a VAT breakdown; also when BT-111 has
      *                                  no VAT accounting currency (BT-6) other than BT-5, when a
@@ -104,12 +104,19 @@ final class CiiWriter
                 count($invoice->precedingInvoices),
             ));
         }
+        $french = $invoice->extensions()->get(FrenchInvoice::class);
+        $extended = $french?->profile === FrenchProfile::ExtendedCtcFr ? $french : null;
+        if ($extended !== null && $this->effectiveVersion($invoice) === CiiVersion::D16B) {
+            throw new InvalidArgumentException(sprintf(
+                'The EXTENDED-CTC-FR profile is written in CII %s; its line data has no D16B elements. Write it with CiiVersion::%s.',
+                CiiVersion::D22B->name,
+                CiiVersion::D22B->name,
+            ));
+        }
 
         $out = new CiiOutput;
         $root = $out->root;
         $parties = new PartyWriter($out);
-        $french = $invoice->extensions()->get(FrenchInvoice::class);
-        $extended = $french?->profile === FrenchProfile::ExtendedCtcFr ? $french : null;
         $lines = new LineWriter($out, $extended === null ? null : $invoice->currency);
 
         $this->context($out, $root, $invoice);

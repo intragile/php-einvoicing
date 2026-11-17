@@ -8,6 +8,7 @@ use IntrAgile\EInvoicing\France\FrenchGuard;
 use IntrAgile\EInvoicing\France\FrenchInvoice;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\Price;
+use IntrAgile\EInvoicing\Syntax\Cii\CiiVersion;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Tests\Support\FrenchInvoices;
@@ -40,6 +41,14 @@ final class FrenchGuardTest extends TestCase
                 self::assertStringContainsString('BT-146 10.1234567: at most 6 decimals', $e->getMessage(), $writer::class);
             }
         }
+    }
+
+    public function test_cii_d16b_refuses_extended_ctc_fr(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('D22B');
+
+        (new CiiWriter(CiiVersion::D16B))->write(FrenchInvoices::extendedCtcFr());
     }
 
     public function test_guard_ignores_invoices_without_french_extension(): void
