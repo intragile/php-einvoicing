@@ -8,20 +8,27 @@ use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use IntrAgile\EInvoicing\France\FrenchProfile;
+use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Schematron\RuleSet;
 use IntrAgile\EInvoicing\Schematron\Runner;
+use IntrAgile\EInvoicing\Syntax\Cdar\CdarReader;
+use IntrAgile\EInvoicing\Syntax\Cdar\CdarWriter;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiDocument;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiReader;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
 use IntrAgile\EInvoicing\Syntax\FacturX\FacturXProfile;
 use IntrAgile\EInvoicing\Syntax\FacturX\FacturXXmlWriter;
+use IntrAgile\EInvoicing\Syntax\Flux10\Flux10Writer;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblReader;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\France\Negative\NegativeCorpusTest;
 use IntrAgile\EInvoicing\Tests\Oracle\Kosit\Mutations;
+use IntrAgile\EInvoicing\Tests\Support\EReports;
 use IntrAgile\EInvoicing\Tests\Support\FrenchInvoices;
+use IntrAgile\EInvoicing\Tests\Support\LifecycleMessages;
+use IntrAgile\EInvoicing\Tests\Syntax\Flux10\Flux10RulesTest;
 use IntrAgile\EInvoicing\Tests\Validation\France\InstalledFranceRules;
 use IntrAgile\EInvoicing\Validation\DynamicError;
 use IntrAgile\EInvoicing\Validation\Finding;
@@ -39,7 +46,9 @@ use RuntimeException;
  *
  * The corpus of a rule set: every FNFE example the rule set applies to, the FrenchInvoices
  * factory invoices as our writers produce them, our CDAR and Flux 10 fixtures, the round trips of
- * the FNFE EXTENDED-CTC-FR and Factur-X examples through our readers and writers, the documents
+ * the FNFE EXTENDED-CTC-FR, Factur-X and CDAR examples through our readers and writers, the
+ * LifecycleMessages factories as CdarWriter writes them, the EReports factories, the FrenchInvoices
+ * factories reported as 10.1 invoices and the aggregated reports as Flux10Writer writes them, the documents
  * of the negative corpus recipes that target the rule set, and leaf mutations of one or two FNFE
  * examples (or fixtures) per document family: for each element with text, the text replaced by
  * "X Y", the element removed and, for a number, extra decimals appended. A document goes through
@@ -111,6 +120,17 @@ final class FranceConformanceTest extends TestCase
         'fnfe:FNFE_RFE_INVOICE/Z.example/TEST/CDAR/UC2_F202500004_02-CDV-213_Rejetee.xml',
         'fixture:flux10-base',
         'fixture:flux10-payments-base',
+        // One writer output per CDAR message type and status family: a platform acknowledgement
+        // (305), a processing response with a reason (23) and a collected status with amounts.
+        'cdar-writer:200 Deposited',
+        'cdar-writer:210 Refused',
+        'cdar-writer:212 Collected',
+        // One writer output per Flux 10 flow: 10.1 invoices, 10.2 invoice payments, 10.3
+        // aggregated transactions and 10.4 aggregated payments.
+        'flux10-writer:internationalSale',
+        'flux10-aggregate:invoice payments',
+        'flux10-aggregate:sales',
+        'flux10-aggregate:daily payments',
     ];
 
     /** The writer outputs, as NegativeCorpusTest bases, besides the FrenchInvoices::all() factories. */
@@ -256,11 +276,11 @@ final class FranceConformanceTest extends TestCase
         unset($kinds);
 
         self::assertSame([
-            'cdar' => ['fixture' => 1, 'fnfe' => 59, 'mutation' => 143, 'recipe' => 37],
+            'cdar' => ['cdar-roundtrip' => 59, 'cdar-writer' => 24, 'fixture' => 1, 'fnfe' => 59, 'mutation' => 365, 'recipe' => 37],
             'extended-ctc-fr-cii' => ['fnfe' => 5, 'mutation' => 555, 'recipe' => 74, 'roundtrip' => 5, 'writer' => 1],
             'extended-ctc-fr-ubl' => ['fnfe' => 5, 'mutation' => 513, 'recipe' => 63, 'roundtrip' => 5, 'writer' => 1],
             'facturx-extended' => ['fnfe' => 5, 'mutation' => 305, 'recipe' => 12, 'roundtrip' => 5, 'writer' => 1],
-            'flux10' => ['fixture' => 2, 'mutation' => 214, 'recipe' => 150],
+            'flux10' => ['fixture' => 2, 'flux10-aggregate' => 5, 'flux10-writer' => 13, 'mutation' => 496, 'recipe' => 150],
             'flux2-cii' => ['fnfe' => 28, 'mutation' => 1563, 'recipe' => 167, 'roundtrip' => 18, 'writer' => 7],
             'flux2-ubl' => ['fnfe' => 13, 'mutation' => 757, 'recipe' => 164, 'roundtrip' => 5, 'writer' => 6],
         ], $sizes);
@@ -391,7 +411,7 @@ final class FranceConformanceTest extends TestCase
     public function test_allow_lists_are_used_as_pinned(): void
     {
         self::requireCorpus();
-        $pinned = ['eager-local-cii' => self::EAGER_LOCAL_CII_USES, 'eager-local-ubl' => 16, 'eager-let' => 4];
+        $pinned = ['eager-local-cii' => self::EAGER_LOCAL_CII_USES, 'eager-local-ubl' => 16, 'eager-let' => 10];
 
         if (self::$parityRuns === count(self::corpus())) {
             self::assertSame($pinned, self::$allowed);
@@ -748,18 +768,68 @@ final class FranceConformanceTest extends TestCase
                 $bases[] = 'roundtrip:'.substr($file, strlen(Fixtures::franceRfeRoot()) + 1);
             }
         }
+        foreach (array_keys(LifecycleMessages::all()) as $factory) {
+            $bases[] = "cdar-writer:{$factory}";
+        }
+        foreach (array_keys(Fixtures::franceExamples('CDAR')) as $example) {
+            $bases[] = "cdar-roundtrip:{$example}";
+        }
+        foreach (array_keys(EReports::all()) as $factory) {
+            $bases[] = "flux10-writer:{$factory}";
+        }
+        foreach (array_keys(self::reportedInvoices()) as $factory) {
+            $bases[] = "flux10-writer:invoice {$factory}";
+        }
+        foreach (array_keys(EReports::aggregated()) as $case) {
+            $bases[] = "flux10-aggregate:{$case}";
+        }
 
         return $bases;
     }
 
     /**
-     * The XML of a base: a NegativeCorpusTest base, or "roundtrip:<manifest path>" for an FNFE
-     * example read into the model and written back in its syntax (Factur-X in its profile).
+     * The FrenchInvoices factories Flux10RulesTest reports as 10.1 invoices, by factory name.
+     *
+     * @return array<string, Invoice>
+     */
+    private static function reportedInvoices(): array
+    {
+        $invoices = [];
+        foreach (Flux10RulesTest::frenchInvoices() as $name => [$invoice]) {
+            $invoices[$name] = $invoice;
+        }
+
+        return $invoices;
+    }
+
+    /**
+     * The XML of a base: a NegativeCorpusTest base; "roundtrip:<manifest path>" for an FNFE
+     * example read into the model and written back in its syntax (Factur-X in its profile);
+     * "cdar-writer:<factory>" for a LifecycleMessages factory written by CdarWriter;
+     * "cdar-roundtrip:<file name>" for an FNFE CDAR example read by CdarReader and written back;
+     * "flux10-writer:<factory>" for an EReports factory, "flux10-writer:invoice <factory>" for a
+     * FrenchInvoices factory reported as a 10.1 invoice and "flux10-aggregate:<case>" for an
+     * EReports::aggregated() report, each written by Flux10Writer.
      */
     private static function base(string $base): string
     {
         if (isset(self::$bases[$base])) {
             return self::$bases[$base];
+        }
+        [$kind, $name] = explode(':', $base, 2) + [1 => ''];
+        $generated = match ($kind) {
+            'cdar-writer' => (new CdarWriter)->write(LifecycleMessages::all()[$name] ?? throw new RuntimeException("No lifecycle message {$name}.")),
+            'cdar-roundtrip' => (new CdarWriter)->write((new CdarReader)->read(NegativeCorpusTest::load(
+                'fnfe:'.substr(Fixtures::franceExamples('CDAR')[$name] ?? throw new RuntimeException("No CDAR example {$name}."), strlen(Fixtures::franceRfeRoot()) + 1),
+            ))->message),
+            'flux10-writer' => (new Flux10Writer)->write(str_starts_with($name, 'invoice ')
+                ? EReports::invoices('TR-2026-0100', [self::reportedInvoices()[substr($name, strlen('invoice '))] ?? throw new RuntimeException("No reported invoice {$name}.")])
+                : EReports::all()[$name] ?? throw new RuntimeException("No e-report {$name}.")),
+            'flux10-aggregate' => (new Flux10Writer)->write(EReports::aggregated()[$name] ?? throw new RuntimeException("No aggregated e-report {$name}.")),
+            default => null,
+        };
+        if ($generated !== null) {
+            return self::$bases[$base] = $generated;
         }
         if (! str_starts_with($base, 'roundtrip:')) {
             return self::$bases[$base] = NegativeCorpusTest::load($base);

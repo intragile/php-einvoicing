@@ -14,12 +14,14 @@ use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\France\BillingFramework;
 use IntrAgile\EInvoicing\France\CollectedAmount;
+use IntrAgile\EInvoicing\France\EReporting\B2cAggregator;
 use IntrAgile\EInvoicing\France\EReporting\DailyPayments;
 use IntrAgile\EInvoicing\France\EReporting\DailyTransactions;
 use IntrAgile\EInvoicing\France\EReporting\Declarant;
 use IntrAgile\EInvoicing\France\EReporting\DeclarantRole;
 use IntrAgile\EInvoicing\France\EReporting\EReport;
 use IntrAgile\EInvoicing\France\EReporting\InvoicePayment;
+use IntrAgile\EInvoicing\France\EReporting\PaymentAggregator;
 use IntrAgile\EInvoicing\France\EReporting\PaymentsReport;
 use IntrAgile\EInvoicing\France\EReporting\ReportPeriod;
 use IntrAgile\EInvoicing\France\EReporting\ReportType;
@@ -179,6 +181,80 @@ final class EReports
             'nonEurSale' => self::nonEurSale(),
             'correctiveByBuyer' => self::correctiveByBuyer(),
         ];
+    }
+
+    /**
+     * Transmissions of aggregated data, by case: consumer sales aggregated by B2cAggregator (a day
+     * of sales at two rates, a day with only a credit note, a day of a mixed invoice split by a
+     * classifier) and payments built by PaymentAggregator (an invoice payment allocated over two
+     * rates, and the days of several payments).
+     *
+     * @return array<string, EReport>
+     */
+    public static function aggregated(): array
+    {
+        $sales = (new B2cAggregator)->aggregate([
+            self::consumerSale(BillingFramework::B1, 'T-1', '2026-11-10', [
+                self::consumerLine('1', 'GOODS', '50.00', '5.5'),
+                self::consumerLine('2', 'GOODS', '100.00', '20'),
+            ])->withTaxPointDateCode('3'),
+            self::consumerSale(BillingFramework::B1, 'T-2', '2026-11-10', [self::consumerLine('1', 'GOODS', '200.00', '20')])->withTaxPointDateCode('3'),
+        ]);
+
+        $creditNote = (new B2cAggregator)->aggregate([
+            self::consumerSale(BillingFramework::S1, 'A-1', '2026-11-12', [self::consumerLine('1', 'SERVICE', '100.00', '20')], InvoiceTypeCode::C_381),
+        ]);
+
+        $classifier = static fn (InvoiceLine $line, Invoice $invoice): TransactionCategory => match ($line->item->name) {
+            'SERVICE' => TransactionCategory::Services,
+            'EXPORT' => TransactionCategory::NotTaxedInFrance,
+            default => TransactionCategory::Goods,
+        };
+        $mixed = (new B2cAggregator($classifier))->aggregate([
+            self::consumerSale(BillingFramework::M1, 'T-3', '2026-11-13', [
+                self::consumerLine('1', 'GOODS', '10.05', '5.5'),
+                self::consumerLine('2', 'SERVICE', '100.00', '20'),
+                self::consumerLine('3', 'GOODS', '10.05', '5.5'),
+                self::consumerLine('4', 'EXPORT', '40.00', null),
+            ]),
+        ]);
+
+        $twoRates = self::consumerSale(BillingFramework::S1, 'F-10', '2026-11-05', [
+            self::consumerLine('1', 'SERVICE', '100.00', '20'),
+            self::consumerLine('2', 'BOOK', '50.00', '5.5'),
+        ]);
+        $invoicePayment = PaymentAggregator::forInvoice($twoRates, '100', new DateTimeImmutable('2026-11-25'));
+        $dailyPayments = PaymentAggregator::daily([
+            $invoicePayment,
+            PaymentAggregator::forInvoice($twoRates, '72.75', new DateTimeImmutable('2026-11-26 18:30:00')),
+            new InvoicePayment('F-11', new DateTimeImmutable('2026-11-02'), new DateTimeImmutable('2026-11-25 09:00:00'), [new CollectedAmount('60.00', '20')]),
+        ]);
+
+        return [
+            'sales' => self::days('TR-2026-0201', $sales),
+            'credit note' => self::days('TR-2026-0202', $creditNote),
+            'mixed with classifier' => self::days('TR-2026-0203', $mixed),
+            'invoice payments' => self::payments('PA-2026-0201', [$invoicePayment], []),
+            'daily payments' => self::payments('PA-2026-0202', [], $dailyPayments),
+        ];
+    }
+
+    /**
+     * A payments transmission for November 2026.
+     *
+     * @param  list<InvoicePayment>  $invoices
+     * @param  list<DailyPayments>  $days
+     */
+    public static function payments(string $id, array $invoices, array $days): EReport
+    {
+        return EReport::payments(
+            $id,
+            self::issuedAt(),
+            ReportType::Initial,
+            self::platform(),
+            self::seller(),
+            new PaymentsReport(self::november(), $invoices, $days),
+        );
     }
 
     /**
