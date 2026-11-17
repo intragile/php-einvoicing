@@ -497,6 +497,10 @@ final class CompilerTest extends TestCase
         yield 'text in a function body' => [$function('true<xsl:sequence select="true()"/>'), 'text'];
         yield 'variable with text and elements' => [$function('<xsl:variable name="x" as="xs:string">a<xsl:sequence select="1"/></xsl:variable><xsl:sequence select="true()"/>'), 'text'];
         yield 'variable with select and content' => [$function('<xsl:variable name="x" select="1">a</xsl:variable><xsl:sequence select="true()"/>'), 'both'];
+        foreach (['element()', 'element()?', 'node()?', 'item()*'] as $nodeType) {
+            yield "text variable typed {$nodeType}" => [$function("<xsl:variable name=\"x\" as=\"{$nodeType}\">a</xsl:variable><xsl:sequence select=\"true()\"/>"), "text content and the node type \"{$nodeType}\""];
+        }
+        yield 'empty text variable typed item()*' => [$function('<xsl:variable name="x" as="item()*"> </xsl:variable><xsl:sequence select="true()"/>'), 'text content and the node type "item()*"'];
         yield 'variable content without a type' => [$function('<xsl:variable name="x"><xsl:sequence select="1"/></xsl:variable><xsl:sequence select="true()"/>'), 'without "as"'];
         yield 'param after a variable' => [$function('<xsl:variable name="x" select="1"/><xsl:param name="w"/><xsl:sequence select="true()"/>'), 'param'];
         yield 'duplicate param' => [str_replace('<xsl:param name="v"/>', '<xsl:param name="v"/><xsl:param name="v"/>', $function('<xsl:sequence select="true()"/>')), 'parameter "v" is declared twice'];

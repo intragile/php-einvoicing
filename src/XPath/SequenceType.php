@@ -37,6 +37,18 @@ final class SequenceType
     /** The sequence types an "as" attribute may carry. */
     public const SUPPORTED = ['xs:boolean', 'xs:integer', 'xs:decimal', 'xs:string', 'xs:string?', 'element()', 'element()?', 'node()?', 'item()*'];
 
+    /** The supported sequence types that keep nodes instead of atomising them. */
+    private const NODE_TYPES = ['element()', 'element()?', 'node()?', 'item()*'];
+
+    /**
+     * Whether the sequence type keeps nodes (element(), element()?, node()?, item()*) instead of
+     * atomising the value.
+     */
+    public static function isNodeType(string $as): bool
+    {
+        return in_array($as, self::NODE_TYPES, true);
+    }
+
     /**
      * @param  ?string  $as  the sequence type, or null for no conversion
      * @param  list<DOMNode|AtomicValue>  $value
@@ -51,7 +63,7 @@ final class SequenceType
         if ($as === null) {
             return $value;
         }
-        if (in_array($as, ['element()', 'element()?', 'node()?', 'item()*'], true)) {
+        if (self::isNodeType($as)) {
             return self::nodes($as, $value, $typeError);
         }
         $optional = str_ends_with($as, '?');

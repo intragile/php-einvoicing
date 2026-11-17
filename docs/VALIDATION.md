@@ -192,7 +192,11 @@ with the behaviour Saxon shows on probe cases (`ProbeCases::functions()`):
   cardinality error. Type errors are `XPTY0004` for a parameter, `XTTE0570` for a variable and
   `XTTE0780` for a function result. A variable whose content is text and has no `as` is a
   temporary tree in XSLT; the engine holds its text as an untyped value, which is what every use in
-  an expression sees.
+  an expression sees. A variable whose content is text and whose `as` is a node type (`element()`,
+  `element()?`, `node()?`, `item()*`) is refused when the schema is compiled
+  (`UnsupportedSchematron`): XSLT makes the text a text node (or, when it is whitespace only, no
+  item), which the engine does not build. Parameters and `xsl:variable select` may carry a node
+  type.
 - **Recursion limit.** More than 2,000 nested function calls raise the engine error
   `INTRAGILE_RECURSION` instead of exhausting memory or the PHP stack. The error is not
   recoverable: in an assert it is a `DynamicError` of that assert; in a rule context it is one

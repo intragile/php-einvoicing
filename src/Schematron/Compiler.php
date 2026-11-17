@@ -484,6 +484,12 @@ final class Compiler
             return ['variable', $name, $as, $this->bodyExpression($variable->getAttribute('select'), $scope, $what, $variable)];
         }
         if ($content === []) {
+            if ($as !== null && SequenceType::isNodeType($as)) {
+                // XSLT makes text content a text node (or nothing when whitespace-only), which the
+                // engine, holding the text as an atomic value, would not reproduce.
+                throw new UnsupportedSchematron(ucfirst($what)." ({$this->line($variable)}) has text content and the node type \"{$as}\"; only an atomic type or no \"as\" is supported for text content.");
+            }
+
             // A stylesheet drops whitespace-only text nodes, so such a variable holds an empty string.
             return ['variable-text', $name, $as, trim($text, " \t\r\n") === '' ? '' : $text];
         }
