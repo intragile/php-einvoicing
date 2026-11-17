@@ -377,8 +377,25 @@ installer passes compile options, never a per-rule exception:
 In `EXTENDED-CTC-FR-CII.sch`, BR-FXEXT-04 has no `id` attribute (its code is in the message) but
 already carries `flag="warning"` upstream, so it is reported as warning BR-FXEXT-04. Flux 10's 150 asserts all
 get their id from the message code (134 with a numbering suffix because the code is shared, 16
-plain). The CDAR and Flux 10 rule sets are installed and compiled, but `FranceValidator` refuses
-those documents: their validators come with the lifecycle and e-reporting support.
+plain).
+
+`FranceValidator` validates invoices only and refuses CDAR and Flux 10 documents. Two validators
+cover them, created the same way from the installed rules folder:
+
+- `CdarValidator::create($rulesDir)->validate($xml)` checks a CDAR lifecycle message (CDV)
+  against the FNFE CDAR D22B schema (`CrossDomainAcknowledgementAndResponse_100pD22B.xsd`) and
+  the `cdar` rule set.
+- `Flux10Validator::create($rulesDir)->validate($xml)` checks a Flux 10 e-reporting transmission
+  (a `Report` element in no namespace) against the DGFiP schema (`ereporting.xsd`) and the
+  `flux10` rule set.
+
+Both check the document element first (an `UnsupportedDocument` names what was expected), then
+the schema, then the rule set, which runs even when the schema check fails. They return a
+`MessageValidationReport`, not a `ValidationReport`: a message has no invoice syntax, so the report
+carries a `MessageType` (`Cdar` or `Flux10`) instead. Everything else is the same: `ruleSets`,
+`findings`, `dynamicErrors` and `schemaErrors`, and `isValid()`, `fatal()`, `warnings()`,
+`information()` and `verdict()` with the same rules as for invoices. `ValidationReport` is
+unchanged.
 
 The French rules are where the engine needed the additions listed above: node sequence types on
 function parameters, prefixed variable names, pattern titles, `xsl:exclude-result-prefixes`, a
@@ -413,13 +430,14 @@ wrapper guard below and the Peppol corpus ([PEPPOL.md](PEPPOL.md#how-the-verdict
 1,611 documents compared with the OpenPeppol Schematron compiled by the ISO skeleton in Saxon,
 plus a guard that the skeleton-compiled CEN 1.3.17 Schematron equals the official CEN 1.3.17
 XSLT on 34 examples and 200 mutations), the Factur-X corpus and the French corpus below, is
-11,822 tests; any mismatch fails the build.
+12,427 tests; any mismatch fails the build.
 
 The French corpus (`tests/Oracle/FranceConformanceTest.php`) compares each document with FNFE's
 own compiled XSLT of the same France_RFE commit, run by SaxonC: the 41 FNFE invoice examples and
-the 59 CDAR examples, invoices written by this library, their round trips, the negative recipes
-(one per reachable French rule) and seeded mutations (leaf text set to `X Y`, leaf removed, extra
-decimals), 4,889 documents in all. Ids are mapped through the rule context and test, because the
+the 59 CDAR examples, invoices, lifecycle messages and Flux 10 files written by this library,
+their round trips (the CDAR examples read and written back), the negative recipes (one per
+reachable French rule) and seeded mutations (leaf text set to `X Y`, leaf removed, extra
+decimals), 5,494 documents in all. Ids are mapped through the rule context and test, because the
 FNFE XSLT reports some asserts without an id. Every verdict is equal, with one documented
 exception, the allow-list: where a mutation makes a date or an amount unreadable, Saxon may
 evaluate an XSLT local variable or a rule-level let eagerly and stop with `FORG0001`, while the
@@ -427,7 +445,7 @@ engine evaluates it lazily and reports the format rule for that field (BR-FR-03 
 Flux 10 amount rule for an amount). A difference counts as this case only when all three hold:
 Saxon stops with `FORG0001`, our findings contain that format rule for the mutated field, and the
 mutated field is a date or an amount. The test pins how often each entry is used (26 CII dates, 16
-UBL dates, 4 Flux 10 amounts), so the allow-list cannot grow unnoticed.
+UBL dates, 10 Flux 10 amounts), so the allow-list cannot grow unnoticed.
 
 The SaxonC PHP extension gives no error code for a dynamic error and cannot run another
 transformation after one. The oracle therefore wraps the official stylesheet in a test-only XSLT

@@ -8,6 +8,7 @@ use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
 use IntrAgile\EInvoicing\Tests\Support\Process;
+use IntrAgile\EInvoicing\Tests\Validation\France\InstalledFranceRules;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -19,7 +20,8 @@ use RuntimeException;
  * READMEs must compile (php -l). A block whose fence is preceded by the line <!-- sample: run -->
  * is also executed in a child process with the Composer autoloader loaded and a fresh working
  * directory that holds a valid EN 16931 UBL invoice as invoice.xml. It must exit 0 and write
- * nothing to standard error.
+ * nothing to standard error. A runnable sample that names var/france-rules finds the French rules
+ * installed there; it is skipped when the France_RFE checkout has not been downloaded.
  */
 final class CodeSamplesTest extends TestCase
 {
@@ -29,13 +31,16 @@ final class CodeSamplesTest extends TestCase
 
     private const BUILD_DIR = self::ROOT.'/build/docs-samples';
 
+    /** Folder, relative to the working directory, where samples expect the installed French rules. */
+    private const FRANCE_RULES = 'var/france-rules';
+
     /** Minimum number of run-marked samples per document. */
     private const REQUIRED_RUNNABLE = [
         'README.md' => 3,
         'README.hu.md' => 3,
         'docs/FACTURX.md' => 1,
         'docs/TRANSPORT.md' => 1,
-        'docs/countries/FRANCE.md' => 3,
+        'docs/countries/FRANCE.md' => 6,
     ];
 
     /**
@@ -79,6 +84,7 @@ final class CodeSamplesTest extends TestCase
         $workDir = self::BUILD_DIR.'/work/'.self::slug($document).'-'.$line;
         self::emptyDirectory($workDir);
         file_put_contents($workDir.'/invoice.xml', (new UblWriter)->write(TotalsCalculator::complete(InvoiceFactory::mixedVat())));
+        self::linkFrenchRules($workDir, str_contains($code, self::FRANCE_RULES));
 
         $file = self::scratchFile($document, $line, 'run');
         file_put_contents($file, self::runnable($code, $workDir));
@@ -216,6 +222,31 @@ final class CodeSamplesTest extends TestCase
     private static function slug(string $document): string
     {
         return (string) preg_replace('/[^A-Za-z0-9]+/', '-', $document);
+    }
+
+    /**
+     * Points var/france-rules in the working directory at the rules installed for this test run,
+     * or removes a link left by an earlier run when the sample does not need it.
+     */
+    private static function linkFrenchRules(string $workDir, bool $needed): void
+    {
+        $link = $workDir.'/'.self::FRANCE_RULES;
+        if (is_link($link)) {
+            unlink($link);
+        }
+        if (! $needed) {
+            return;
+        }
+
+        // Skips the test when the France_RFE checkout has not been downloaded.
+        $rules = InstalledFranceRules::dir();
+        $parent = dirname($link);
+        if (! is_dir($parent) && ! mkdir($parent, 0777, true) && ! is_dir($parent)) {
+            throw new RuntimeException("Cannot create {$parent}.");
+        }
+        if (! symlink($rules, $link)) {
+            throw new RuntimeException("Cannot link {$link} to {$rules}.");
+        }
     }
 
     private static function emptyDirectory(string $directory): void

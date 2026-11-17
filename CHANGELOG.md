@@ -14,8 +14,9 @@ All notable changes to this project are documented here. The format follows
   1.4.0.04: UBL and CII (EN 16931 and EXTENDED-CTC-FR) with `validate()`, and the CII of Factur-X
   BASIC WL, BASIC, EN 16931 and EXTENDED with `validateFacturX()`. The chain (XML Schema, then the
   rule sets in order) is chosen by the specification identifier (BT-24). Factur-X MINIMUM and
-  XRECHNUNG, CDAR and Flux 10 documents are refused. French Factur-X EXTENDED runs FNFE's patched
-  copy of the Factur-X EXTENDED rules.
+  XRECHNUNG documents are refused; CDAR and Flux 10 documents are refused with a pointer to
+  `CdarValidator` and `Flux10Validator`. French Factur-X EXTENDED runs FNFE's patched copy of the
+  Factur-X EXTENDED rules.
 - **France:** `vendor/bin/einvoicing-rules install france --dir=DIR [--from=DIR]` and
   `check france --dir=DIR`. The France_RFE files are not redistributable, so they are downloaded
   at a pinned commit (or read from a checkout), checked against committed SHA-256 sums and
@@ -36,6 +37,25 @@ All notable changes to this project are documented here. The format follows
   rates 2) and the EXTENDED-CTC-FR line structure. `UblWriter` refuses a line amount with VAT
   (EXT-FR-FE-184), which UBL cannot carry, and a line VAT point date code without a line period;
   `FacturXXmlWriter` refuses an EXTENDED-CTC-FR invoice for any profile but EXTENDED.
+- **France, lifecycle:** CDAR D22B lifecycle messages (CDV) for the 23 invoice statuses (200 to
+  214, 220, 221, 224 to 228, 501): the `LifecycleMessage` model with `LifecycleStatus`,
+  `StatusReason`, `RequestedAction` and the other code lists, `Lifecycle` factories
+  (`deposited()`, `rejected()`, `refused()`, `collected()`, `status()`) with the FNFE message
+  identifier pattern, `InvoiceReference::of()`, `CdarWriter` and `CdarReader` (French local time;
+  public-portal codes of other flows refused). `Collection::allocate()` splits a payment over the
+  VAT rates for status 212 (Encaissée) as `CollectedAmount` values.
+- **France, e-reporting:** Flux 10 transmissions: `EReport` with `TransactionsReport` (invoices
+  one by one, `DailyTransactions`) or `PaymentsReport` (`InvoicePayment`, `DailyPayments`),
+  `Declarant`, `ReportPeriod` (decade, month, two months) and `Flux10Writer`, which writes
+  invoices straight from the `Invoice` model. `B2cAggregator` groups B2C sales per day, currency
+  and category (with an optional line classifier); `PaymentAggregator` builds the payment blocks.
+- **France, routing:** `Router` decides offline between e-invoicing, per-invoice and aggregated
+  e-reporting and the payment reporting (`RoutingDecision`, `Channel`, `PaymentReporting`,
+  `RoutingRule` with its legal basis), with the directory behind the `Annuaire` interface and a
+  fixed `StaticAnnuaire`.
+- **Validation:** `CdarValidator` and `Flux10Validator` check lifecycle messages and Flux 10 files
+  against the FNFE schemas and rule sets and return a `MessageValidationReport` (with
+  `MessageType`), which has the same findings API as `ValidationReport`.
 - **Validation engine:** prefixed variable names, `title` and `p` in patterns,
   `xsl:exclude-result-prefixes` on the schema, node sequence types (`element()`, `element()?`,
   `node()?`, `item()*`) on function parameters, variables and results, a filtered parenthesised

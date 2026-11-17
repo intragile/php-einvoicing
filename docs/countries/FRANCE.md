@@ -2,15 +2,18 @@
 
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
-What a French e-invoice needs, which formats this package builds, reads and validates, and what is
-not covered yet. This page is a technical guide, not legal or tax advice.
+What a French e-invoice needs, which formats this package builds, reads and validates, how it
+covers the lifecycle statuses, e-reporting and routing, and what is not covered yet. This page is
+a technical guide, not legal or tax advice.
 
 ## What this package is in the reform
 
 Every in-scope French invoice must pass through a *plateforme agréée* (PA, approved platform). This
 package is not a PA and never talks to the DGFiP. In the reform's terms it is a *solution
 compatible*: software that builds, reads and validates the French documents and hands them to a
-PA. The transport to a PA is not part of this version (see [Not covered yet](#not-covered-yet)).
+PA. It builds the invoice, the lifecycle message (*compte rendu de vie*, CDV) and the Flux 10
+e-reporting file; the PA transmits them. The transport to a PA is not part of this version (see
+[Not covered yet](#not-covered-yet)).
 
 The dates below come from our research notes, which cite the DGFiP and the BOFiP; check them
 against the BOFiP before you rely on them in a product or a contract.
@@ -42,7 +45,11 @@ with French rules on top. Two profiles exist, told apart by the specification id
 | Factur-X EXTENDED with French data | yes | yes | `validateFacturX()` |
 | Factur-X BASIC WL | yes (XML) | no: it has no invoice lines, which the model requires | `validateFacturX()` |
 | Factur-X MINIMUM and XRECHNUNG | yes (generic writer) | MINIMUM no, XRECHNUNG yes | refused: not invoices under the French rules |
-| CDAR lifecycle messages, Flux 10 e-reporting | no | no | refused by `FranceValidator`; their rule sets are installed but have no validator yet |
+| CDAR D22B lifecycle message (CDV) | yes (`CdarWriter`) | yes (`CdarReader`) | `CdarValidator` |
+| Flux 10 e-reporting transmission | yes (`Flux10Writer`) | no: reading a transmission is the PA's job | `Flux10Validator` |
+
+`FranceValidator` is for invoices only; it refuses a CDAR or Flux 10 document and names the
+validator to use.
 
 `CiiWriter` writes UN/CEFACT D22B, which the reform requires, and allows several preceding invoice
 references (BG-3). XRechnung CII stays D16B.
@@ -98,7 +105,20 @@ if (! $report->isValid()) {
 }
 ```
 
-The specification identifier selects a chain. Every chain checks the XML Schema first and then runs
+Lifecycle messages and e-reporting files have their own validators, which run the FNFE schema and
+then the CDAR or Flux 10 rule set (again even when the schema check fails) and return a
+`MessageValidationReport` with the same `isValid()`, `fatal()`, `warnings()` and `verdict()` as an
+invoice report:
+
+```php
+use IntrAgile\EInvoicing\Validation\France\CdarValidator;
+use IntrAgile\EInvoicing\Validation\France\Flux10Validator;
+
+$report = CdarValidator::create(__DIR__.'/var/france-rules')->validate($cdvXml);
+$report = Flux10Validator::create(__DIR__.'/var/france-rules')->validate($flux10Xml);
+```
+
+For invoices, the specification identifier selects a chain. Every chain checks the XML Schema first and then runs
 its rule sets in order; the rule sets run even when the schema check fails, so one report lists
 every problem.
 
@@ -315,6 +335,354 @@ Per syntax:
   Factur-X EXTENDED guideline as BT-24, as FNFE's French Factur-X EXTENDED examples do.
 - **CII D16B** (`new CiiWriter(CiiVersion::D16B)`) is not a French syntax; use the D22B default.
 
+## Lifecycle statuses
+
+Every status of an invoice after it is issued travels as a lifecycle message, a CDV (*compte rendu
+de vie*) in the UN/CEFACT CrossDomainAcknowledgementAndResponse D22B syntax (CDAR, flux 6). The
+platforms exchange them; four statuses must also reach the public portal (PPF):
+
+| Code | Label | `LifecycleStatus` | Sent to the PPF | Reason required |
+|---|---|---|---|---|
+| 200 | Déposée | `Deposited` | yes | |
+| 201 | Emise par la plateforme | `Issued` | | |
+| 202 | Reçue par la plateforme | `Received` | | |
+| 203 | Mise à disposition | `MadeAvailable` | | |
+| 204 | Prise en charge | `InProcess` | | |
+| 205 | Approuvée | `Approved` | | |
+| 206 | Approuvée partiellement | `PartiallyApproved` | | yes |
+| 207 | En litige | `Disputed` | | yes |
+| 208 | Suspendue | `Suspended` | | yes |
+| 209 | Complétée | `Completed` | | |
+| 210 | Refusée | `Refused` | yes | yes |
+| 211 | Paiement transmis | `PaymentSent` | | |
+| 212 | Encaissée | `Collected` | yes | |
+| 213 | Rejetée | `Rejected` | yes | yes |
+| 214 | Visée | `Endorsed` | | |
+| 220 | Annulée | `Cancelled` | | |
+| 221 | Erreur de routage | `RoutingError` | | |
+| 224 | Demande de paiement direct | `DirectPaymentRequested` | | |
+| 225 | Affacturée | `Factored` | | |
+| 226 | Affacturée confidentiel | `FactoredConfidential` | | |
+| 227 | Changement de compte à payer | `PaymentAccountChanged` | | |
+| 228 | Non affacturée | `NotFactored` | | |
+| 501 | Irrecevable | `Inadmissible` | | yes |
+
+The labels of 214 and 224 to 228 are unverified: the AFNOR XP Z12-012 standard that defines them
+was not available. The codes the public portal emits for its other flows (250, 251, 300, 301,
+400, 401, 500, 601) are not invoice statuses; `CdarReader` refuses them with an
+`UnsupportedDocument` that names the flow. `LifecycleStatus::isMandatory()`, `requiresReason()`,
+`acknowledgementType()` and `label()` return the columns above; `StatusReason` holds the closed
+list of reason codes (rule BR-FR-CDV-CL-09) and `RequestedAction` the requested actions.
+
+`Lifecycle` builds the messages:
+
+- `deposited()` (200, from the seller's platform), `rejected()` (213, from a platform, with a
+  reason and an optional comment), `refused()` (210, from the buyer, with a reason and a required
+  comment) and `collected()` (212, from the seller, one collected amount per VAT rate);
+- `status()` for any other status, with the sender, the issuer, the recipients and the status
+  details you give.
+
+The referenced invoice is an `InvoiceReference`; `InvoiceReference::of($invoice, $receivedAt)`
+takes the number, type and issue date from the invoice and the seller's SIREN from BT-30 or from
+its first SIRET. Parties are `LifecycleParty` values: `platform()` (a PA by its matricule, scheme
+0238), `ppf()`, `seller()` and `buyer()` (by SIREN, with an optional electronic address).
+
+The message identifier defaults to the pattern of the FNFE examples,
+`{invoice number}_{status}_{receipt time}#{invoice type}_{issue date}`, for example
+`F202600010_212_20261102101500#380_20261102`. When that would exceed the 50 characters allowed
+(an invoice number of more than 18 characters), the identifier becomes
+`{status}_{receipt time}_{hash}`, 49 characters, where the hash is the first 30 hexadecimal
+characters of the SHA-256 of the full pattern. Pass `id:` to set your own. Every other field has a
+wither on `LifecycleMessage`.
+
+CDAR timestamps carry no time zone. `CdarWriter` converts them to French local time
+(`Europe/Paris`) before writing, and `CdarReader` returns them in that zone. A message reports on
+exactly one invoice, as in every FNFE example; the reader refuses a document with more than one
+acknowledgement or referenced document.
+
+**Encaissée (212).** Services whose VAT is due on collection report each payment with status 212,
+the collected amount split by VAT rate. `Collection::allocate()` splits a paid amount over the
+invoice's VAT breakdown in proportion to each rate's gross amount (taxable amount plus VAT),
+rounded to two decimals, with the rounding residual on the rate with the largest gross amount (the
+higher rate on a tie). A negative amount is a refund.
+
+<!-- sample: run -->
+```php
+use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
+use IntrAgile\EInvoicing\CodeList\CountryCode;
+use IntrAgile\EInvoicing\CodeList\CurrencyCode;
+use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
+use IntrAgile\EInvoicing\CodeList\UnitCode;
+use IntrAgile\EInvoicing\CodeList\VatCategory;
+use IntrAgile\EInvoicing\France\BillingFramework;
+use IntrAgile\EInvoicing\France\Collection;
+use IntrAgile\EInvoicing\France\France;
+use IntrAgile\EInvoicing\France\Lifecycle\InvoiceReference;
+use IntrAgile\EInvoicing\France\Lifecycle\Lifecycle;
+use IntrAgile\EInvoicing\France\Lifecycle\LifecycleParty;
+use IntrAgile\EInvoicing\France\Siren;
+use IntrAgile\EInvoicing\Model\Identifier;
+use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\InvoiceLine;
+use IntrAgile\EInvoicing\Model\Item;
+use IntrAgile\EInvoicing\Model\LineVat;
+use IntrAgile\EInvoicing\Model\Party;
+use IntrAgile\EInvoicing\Model\PostalAddress;
+use IntrAgile\EInvoicing\Model\Price;
+use IntrAgile\EInvoicing\Syntax\Cdar\CdarWriter;
+use IntrAgile\EInvoicing\Validation\France\CdarValidator;
+
+$invoice = TotalsCalculator::complete(France::mark(new Invoice(
+    number: 'F202600010',
+    issueDate: new DateTimeImmutable('2026-11-02'),
+    type: InvoiceTypeCode::C_380,
+    currency: CurrencyCode::EUR,
+    seller: new Party(name: 'LE VENDEUR', legalRegistration: Siren::identifier('100000009'),
+        address: new PostalAddress(country: CountryCode::FR, city: 'PARIS')),
+    buyer: new Party(name: 'LE CLIENT', legalRegistration: Siren::identifier('200000008'),
+        address: new PostalAddress(country: CountryCode::FR, city: 'NICE')),
+    lines: [
+        new InvoiceLine('1', '1', UnitCode::C62, new Price('750.00'), new Item('Maintenance'),
+            new LineVat(VatCategory::StandardRate, '20')),
+        new InvoiceLine('2', '1', UnitCode::C62, new Price('100.00'), new Item('Formation'),
+            new LineVat(VatCategory::StandardRate, '5.5')),
+    ],
+), BillingFramework::S1));
+
+$paris = new DateTimeZone('Europe/Paris');
+
+// The invoice as the platform received it, and the 1,005.50 EUR paid, split per VAT rate.
+$reference = InvoiceReference::of($invoice, new DateTimeImmutable('2026-11-02 10:15:00', $paris));
+$amounts = Collection::allocate($invoice, '1005.50'); // 900.00 at 20 %, 105.50 at 5.5 %
+
+$message = Lifecycle::collected(
+    $reference,
+    LifecycleParty::seller('100000009', name: 'LE VENDEUR'),
+    LifecycleParty::buyer('200000008', new Identifier('200000008', '0225'), 'LE CLIENT'),
+    $amounts,
+    CurrencyCode::EUR,
+    new DateTimeImmutable('2026-11-20 09:00:00', $paris),
+);
+$xml = (new CdarWriter)->write($message); // id F202600010_212_20261102101500#380_20261102
+
+$report = CdarValidator::create('var/france-rules')->validate($xml);
+if (! $report->isValid()) {
+    throw new RuntimeException('The lifecycle message is not valid: '.implode(', ', $report->verdict()));
+}
+```
+
+`CdarReader` reads a CDV back into a `LifecycleMessage`. Elements it does not map are listed in
+`LifecycleReadResult::$ignored`, as in the invoice readers:
+
+```php
+use IntrAgile\EInvoicing\Syntax\Cdar\CdarReader;
+
+$result = (new CdarReader)->read($xml);
+$status = $result->message->status;           // LifecycleStatus::Collected
+$invoiceNumber = $result->message->invoice->number;
+```
+
+## E-reporting
+
+Transactions that are not e-invoiced, and the payments of services whose VAT is due on
+collection, are e-reported: the PA sends the DGFiP a Flux 10 file. There are four flows:
+
+| Flow | What | Model |
+|---|---|---|
+| 10.1 | Transactions invoice by invoice, such as international B2B sales | `TransactionsReport::$invoices` (`Invoice` values) |
+| 10.2 | Payments invoice by invoice | `PaymentsReport::$invoices` (`InvoicePayment`) |
+| 10.3 | Transactions aggregated per day, such as B2C sales | `TransactionsReport::$days` (`DailyTransactions`) |
+| 10.4 | Payments aggregated per day | `PaymentsReport::$days` (`DailyPayments`) |
+
+An `EReport` is one transmission: `EReport::transactions()` or `EReport::payments()` with the
+identifier, the creation time, `ReportType::Initial` or `Corrective`, the sending PA
+(`LifecycleParty::platform()` with its four-character matricule and its name), the `Declarant`
+(SIREN, name and `DeclarantRole::Seller` or `Buyer`) and the report with its `ReportPeriod`
+(`decade()`, `month()` or `bimester()`, following the declarant's VAT regime). `Flux10Writer`
+writes it in the DGFiP schema; there is no Flux 10 reader, since nothing but the PA consumes a
+transmission.
+
+Invoices reported one by one (10.1) are written straight from the `Invoice` model. The DGFiP
+annex gives no BT column for most Flux 10 fields, so the mapping is our reading and is listed in
+the `Flux10Writer` class documentation. The VAT due date code is written in the UNTDID 2475 form
+the CII writer uses (3 → 5, 35 → 29, 432 → 72). A seller is identified by its legal registration
+(BT-30) when its scheme is 0002, 0223, 0227, 0228 or 0229, else by its VAT identifier (another EU
+member state, scheme 0223), else by country code and name (outside the EU, scheme 0227); the
+same applies to the buyer. A buyer without any of these is written without an identifier; a
+seller without one is refused.
+
+**B2C days (10.3).** `B2cAggregator` groups sales to consumers by operation date (the actual
+delivery date BT-72, else the issue date BT-2), currency and category. The category follows the
+billing framework: B… frameworks are goods (`TransactionCategory::Goods`, TLB1), S… frameworks
+are services (TPS1). Mixed frameworks (M…), supplies not taxed in France (TNT1) and the margin
+scheme (TMA1) need a classifier, a closure that returns the category of each line; an invoice
+whose lines fall in several categories is split by line and cannot carry document-level
+allowances or charges. Credit notes (381, 261, 396, 502, 503) count negative. Only invoices in
+euros are accepted, because the report carries no conversion rate.
+
+<!-- sample: run -->
+```php
+use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
+use IntrAgile\EInvoicing\CodeList\CountryCode;
+use IntrAgile\EInvoicing\CodeList\CurrencyCode;
+use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
+use IntrAgile\EInvoicing\CodeList\UnitCode;
+use IntrAgile\EInvoicing\CodeList\VatCategory;
+use IntrAgile\EInvoicing\France\BillingFramework;
+use IntrAgile\EInvoicing\France\EReporting\B2cAggregator;
+use IntrAgile\EInvoicing\France\EReporting\Declarant;
+use IntrAgile\EInvoicing\France\EReporting\DeclarantRole;
+use IntrAgile\EInvoicing\France\EReporting\EReport;
+use IntrAgile\EInvoicing\France\EReporting\ReportPeriod;
+use IntrAgile\EInvoicing\France\EReporting\ReportType;
+use IntrAgile\EInvoicing\France\EReporting\TransactionsReport;
+use IntrAgile\EInvoicing\France\France;
+use IntrAgile\EInvoicing\France\Lifecycle\LifecycleParty;
+use IntrAgile\EInvoicing\France\Siren;
+use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\InvoiceLine;
+use IntrAgile\EInvoicing\Model\Item;
+use IntrAgile\EInvoicing\Model\LineVat;
+use IntrAgile\EInvoicing\Model\Party;
+use IntrAgile\EInvoicing\Model\PostalAddress;
+use IntrAgile\EInvoicing\Model\Price;
+use IntrAgile\EInvoicing\Syntax\Flux10\Flux10Writer;
+use IntrAgile\EInvoicing\Validation\France\Flux10Validator;
+
+$seller = new Party(name: 'LE VENDEUR', legalRegistration: Siren::identifier('100000009'),
+    address: new PostalAddress(country: CountryCode::FR, city: 'PARIS'));
+$consumer = new Party(name: 'PARTICULIER', address: new PostalAddress(country: CountryCode::FR, city: 'LYON'));
+
+// Two sales of goods (billing framework B1) to consumers on 10 November 2026.
+$sale = static fn (string $number, string $net, string $rate): Invoice => TotalsCalculator::complete(France::mark(new Invoice(
+    number: $number,
+    issueDate: new DateTimeImmutable('2026-11-10'),
+    type: InvoiceTypeCode::C_380,
+    currency: CurrencyCode::EUR,
+    seller: $seller,
+    buyer: $consumer,
+    lines: [new InvoiceLine('1', '1', UnitCode::C62, new Price($net), new Item('Article'),
+        new LineVat(VatCategory::StandardRate, $rate))],
+), BillingFramework::B1));
+
+// One day: TLB1, 150.00 without VAT, 22.75 VAT, subtotals at 20 % and 5.5 %, 2 transactions.
+$days = (new B2cAggregator)->aggregate([$sale('T-1', '100.00', '20'), $sale('T-2', '50.00', '5.5')]);
+
+$report = EReport::transactions(
+    id: 'TR-2026-11',
+    issuedAt: new DateTimeImmutable('2026-12-01 09:30:00', new DateTimeZone('Europe/Paris')),
+    type: ReportType::Initial,
+    platform: LifecycleParty::platform('PA01', 'PLATEFORME EXEMPLE'),
+    declarant: new Declarant('100000009', 'LE VENDEUR', DeclarantRole::Seller),
+    report: new TransactionsReport(ReportPeriod::month(2026, 11), days: $days),
+);
+$xml = (new Flux10Writer)->write($report);
+
+$validation = Flux10Validator::create('var/france-rules')->validate($xml);
+if (! $validation->isValid()) {
+    throw new RuntimeException('The e-report is not valid: '.implode(', ', $validation->verdict()));
+}
+```
+
+**Payments (10.2, 10.4).** `PaymentAggregator::forInvoice($invoice, $paid, $paidOn)` splits one
+invoice's payment by VAT rate with `Collection::allocate()`, the same split as status 212.
+`PaymentAggregator::daily($payments)` sums payments per day and VAT rate. Payments are reported in
+euros; an invoice in another currency is refused.
+
+The PA matricule comes from your PA account. The file goes to the DGFiP through the PA; this
+package builds and validates it but does not send it.
+
+## Routing
+
+`Router` decides, without network access, whether an invoice is e-invoiced or e-reported and how
+its collection is reported. `route()` takes the issuer's (seller's) side; the first matching rule
+wins:
+
+| Situation | `RoutingRule` | `Channel` |
+|---|---|---|
+| Treatment note ARCHIVEONLY | `ArchiveOnly` | `None` |
+| Treatment note OUTOFSCOPE, or seller outside France | `OutOfScope` | `None` |
+| Buyer without SIREN and VAT identifier, or treatment B2C or B2CINT | `B2c` | `AggregatedTransactionReport` (10.3) |
+| Buyer outside France, treatment B2BINT, or a non-French buyer VAT identifier | `InternationalB2b` | `TransactionReport` (10.1) |
+| Domestic B2B, buyer listed and active in the directory | `DomesticB2b` | `EInvoice` |
+| Domestic B2B, buyer not listed or inactive | `AbsentRecipient` | `AggregatedTransactionReport` (10.3) |
+| Domestic B2B, directory status unknown | `DomesticB2b`, `needsDirectoryCheck` | `EInvoice` |
+
+`routePurchase()` takes the buyer's side: a purchase by a buyer in France from a seller outside it
+is reported (10.1, `PurchaseFromForeignSupplier`, declared as buyer); anything else needs no
+action. The `RoutingDecision` also carries the payment reporting: for services (BT-23 S… or M…)
+whose VAT is due on collection (no VAT-on-debits option in BT-8, no reverse charge) it is status
+212 on an e-invoice, 10.2 next to a 10.1 report and 10.4 next to a 10.3 report. The declarant role
+is set for e-reports, and `RoutingRule::legalBasis()` names the article of the CGI or the BOFiP
+paragraph behind each rule.
+
+The directory (*annuaire*) is behind the `Annuaire` interface. `StaticAnnuaire` maps SIRENs to an
+`AnnuaireStatus`; a live lookup through a PA is not part of this version. An unknown status (the
+lookup was not possible) keeps the e-invoice and sets `needsDirectoryCheck`, because the
+fallback to e-reporting applies to a recipient that is absent, not to a failed lookup.
+
+<!-- sample: run -->
+```php
+use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
+use IntrAgile\EInvoicing\CodeList\CountryCode;
+use IntrAgile\EInvoicing\CodeList\CurrencyCode;
+use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
+use IntrAgile\EInvoicing\CodeList\UnitCode;
+use IntrAgile\EInvoicing\CodeList\VatCategory;
+use IntrAgile\EInvoicing\France\BillingFramework;
+use IntrAgile\EInvoicing\France\France;
+use IntrAgile\EInvoicing\France\Routing\AnnuaireStatus;
+use IntrAgile\EInvoicing\France\Routing\Channel;
+use IntrAgile\EInvoicing\France\Routing\PaymentReporting;
+use IntrAgile\EInvoicing\France\Routing\Router;
+use IntrAgile\EInvoicing\France\Routing\RoutingRule;
+use IntrAgile\EInvoicing\France\Routing\StaticAnnuaire;
+use IntrAgile\EInvoicing\France\Siren;
+use IntrAgile\EInvoicing\France\Treatment;
+use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\InvoiceLine;
+use IntrAgile\EInvoicing\Model\Item;
+use IntrAgile\EInvoicing\Model\LineVat;
+use IntrAgile\EInvoicing\Model\Party;
+use IntrAgile\EInvoicing\Model\PostalAddress;
+use IntrAgile\EInvoicing\Model\Price;
+
+$invoice = TotalsCalculator::complete(France::mark(new Invoice(
+    number: 'F202600011',
+    issueDate: new DateTimeImmutable('2026-11-02'),
+    type: InvoiceTypeCode::C_380,
+    currency: CurrencyCode::EUR,
+    seller: new Party(name: 'LE VENDEUR', legalRegistration: Siren::identifier('100000009'),
+        vatIdentifier: 'FR88100000009', address: new PostalAddress(country: CountryCode::FR, city: 'PARIS')),
+    buyer: new Party(name: 'LE CLIENT', legalRegistration: Siren::identifier('200000008'),
+        vatIdentifier: 'FR37200000008', address: new PostalAddress(country: CountryCode::FR, city: 'NICE')),
+    notes: [France::treatmentNote(Treatment::B2B)],
+    lines: [new InvoiceLine('1', '10', UnitCode::HUR, new Price('80.00'), new Item('Conseil'),
+        new LineVat(VatCategory::StandardRate, '20'))],
+), BillingFramework::S1));
+
+// In production the directory status comes from your PA; a fixed list stands in for it here.
+$decision = (new Router(new StaticAnnuaire(['200000008' => AnnuaireStatus::Active])))->route($invoice);
+
+$decision->channel;              // Channel::EInvoice
+$decision->payment;              // PaymentReporting::CollectedStatus: report payments with status 212
+$decision->rule->legalBasis();   // "CGI art. 289 bis"
+
+// The same invoice to a buyer missing from the directory is e-reported as a B2C sale.
+$absent = (new Router(new StaticAnnuaire(['200000008' => AnnuaireStatus::NotListed])))->route($invoice);
+
+if ($decision->channel !== Channel::EInvoice || $absent->rule !== RoutingRule::AbsentRecipient
+    || $absent->payment !== PaymentReporting::AggregatedPaymentReport) {
+    throw new RuntimeException('Unexpected routing decision.');
+}
+```
+
+France for routing is metropolitan France, Guadeloupe, Martinique and Réunion (`FR`, `GP`, `MQ`,
+`RE`); supplies between them are e-invoiced. French Guiana, Mayotte, Monaco and the overseas
+collectivities are treated as foreign, which is a known limitation. A party's location is its
+address country, else the prefix of its VAT identifier; a party whose location cannot be
+determined counts as French. The treatment is read from the first BAR note with a known value.
+
 ## How it is verified
 
 All of this is verified offline. Nothing has been sent to a PA or the DGFiP from this version.
@@ -330,22 +698,29 @@ All of this is verified offline. Nothing has been sent to a PA or the DGFiP from
   of FNFE's Factur-X EXTENDED fork), 667 have a recipe that breaks exactly that rule while the
   document stays schema-valid. The other 25 cannot fire on a schema-valid document (for example a
   test that is always true); each has its reason recorded next to the recipes.
-- **Verdict equality with FNFE's XSLT.** 4,889 documents (the FNFE examples, our output, the
-  negative recipes and about 4,000 mutations) were validated both by this package and by FNFE's own
-  compiled XSLT in SaxonC-HE 13; the verdicts are equal for every document. The only accepted
-  difference is the one documented in [VALIDATION.md](../VALIDATION.md#lets-and-xslt-functions):
-  where a mutation makes a date or an amount unreadable, Saxon may evaluate an XSLT local variable
-  or a rule-level let eagerly and stop with `FORG0001`, while this package evaluates it lazily and
-  reports the date or amount format rule (BR-FR-03 or the Flux 10 amount rule) for that field. The
-  test allows exactly that case (46 documents) and pins how often it is used.
+- **Lifecycle messages.** Each of the 59 FNFE CDAR examples is valid, reads into the model with
+  nothing ignored and writes back to the same canonical XML. A message built with `Lifecycle` for
+  each of the 23 statuses passes the CDAR schema and rules with no finding.
+- **E-reports.** Flux 10 files written by this package (invoices one by one, B2C days with and
+  without a classifier, credit notes, payments per invoice and per day, an initial and a
+  corrective transmission) pass the DGFiP schema and the Flux 10 rules with no finding.
+- **Verdict equality with FNFE's XSLT.** 5,494 documents (the FNFE invoice and CDAR examples, our
+  invoices, lifecycle messages and e-reports, their round trips, the negative recipes and about
+  4,500 mutations) were validated both by this package and by FNFE's own compiled XSLT in
+  SaxonC-HE 13; the verdicts are equal for every document. The only accepted difference is the one
+  documented in [VALIDATION.md](../VALIDATION.md#lets-and-xslt-functions): where a mutation makes
+  a date or an amount unreadable, Saxon may evaluate an XSLT local variable or a rule-level let
+  eagerly and stop with `FORG0001`, while this package evaluates it lazily and reports the date or
+  amount format rule (BR-FR-03 or the Flux 10 amount rule) for that field. The test allows exactly
+  that case (52 documents) and pins how often it is used.
 
 ## Not covered yet
 
-- **CDAR lifecycle messages and Flux 10 e-reporting.** Their FNFE rule sets and schemas are
-  installed and compiled, but there is no builder, reader or validator API for them yet.
-- **Transport to a PA**, directory (*annuaire*) lookup and the routing between e-invoicing and
-  e-reporting. Of the existing transport drivers, B2Brouter is a registered PA; e-invoice.be and
-  Recommand are Peppol access points, not PAs, and do not satisfy a French sender's obligation.
+- **Transport to a PA**: sending invoices, lifecycle messages and Flux 10 files. Of the existing
+  transport drivers, B2Brouter is a registered PA; e-invoice.be and Recommand are Peppol access
+  points, not PAs, and do not satisfy a French sender's obligation.
+- **Live directory (*annuaire*) lookup.** The router takes an `Annuaire` implementation; only the
+  fixed `StaticAnnuaire` ships.
 - **Chorus Pro** (B2G) is out of scope.
 
 ---

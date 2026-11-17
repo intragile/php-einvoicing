@@ -47,14 +47,17 @@ Jelenleg tartalmazza:
   (számlázási keret, SIREN és SIRET, a kötelező megjegyzések, EXTENDED-CTC-FR altételsorok),
   valamint ellenőrzés az FNFE-MPE France_RFE 1.4.0.04 szabályai szerint, amelyeket a saját
   gépeden fordítasz le a `vendor/bin/einvoicing-rules install france --dir=var/france-rules`
-  paranccsal. Az eredmények egyezését az FNFE saját, Saxonnal futtatott XSLT-jével 4889
-  dokumentumon ellenőriztük ([Franciaország](docs/countries/FRANCE.md), angolul). A CDAR
-  életciklus-üzenetek, a Flux 10 e-riportolás és a *plateforme agréée* felé történő továbbítás
-  még nincs benne.
+  paranccsal. Benne van a számla életciklusa is: CDAR életciklus-üzenetek mind a 23 státuszhoz
+  (írás, olvasás és ellenőrzés, az Encaissée összeg ÁFA-kulcsonkénti felosztásával), Flux 10
+  e-riportolás (számlánként, napi B2C összesítés, kifizetések) a validátorával, és egy hálózat
+  nélküli útválasztó, amely eldönti, hogy a számlát e-számlaként kell-e küldeni vagy e-riportban
+  jelenteni. Az eredmények egyezését az FNFE saját, Saxonnal futtatott XSLT-jével 5494 dokumentumon ellenőriztük
+  ([Franciaország](docs/countries/FRANCE.md), angolul). A *plateforme agréée* felé történő
+  továbbítás és az élő címtár- (*annuaire*) lekérdezés még nincs benne.
 
 Országjegyzetek: [Németország](docs/countries/DE.md) (jogalap, formátumok, csatornák és az ellenőrzés, angolul),
 [Franciaország](docs/countries/FRANCE.md) (a reform, a profilok, a francia szabályok telepítése és
-futtatása, ami még hiányzik; angolul).
+futtatása, életciklus-státuszok, e-riportolás, útválasztás, ami még hiányzik; angolul).
 
 Nincs benne: önszámlázó (self-billing) számlák küldése Peppolon, valamint CII a Peppol BIS
 Billing 3.0 szerint (CII Peppolon csak XRechnungként megy). A számla PDF-jének megjelenítése

@@ -46,14 +46,17 @@ Included today:
 - French invoices for the e-invoicing reform: UBL, CII D22B and Factur-X with the French data
   (billing framework, SIREN and SIRET, the mandatory notes, EXTENDED-CTC-FR sub-lines), and
   validation against the FNFE-MPE France_RFE rules 1.4.0.04, compiled on your machine with
-  `vendor/bin/einvoicing-rules install france --dir=var/france-rules`. Verdicts are checked equal
-  to FNFE's own XSLT run by Saxon on 4,889 documents ([France](docs/countries/FRANCE.md)). CDAR
-  lifecycle messages, Flux 10 e-reporting and the transport to a *plateforme agréée* are not
-  included yet.
+  `vendor/bin/einvoicing-rules install france --dir=var/france-rules`. Also the invoice lifecycle:
+  CDAR lifecycle messages for all 23 statuses (writing, reading and validation, with the
+  Encaissée split per VAT rate), Flux 10 e-reporting (invoices one by one, B2C days, payments) with
+  its validator, and an offline router that decides between e-invoicing and e-reporting. Verdicts
+  are checked equal to FNFE's own XSLT run by Saxon on 5,494 documents
+  ([France](docs/countries/FRANCE.md)). The transport to a *plateforme agréée* and a live directory
+  lookup are not included yet.
 
 Country notes: [Germany](docs/countries/DE.md) (legal basis, formats, channels and what is
 verified), [France](docs/countries/FRANCE.md) (the reform, profiles, installing and running the
-French rules, what is not covered yet).
+French rules, lifecycle statuses, e-reporting, routing, what is not covered yet).
 
 Not included: self-billing over Peppol, and CII under Peppol BIS Billing 3.0 (CII goes over
 Peppol only as XRechnung). Rendering the invoice PDF is out of scope: you supply the PDF. The
