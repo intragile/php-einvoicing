@@ -42,9 +42,17 @@ All notable changes to this project are documented here. The format follows
   union at the start of a match pattern, and compile options that take a missing rule id from a
   leading `[CODE]` in the message or hash a whitespace-normalised test. CEN, Peppol, XRechnung and
   Factur-X verdicts are unchanged.
+- **Model:** `InvoiceLine::extensions()`, `withExtension()` and `withExtensions()`: an extension
+  bag per invoice line, as on `Invoice`.
 - **Documentation:** [docs/countries/FRANCE.md](docs/countries/FRANCE.md).
 
 ### Changed
+
+- **Readers and writers:** `UblReader` and `CiiReader` now mark an invoice as French (attach
+  `FrenchInvoice`) when BT-23 is a French billing framework code (B1, S1, M1 …) or BT-24 is the
+  EXTENDED-CTC-FR identifier, and writing such an invoice applies the French decimal limits of
+  `FrenchGuard`. An invoice read before with more decimals than those limits is now refused when
+  written.
 
 - **CII:** `CiiWriter` targets UN/CEFACT D22B by default and writes every preceding invoice
   reference (BG-3) as its own `ram:InvoiceReferencedDocument`. `new CiiWriter(CiiVersion::D16B)`
