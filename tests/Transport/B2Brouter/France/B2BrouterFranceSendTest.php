@@ -131,6 +131,19 @@ final class B2BrouterFranceSendTest extends TestCase
         self::assertNull($result->failure->providerCode);
     }
 
+    public function test_unregistered_receiver_without_error_code_is_recipient_not_found(): void
+    {
+        $response = self::json(201, ['invoice' => ['id' => 590112, 'state' => 'error', 'error_code' => null, 'errors' => ['The buyer is not registered to receive invoices.']]]);
+
+        $result = self::france(new RecordingHttpClient($response))->send(self::document());
+
+        self::assertSame(DeliveryState::Failed, $result->state);
+        self::assertNotNull($result->failure);
+        self::assertSame(FailureCategory::RecipientNotFound, $result->failure->category);
+        self::assertSame('The buyer is not registered to receive invoices.', $result->failure->message);
+        self::assertNull($result->failure->providerCode);
+    }
+
     public function test_errored_invoice_without_errors_list_uses_error_message(): void
     {
         $response = self::json(201, ['invoice' => ['id' => 590111, 'state' => 'error', 'error_code' => 'X1', 'error_message' => 'Delivery failed.', 'errors' => []]]);

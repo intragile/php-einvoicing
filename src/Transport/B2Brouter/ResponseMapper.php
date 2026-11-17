@@ -4,17 +4,11 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Transport\B2Brouter;
 
-use IntrAgile\EInvoicing\Transport\DeliveryFailure;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\DeliveryStatus;
-use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
-use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
-use IntrAgile\EInvoicing\Transport\FailureCategory;
-use IntrAgile\EInvoicing\Transport\Http\JsonResponse;
-use IntrAgile\EInvoicing\Transport\Http\ReadFailure;
 use IntrAgile\EInvoicing\Transport\Http\Redactor;
 use IntrAgile\EInvoicing\Transport\InboundReference;
 use IntrAgile\EInvoicing\Transport\SendResult;
@@ -38,16 +32,12 @@ final class ResponseMapper
      */
     private const DELIVERED_STATES = ['sent', 'registered', 'read', 'accepted', 'refused', 'received', 'allegedly_paid', 'paid', 'closed'];
 
-    /** The B2Brouter error code of a receiver that is not on the Peppol network. */
-    private const NO_RECEIVER = 'PEPPOL_NO_RECEIVER';
+    private readonly B2BrouterErrors $errors;
 
-    /** The sandbox reports an unregistered recipient only in the errors list, without an error code. */
-    private const NO_RECEIVER_MESSAGE = '/not registered to receive/i';
-
-    /** Bytes of a provider error message quoted in an exception message. */
-    private const QUOTED_BYTES = 300;
-
-    public function __construct(private readonly Redactor $redactor) {}
+    public function __construct(private readonly Redactor $redactor)
+    {
+        $this->errors = new B2BrouterErrors($redactor);
+    }
 
     /**
      * The result of an import, or the exception its response stands for.
@@ -61,14 +51,14 @@ final class ResponseMapper
     public function sendResult(ResponseInterface $response, string $subject): SendResult
     {
         if ($response->getStatusCode() !== 201) {
-            throw $this->sendFailure($response, $subject);
+            throw $this->errors->importFailure($response, $subject);
         }
 
         // A 201 means the import went through, so a body that cannot be read leaves the outcome
         // open rather than making it a failure that invites a resend.
         try {
-            $invoice = $this->invoice($response);
-            $id = self::id($invoice['id'] ?? null) ?? throw $this->unexpected($response, 'The B2Brouter import response has no invoice id');
+            $invoice = $this->errors->invoice($response);
+            $id = B2BrouterErrors::id($invoice['id'] ?? null) ?? throw $this->unexpected($response, 'The B2Brouter import response has no invoice id');
         } catch (UnexpectedResponse $exception) {
             throw new OutcomeUnknown(
                 sprintf(
@@ -81,7 +71,7 @@ final class ResponseMapper
             );
         }
 
-        return new SendResult($id, self::stateOf($invoice['state'] ?? null), failure: $this->failure($invoice));
+        return new SendResult($id, self::stateOf($invoice['state'] ?? null), failure: $this->errors->failure($invoice));
     }
 
     /**
@@ -97,15 +87,15 @@ final class ResponseMapper
             throw UnexpectedResponse::forResponse($response, sprintf('B2Brouter invoice "%s" is a received invoice, not a sent one, so it has no delivery status', $invoiceId), '');
         }
         if ($status !== 200) {
-            throw $this->readFailure($response, sprintf('Querying the status of B2Brouter invoice "%s"', $invoiceId));
+            throw $this->errors->readFailure($response, sprintf('Querying the status of B2Brouter invoice "%s"', $invoiceId));
         }
 
-        $invoice = $this->invoice($response);
+        $invoice = $this->errors->invoice($response);
 
         return new DeliveryStatus(
             $invoiceId,
             self::stateOf($invoice['state'] ?? null),
-            $this->failure($invoice),
+            $this->errors->failure($invoice),
             Timestamp::parse($invoice['state_updated_at'] ?? null),
         );
     }
@@ -120,10 +110,10 @@ final class ResponseMapper
     public function inboundReferences(ResponseInterface $response): array
     {
         if ($response->getStatusCode() !== 200) {
-            throw $this->readFailure($response, 'Listing the received B2Brouter invoices');
+            throw $this->errors->readFailure($response, 'Listing the received B2Brouter invoices');
         }
 
-        $invoices = $this->body($response)['invoices'] ?? null;
+        $invoices = $this->errors->body($response)['invoices'] ?? null;
         if (! is_array($invoices) || ! array_is_list($invoices)) {
             throw $this->unexpected($response, 'The B2Brouter invoice list response has no invoice list');
         }
@@ -133,7 +123,7 @@ final class ResponseMapper
             if (! is_array($invoice)) {
                 throw $this->unexpected($response, 'The B2Brouter invoice list contains an entry that is not an object');
             }
-            $id = self::id($invoice['id'] ?? null)
+            $id = B2BrouterErrors::id($invoice['id'] ?? null)
                 ?? throw $this->unexpected($response, 'The B2Brouter invoice list contains an invoice without a positive integer id');
             $receivedAt = Timestamp::parse($invoice['created_at'] ?? null)
                 ?? throw $this->unexpected($response, sprintf('The B2Brouter invoice "%s" has no valid created_at time (ISO 8601 with a time zone)', $id));
@@ -160,7 +150,7 @@ final class ResponseMapper
     public function originalDocument(ResponseInterface $response, string $invoiceId): string
     {
         if ($response->getStatusCode() !== 200) {
-            throw $this->readFailure($response, sprintf('Fetching the original document of B2Brouter invoice "%s"', $invoiceId));
+            throw $this->errors->readFailure($response, sprintf('Fetching the original document of B2Brouter invoice "%s"', $invoiceId));
         }
 
         return (string) $response->getBody();
@@ -187,7 +177,7 @@ final class ResponseMapper
             ));
         }
 
-        throw $this->readFailure($response, $operation);
+        throw $this->errors->readFailure($response, $operation);
     }
 
     /**
@@ -226,223 +216,6 @@ final class ResponseMapper
      */
     public static function checkBeforeResending(string $subject): string
     {
-        return sprintf(
-            'Check whether the B2Brouter account holds %s before resending; a resend of an imported invoice is refused as a duplicate (HTTP 422, number taken).',
-            $subject,
-        );
-    }
-
-    private function sendFailure(ResponseInterface $response, string $subject): TransportException
-    {
-        $status = $response->getStatusCode();
-        $operation = sprintf('Importing %s into B2Brouter', $subject);
-
-        if ($status === 403) {
-            return new AuthenticationFailed(sprintf(
-                '%s failed: B2Brouter refused the request (HTTP 403). The API key belongs to no account group (no_account_group) or lacks the permission for this action.',
-                $operation,
-            ));
-        }
-        if ($status >= 500 && $status <= 599) {
-            // The import may have run before the server error, or behind the failing gateway.
-            return new OutcomeUnknown(sprintf(
-                '%s failed with a B2Brouter server error (HTTP %d), which can come after the import, so the invoice may or may not have been imported. %s',
-                $operation,
-                $status,
-                self::checkBeforeResending($subject),
-            ));
-        }
-        if (! in_array($status, [400, 406, 409, 422], true)) {
-            return $this->readFailure($response, $operation);
-        }
-
-        $error = $this->error($response);
-        $errors = $error === null ? [] : ['error' => $this->redactor->redactValue($error)];
-        if ($status === 422 && ($error['code'] ?? null) === 'parameter_taken' && ($error['param'] ?? null) === 'number') {
-            return new DocumentRejected(
-                sprintf(
-                    'B2Brouter refused %s as a %s (HTTP 422, parameter_taken on number): an invoice with this number exists; check it before resending.',
-                    $subject,
-                    FailureCategory::Duplicate->value,
-                ),
-                $errors,
-            );
-        }
-
-        return new DocumentRejected(
-            sprintf('B2Brouter rejected %s (HTTP %d%s): %s', $subject, $status, self::codeAndParam($error), $this->quote($error)),
-            $errors,
-        );
-    }
-
-    /**
-     * The mapping shared by every request that reads, and by refused acknowledgements.
-     *
-     * @param  string  $operation  what was attempted, phrased to start a sentence
-     */
-    private function readFailure(ResponseInterface $response, string $operation): TransportException
-    {
-        $status = $response->getStatusCode();
-        if ($status >= 300 && $status <= 399) {
-            // No body excerpt: a redirect body usually repeats the Location, which may carry a token.
-            return UnexpectedResponse::forResponse($response, sprintf('%s failed: B2Brouter answered with a redirect, which is not followed', $operation), '');
-        }
-
-        return ReadFailure::of($response, 'B2Brouter', $operation, $this->redactor);
-    }
-
-    /**
-     * The invoice object of an invoice response.
-     *
-     * @return array<mixed>
-     *
-     * @throws UnexpectedResponse when the body is not JSON or has no invoice object
-     */
-    private function invoice(ResponseInterface $response): array
-    {
-        $invoice = $this->body($response)['invoice'] ?? null;
-        if (! is_array($invoice) || array_is_list($invoice)) {
-            throw $this->unexpected($response, 'The B2Brouter response has no invoice');
-        }
-
-        return $invoice;
-    }
-
-    /**
-     * @return array<mixed>
-     *
-     * @throws UnexpectedResponse when the body is not JSON
-     */
-    private function body(ResponseInterface $response): array
-    {
-        try {
-            return JsonResponse::decode($response);
-        } catch (UnexpectedResponse $exception) {
-            throw $this->sanitize($exception, (string) $response->getBody());
-        }
-    }
-
-    /**
-     * The error object of an error response, or null when there is none.
-     *
-     * @return array<mixed>|null
-     */
-    private function error(ResponseInterface $response): ?array
-    {
-        try {
-            $error = JsonResponse::decode($response)['error'] ?? null;
-        } catch (UnexpectedResponse) {
-            return null;
-        }
-
-        return is_array($error) ? $error : null;
-    }
-
-    /**
-     * The failure of an invoice in a failed state, or null for any other state.
-     *
-     * @param  array<mixed>  $invoice
-     */
-    private function failure(array $invoice): ?DeliveryFailure
-    {
-        $state = $invoice['state'] ?? null;
-        if ($state !== 'error' && $state !== 'invalid') {
-            return null;
-        }
-        $code = self::text($invoice['error_code'] ?? null);
-        $message = self::text($invoice['error_message'] ?? null);
-        $listed = $message === null;
-        if ($listed) {
-            $message = $this->listedErrors($invoice['errors'] ?? null);
-        }
-        $category = match (true) {
-            $state === 'invalid' => FailureCategory::Validation,
-            $code === self::NO_RECEIVER,
-            $code === null && $message !== null && preg_match(self::NO_RECEIVER_MESSAGE, $message) === 1 => FailureCategory::RecipientNotFound,
-            default => FailureCategory::Transport,
-        };
-
-        return new DeliveryFailure(
-            $category,
-            $message === null ? null : $this->shortened($this->redactor->redact($message), $listed),
-            $code === null ? null : $this->redactor->redact($code),
-        );
-    }
-
-    /**
-     * The text cut to QUOTED_BYTES when asked to, so a long errors list stays a short message.
-     */
-    private function shortened(string $text, bool $cut): string
-    {
-        return $cut && strlen($text) > self::QUOTED_BYTES ? mb_strcut($text, 0, self::QUOTED_BYTES, 'UTF-8').'...' : $text;
-    }
-
-    /**
-     * The raw (not yet redacted) messages of an errors list joined with "; ", or null when it has
-     * none. An entry is either a string or an object with a string "error"; anything else is ignored.
-     */
-    private function listedErrors(mixed $errors): ?string
-    {
-        if (! is_array($errors)) {
-            return null;
-        }
-        $messages = [];
-        foreach ($errors as $entry) {
-            $text = self::text(is_array($entry) ? ($entry['error'] ?? null) : $entry);
-            if ($text !== null) {
-                $messages[] = $text;
-            }
-        }
-        if ($messages === []) {
-            return null;
-        }
-
-        return implode('; ', $messages);
-    }
-
-    /**
-     * ", code, on param" for the error object, or an empty string without them.
-     *
-     * @param  array<mixed>|null  $error
-     */
-    private function codeAndParam(?array $error): string
-    {
-        $code = self::text($error['code'] ?? null);
-        $param = self::text($error['param'] ?? null);
-        $text = ($code === null ? '' : ', '.$code).($param === null ? '' : ' on '.$param);
-
-        return $this->redactor->redact($text);
-    }
-
-    /**
-     * The provider's error message in quotes, redacted and shortened, or a note that there is none.
-     *
-     * @param  array<mixed>|null  $error
-     */
-    private function quote(?array $error): string
-    {
-        $message = self::text($error['message'] ?? null);
-        if ($message === null) {
-            return 'no details given.';
-        }
-        $message = $this->redactor->redact($message);
-        if (strlen($message) > self::QUOTED_BYTES) {
-            $message = mb_strcut($message, 0, self::QUOTED_BYTES, 'UTF-8').'...';
-        }
-
-        return '"'.$message.'"';
-    }
-
-    /**
-     * The id of a B2Brouter invoice, which is a positive integer, as a string; null otherwise.
-     */
-    private static function id(mixed $value): ?string
-    {
-        return is_int($value) && $value > 0 ? (string) $value : null;
-    }
-
-    private static function text(mixed $value): ?string
-    {
-        return is_string($value) && trim($value) !== '' ? $value : null;
+        return B2BrouterErrors::checkBeforeResending($subject);
     }
 }
