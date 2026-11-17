@@ -9,12 +9,17 @@ declare(strict_types=1);
  *
  *   einvoicing-rules install peppol --dir=DIR [--from=DIR]
  *   einvoicing-rules check peppol --dir=DIR
+ *   einvoicing-rules install france --dir=DIR [--from=DIR]
+ *   einvoicing-rules check france --dir=DIR
  */
 
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
 use IntrAgile\EInvoicing\Validation\Exception\PartialInstall;
 use IntrAgile\EInvoicing\Validation\Exception\RuleSourceMismatch;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
+use IntrAgile\EInvoicing\Validation\France\FranceRules;
+use IntrAgile\EInvoicing\Validation\France\FranceSources;
+use IntrAgile\EInvoicing\Validation\France\RuleInstaller as FranceRuleInstaller;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolRules;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use IntrAgile\EInvoicing\Validation\Peppol\RuleInstaller;
@@ -40,6 +45,13 @@ $usage = <<<'TXT'
           a folder with the five .sch files), verifies their checksums and compiles them into DIR.
       einvoicing-rules check peppol --dir=DIR
           Exits 0 when all five compiled rule sets in DIR load with this engine, 1 otherwise.
+      einvoicing-rules install france --dir=DIR [--from=DIR]
+          Downloads the FNFE-MPE France_RFE rules and XML Schemas (or reads them from --from, the
+          root of a France_RFE checkout), verifies their checksums, compiles the seven rule sets
+          into DIR and copies the schemas below it.
+      einvoicing-rules check france --dir=DIR
+          Exits 0 when all seven compiled rule sets in DIR load with this engine and every schema
+          file matches its checksum, 1 otherwise.
 
     TXT;
 
@@ -56,13 +68,18 @@ foreach (array_slice($arguments, 2) as $argument) {
 }
 
 $allowed = ['install' => ['dir', 'from'], 'check' => ['dir']];
-if (! is_string($command) || ! isset($allowed[$command]) || $target !== 'peppol' || ! is_array($options)
+if (! is_string($command) || ! isset($allowed[$command]) || ! in_array($target, ['peppol', 'france'], true) || ! is_array($options)
     || ! isset($options['dir']) || array_diff(array_keys($options), $allowed[$command]) !== []) {
     fwrite(STDERR, $usage);
     exit(1);
 }
 
 $dir = $options['dir'];
+$from = $options['from'] ?? null;
+
+if ($target === 'france') {
+    exit($command === 'check' ? checkFrance($dir) : installFrance($dir, $from));
+}
 
 if ($command === 'check') {
     try {
@@ -82,7 +99,6 @@ if ($command === 'check') {
     exit(0);
 }
 
-$from = $options['from'] ?? null;
 echo $from === null
     ? 'Downloading the Peppol BIS Billing '.PeppolSources::VERSION.' rules from '.PeppolSources::BASE_URL."\n"
     : 'Reading the Peppol BIS Billing '.PeppolSources::VERSION." rules from \"{$from}\"\n";
@@ -104,3 +120,62 @@ foreach ($written as $path) {
 }
 echo "Compiled for this machine only: OpenPeppol AISBL holds the copyright of the rules, do not redistribute these files.\n";
 exit(0);
+
+function checkFrance(string $dir): int
+{
+    $names = [];
+    try {
+        foreach (array_keys(FranceSources::ruleSources()) as $key) {
+            $ruleSet = FranceRules::load($dir, $key);
+            $names[] = "{$ruleSet->id()} {$ruleSet->version()}";
+        }
+    } catch (RulesNotInstalled|UnsupportedSchematron $exception) {
+        fwrite(STDERR, $exception->getMessage()."\n");
+
+        return 1;
+    }
+
+    $schemas = FranceSources::files('schema');
+    $root = rtrim($dir, '/\\').'/'.FranceRules::SCHEMA_DIR;
+    foreach ($schemas as $path => $sha256) {
+        $file = "{$root}/{$path}";
+        if (! is_file($file) || hash_file('sha256', $file) !== $sha256) {
+            fwrite(STDERR, "The France_RFE schema \"{$file}\" is missing or not the pinned file. Run: vendor/bin/einvoicing-rules install france --dir=\"{$dir}\"\n");
+
+            return 1;
+        }
+    }
+
+    echo "The France_RFE rules in \"{$dir}\" load: ".implode(', ', $names).'; the '.count($schemas)." schema files match their checksums.\n";
+
+    return 0;
+}
+
+function installFrance(string $dir, ?string $from): int
+{
+    echo $from === null
+        ? 'Downloading the FNFE-MPE France_RFE '.FranceSources::VERSION.' rules and schemas from '.FranceSources::BASE_URL."\n"
+        : 'Reading the FNFE-MPE France_RFE '.FranceSources::VERSION." rules and schemas from \"{$from}\"\n";
+    try {
+        $written = (new FranceRuleInstaller)->install($dir, $from);
+    } catch (PartialInstall $exception) {
+        fwrite(STDERR, 'Installation incomplete: '.$exception->getMessage()."\n");
+        fwrite(STDERR, "The previous files could not be restored for these paths; run the install again to make the folder consistent:\n");
+        foreach ($exception->writtenPaths as $path) {
+            fwrite(STDERR, "  {$path}\n");
+        }
+
+        return 1;
+    } catch (RuleSourceMismatch|UnsupportedSchematron|RuntimeException|InvalidArgumentException $exception) {
+        fwrite(STDERR, 'Nothing was installed: '.$exception->getMessage()."\n");
+
+        return 1;
+    }
+    foreach ($written as $path) {
+        echo "Wrote {$path}\n";
+    }
+    echo 'Wrote '.count(FranceSources::files('schema')).' schema files below '.rtrim($dir, '/\\').'/'.FranceRules::SCHEMA_DIR."\n";
+    echo "Compiled for this machine only: the France_RFE files carry no licence that allows redistribution, do not redistribute these files.\n";
+
+    return 0;
+}

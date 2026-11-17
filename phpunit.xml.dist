@@ -17,7 +17,10 @@
          performance group asserts wall-clock bounds that can flake on a loaded machine, the
          release-artefacts group needs headless Chrome (CHROME_BIN) and writes
          build/release-artefacts, and the release-gate group checks those artefacts against the
-         official validators; run them explicitly with the group option of PHPUnit. -->
+         official validators; run them explicitly with the group option of PHPUnit. The
+         france-rules group compiles the French rules from the France_RFE checkout (the france
+         option of composer fetch-official) and is skipped without it, so it stays in the default
+         run. -->
     <groups>
         <exclude><group>oracle</group><group>kosit-oracle</group><group>verapdf</group><group>network</group><group>recommand-live</group><group>b2brouter-live</group><group>einvoicebe-live</group><group>performance</group><group>release-artefacts</group><group>release-gate</group></exclude>
     </groups>
