@@ -18,7 +18,9 @@ use LogicException;
  *   type is applied when it is (type errors XTTE0570). XPath 2.0 section 2.3.4 permits this, and
  *   Saxon behaves the same on a cold call; it may evaluate a local eagerly once a function has been
  *   called repeatedly (observed after about 50 calls), so a cast that fails only in an unread local
- *   is a dynamic error in Saxon and not here;
+ *   is a dynamic error in Saxon and not here. The same holds for Schematron lets (see Runner):
+ *   Saxon may evaluate a single-valued rule-level let eagerly even on the first call, when no
+ *   evaluated assert path reads it;
  * - xsl:choose runs the body of the first xsl:when whose test is true, else xsl:otherwise;
  * - the result is converted to the function's "as" type (type errors XTTE0780).
  *

@@ -178,7 +178,7 @@ final class NegativeCorpusTest extends TestCase
         $severities = self::severities($ruleSet)[$recipe['rule']] ?? [];
         self::assertNotSame([], $severities, "The rule set fr-{$key} has no rule {$recipe['rule']}.");
 
-        $xml = Mutator::apply(self::load($recipe['base']), $recipe['edits'], $ruleSet->namespaces() + self::DEFAULT_NAMESPACES);
+        $xml = self::edited($recipe);
         $document = SafeXml::loadPreservingWhitespace($xml);
         $findings = (new Runner)->run($ruleSet, $document)->findings;
         $fires = self::fires($findings, $recipe['rule'], $severities);
@@ -379,9 +379,19 @@ final class NegativeCorpusTest extends TestCase
     }
 
     /**
+     * The document a recipe produces: its base with its edits applied.
+     *
+     * @param  array{set: string, rule: string, base: string, edits: list<array<int, string>>, fork?: string}  $recipe
+     */
+    public static function edited(array $recipe): string
+    {
+        return Mutator::apply(self::load($recipe['base']), $recipe['edits'], self::ruleSet($recipe['set'])->namespaces() + self::DEFAULT_NAMESPACES);
+    }
+
+    /**
      * The XML of a base.
      */
-    private static function load(string $base): string
+    public static function load(string $base): string
     {
         $parts = explode(':', $base, 3);
 
@@ -434,7 +444,7 @@ final class NegativeCorpusTest extends TestCase
     /**
      * @return list<array{set: string, rule: string, base: string, edits: list<array<int, string>>, fork?: string}>
      */
-    private static function allRecipes(): array
+    public static function allRecipes(): array
     {
         $all = [];
         foreach (self::KEYS as $key) {

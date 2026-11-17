@@ -20,7 +20,8 @@ use Saxon\XsltExecutable;
  * 3.0 wrapper whose only template catches dynamic errors around xsl:apply-imports. The SaxonC 13
  * PHP API exposes no error code for a failed transformation (the exception carries only the
  * description) and crashes the process on the next transformation after such an exception, so
- * the error code is taken from the XSLT catch instead.
+ * the error code is taken from the XSLT catch instead, with the line and module Saxon locates the
+ * error in.
  *
  * Calling it without the extension marks the running test as skipped; the image built from
  * docker/oracle/Dockerfile provides the extension.
@@ -159,7 +160,7 @@ final class OfficialRules
                 <xsl:try>
                   <xsl:apply-imports/>
                   <xsl:catch>
-                    <oracle:dynamic-error code="{local-name-from-QName(\$err:code)}"><xsl:value-of select="\$err:description"/></oracle:dynamic-error>
+                    <oracle:dynamic-error code="{local-name-from-QName(\$err:code)}" line="{\$err:line-number}" module="{\$err:module}"><xsl:value-of select="\$err:description"/></oracle:dynamic-error>
                   </xsl:catch>
                 </xsl:try>
               </xsl:template>
@@ -181,7 +182,14 @@ final class OfficialRules
         }
         $root = $document->documentElement;
         if ($root->namespaceURI === self::ERROR_NAMESPACE && $root->localName === 'dynamic-error') {
-            throw new OracleDynamicError($root->getAttribute('code'), trim($root->textContent));
+            $line = $root->getAttribute('line');
+            $module = $root->getAttribute('module');
+            throw new OracleDynamicError(
+                $root->getAttribute('code'),
+                trim($root->textContent),
+                ctype_digit($line) ? (int) $line : null,
+                $module === '' ? null : $module,
+            );
         }
     }
 

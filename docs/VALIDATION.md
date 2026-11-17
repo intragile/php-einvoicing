@@ -146,7 +146,10 @@ with the behaviour Saxon shows on probe cases (`ProbeCases::functions()`):
 - **Lets are lazy.** A let is computed the first time an assert, a rule context or another let
   reads it, and then kept. A let no assert reads is never evaluated, so a value that cannot be
   converted (`xs:decimal('abc')`) in an unused let reports nothing. A let that fails is reported as
-  a `DynamicError` by every assert that reads it, each with its own rule id.
+  a `DynamicError` by every assert that reads it, each with its own rule id. Saxon may instead
+  evaluate a single-valued rule-level let (such as a `sum()`) eagerly, even on the first call, when
+  no evaluated assert path reads it: on a non-numeric amount Saxon then stops with `FORG0001` where
+  the engine reports the amount's format rule. XPath 2.0 section 2.3.4 permits both.
 - **Scope and context.** Schema-level and pattern-level lets are global variables: they are
   evaluated with the document node as context, at most once per document, and rule contexts may
   read them. Rule-level lets are evaluated with the node the rule handles as context. A variable

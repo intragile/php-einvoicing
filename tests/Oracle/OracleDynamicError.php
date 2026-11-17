@@ -12,8 +12,16 @@ use RuntimeException;
  */
 final class OracleDynamicError extends RuntimeException
 {
-    public function __construct(public readonly string $errorCode, string $description)
-    {
+    /**
+     * @param  int|null  $lineNumber  line in $module where Saxon located the error, when it gives one
+     * @param  string|null  $module  URI of the stylesheet module where Saxon located the error
+     */
+    public function __construct(
+        public readonly string $errorCode,
+        string $description,
+        public readonly ?int $lineNumber = null,
+        public readonly ?string $module = null,
+    ) {
         parent::__construct("{$errorCode}: {$description}");
     }
 }
