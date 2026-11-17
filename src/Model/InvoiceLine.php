@@ -50,9 +50,28 @@ final readonly class InvoiceLine
         public ?Period $period = null,
         public array $allowances = [],
         public array $charges = [],
+        private ?Extensions $extensions = null,
     ) {
         $this->quantity = Decimal::of($quantity, 'BT-129');
         $this->netAmount = Decimal::ofNullable($netAmount, 'BT-131');
+    }
+
+    /**
+     * Syntax or national data attached to this line beyond EN 16931.
+     */
+    public function extensions(): Extensions
+    {
+        return $this->extensions ?? Extensions::none();
+    }
+
+    public function withExtension(object $extension): self
+    {
+        return $this->copy(['extensions' => $this->extensions()->with($extension)]);
+    }
+
+    public function withExtensions(Extensions $extensions): self
+    {
+        return $this->copy(['extensions' => $extensions]);
     }
 
     /**
@@ -102,7 +121,7 @@ final readonly class InvoiceLine
     }
 
     /**
-     * @param  array{quantity?: BigDecimal, price?: Price, vat?: LineVat, netAmount?: BigDecimal|null, note?: string|null, period?: Period|null, allowances?: list<LineAllowance>, charges?: list<LineCharge>}  $changes
+     * @param  array{quantity?: BigDecimal, price?: Price, vat?: LineVat, netAmount?: BigDecimal|null, note?: string|null, period?: Period|null, allowances?: list<LineAllowance>, charges?: list<LineCharge>, extensions?: Extensions}  $changes
      */
     private function copy(array $changes): self
     {
@@ -121,6 +140,7 @@ final readonly class InvoiceLine
             period: array_key_exists('period', $changes) ? $changes['period'] : $this->period,
             allowances: $changes['allowances'] ?? $this->allowances,
             charges: $changes['charges'] ?? $this->charges,
+            extensions: $changes['extensions'] ?? $this->extensions,
         );
     }
 }

@@ -10,15 +10,25 @@ use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
 use IntrAgile\EInvoicing\CodeList\ElectronicAddressScheme;
 use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
+use IntrAgile\EInvoicing\CodeList\TextSubjectCode;
 use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\France\BillingFramework;
 use IntrAgile\EInvoicing\France\France;
+use IntrAgile\EInvoicing\France\FrenchInvoice;
+use IntrAgile\EInvoicing\France\FrenchLine;
+use IntrAgile\EInvoicing\France\FrenchProfile;
+use IntrAgile\EInvoicing\France\InformationalLine;
+use IntrAgile\EInvoicing\France\LineDelivery;
+use IntrAgile\EInvoicing\France\LineSeller;
+use IntrAgile\EInvoicing\France\LineSubType;
 use IntrAgile\EInvoicing\France\Siren;
 use IntrAgile\EInvoicing\France\Siret;
 use IntrAgile\EInvoicing\France\Treatment;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\ElectronicAddress;
+use IntrAgile\EInvoicing\Model\Extensions;
+use IntrAgile\EInvoicing\Model\Identifier;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Model\Item;
@@ -94,6 +104,89 @@ final class FrenchInvoices
                 new PrecedingInvoiceReference('F202600001', new DateTimeImmutable('2026-10-01')),
                 new PrecedingInvoiceReference('F202600002', new DateTimeImmutable('2026-10-15')),
             ]));
+    }
+
+    /**
+     * EXTENDED-CTC-FR invoice modelled on the FNFE sub-line example: GROUP line 1 holds DETAIL
+     * lines 2 and 3, INFORMATION line 4 follows. Line 2 has its own seller, VAT extras and two
+     * invoiced object identifiers; line 3 a preceding invoice, a delivery and a note subject code.
+     */
+    public static function extendedCtcFr(): Invoice
+    {
+        $draft = self::draft(BillingFramework::B1);
+        $seller = new LineSeller(
+            name: 'LE VENDEUR',
+            globalId: new Identifier('587451236587', '0088'),
+            legalRegistration: Siren::identifier(self::SELLER_SIREN),
+            vatIdentifier: 'FR88100000009',
+            country: CountryCode::FR,
+        );
+
+        $lines = [
+            new InvoiceLine(
+                id: '2',
+                quantity: '20',
+                unit: UnitCode::C62,
+                price: new Price(netPrice: '10.00'),
+                item: new Item(name: 'LIVRE', description: 'MA PETITE HISTOIRE'),
+                vat: new LineVat(category: VatCategory::StandardRate, rate: '10'),
+                objectIdentifier: new Identifier('S1', 'AVV'),
+                extensions: Extensions::none()->with(new FrenchLine(
+                    parentLineId: '1',
+                    subType: LineSubType::Detail,
+                    seller: $seller,
+                    vatExemptionReason: 'TVA SUR LES DEBITS',
+                    vatDueDateCode: '3',
+                    vatAmount: '20.00',
+                    amountWithVat: '220.00',
+                    objectIdentifiers: [new Identifier('F202600040', 'AFL')],
+                )),
+            ),
+            new InvoiceLine(
+                id: '3',
+                quantity: '20',
+                unit: UnitCode::C62,
+                price: new Price(netPrice: '15.00'),
+                item: new Item(name: 'JOUET', description: 'DOUDOU'),
+                vat: new LineVat(category: VatCategory::StandardRate, rate: '20'),
+                note: 'Livraison partielle',
+                extensions: Extensions::none()->with(new FrenchLine(
+                    parentLineId: '1',
+                    subType: LineSubType::Detail,
+                    precedingInvoice: new PrecedingInvoiceReference('F202500099', new DateTimeImmutable('2025-12-15')),
+                    delivery: new LineDelivery(
+                        name: 'ENTREPOT NORD',
+                        address: new PostalAddress(country: CountryCode::FR, line1: '5 rue du quai', city: 'LILLE', postCode: '59000'),
+                        actualDeliveryDate: new DateTimeImmutable('2025-12-20'),
+                    ),
+                    noteSubjectCode: TextSubjectCode::AAI,
+                )),
+            ),
+        ];
+        $informational = [
+            new InformationalLine(
+                id: '1',
+                subType: LineSubType::Group,
+                item: new Item(name: 'LIVRE-JOUET', description: 'MA PETITE HISTOIRE ET DOUDOU'),
+                quantity: '20',
+                unit: UnitCode::C62,
+                price: new Price(netPrice: '25.00'),
+                netAmount: '500.00',
+            ),
+            new InformationalLine(
+                id: '4',
+                subType: LineSubType::Information,
+                item: new Item(name: 'CADEAU', description: 'PAQUET CADEAU'),
+                quantity: '1',
+                unit: UnitCode::C62,
+                netAmount: '0.00',
+            ),
+        ];
+
+        $invoice = France::mark($draft->withLines($lines), BillingFramework::B1, FrenchProfile::ExtendedCtcFr)
+            ->withExtension(new FrenchInvoice(FrenchProfile::ExtendedCtcFr, $informational, ['1', '2', '3', '4']));
+
+        return self::complete($invoice);
     }
 
     /**

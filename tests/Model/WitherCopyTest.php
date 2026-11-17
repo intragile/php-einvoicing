@@ -32,7 +32,7 @@ final class WitherCopyTest extends TestCase
 
     public function test_every_line_wither_preserves_all_other_fields(): void
     {
-        $line = $this->allTermsInvoice()->lines[0];
+        $line = $this->allTermsInvoice()->lines[0]->withExtension(new stdClass);
         $this->assertNoEmptyProperty($line);
 
         $checked = $this->assertWithersPreserve($line);
@@ -70,7 +70,7 @@ final class WitherCopyTest extends TestCase
             }
             $propertyName = lcfirst(substr($name, 4));
             if ($propertyName === 'extensions') {
-                $value = $object instanceof Invoice ? $object->extensions() : null;
+                $value = $object->extensions();
             } elseif ($class->hasProperty($propertyName)) {
                 $value = (new ReflectionProperty($object, $propertyName))->getValue($object);
             } else {

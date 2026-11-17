@@ -6,10 +6,14 @@ namespace IntrAgile\EInvoicing\Syntax\Cii;
 
 use DOMElement;
 use IntrAgile\EInvoicing\France\FrenchGuard;
+use IntrAgile\EInvoicing\France\FrenchInvoice;
+use IntrAgile\EInvoicing\France\FrenchProfile;
+use IntrAgile\EInvoicing\France\InformationalLine;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentCharge;
 use IntrAgile\EInvoicing\Model\DocumentTotals;
 use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Syntax\WriterGuard;
 use IntrAgile\EInvoicing\Syntax\XRechnung;
 use InvalidArgumentException;
@@ -40,6 +44,9 @@ use InvalidArgumentException;
  * - The price discount (BT-147) without a gross price (BT-148) is written with the gross price it
  *   implies (see LineWriter).
  *
+ * An EXTENDED-CTC-FR invoice (FrenchInvoice with FrenchProfile::ExtendedCtcFr) is written with its
+ * French line data and its GROUP and INFORMATION lines, in the French line order (see LineWriter).
+ *
  * The VAT point date (BT-7) and its code (BT-8) are written in the first VAT breakdown entry,
  * where CiiReader reads them. Unlike UBL, CII keeps the VAT breakdown apart from the VAT total, so
  * a breakdown without BT-110 is written as it is (CEN CII example 7 has one).
@@ -63,7 +70,7 @@ final class CiiWriter
      * VAT point date codes (BT-8): the model holds UNTDID 2005 codes as UBL does, CII uses
      * UNTDID 2475.
      */
-    private const TAX_POINT_DATE_CODES = ['3' => '5', '35' => '29', '432' => '72'];
+    private const TAX_POINT_DATE_CODES = LineWriter::DUE_DATE_TYPE_CODES;
 
     /** Document type code of a tender or lot reference (BT-17). */
     private const TENDER_OR_LOT_TYPE = '50';
@@ -101,20 +108,46 @@ final class CiiWriter
         $out = new CiiOutput;
         $root = $out->root;
         $parties = new PartyWriter($out);
-        $lines = new LineWriter($out);
+        $french = $invoice->extensions()->get(FrenchInvoice::class);
+        $extended = $french?->profile === FrenchProfile::ExtendedCtcFr ? $french : null;
+        $lines = new LineWriter($out, $extended === null ? null : $invoice->currency);
 
         $this->context($out, $root, $invoice);
         $this->exchangedDocument($out, $root, $invoice);
 
         $transaction = $out->add($root, 'rsm:SupplyChainTradeTransaction');
-        foreach ($invoice->lines as $line) {
-            $lines->line($transaction, $line);
+        foreach (self::orderedLines($invoice, $extended) as $line) {
+            if ($line instanceof InformationalLine) {
+                $lines->informational($transaction, $line);
+            } else {
+                $lines->line($transaction, $line);
+            }
         }
         $this->agreement($out, $parties, $transaction, $invoice);
         $this->delivery($out, $parties, $transaction, $invoice);
         $this->settlement($out, $parties, $lines, $transaction, $invoice, $totals);
 
         return $out->xml();
+    }
+
+    /**
+     * The invoice lines and, for an EXTENDED-CTC-FR invoice, its GROUP and INFORMATION lines in
+     * the French line order; without a line order, the invoice line order. FrenchGuard has checked
+     * that the line order lists every line once.
+     *
+     * @return list<InvoiceLine|InformationalLine>
+     */
+    private static function orderedLines(Invoice $invoice, ?FrenchInvoice $french): array
+    {
+        if ($french === null || $french->lineOrder === []) {
+            return $invoice->lines;
+        }
+        $byId = [];
+        foreach ([...$invoice->lines, ...$french->informationalLines] as $line) {
+            $byId[$line->id] = $line;
+        }
+
+        return array_map(static fn (string $id): InvoiceLine|InformationalLine => $byId[$id], $french->lineOrder);
     }
 
     /**

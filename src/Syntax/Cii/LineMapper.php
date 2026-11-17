@@ -8,8 +8,14 @@ use DOMElement;
 use IntrAgile\EInvoicing\CodeList\AllowanceReasonCode;
 use IntrAgile\EInvoicing\CodeList\ChargeReasonCode;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
+use IntrAgile\EInvoicing\CodeList\TextSubjectCode;
 use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
+use IntrAgile\EInvoicing\France\FrenchLine;
+use IntrAgile\EInvoicing\France\InformationalLine;
+use IntrAgile\EInvoicing\France\LineDelivery;
+use IntrAgile\EInvoicing\France\LineSeller;
+use IntrAgile\EInvoicing\France\LineSubType;
 use IntrAgile\EInvoicing\Model\Identifier;
 use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Model\Item;
@@ -19,10 +25,15 @@ use IntrAgile\EInvoicing\Model\LineAllowance;
 use IntrAgile\EInvoicing\Model\LineCharge;
 use IntrAgile\EInvoicing\Model\LineVat;
 use IntrAgile\EInvoicing\Model\Period;
+use IntrAgile\EInvoicing\Model\PrecedingInvoiceReference;
 use IntrAgile\EInvoicing\Model\Price;
 
 /**
  * Maps a ram:IncludedSupplyChainTradeLineItem to an invoice line (BG-25).
+ *
+ * In an EXTENDED-CTC-FR invoice (extendedLine) a GROUP or INFORMATION line becomes an
+ * InformationalLine; any other line becomes an invoice line, with a FrenchLine extension when it
+ * carries French line data.
  *
  * @internal
  */
@@ -50,13 +61,31 @@ final class LineMapper
             vat: $this->vat($line),
             netAmount: $d->decimal(self::SETTLEMENT.'ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount', $line, 'BT-131'),
             note: $d->text('ram:AssociatedDocumentLineDocument/ram:IncludedNote/ram:Content', $line),
-            objectIdentifier: $this->objectIdentifier($line),
+            objectIdentifier: $this->objectIdentifiers($line, false)[0] ?? null,
             orderLineReference: $d->text(self::AGREEMENT.'ram:BuyerOrderReferencedDocument/ram:LineID', $line),
             buyerAccountingReference: $d->text(self::SETTLEMENT.'ram:ReceivableSpecifiedTradeAccountingAccount/ram:ID', $line),
             period: $this->period($d->one(self::SETTLEMENT.'ram:BillingSpecifiedPeriod', $line)),
             allowances: $allowances,
             charges: $charges,
         );
+    }
+
+    /**
+     * Maps a line of an EXTENDED-CTC-FR invoice.
+     */
+    public function extendedLine(DOMElement $line): InvoiceLine|InformationalLine
+    {
+        $d = $this->document;
+        $subType = $d->code(LineSubType::class, $d->one('ram:AssociatedDocumentLineDocument/ram:LineStatusReasonCode', $line));
+        if ($subType === LineSubType::Group || $subType === LineSubType::Information) {
+            return $this->informational($line, $subType);
+        }
+
+        $invoiceLine = $this->line($line);
+        $french = $this->french($line, $subType, array_slice($this->objectIdentifiers($line, true), 1));
+        $isEmpty = $french == new FrenchLine;
+
+        return $isEmpty ? $invoiceLine : $invoiceLine->withExtension($french);
     }
 
     public function period(?DOMElement $period): ?Period
@@ -71,12 +100,141 @@ final class LineMapper
     }
 
     /**
-     * BT-128: the first line ram:AdditionalReferencedDocument with type code 130 or, as in the CEN
-     * examples, without a type code; its scheme is in ram:ReferenceTypeCode.
+     * GROUP or INFORMATION line: every group is optional, the item name (BT-153) is required.
      */
-    private function objectIdentifier(DOMElement $line): ?Identifier
+    private function informational(DOMElement $line, LineSubType $subType): InformationalLine
     {
         $d = $this->document;
+        $quantity = $d->one('ram:SpecifiedLineTradeDelivery/ram:BilledQuantity', $line);
+        $hasPrice = $d->one(self::AGREEMENT.'ram:NetPriceProductTradePrice', $line) !== null;
+        $hasVat = $d->one(self::SETTLEMENT.'ram:ApplicableTradeTax/ram:CategoryCode', $line) !== null;
+
+        return new InformationalLine(
+            id: $d->requiredText('ram:AssociatedDocumentLineDocument/ram:LineID', $line, 'BT-126'),
+            subType: $subType,
+            item: $this->item($line),
+            quantity: $quantity === null ? null : $d->decimalOf($quantity, 'BT-129'),
+            unit: $d->code(UnitCode::class, $quantity, 'unitCode'),
+            price: $hasPrice ? $this->price($line) : null,
+            vat: $hasVat ? $this->vat($line) : null,
+            netAmount: $d->decimal(self::SETTLEMENT.'ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount', $line, 'BT-131'),
+            note: $d->text('ram:AssociatedDocumentLineDocument/ram:IncludedNote/ram:Content', $line),
+            period: $this->period($d->one(self::SETTLEMENT.'ram:BillingSpecifiedPeriod', $line)),
+            french: $this->french($line, null, $this->objectIdentifiers($line, true)),
+        );
+    }
+
+    /**
+     * French line data (EXT-FR-FE).
+     *
+     * @param  list<Identifier>  $objectIdentifiers
+     */
+    private function french(DOMElement $line, ?LineSubType $subType, array $objectIdentifiers): FrenchLine
+    {
+        $d = $this->document;
+        $summation = self::SETTLEMENT.'ram:SpecifiedTradeSettlementLineMonetarySummation/';
+
+        return new FrenchLine(
+            parentLineId: $d->text('ram:AssociatedDocumentLineDocument/ram:ParentLineID', $line),
+            subType: $subType,
+            seller: $this->seller($d->one(self::AGREEMENT.'ram:ItemSellerTradeParty', $line)),
+            precedingInvoice: $this->precedingInvoice($d->one(self::SETTLEMENT.'ram:InvoiceReferencedDocument', $line)),
+            delivery: $this->delivery($line),
+            vatExemptionReason: $d->text(self::SETTLEMENT.'ram:ApplicableTradeTax/ram:ExemptionReason', $line),
+            vatDueDateCode: $this->dueDateCode($d->one(self::SETTLEMENT.'ram:ApplicableTradeTax/ram:DueDateTypeCode', $line)),
+            vatAmount: $d->decimal($summation.'ram:TaxTotalAmount', $line, 'EXT-FR-FE-181'),
+            amountWithVat: $d->decimal($summation.'ram:GrandTotalAmount', $line, 'EXT-FR-FE-184'),
+            noteSubjectCode: $d->code(TextSubjectCode::class, $d->one('ram:AssociatedDocumentLineDocument/ram:IncludedNote/ram:SubjectCode', $line)),
+            objectIdentifiers: $objectIdentifiers,
+        );
+    }
+
+    /**
+     * ram:ItemSellerTradeParty (EXT-FR-FE-164 to EXT-FR-FE-177).
+     */
+    private function seller(?DOMElement $party): ?LineSeller
+    {
+        if ($party === null) {
+            return null;
+        }
+        $d = $this->document;
+        $seller = new LineSeller(
+            name: $d->text('ram:Name', $party),
+            globalId: $d->identifier($d->one('ram:GlobalID', $party)),
+            legalRegistration: $d->identifier($d->one('ram:SpecifiedLegalOrganization/ram:ID', $party)),
+            vatIdentifier: $d->text('ram:SpecifiedTaxRegistration/ram:ID', $party),
+            country: $d->code(CountryCode::class, $d->one('ram:PostalTradeAddress/ram:CountryID', $party)),
+        );
+
+        return $seller == new LineSeller ? null : $seller;
+    }
+
+    /**
+     * Preceding invoice reference of the line (EXT-FR-FE-BG-06).
+     */
+    private function precedingInvoice(?DOMElement $reference): ?PrecedingInvoiceReference
+    {
+        if ($reference === null) {
+            return null;
+        }
+        $d = $this->document;
+        $number = $d->text('ram:IssuerAssignedID', $reference);
+        if ($number === null) {
+            $d->reject($reference, 'dropped: no preceding invoice reference');
+
+            return null;
+        }
+
+        return new PrecedingInvoiceReference($number, $d->date('ram:FormattedIssueDateTime/qdt:DateTimeString', $reference));
+    }
+
+    /**
+     * Line deliver-to location (EXT-FR-FE-BG-10) and actual delivery date (EXT-FR-FE-BG-11).
+     */
+    private function delivery(DOMElement $line): ?LineDelivery
+    {
+        $d = $this->document;
+        $party = $d->one('ram:SpecifiedLineTradeDelivery/ram:ShipToTradeParty', $line);
+        $delivery = new LineDelivery(
+            name: $party === null ? null : $d->text('ram:Name', $party),
+            address: $party === null ? null : (new PartyMapper($d))->address($d->one('ram:PostalTradeAddress', $party)),
+            actualDeliveryDate: $d->date('ram:SpecifiedLineTradeDelivery/ram:ActualDeliverySupplyChainEvent/ram:OccurrenceDateTime/udt:DateTimeString', $line),
+        );
+
+        return $delivery == new LineDelivery ? null : $delivery;
+    }
+
+    /**
+     * EXT-FR-FE-180: UNTDID 2475 in CII, UNTDID 2005 in the model as for BT-8.
+     */
+    private function dueDateCode(?DOMElement $element): ?string
+    {
+        if ($element === null) {
+            return null;
+        }
+        $value = trim($element->textContent);
+        $code = array_flip(LineWriter::DUE_DATE_TYPE_CODES)[$value] ?? null;
+        if ($code === null) {
+            $this->document->reject($element, "invalid code '{$value}'");
+
+            return null;
+        }
+        $this->document->use($element);
+
+        return (string) $code;
+    }
+
+    /**
+     * BT-128: line ram:AdditionalReferencedDocument elements with type code 130 or, as in the CEN
+     * examples, without a type code; the scheme is in ram:ReferenceTypeCode. EN 16931 has one per
+     * line, so only the first is read unless $all is set.
+     *
+     * @return list<Identifier>
+     */
+    private function objectIdentifiers(DOMElement $line, bool $all): array
+    {
+        $d = $this->document;
+        $identifiers = [];
         foreach ($d->all(self::SETTLEMENT.'ram:AdditionalReferencedDocument', $line) as $reference) {
             $type = $d->one('ram:TypeCode', $reference);
             if ($type !== null && trim($type->textContent) !== '130') {
@@ -91,10 +249,13 @@ final class LineMapper
             }
             $d->use($id);
 
-            return new Identifier(value: $id->textContent, scheme: $d->token('ram:ReferenceTypeCode', $reference));
+            $identifiers[] = new Identifier(value: $id->textContent, scheme: $d->token('ram:ReferenceTypeCode', $reference));
+            if (! $all) {
+                break;
+            }
         }
 
-        return null;
+        return $identifiers;
     }
 
     /**
