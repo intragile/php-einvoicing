@@ -13,6 +13,7 @@ use IntrAgile\EInvoicing\Rules\En16931\RuleFiles;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
 use IntrAgile\EInvoicing\Schematron\RuleSet;
 use IntrAgile\EInvoicing\Schematron\Runner;
+use IntrAgile\EInvoicing\Syntax\Cii\CiiVersion;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiWriter;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Syntax\Syntax;
@@ -223,7 +224,7 @@ final class Validator implements DocumentValidator
 
         return $this->validate(match ($syntax) {
             Syntax::Ubl => (new UblWriter)->write($invoice),
-            Syntax::Cii => (new CiiWriter)->write($invoice),
+            Syntax::Cii => (new CiiWriter(CiiVersion::D16B))->write($invoice),
         });
     }
 }

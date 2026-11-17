@@ -24,8 +24,8 @@ use InvalidArgumentException;
  * names that release. The D22B elements outside EN 16931 (product industry and model identifiers,
  * batch identifiers, model name, advance payment invoice reference) are never written.
  *
- * Elements appear in the order of the D16B and D22B schema sequences. Amounts are written as the model
- * holds them, without a currency, except the two ram:TaxTotalAmount elements: the VAT total
+ * Elements appear in the order of the D16B and D22B schema sequences. Amounts are written as the
+ * model holds them, without a currency, except the two ram:TaxTotalAmount elements: the VAT total
  * (BT-110) carries the invoice currency (BT-5), the VAT total in accounting currency (BT-111)
  * carries BT-6. Invoices and credit notes share the root element; the type code (BT-3) tells
  * them apart.

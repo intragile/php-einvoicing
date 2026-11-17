@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\Tests\Syntax\FacturX;
 use Composer\Autoload\ClassLoader;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\PrecedingInvoiceReference;
 use IntrAgile\EInvoicing\Model\ProcessControl;
 use IntrAgile\EInvoicing\Rules\FacturX\RuleFiles;
 use IntrAgile\EInvoicing\Syntax\Cii\CiiDocument;
@@ -17,6 +18,7 @@ use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\SchemaValidator;
+use InvalidArgumentException;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
@@ -54,6 +56,48 @@ final class FacturXXmlWriterTest extends TestCase
 
         self::assertSame([], (new SchemaValidator)->validate($document, RuleFiles::schema((string) $profile->ruleProfile())));
         self::assertSame($profile->guidelineId(), (new CiiDocument($document))->text('rsm:ExchangedDocumentContext/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID'));
+    }
+
+    /**
+     * Every Factur-X profile schema except MINIMUM allows repeated preceding invoice references
+     * (BG-3), so they are written as they are; MINIMUM has no BG-3. XRECHNUNG is XRechnung CII,
+     * which is always D16B and refuses a second reference.
+     *
+     * @return iterable<string, array{FacturXProfile, int}>
+     */
+    public static function precedingInvoiceCounts(): iterable
+    {
+        yield 'MINIMUM' => [FacturXProfile::Minimum, 0];
+        yield 'BASIC WL' => [FacturXProfile::BasicWl, 2];
+        yield 'BASIC' => [FacturXProfile::Basic, 2];
+        yield 'EN 16931' => [FacturXProfile::En16931, 2];
+        yield 'EXTENDED' => [FacturXProfile::Extended, 2];
+    }
+
+    #[DataProvider('precedingInvoiceCounts')]
+    public function test_two_preceding_invoices_per_profile(FacturXProfile $profile, int $written): void
+    {
+        $invoice = TotalsCalculator::complete(InvoiceFactory::mixedVat())->withPrecedingInvoices([
+            new PrecedingInvoiceReference(number: 'A-1'),
+            new PrecedingInvoiceReference(number: 'A-2'),
+        ]);
+
+        $xml = (new FacturXXmlWriter)->write($invoice, $profile)->xml;
+
+        self::assertSame($written, substr_count($xml, '<ram:InvoiceReferencedDocument>'));
+    }
+
+    public function test_xrechnung_profile_refuses_two_preceding_invoices(): void
+    {
+        $invoice = TotalsCalculator::complete(InvoiceFactory::mixedVat())->withPrecedingInvoices([
+            new PrecedingInvoiceReference(number: 'A-1'),
+            new PrecedingInvoiceReference(number: 'A-2'),
+        ]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('CII D16B carries one preceding invoice reference (BG-3)');
+
+        (new FacturXXmlWriter)->write($invoice, FacturXProfile::XRechnung);
     }
 
     #[DataProvider('invoices')]

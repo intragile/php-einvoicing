@@ -75,14 +75,22 @@ final class CiiD22bTest extends TestCase
     }
 
     #[DataProvider('singlePrecedingDocuments')]
-    public function test_single_bg3_output_is_byte_identical_to_previous_writer(Invoice $invoice): void
+    public function test_d22b_equals_d16b_output_for_at_most_one_bg3(Invoice $invoice): void
     {
-        // Without a second BG-3 the version only changes the guard, never an element, so the
-        // D16B writer (the behaviour before D22B became the default) is the reference output.
+        // Without a second BG-3 the version only changes the guard, never an element.
         self::assertSame(
             (new CiiWriter(CiiVersion::D16B))->write($invoice),
             (new CiiWriter)->write($invoice),
         );
+    }
+
+    #[DataProvider('goldenDocuments')]
+    public function test_single_bg3_output_is_byte_identical_to_golden_xml(string $name): void
+    {
+        // The golden files were written by the CII writer before D22B became its default.
+        $invoice = self::invoices()[$name];
+
+        self::assertStringEqualsFile(__DIR__.'/../../fixtures/cii/golden/'.$name.'.xml', (new CiiWriter)->write($invoice));
     }
 
     #[Group('france-rules')]
@@ -99,6 +107,19 @@ final class CiiD22bTest extends TestCase
     {
         // The Factur-X EXTENDED schema is a superset of CII D22B for every EN 16931 element.
         self::assertSame([], Xsd::errors($xml, RuleFiles::schema('EXTENDED')));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function goldenDocuments(): array
+    {
+        $cases = [];
+        foreach (glob(__DIR__.'/../../fixtures/cii/golden/*.xml') ?: [] as $file) {
+            $cases[basename($file, '.xml')] = [basename($file, '.xml')];
+        }
+
+        return $cases;
     }
 
     /**

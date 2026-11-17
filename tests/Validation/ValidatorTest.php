@@ -17,6 +17,7 @@ use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Model\Item;
 use IntrAgile\EInvoicing\Model\LineVat;
+use IntrAgile\EInvoicing\Model\PrecedingInvoiceReference;
 use IntrAgile\EInvoicing\Model\Price;
 use IntrAgile\EInvoicing\Rules\En16931\RuleFiles;
 use IntrAgile\EInvoicing\Schematron\RuleSet;
@@ -119,6 +120,19 @@ final class ValidatorTest extends TestCase
 
         self::assertSame(Syntax::Cii, $report->syntax);
         self::assertTrue($report->isValid(), implode("\n", $report->verdict()));
+    }
+
+    public function test_cii_validation_writes_d16b_and_refuses_two_preceding_invoices(): void
+    {
+        $invoice = TotalsCalculator::complete(InvoiceFactory::mixedVat())->withPrecedingInvoices([
+            new PrecedingInvoiceReference(number: 'A-1'),
+            new PrecedingInvoiceReference(number: 'A-2'),
+        ]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('CII D16B carries one preceding invoice reference (BG-3)');
+
+        Validator::en16931()->validateInvoice($invoice, Syntax::Cii);
     }
 
     public function test_model_invoice_is_written_as_ubl_by_default(): void
