@@ -37,7 +37,7 @@ final class Collection
             throw new InvalidArgumentException('The invoice has no VAT breakdown (BG-23) to allocate the payment over.');
         }
 
-        $paid = BigDecimal::of($paid)->toScale(self::SCALE, RoundingMode::HALF_UP);
+        $paid = BigDecimal::of($paid)->toScale(self::SCALE, RoundingMode::HalfUp);
 
         /** @var array<string, array{rate: BigDecimal, gross: BigDecimal}> $rates */
         $rates = [];
@@ -66,7 +66,7 @@ final class Collection
         foreach ($entries as $index => $entry) {
             $share = $total->isZero()
                 ? BigDecimal::zero()->toScale(self::SCALE)
-                : $paid->multipliedBy($entry['gross'])->dividedBy($total, self::SCALE, RoundingMode::HALF_UP);
+                : $paid->multipliedBy($entry['gross'])->dividedBy($total, self::SCALE, RoundingMode::HalfUp);
             $shares[$index] = $share;
             $allocated = $allocated->plus($share);
 

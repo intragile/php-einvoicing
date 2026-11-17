@@ -190,7 +190,7 @@ final class B2cAggregator
                 $contributions[$category][$rateKey] = [
                     'rate' => $amounts['rate'],
                     'taxable' => $amounts['taxable'],
-                    'tax' => $amounts['taxable']->multipliedBy($amounts['rate'])->dividedBy(100, self::SCALE, RoundingMode::HALF_UP),
+                    'tax' => $amounts['taxable']->multipliedBy($amounts['rate'])->dividedBy(100, self::SCALE, RoundingMode::HalfUp),
                 ];
             }
         }
