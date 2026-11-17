@@ -8,6 +8,9 @@ use IntrAgile\EInvoicing\France\Routing\AnnuaireStatus;
 use IntrAgile\EInvoicing\France\Routing\Channel;
 use IntrAgile\EInvoicing\France\Routing\Router;
 use IntrAgile\EInvoicing\France\Routing\RoutingRule;
+use IntrAgile\EInvoicing\France\Siren;
+use IntrAgile\EInvoicing\Model\Identifier;
+use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Tests\Support\FrenchInvoices;
 use IntrAgile\EInvoicing\Tests\Support\RecordingHttpClient;
@@ -285,8 +288,13 @@ final class B2BrouterAnnuaireTest extends TestCase
     public function test_invalid_siren_is_refused_without_request(): void
     {
         $recorder = new RecordingHttpClient;
+        $annuaire = $this->annuaire($recorder);
 
-        $exception = self::capture(fn () => $this->annuaire($recorder)->status('123456789'));
+        foreach (['123456789', '380 129 866', '', '10000000900017'] as $siren) {
+            self::assertSame(AnnuaireStatus::Unknown, $annuaire->status($siren));
+        }
+
+        $exception = self::capture(fn () => $annuaire->lookup('0002', '123456789'));
 
         self::assertInstanceOf(InvalidArgumentException::class, $exception);
         self::assertStringContainsString('123456789', $exception->getMessage());
@@ -411,6 +419,32 @@ final class B2BrouterAnnuaireTest extends TestCase
         self::assertSame(RoutingRule::DomesticB2b, $decision->rule);
         self::assertTrue($decision->needsDirectoryCheck);
         self::assertStringEndsWith('/directory/fr/0002/'.FrenchInvoices::BUYER_SIREN, (string) $recorder->requests()[0]->getUri());
+    }
+
+    public function test_router_with_live_annuaire_keeps_e_invoice_for_malformed_buyer_siren(): void
+    {
+        $recorder = new RecordingHttpClient;
+        $invoice = FrenchInvoices::domesticB2b();
+        $buyer = $invoice->buyer;
+        $invoice = $invoice->withBuyer(new Party(
+            name: $buyer->name,
+            tradingName: $buyer->tradingName,
+            identifiers: $buyer->identifiers,
+            legalRegistration: new Identifier('380 129 866', Siren::SCHEME),
+            vatIdentifier: $buyer->vatIdentifier,
+            taxRegistration: $buyer->taxRegistration,
+            additionalLegalInformation: $buyer->additionalLegalInformation,
+            electronicAddress: $buyer->electronicAddress,
+            address: $buyer->address,
+            contact: $buyer->contact,
+        ));
+
+        $decision = (new Router($this->annuaire($recorder)))->route($invoice);
+
+        self::assertSame(Channel::EInvoice, $decision->channel);
+        self::assertSame(RoutingRule::DomesticB2b, $decision->rule);
+        self::assertTrue($decision->needsDirectoryCheck);
+        self::assertSame([], $recorder->requests());
     }
 
     /**

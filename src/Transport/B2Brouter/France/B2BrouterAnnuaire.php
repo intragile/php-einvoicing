@@ -94,12 +94,19 @@ final class B2BrouterAnnuaire implements Annuaire
     /**
      * The directory status of the legal entity with the given SIREN.
      *
-     * @throws InvalidArgumentException when the SIREN is malformed or B2Brouter refuses it; no
-     *                                  request is made for a malformed SIREN
+     * A SIREN that fails the local check (nine digits with a valid check digit), for example one
+     * written with spaces, is Unknown without a request, as the Annuaire contract asks for a
+     * lookup that is not possible; lookup() refuses it instead.
+     *
+     * @throws InvalidArgumentException when B2Brouter refuses the SIREN (HTTP 422)
      * @throws AuthenticationFailed when B2Brouter refuses the API key
      */
     public function status(string $siren): AnnuaireStatus
     {
+        if (! self::isSiren($siren)) {
+            return AnnuaireStatus::Unknown;
+        }
+
         return $this->lookup(Siren::SCHEME, $siren)->status;
     }
 
