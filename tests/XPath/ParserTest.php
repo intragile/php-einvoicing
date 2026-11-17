@@ -458,6 +458,15 @@ final class ParserTest extends TestCase
         );
     }
 
+    /**
+     * "P[pred]//Q" matches a Q that has an ancestor matching "P[pred]"; selecting Q through
+     * descendant-or-self::node() from the filtered union gives the same nodes.
+     */
+    public function test_filtered_union_followed_by_descendant_abbreviation(): void
+    {
+        self::assertSame(self::parse('(//a | //b)[$n]//c'), self::parsePattern('(a | b)[$n]//c'));
+    }
+
     public function test_filtered_union_with_numeric_predicate_is_refused(): void
     {
         $this->expectException(UnsupportedXPath::class);

@@ -540,6 +540,20 @@ final class EvaluatorTest extends TestCase
         self::assertSame([], $this->matchPattern($pattern, $selected(false)));
     }
 
+    /**
+     * "(a | b)[@k]//d" matches every d below an a or b that has @k, at any depth, and no other d.
+     */
+    public function test_filtered_union_followed_by_descendant_abbreviation_matches_descendants(): void
+    {
+        $document = new DOMDocument;
+        $document->loadXML('<r><a k="1"><x><d id="1"/></x><d id="2"/><a><d id="3"/></a></a><a><d id="4"/></a><b k="1"><d id="5"/></b><c k="1"><d id="6"/></c><d id="7"/></r>');
+        $ast = (new Parser)->parsePattern('(a | b)[@k]//d', new StaticContext([]));
+
+        $matched = (new Evaluator(DocumentIndex::build($document)))->matchPattern($ast, $document);
+
+        self::assertSame(['1', '2', '3', '5'], array_map(static fn ($node): string => $node instanceof DOMElement ? $node->getAttribute('id') : '?', $matched));
+    }
+
     public function test_parenthesised_pattern_predicate_error_is_no_match(): void
     {
         $pattern = '(/ubl:Invoice/cac:InvoiceLine)[xs:decimal(cbc:LineExtensionAmount/@currencyID) > 0]';

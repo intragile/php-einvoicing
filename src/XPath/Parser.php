@@ -136,8 +136,10 @@ final class Parser
      * A filtered union followed by steps, "(P1 | P2)[pred]/rest", matches the nodes reached by
      * "rest" from a node of the union for which every predicate holds: the predicates stay on the
      * union and "rest" is applied to the filtered selection. Each step of "rest" is a child or
-     * attribute step, or a parenthesised union of such steps; a filtered union nested in a union
-     * that is followed by steps, "((P1 | P2)[pred] | P3)/rest", is rejected.
+     * attribute step, or a parenthesised union of such steps, and "rest" may start with or contain
+     * "//": "(P1 | P2)[pred]//Q" matches a Q that has an ancestor matching "(P1 | P2)[pred]", which
+     * is what descendant-or-self::node()/Q from the filtered selection reaches. A filtered union
+     * nested in a union that is followed by steps, "((P1 | P2)[pred] | P3)/rest", is rejected.
      *
      * @return array<mixed>
      */
