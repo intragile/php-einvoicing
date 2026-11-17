@@ -131,30 +131,53 @@ final class Parser
      *
      * A parenthesised union followed by further steps, "(P1 | P2)/rest" (also an XSLT 3.0 pattern
      * that Saxon accepts), matches what "P1/rest | P2/rest" matches and is compiled to that union.
-     * Every alternative must itself be a path pattern; a filtered union followed by steps,
-     * "(P1 | P2)[pred]/rest", is rejected, also when it is one alternative of a union that is
-     * followed by steps, "((P1 | P2)[pred] | P3)/rest".
+     * Every alternative must itself be a path pattern.
+     *
+     * A filtered union followed by steps, "(P1 | P2)[pred]/rest", matches the nodes reached by
+     * "rest" from a node of the union for which every predicate holds: the predicates stay on the
+     * union and "rest" is applied to the filtered selection. Each step of "rest" is a child or
+     * attribute step, or a parenthesised union of such steps; a filtered union nested in a union
+     * that is followed by steps, "((P1 | P2)[pred] | P3)/rest", is rejected.
      *
      * @return array<mixed>
      */
     public function parsePattern(string $pattern, StaticContext $context): array
     {
         $ast = $this->parse($pattern, $context);
-        if ($ast[0] !== Op::FILTER) {
+
+        // Collect the steps that follow a leftmost filtered union, "(P1 | P2)[pred]/rest".
+        $rest = [];
+        $head = $ast;
+        while ($head[0] === Op::PATH) {
+            /** @var array<mixed> $right */
+            $right = $head[2];
+            array_unshift($rest, $right);
+            /** @var array<mixed> $head */
+            $head = $head[1];
+        }
+        if ($head[0] !== Op::FILTER) {
             return $this->patternSelection($ast, $pattern);
         }
 
         /** @var array<mixed> $primary */
-        $primary = $ast[1];
+        $primary = $head[1];
         /** @var list<array<mixed>> $predicates */
-        $predicates = $ast[2];
+        $predicates = $head[2];
         foreach ($predicates as $predicate) {
             if (self::isNumericLiteral($predicate)) {
                 throw new UnsupportedXPath('numeric predicate on a parenthesised match pattern', $pattern, 0);
             }
         }
 
-        return [Op::FILTER, $this->patternSelection($primary, $pattern), $predicates];
+        $selection = [Op::FILTER, $this->patternSelection($primary, $pattern), $predicates];
+        foreach ($rest as $step) {
+            foreach ($this->alternatives($step) as $alternative) {
+                $this->assertPatternPath($alternative, false, $pattern);
+            }
+            $selection = [Op::PATH, $selection, $step];
+        }
+
+        return $selection;
     }
 
     /**

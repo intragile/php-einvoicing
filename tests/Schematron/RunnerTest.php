@@ -647,13 +647,53 @@ final class RunnerTest extends TestCase
     }
 
     /**
+     * Expected contexts follow the XSLT matching rule: a node matches "(P1 | P2)[pred]/rest" when
+     * "rest" leads to it from a node that matches P1 or P2 and satisfies the predicate.
+     */
+    public function test_filtered_union_selects_like_saxon(): void
+    {
+        $rule = static fn (string $context): string => '<pattern id="p"><rule context="'.$context.'">'
+            .'<assert id="U" flag="fatal" test="false()">x</assert></rule></pattern>';
+        $first = <<<'XML'
+            <t:Root xmlns:t="urn:test:runner">
+              <t:Item kind="a"><t:Amount>1</t:Amount><t:Sub><t:Amount>2</t:Amount></t:Sub></t:Item>
+              <t:Item kind="b"><t:Amount>3</t:Amount></t:Item>
+              <t:Line kind="a"><t:Amount>4</t:Amount></t:Line>
+              <t:Other kind="a"><t:Amount>5</t:Amount></t:Other>
+            </t:Root>
+            XML;
+        $second = <<<'XML'
+            <t:Root xmlns:t="urn:test:runner">
+              <t:Line kind="b"><t:Amount>6</t:Amount></t:Line>
+              <t:Item kind="a"><t:Sub kind="x"><t:Amount>7</t:Amount></t:Sub></t:Item>
+            </t:Root>
+            XML;
+
+        // Shape 1: filtered union of paths followed by a child step with its own predicate.
+        $shapeOne = "(t:Item/t:Sub | t:Line)[@kind = 'a']/t:Amount[. > 1]";
+        self::assertSame(['U /t:Root[1]/t:Line[1]/t:Amount[1]'], self::summary(self::runSchematron($rule($shapeOne), $first)));
+        self::assertSame([], self::summary(self::runSchematron($rule($shapeOne), $second)));
+
+        // Shape 2: filtered union followed by a union of child steps.
+        $shapeTwo = "(t:Item | t:Line)[@kind = 'a']/(t:Amount | t:Sub)";
+        self::assertSame(
+            ['U /t:Root[1]/t:Item[1]/t:Amount[1]', 'U /t:Root[1]/t:Item[1]/t:Sub[1]', 'U /t:Root[1]/t:Line[1]/t:Amount[1]'],
+            self::summary(self::runSchematron($rule($shapeTwo), $first)),
+        );
+        self::assertSame(
+            ['U /t:Root[1]/t:Item[1]/t:Sub[1]'],
+            self::summary(self::runSchematron($rule($shapeTwo), $second)),
+        );
+    }
+
+    /**
      * @return iterable<string, array{string}>
      */
     public static function invalidParenthesisedUnions(): iterable
     {
         yield 'variable alternative' => ['(t:Item | $v)/t:Amount'];
         yield 'parent axis alternative' => ['(t:Item | ../t:Line)/t:Amount'];
-        yield 'filtered union followed by a path' => ['(t:Item | t:Line)[$v]/t:Amount'];
+        yield 'filtered union followed by another axis' => ['(t:Item | t:Line)[$v]/ancestor::t:Root'];
         yield 'union after a step' => ['t:Root/(t:Item | t:Line)'];
     }
 

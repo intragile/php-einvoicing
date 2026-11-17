@@ -438,6 +438,46 @@ final class ParserTest extends TestCase
         );
     }
 
+    public function test_filtered_union_followed_by_child_step(): void
+    {
+        self::assertSame(
+            [Op::PATH, [Op::FILTER, self::parse('//a/b | //c/d'), [self::parse('$n')]], self::child('e')],
+            self::parsePattern('(a/b | c/d)[$n]/e'),
+        );
+        self::assertSame(
+            [Op::PATH, [Op::PATH, [Op::FILTER, self::parse('/a'), [self::parse('$n')]], self::child('b')], self::parse('@c')],
+            self::parsePattern('(/a)[$n]/b/@c'),
+        );
+    }
+
+    public function test_filtered_union_followed_by_union_of_steps(): void
+    {
+        self::assertSame(
+            [Op::PATH, [Op::FILTER, self::parse('//a | //b'), [self::parse('$n')]], [Op::UNION, self::child('c'), self::child('d')]],
+            self::parsePattern('(a | b)[$n]/(c | d)'),
+        );
+    }
+
+    public function test_filtered_union_with_numeric_predicate_is_refused(): void
+    {
+        $this->expectException(UnsupportedXPath::class);
+        $this->expectExceptionMessage('numeric predicate');
+
+        self::parsePattern('(a | b)[1]/c');
+    }
+
+    public function test_filtered_union_followed_by_descendant_axis_is_refused(): void
+    {
+        foreach (['(a | b)[$n]/descendant::c', '(a | b)[$n]/(c | ancestor::d)', '(a | b)[$n]/..', '(a | b)[$n]/(c)[$n]'] as $pattern) {
+            try {
+                self::parsePattern($pattern);
+                self::fail("The pattern {$pattern} was accepted.");
+            } catch (UnsupportedXPath) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
     /**
      * @return iterable<string, array{string}>
      */
@@ -446,7 +486,6 @@ final class ParserTest extends TestCase
         yield 'numeric predicate on parenthesised alternatives' => ['(/a | /b)[1]'];
         yield 'decimal predicate on parenthesised alternatives' => ['(/a | /b)[$n][2.0]'];
         yield 'parenthesised non-pattern' => ['(ancestor::a)[$n]'];
-        yield 'parenthesised alternatives as a step' => ['(/a | /b)[$n]/c'];
         yield 'filter on an atomic' => ["('a')[\$n]"];
     }
 
