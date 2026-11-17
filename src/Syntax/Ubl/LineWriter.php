@@ -35,12 +35,13 @@ use InvalidArgumentException;
  *   further cac:BillingReference, so it may not carry the invoice number.
  * - The line seller (EXT-FR-FE-164 to EXT-FR-FE-177) is cac:Item/cac:ManufacturerParty.
  * - The VAT point date code (EXT-FR-FE-180) is cac:InvoicePeriod/cbc:DescriptionCode in UNTDID
- *   2005 as held by the model; EN 16931 (BR-CO-20) then wants a line period start or end date.
- *   The line VAT amount (EXT-FR-FE-181) is cac:TaxTotal/cbc:TaxAmount.
+ *   2005 as held by the model; EN 16931 (BR-CO-20) then requires a line period start or end
+ *   date, so a code without one is refused. The line VAT amount (EXT-FR-FE-181) is
+ *   cac:TaxTotal/cbc:TaxAmount.
  * - The note subject code (EXT-FR-FE-183) leads the note text as "#CODE#", like the document
  *   notes (BT-21).
  * UBL has no element for the line amount with VAT (EXT-FR-FE-184), so a line that has one is
- * refused. Otherwise French line data is not written.
+ * refused. Only an EXTENDED-CTC-FR invoice has its French line data written.
  *
  * @internal
  */
@@ -68,7 +69,7 @@ final class LineWriter
             ));
         }
         $french = $this->extendedInvoiceNumber === null ? null : $line->extensions()->get(FrenchLine::class);
-        $this->checkFrench($line->id, $french);
+        $this->checkFrench($line->id, $french, $line->period);
 
         $element = $out->add($root, $this->creditNote ? 'cac:CreditNoteLine' : 'cac:InvoiceLine');
         $out->text($element, 'cbc:ID', $line->id);
@@ -116,7 +117,7 @@ final class LineWriter
             ));
         }
         $french = $line->french;
-        $this->checkFrench($line->id, $french);
+        $this->checkFrench($line->id, $french, $line->period);
 
         $element = $out->add($root, $this->creditNote ? 'cac:CreditNoteLine' : 'cac:InvoiceLine');
         $out->text($element, 'cbc:ID', $line->id);
@@ -184,10 +185,16 @@ final class LineWriter
      *
      * @throws InvalidArgumentException
      */
-    private function checkFrench(string $id, ?FrenchLine $french): void
+    private function checkFrench(string $id, ?FrenchLine $french, ?Period $period): void
     {
         if ($french === null) {
             return;
+        }
+        if ($french->vatDueDateCode !== null && $period?->start === null && $period?->end === null) {
+            throw new InvalidArgumentException(sprintf(
+                'Line "%s" has a VAT point date code (EXT-FR-FE-180) but no line period start or end date (BT-134, BT-135); UBL carries the code in the line period, which BR-CO-20 then requires to have a date.',
+                $id,
+            ));
         }
         if ($french->amountWithVat !== null) {
             throw new InvalidArgumentException(sprintf(

@@ -21,6 +21,8 @@ use IntrAgile\EInvoicing\Model\Item;
 use IntrAgile\EInvoicing\Model\LineVat;
 use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\Price;
+use IntrAgile\EInvoicing\Model\ProcessControl;
+use IntrAgile\EInvoicing\Syntax\FacturX\FacturXProfile;
 use PHPUnit\Framework\TestCase;
 
 final class FranceTest extends TestCase
@@ -48,6 +50,18 @@ final class FranceTest extends TestCase
             FrenchProfile::fromSpecificationIdentifier('urn:cen.eu:en16931:2017#conformant#urn.cpro.gouv.fr:1p0:extended-ctc-fr'),
         );
         self::assertNull(FrenchProfile::fromSpecificationIdentifier('urn:other'));
+    }
+
+    public function test_facturx_extended_is_french_only_with_a_french_billing_framework(): void
+    {
+        $extended = FacturXProfile::Extended->guidelineId();
+
+        self::assertNull(FrenchInvoice::fromProcessControl(new ProcessControl($extended)));
+        self::assertNull(FrenchInvoice::fromProcessControl(new ProcessControl($extended, 'urn:fdc:peppol.eu:2017:poacc:billing:01:1.0')));
+        self::assertSame(
+            FrenchProfile::ExtendedCtcFr,
+            FrenchInvoice::fromProcessControl(new ProcessControl($extended, BillingFramework::B1->value))?->profile,
+        );
     }
 
     public function test_mark_sets_process_control_and_extension(): void

@@ -12,6 +12,7 @@ use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
 use IntrAgile\EInvoicing\France\FrenchInvoice;
 use IntrAgile\EInvoicing\France\FrenchLine;
 use IntrAgile\EInvoicing\France\FrenchProfile;
+use IntrAgile\EInvoicing\France\InformationalLine;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\PrecedingInvoiceReference;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblReader;
@@ -122,6 +123,42 @@ final class ExtendedCtcFrUblTest extends TestCase
         $this->expectExceptionMessage('EXT-FR-FE-184');
 
         (new UblWriter)->write(FrenchInvoices::extendedCtcFr());
+    }
+
+    /**
+     * UBL carries the line VAT point date code (EXT-FR-FE-180) in the line period, which EN 16931
+     * (BR-CO-20) then requires to have a start or end date.
+     */
+    public function test_line_vat_date_code_without_line_period_is_refused(): void
+    {
+        $invoice = FrenchInvoices::extendedCtcFr(false);
+        [$first, $second] = $invoice->lines;
+        $french = $invoice->extensions()->get(FrenchInvoice::class);
+        self::assertNotNull($french);
+        [$group, $information] = $french->informationalLines;
+        $informationWithCode = new InformationalLine(
+            id: $information->id,
+            subType: $information->subType,
+            item: $information->item,
+            quantity: $information->quantity,
+            unit: $information->unit,
+            netAmount: $information->netAmount,
+            french: new FrenchLine(vatDueDateCode: '3'),
+        );
+
+        foreach ([
+            'regular line' => $invoice->withLines([$first->withPeriod(null), $second]),
+            'informational line' => $invoice->withExtension(new FrenchInvoice($french->profile, [$group, $informationWithCode], $french->lineOrder)),
+        ] as $case => $broken) {
+            try {
+                (new UblWriter)->write($broken);
+                self::fail("Line VAT date code without a line period written: {$case}");
+            } catch (InvalidArgumentException $e) {
+                foreach (['EXT-FR-FE-180', 'BR-CO-20', 'BT-134', 'BT-135'] as $term) {
+                    self::assertStringContainsString($term, $e->getMessage(), $case);
+                }
+            }
+        }
     }
 
     /**
