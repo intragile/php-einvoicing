@@ -114,8 +114,11 @@ final class FrenchInvoices
      *
      * @param  bool  $amountWithVat  whether line 2 carries its amount with VAT (EXT-FR-FE-184),
      *                               which UBL has no element for
+     * @param  string|null  $lineVatExemptionReason  VAT exemption reason of line 2 (BT-X-96); the
+     *                                               VAT breakdown carries none, so a reason makes
+     *                                               BR-FXEXT-S-08rev warn
      */
-    public static function extendedCtcFr(bool $amountWithVat = true): Invoice
+    public static function extendedCtcFr(bool $amountWithVat = true, ?string $lineVatExemptionReason = null): Invoice
     {
         $draft = self::draft(BillingFramework::B1);
         $seller = new LineSeller(
@@ -140,7 +143,7 @@ final class FrenchInvoices
                     parentLineId: '1',
                     subType: LineSubType::Detail,
                     seller: $seller,
-                    vatExemptionReason: 'TVA SUR LES DEBITS',
+                    vatExemptionReason: $lineVatExemptionReason,
                     vatDueDateCode: '3',
                     vatAmount: '20.00',
                     amountWithVat: $amountWithVat ? '220.00' : null,
@@ -192,6 +195,25 @@ final class FrenchInvoices
             ->withExtension(new FrenchInvoice(FrenchProfile::ExtendedCtcFr, $informational, ['1', '2', '3', '4']));
 
         return self::complete($invoice);
+    }
+
+    /**
+     * The EXTENDED-CTC-FR invoice of extendedCtcFr() without the line amount with VAT, which UBL
+     * cannot carry.
+     */
+    public static function extendedCtcFrUbl(): Invoice
+    {
+        return self::extendedCtcFr(amountWithVat: false);
+    }
+
+    /**
+     * The EXTENDED-CTC-FR invoice of extendedCtcFr() with an actual delivery date (BT-72), for
+     * Factur-X EXTENDED: without delivery data the document carries an empty
+     * ApplicableHeaderTradeDelivery, which PEPPOL-EN16931-R008 of the Factur-X rules warns about.
+     */
+    public static function facturXExtended(): Invoice
+    {
+        return self::extendedCtcFr()->withDelivery(new Delivery(actualDeliveryDate: new DateTimeImmutable('2026-10-31')));
     }
 
     /**

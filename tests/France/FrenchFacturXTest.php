@@ -39,7 +39,7 @@ final class FrenchFacturXTest extends TestCase
 
     public function test_french_extended_facturx_keeps_ext_fr_fe_elements(): void
     {
-        $invoice = FrenchInvoices::extendedCtcFr();
+        $invoice = FrenchInvoices::extendedCtcFr(lineVatExemptionReason: 'TVA SUR LES DEBITS');
         $reduced = (new FacturXXmlWriter)->write($invoice, FacturXProfile::Extended);
 
         self::assertSame([], $reduced->removed);

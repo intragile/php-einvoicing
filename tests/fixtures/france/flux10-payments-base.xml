@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Minimal Flux 10 e-reporting transmission (payments report) written for the negative test corpus. -->
+<Report>
+  <ReportDocument>
+    <Id>PA-2026-0001</Id>
+    <IssueDateTime>
+      <DateTimeString>20261201093000</DateTimeString>
+    </IssueDateTime>
+    <TypeCode>IN</TypeCode>
+    <Sender>
+      <Id schemeId="0238">PA01</Id>
+      <Name>PLATEFORME EXEMPLE</Name>
+      <RoleCode>WK</RoleCode>
+    </Sender>
+    <Issuer>
+      <Id schemeId="0002">100000009</Id>
+      <Name>LE VENDEUR</Name>
+      <RoleCode>SE</RoleCode>
+    </Issuer>
+  </ReportDocument>
+  <PaymentsReport>
+    <ReportPeriod>
+      <StartDate>20261101</StartDate>
+      <EndDate>20261130</EndDate>
+    </ReportPeriod>
+    <Invoice>
+      <InvoiceID>F202600003</InvoiceID>
+      <IssueDate>20261102</IssueDate>
+      <Payment>
+        <Date>20261120</Date>
+        <SubTotals>
+          <TaxPercent>20</TaxPercent>
+          <CurrencyCode>EUR</CurrencyCode>
+          <Amount>1188.00</Amount>
+        </SubTotals>
+      </Payment>
+    </Invoice>
+    <Transactions>
+      <Payment>
+        <Date>20261121</Date>
+        <SubTotals>
+          <TaxPercent>20</TaxPercent>
+          <CurrencyCode>EUR</CurrencyCode>
+          <Amount>600.00</Amount>
+        </SubTotals>
+      </Payment>
+    </Transactions>
+  </PaymentsReport>
+</Report>

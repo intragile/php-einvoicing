@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Minimal Flux 10 e-reporting transmission (transactions report) written for the negative test corpus. -->
+<Report>
+  <ReportDocument>
+    <Id>TR-2026-0001</Id>
+    <Name>E-REPORTING NOVEMBRE</Name>
+    <IssueDateTime>
+      <DateTimeString>20261201093000</DateTimeString>
+    </IssueDateTime>
+    <TypeCode>IN</TypeCode>
+    <Sender>
+      <Id schemeId="0238">PA01</Id>
+      <Name>PLATEFORME EXEMPLE</Name>
+      <RoleCode>WK</RoleCode>
+    </Sender>
+    <Issuer>
+      <Id schemeId="0002">100000009</Id>
+      <Name>LE VENDEUR</Name>
+      <RoleCode>SE</RoleCode>
+    </Issuer>
+  </ReportDocument>
+  <TransactionsReport>
+    <ReportPeriod>
+      <StartDate>20261101</StartDate>
+      <EndDate>20261130</EndDate>
+    </ReportPeriod>
+    <Invoice>
+      <ID>F202600003</ID>
+      <IssueDate>20261102</IssueDate>
+      <TypeCode>380</TypeCode>
+      <CurrencyCode>EUR</CurrencyCode>
+      <DueDate>20261202</DueDate>
+      <TaxDueDateTypeCode>5</TaxDueDateTypeCode>
+      <BusinessProcess>
+        <ID>B1</ID>
+        <TypeID>urn.cpro.gouv.fr:1p0:ereporting</TypeID>
+      </BusinessProcess>
+      <ReferencedDocument>
+        <ID>F202600001</ID>
+        <IssueDate>20261001</IssueDate>
+      </ReferencedDocument>
+      <Seller>
+        <CompanyId schemeId="0002">100000009</CompanyId>
+        <TaxRegistrationId qualifyingId="VAT">FR88100000009</TaxRegistrationId>
+        <PostalAddress>
+          <CountryId>FR</CountryId>
+        </PostalAddress>
+      </Seller>
+      <Buyer>
+        <CompanyId schemeId="0002">200000008</CompanyId>
+        <TaxRegistrationId qualifyingId="VAT">FR37200000008</TaxRegistrationId>
+        <PostalAddress>
+          <CountryId>FR</CountryId>
+        </PostalAddress>
+      </Buyer>
+      <Delivery>
+        <Date>20261031</Date>
+        <Location>
+          <CountryId>FR</CountryId>
+        </Location>
+      </Delivery>
+      <InvoicePeriod>
+        <StartDate>20261001</StartDate>
+        <EndDate>20261031</EndDate>
+      </InvoicePeriod>
+      <AllowanceCharge ChargeIndicator="false">
+        <Amount>10.00</Amount>
+        <TaxCategoryCode>S</TaxCategoryCode>
+        <TaxPercent>20</TaxPercent>
+      </AllowanceCharge>
+      <MonetaryTotal>
+        <TaxExclusiveAmount>990.00</TaxExclusiveAmount>
+        <TaxAmount CurrencyCode="EUR">198.00</TaxAmount>
+      </MonetaryTotal>
+      <TaxSubTotal>
+        <TaxableAmount>990.00</TaxableAmount>
+        <TaxAmount>198.00</TaxAmount>
+        <TaxCategory>
+          <Code>S</Code>
+          <Percent>20</Percent>
+        </TaxCategory>
+      </TaxSubTotal>
+      <Line>
+        <BilledQuantity UnitCode="C62">10</BilledQuantity>
+        <ReferencedDocument>
+          <ID>F202600001</ID>
+          <IssueDate>20261001</IssueDate>
+        </ReferencedDocument>
+        <Delivery>
+          <Location>
+            <CountryId>FR</CountryId>
+          </Location>
+        </Delivery>
+        <InvoicePeriod>
+          <StartDate>20261001</StartDate>
+          <EndDate>20261031</EndDate>
+        </InvoicePeriod>
+        <AllowanceCharge ChargeIndicator="false">
+          <Amount>5.00</Amount>
+        </AllowanceCharge>
+        <Price>
+          <PriceAmount>100.00</PriceAmount>
+          <AllowanceChargeAmount>5.00</AllowanceChargeAmount>
+          <AllowanceChargeBaseAmount>105.00</AllowanceChargeBaseAmount>
+        </Price>
+        <Product>
+          <Name>SERVICE</Name>
+        </Product>
+      </Line>
+    </Invoice>
+    <Transactions>
+      <Date>20261115</Date>
+      <TransactionsCurrency>EUR</TransactionsCurrency>
+      <TaxDueDateTypeCode>5</TaxDueDateTypeCode>
+      <CategoryCode>TLB1</CategoryCode>
+      <TaxExclusiveAmount>500.00</TaxExclusiveAmount>
+      <TaxTotal>100.00</TaxTotal>
+      <TransactionsCount>3</TransactionsCount>
+      <TaxSubtotal>
+        <TaxPercent>20</TaxPercent>
+        <TaxableAmount>500.00</TaxableAmount>
+        <TaxTotal>100.00</TaxTotal>
+      </TaxSubtotal>
+    </Transactions>
+  </TransactionsReport>
+</Report>

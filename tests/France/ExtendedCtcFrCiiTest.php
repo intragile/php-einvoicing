@@ -73,7 +73,7 @@ final class ExtendedCtcFrCiiTest extends TestCase
 
     public function test_line_vat_extras_written(): void
     {
-        $x = $this->cii(FrenchInvoices::extendedCtcFr());
+        $x = $this->cii(FrenchInvoices::extendedCtcFr(lineVatExemptionReason: 'TVA SUR LES DEBITS'));
         $settlement = self::LINE.'[2]/ram:SpecifiedLineTradeSettlement/';
 
         self::assertSame(['TVA SUR LES DEBITS'], $this->values($x, $settlement.'ram:ApplicableTradeTax/ram:ExemptionReason'));

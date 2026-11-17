@@ -83,7 +83,7 @@ final class ExtendedCtcFrUblTest extends TestCase
 
     public function test_line_vat_extras_written(): void
     {
-        $x = $this->ubl(FrenchInvoices::extendedCtcFr(false));
+        $x = $this->ubl(FrenchInvoices::extendedCtcFr(false, 'TVA SUR LES DEBITS'));
         $line = self::LINE.'[2]/';
 
         self::assertSame(['TVA SUR LES DEBITS'], $this->values($x, $line.'cac:Item/cac:ClassifiedTaxCategory/cbc:TaxExemptionReason'));
