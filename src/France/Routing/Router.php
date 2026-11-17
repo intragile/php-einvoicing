@@ -83,7 +83,8 @@ final class Router
 
     /**
      * Routes a received invoice from the buyer's side. Only a purchase by a buyer in France from a
-     * seller outside it needs a report; receiving a domestic e-invoice needs no action.
+     * seller outside it needs a report; receiving a domestic e-invoice needs no action. Treatment
+     * notes (BAR) are not read here: they state the seller's own treatment of the invoice.
      */
     public function routePurchase(Invoice $invoice): RoutingDecision
     {

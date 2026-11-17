@@ -17,7 +17,8 @@ use InvalidArgumentException;
  */
 final readonly class LifecycleMessage
 {
-    private const MAX_ID_LENGTH = 50;
+    /** Longest message identifier (MDT-4) the rules accept. */
+    public const MAX_ID_LENGTH = 50;
 
     /**
      * @param  list<LifecycleParty>  $recipients  Recipients, at least one.

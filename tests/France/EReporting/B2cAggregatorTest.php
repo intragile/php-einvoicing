@@ -20,6 +20,7 @@ use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Tests\Support\EReports;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 
 final class B2cAggregatorTest extends TestCase
 {
@@ -82,6 +83,14 @@ final class B2cAggregatorTest extends TestCase
         $this->expectExceptionMessage('M1');
 
         (new B2cAggregator)->aggregate([self::mixedSale()]);
+    }
+
+    public function test_mixed_framework_without_lines_is_refused_even_with_a_classifier(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invoice T-1 has no lines (BG-25) to classify.');
+
+        (new B2cAggregator(self::classifier()))->aggregate([self::withoutLines(self::mixedSale())]);
     }
 
     public function test_mixed_framework_with_document_allowance_is_refused(): void
@@ -176,6 +185,21 @@ final class B2cAggregatorTest extends TestCase
     private static function creditNote(string $number, string $date, InvoiceTypeCode $type, string $amount): Invoice
     {
         return EReports::consumerSale(BillingFramework::B1, $number, $date, [EReports::consumerLine('1', 'GOODS', $amount, '20')], $type);
+    }
+
+    /**
+     * A copy of the invoice without lines. The model refuses such an invoice, so the copy is made
+     * by reflection to exercise the aggregator's own guard.
+     */
+    private static function withoutLines(Invoice $invoice): Invoice
+    {
+        $class = new ReflectionClass(Invoice::class);
+        $copy = $class->newInstanceWithoutConstructor();
+        foreach ($class->getProperties() as $property) {
+            $property->setValue($copy, $property->getName() === 'lines' ? [] : $property->getValue($invoice));
+        }
+
+        return $copy;
     }
 
     private static function mixedSale(): Invoice

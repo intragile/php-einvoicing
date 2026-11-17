@@ -10,6 +10,7 @@ use DOMDocument;
 use DOMXPath;
 use IntrAgile\EInvoicing\France\Lifecycle\CdvProfile;
 use IntrAgile\EInvoicing\France\Lifecycle\InvoiceReference;
+use IntrAgile\EInvoicing\France\Lifecycle\StatusDetail;
 use IntrAgile\EInvoicing\Syntax\Cdar\CdarWriter;
 use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Support\CanonicalXml;
@@ -65,6 +66,19 @@ final class CdarWriterTest extends TestCase
         self::assertSame('20250802100500', self::value($xpath, '/rsm:*/rsm:ExchangedDocument/ram:IssueDateTime/udt:DateTimeString[@format="204"]'));
         self::assertSame('20251202100000', self::value($xpath, '/rsm:*/rsm:AcknowledgementDocument/ram:IssueDateTime/udt:DateTimeString[@format="204"]'));
         self::assertSame('20250701151000', self::value($xpath, '//ram:ReferenceReferencedDocument/ram:ReceiptDateTime/udt:DateTimeString[@format="204"]'));
+    }
+
+    public function test_utc_instant_late_in_the_evening_is_written_on_the_next_paris_day(): void
+    {
+        $instant = new DateTimeImmutable('2026-11-17T23:30:00Z');
+        $message = LifecycleMessages::uc1Collected()
+            ->withStatusAt($instant)
+            ->withDetails([new StatusDetail(1, referenceDate: $instant)]);
+
+        $xpath = self::xpath((new CdarWriter)->write($message));
+
+        self::assertSame('20261118003000', self::value($xpath, '/rsm:*/rsm:AcknowledgementDocument/ram:IssueDateTime/udt:DateTimeString[@format="204"]'));
+        self::assertSame('20261118003000', self::value($xpath, '//ram:SpecifiedDocumentStatus/ram:ReferenceDateTime/udt:DateTimeString[@format="204"]'));
     }
 
     public function test_scope_omitted_for_ppf_profile_when_null(): void

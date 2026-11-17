@@ -171,9 +171,11 @@ final class B2cAggregator
             ];
         }
 
-        if (count($lines) <= 1) {
-            $category = array_key_first($lines) ?? self::frameworkCategory($invoice)->value;
-
+        $category = array_key_first($lines);
+        if ($category === null) {
+            throw new InvalidArgumentException(sprintf('Invoice %s has no lines (BG-25) to classify.', $invoice->number));
+        }
+        if (count($lines) === 1) {
             return [$category => self::breakdownRates($invoice)];
         }
 

@@ -16,7 +16,8 @@ final readonly class InvoicePayment
     /**
      * @param  string  $invoiceNumber  invoice number (TT-91)
      * @param  DateTimeImmutable  $invoiceDate  invoice issue date (TT-102)
-     * @param  DateTimeImmutable  $paidOn  payment date (TT-92)
+     * @param  DateTimeImmutable  $paidOn  payment date (TT-92), a calendar date taken in its own
+     *                                     time zone; pass the French local date
      * @param  list<CollectedAmount>  $amounts  amounts collected per VAT rate (TG-36), in euros, at
      *                                          least one
      *

@@ -94,6 +94,14 @@ final class EReportTest extends TestCase
         EReport::transactions(str_repeat('A', 51), EReports::issuedAt(), ReportType::Initial, EReports::platform(), EReports::seller(), new TransactionsReport(EReports::november()));
     }
 
+    public function test_whitespace_only_id_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('The transmission identifier (TT-1) must not be blank.');
+
+        EReport::transactions('   ', EReports::issuedAt(), ReportType::Initial, EReports::platform(), EReports::seller(), new TransactionsReport(EReports::november()));
+    }
+
     public function test_report_holds_exactly_one_kind(): void
     {
         $transactions = EReports::fixtureTransactions();

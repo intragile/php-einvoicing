@@ -370,9 +370,10 @@ platforms exchange them; four statuses must also reach the public portal (PPF):
 The labels of 214 and 224 to 228 are unverified: the AFNOR XP Z12-012 standard that defines them
 was not available. The codes the public portal emits for its other flows (250, 251, 300, 301,
 400, 401, 500, 601) are not invoice statuses; `CdarReader` refuses them with an
-`UnsupportedDocument` that names the flow. `LifecycleStatus::isMandatory()`, `requiresReason()`,
-`acknowledgementType()` and `label()` return the columns above; `StatusReason` holds the closed
-list of reason codes (rule BR-FR-CDV-CL-09) and `RequestedAction` the requested actions.
+`UnsupportedDocument` that names the flow. `LifecycleStatus::isMandatory()`, `requiresReason()`
+and `label()` return the columns above; `acknowledgementType()` gives the message type (MDT-77).
+`StatusReason` holds the closed list of reason codes (rule BR-FR-CDV-CL-09) and
+`RequestedAction` the requested actions.
 
 `Lifecycle` builds the messages:
 
@@ -396,7 +397,9 @@ characters of the SHA-256 of the full pattern. Pass `id:` to set your own. Every
 wither on `LifecycleMessage`.
 
 CDAR timestamps carry no time zone. `CdarWriter` converts them to French local time
-(`Europe/Paris`) before writing, and `CdarReader` returns them in that zone. A message reports on
+(`Europe/Paris`) before writing, and `CdarReader` returns them in that zone. Local times in the
+autumn fall-back hour (02:00 to 03:00 on the last Sunday of October) occur twice and are therefore
+ambiguous in format 204. A message reports on
 exactly one invoice, as in every FNFE example; the reader refuses a document with more than one
 acknowledgement or referenced document.
 
@@ -508,7 +511,9 @@ the `Flux10Writer` class documentation. The VAT due date code is written in the 
 the CII writer uses (3 → 5, 35 → 29, 432 → 72). A seller is identified by its legal registration
 (BT-30) when its scheme is 0002, 0223, 0227, 0228 or 0229, else by its VAT identifier (another EU
 member state, scheme 0223), else by country code and name (outside the EU, scheme 0227); the
-same applies to the buyer. A buyer without any of these is written without an identifier; a
+same applies to the buyer. EU membership here is not the routing territory (FR, GP, MQ, RE):
+Guadeloupe, Martinique and Réunion are outside the EU VAT area, so a party there without a SIREN
+gets scheme 0227. A buyer without any of these is written without an identifier; a
 seller without one is refused.
 
 **B2C days (10.3).** `B2cAggregator` groups sales to consumers by operation date (the actual
@@ -587,7 +592,8 @@ if (! $validation->isValid()) {
 **Payments (10.2, 10.4).** `PaymentAggregator::forInvoice($invoice, $paid, $paidOn)` splits one
 invoice's payment by VAT rate with `Collection::allocate()`, the same split as status 212.
 `PaymentAggregator::daily($payments)` sums payments per day and VAT rate. Payments are reported in
-euros; an invoice in another currency is refused.
+euros; an invoice in another currency is refused. A payment date is a calendar date taken in its
+own time zone, not converted to Paris time as CDAR status times are: pass the French local date.
 
 The PA matricule comes from your PA account. The file goes to the DGFiP through the PA; this
 package builds and validates it but does not send it.

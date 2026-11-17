@@ -38,9 +38,12 @@ final readonly class EReport
         public ?PaymentsReport $payments,
         public ?string $name,
     ) {
-        if ($id === '' || mb_strlen($id) > self::MAX_ID_LENGTH) {
+        if (trim($id) === '') {
+            throw new InvalidArgumentException('The transmission identifier (TT-1) must not be blank.');
+        }
+        if (mb_strlen($id) > self::MAX_ID_LENGTH) {
             throw new InvalidArgumentException(sprintf(
-                'The transmission identifier (TT-1) must have 1 to %d characters, %d given.',
+                'The transmission identifier (TT-1) must be at most %d characters, %d given.',
                 self::MAX_ID_LENGTH,
                 mb_strlen($id),
             ));
@@ -51,7 +54,7 @@ final readonly class EReport
     /**
      * A transmission of a transactions report (flows 10.1 and 10.3).
      *
-     * @throws InvalidArgumentException when the identifier is empty or longer than 50 characters
+     * @throws InvalidArgumentException when the identifier is blank or longer than 50 characters
      *                                  or the sender is not an approved platform with a name
      */
     public static function transactions(
@@ -69,7 +72,7 @@ final readonly class EReport
     /**
      * A transmission of a payments report (flows 10.2 and 10.4).
      *
-     * @throws InvalidArgumentException when the identifier is empty or longer than 50 characters
+     * @throws InvalidArgumentException when the identifier is blank or longer than 50 characters
      *                                  or the sender is not an approved platform with a name
      */
     public static function payments(

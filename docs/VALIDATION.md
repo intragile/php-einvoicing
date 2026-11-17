@@ -435,17 +435,17 @@ XSLT on 34 examples and 200 mutations), the Factur-X corpus and the French corpu
 The French corpus (`tests/Oracle/FranceConformanceTest.php`) compares each document with FNFE's
 own compiled XSLT of the same France_RFE commit, run by SaxonC: the 41 FNFE invoice examples and
 the 59 CDAR examples, invoices, lifecycle messages and Flux 10 files written by this library,
-their round trips (the CDAR examples read and written back), the negative recipes (one per
-reachable French rule) and seeded mutations (leaf text set to `X Y`, leaf removed, extra
-decimals), 5,494 documents in all. Ids are mapped through the rule context and test, because the
-FNFE XSLT reports some asserts without an id. Every verdict is equal, with one documented
-exception, the allow-list: where a mutation makes a date or an amount unreadable, Saxon may
-evaluate an XSLT local variable or a rule-level let eagerly and stop with `FORG0001`, while the
-engine evaluates it lazily and reports the format rule for that field (BR-FR-03 for a date, the
-Flux 10 amount rule for an amount). A difference counts as this case only when all three hold:
-Saxon stops with `FORG0001`, our findings contain that format rule for the mutated field, and the
-mutated field is a date or an amount. The test pins how often each entry is used (26 CII dates, 16
-UBL dates, 10 Flux 10 amounts), so the allow-list cannot grow unnoticed.
+their round trips (the FNFE invoice and CDAR examples read and written back), the negative
+recipes (one per reachable French rule) and seeded mutations (leaf text set to `X Y`, leaf
+removed, extra decimals), 5,494 documents in all. Ids are mapped through the rule context and
+test, because the FNFE XSLT reports some asserts without an id. Every verdict is equal, with one
+documented exception, the allow-list: where a mutation makes a date or an amount unreadable,
+Saxon may evaluate an XSLT local variable or a rule-level let eagerly and stop with `FORG0001`,
+while the engine evaluates it lazily and reports the format rule for that field (BR-FR-03 for a
+date, the Flux 10 amount rule for an amount). A difference counts as this case only when all
+three hold: Saxon stops with `FORG0001`, our findings contain that format rule for the mutated
+field, and the mutated field is a date or an amount. The test pins how often each entry is used
+(26 CII dates, 16 UBL dates, 10 Flux 10 amounts), so the allow-list cannot grow unnoticed.
 
 The SaxonC PHP extension gives no error code for a dynamic error and cannot run another
 transformation after one. The oracle therefore wraps the official stylesheet in a test-only XSLT

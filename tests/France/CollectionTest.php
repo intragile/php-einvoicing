@@ -103,6 +103,22 @@ final class CollectionTest extends TestCase
         Collection::allocate($this->invoice([]), '10');
     }
 
+    public function test_float_paid_amount_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Paid amount must be given as a string, int or BigDecimal, float given.');
+
+        Collection::allocate($this->twoRates(), 1211.0);
+    }
+
+    public function test_int_paid_amount_is_accepted(): void
+    {
+        self::assertEquals(
+            $this->flatten(Collection::allocate($this->twoRates(), '1211.00')),
+            $this->flatten(Collection::allocate($this->twoRates(), 1211)),
+        );
+    }
+
     private function twoRates(): Invoice
     {
         return $this->invoice([

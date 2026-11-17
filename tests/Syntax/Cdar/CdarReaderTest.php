@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Syntax\Cdar;
 
+use DateTimeImmutable;
 use DOMDocument;
 use DOMElement;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\France\Lifecycle\LifecycleMessage;
+use IntrAgile\EInvoicing\France\Lifecycle\StatusDetail;
 use IntrAgile\EInvoicing\Syntax\Cdar\CdarReader;
 use IntrAgile\EInvoicing\Syntax\Cdar\CdarWriter;
 use IntrAgile\EInvoicing\Tests\Support\LifecycleMessages;
@@ -43,6 +45,21 @@ final class CdarReaderTest extends TestCase
         self::assertSame('2025-08-02 10:05:00', $message->issuedAt->format('Y-m-d H:i:s'));
         self::assertSame('Europe/Paris', $message->statusAt->getTimezone()->getName());
         self::assertSame('Europe/Paris', $message->invoice->receivedAt->getTimezone()->getName());
+    }
+
+    public function test_instant_across_the_paris_day_boundary_reads_back_unchanged(): void
+    {
+        $instant = new DateTimeImmutable('2026-11-17T23:30:00Z');
+        $written = LifecycleMessages::uc1Collected()
+            ->withStatusAt($instant)
+            ->withDetails([new StatusDetail(1, referenceDate: $instant)]);
+
+        $message = (new CdarReader)->read((new CdarWriter)->write($written))->message;
+
+        self::assertEquals($instant, $message->statusAt);
+        self::assertSame('2026-11-18 00:30:00', $message->statusAt->format('Y-m-d H:i:s'));
+        self::assertNotNull($message->details[0]->referenceDate);
+        self::assertEquals($instant, $message->details[0]->referenceDate);
     }
 
     public function test_bom_is_tolerated(): void

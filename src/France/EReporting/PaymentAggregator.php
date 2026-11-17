@@ -21,7 +21,9 @@ final class PaymentAggregator
     private function __construct() {}
 
     /**
-     * Sums payments per payment date (the time of day is ignored) and VAT rate.
+     * Sums payments per payment date (the time of day is ignored) and VAT rate. The payment date is
+     * a calendar date taken in its own time zone, not converted to Paris time; pass the French
+     * local date.
      *
      * @param  list<InvoicePayment>  $payments
      * @return list<DailyPayments> ordered by date, the amounts of a day by descending rate
@@ -61,11 +63,13 @@ final class PaymentAggregator
     /**
      * The payment of an invoice, split over its VAT rates by Collection::allocate().
      *
-     * @param  BigDecimal|numeric-string  $paid  amount paid, VAT included; negative for a refund
+     * @param  BigDecimal|numeric-string|int  $paid  amount paid, VAT included; negative for a refund;
+     *                                               floats are refused
      *
-     * @throws InvalidArgumentException when the invoice is not in euros or has no VAT breakdown
+     * @throws InvalidArgumentException when the invoice is not in euros or has no VAT breakdown, or
+     *                                  the paid amount is a float
      */
-    public static function forInvoice(Invoice $invoice, BigDecimal|string $paid, DateTimeImmutable $paidOn): InvoicePayment
+    public static function forInvoice(Invoice $invoice, BigDecimal|string|int|float $paid, DateTimeImmutable $paidOn): InvoicePayment
     {
         if ($invoice->currency !== CurrencyCode::EUR) {
             throw new InvalidArgumentException(sprintf(

@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\France;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\Support\Decimal;
 use InvalidArgumentException;
 
 /**
@@ -24,20 +25,22 @@ final class Collection
     private function __construct() {}
 
     /**
-     * @param  BigDecimal|numeric-string  $paid  Amount paid, VAT included; negative for a refund. It is
-     *                                           rounded half up to two decimals first.
+     * @param  BigDecimal|numeric-string|int  $paid  Amount paid, VAT included; negative for a refund. It
+     *                                               is rounded half up to two decimals first. Floats are
+     *                                               refused.
      * @return non-empty-list<CollectedAmount> One entry per VAT rate, in breakdown order. Rates with
      *                                         a zero gross amount are left out unless every rate has one.
      *
-     * @throws InvalidArgumentException When the invoice has no VAT breakdown (BG-23).
+     * @throws InvalidArgumentException When the invoice has no VAT breakdown (BG-23) or the paid amount
+     *                                  is a float.
      */
-    public static function allocate(Invoice $invoice, BigDecimal|string $paid): array
+    public static function allocate(Invoice $invoice, BigDecimal|string|int|float $paid): array
     {
         if ($invoice->vatBreakdown === []) {
             throw new InvalidArgumentException('The invoice has no VAT breakdown (BG-23) to allocate the payment over.');
         }
 
-        $paid = BigDecimal::of($paid)->toScale(self::SCALE, RoundingMode::HalfUp);
+        $paid = Decimal::of($paid, 'Paid amount')->toScale(self::SCALE, RoundingMode::HalfUp);
 
         /** @var array<string, array{rate: BigDecimal, gross: BigDecimal}> $rates */
         $rates = [];

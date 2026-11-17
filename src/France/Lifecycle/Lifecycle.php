@@ -28,8 +28,6 @@ final class Lifecycle
 {
     private const TIME_ZONE = 'Europe/Paris';
 
-    private const MAX_ID_LENGTH = 50;
-
     private const HASH_LENGTH = 30;
 
     private function __construct() {}
@@ -180,7 +178,7 @@ final class Lifecycle
             $invoice->issueDate === null ? '' : '_'.$invoice->issueDate->format('Ymd'),
         );
 
-        if (mb_strlen($id) <= self::MAX_ID_LENGTH) {
+        if (mb_strlen($id) <= LifecycleMessage::MAX_ID_LENGTH) {
             return $id;
         }
 

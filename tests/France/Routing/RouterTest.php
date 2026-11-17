@@ -74,12 +74,12 @@ final class RouterTest extends TestCase
     public function test_export_b2b_services_need_payment_report(): void
     {
         $invoice = FrenchInvoices::services();
-        $invoice = self::withTreatment($invoice->withBuyer(self::party(
+        $invoice = $invoice->withBuyer(self::party(
             $invoice->buyer,
             legalRegistration: null,
             vatIdentifier: 'CHE123456789',
             country: CountryCode::CH,
-        )), Treatment::B2BINT);
+        ));
 
         $decision = self::router()->route($invoice);
 
@@ -150,6 +150,17 @@ final class RouterTest extends TestCase
             null,
             $router->routePurchase(FrenchInvoices::domesticB2b()),
         );
+    }
+
+    public function test_seller_without_address_is_located_by_vat_identifier_prefix(): void
+    {
+        $invoice = FrenchInvoices::domesticB2b();
+        $foreign = new Party(name: $invoice->seller->name, vatIdentifier: 'DE123456789');
+        $french = new Party(name: $invoice->seller->name, vatIdentifier: 'FR40303265045');
+        $router = self::router();
+
+        self::assertDecision(Channel::None, PaymentReporting::None, RoutingRule::OutOfScope, null, $router->route($invoice->withSeller($foreign)));
+        self::assertDecision(Channel::EInvoice, PaymentReporting::None, RoutingRule::DomesticB2b, null, $router->route($invoice->withSeller($french)));
     }
 
     public function test_absent_buyer_falls_back_to_b2c_report(): void
@@ -336,12 +347,12 @@ final class RouterTest extends TestCase
 
     private static function intraEuB2b(Invoice $invoice): Invoice
     {
-        return self::withTreatment($invoice->withBuyer(self::party(
+        return $invoice->withBuyer(self::party(
             $invoice->buyer,
             legalRegistration: null,
             vatIdentifier: 'DE123456789',
             country: CountryCode::DE,
-        )), Treatment::B2BINT);
+        ));
     }
 
     private static function b2c(Invoice $invoice): Invoice

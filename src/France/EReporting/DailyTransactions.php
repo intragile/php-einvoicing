@@ -12,6 +12,9 @@ use InvalidArgumentException;
 
 /**
  * Transactions of one day, currency and category reported as totals (TG-31), such as B2C sales.
+ *
+ * The constructor checks structure only; consistency between the total VAT (TT-83) and the VAT
+ * subtotals is left to the rule set.
  */
 final readonly class DailyTransactions
 {

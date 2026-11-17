@@ -63,6 +63,21 @@ final class PaymentAggregatorTest extends TestCase
         PaymentAggregator::forInvoice(self::twoRateInvoice()->withCurrency(CurrencyCode::USD), '100', new DateTimeImmutable('2026-11-25'));
     }
 
+    public function test_float_paid_amount_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Paid amount must be given as a string, int or BigDecimal, float given.');
+
+        PaymentAggregator::forInvoice(self::twoRateInvoice(), 100.0, new DateTimeImmutable('2026-11-25'));
+    }
+
+    public function test_int_paid_amount_is_accepted(): void
+    {
+        $payment = PaymentAggregator::forInvoice(self::twoRateInvoice(), 100, new DateTimeImmutable('2026-11-25'));
+
+        self::assertSame([['69.46', '20'], ['30.54', '5.5']], self::amounts($payment->amounts));
+    }
+
     private static function twoRateInvoice(): Invoice
     {
         return EReports::consumerSale(BillingFramework::S1, 'F-10', '2026-11-05', [
