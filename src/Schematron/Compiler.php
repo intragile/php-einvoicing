@@ -322,7 +322,7 @@ final class Compiler
         $lets = [];
         foreach ($letElements as $let) {
             $lets[] = $this->let($let, $this->globalLets, global: true);
-            $this->globalLets[] = $let->getAttribute('name');
+            $this->globalLets[] = $this->variableName($let, 'variable');
         }
         // Pattern lets are global variables too; they follow the schema lets in document order.
         foreach ($patternElements as $pattern) {
@@ -330,7 +330,7 @@ final class Compiler
             foreach ($this->children($pattern) as $child) {
                 if ($child->localName === 'let') {
                     $lets[] = $this->let($child, $this->globalLets, global: true);
-                    $this->globalLets[] = $child->getAttribute('name');
+                    $this->globalLets[] = $this->variableName($child, 'variable');
                 }
             }
         }
@@ -434,7 +434,7 @@ final class Compiler
             switch ($element->localName) {
                 case 'variable':
                     $instructions[] = $this->variable($element, $scope, $owner);
-                    $scope[] = $element->getAttribute('name');
+                    $scope[] = $this->variableName($element, 'variable');
                     break;
                 case 'sequence':
                     $instructions[] = ['sequence', $this->sequence($element, $scope, $owner)];
@@ -566,11 +566,15 @@ final class Compiler
     private function variableName(DOMElement $element, string $kind): string
     {
         $name = $element->getAttribute('name');
-        if (preg_match('/^[\p{L}_][\p{L}\p{N}_.\-]*$/u', $name) !== 1) {
+        if (preg_match('/^(?:[\p{L}_][\p{L}\p{N}_.\-]*:)?[\p{L}_][\p{L}\p{N}_.\-]*$/u', $name) !== 1) {
             throw new UnsupportedSchematron("Unsupported {$kind} name \"{$name}\" ({$this->line($element)}).");
         }
+        $expanded = (new StaticContext($this->namespaces))->variableName($name);
+        if ($expanded === null) {
+            throw new UnsupportedSchematron("The prefix of the {$kind} name \"{$name}\" ({$this->line($element)}) is not bound by an ns element (XPST0081).");
+        }
 
-        return $name;
+        return $expanded;
     }
 
     /**
@@ -720,6 +724,8 @@ final class Compiler
         $rules = [];
         foreach ($this->children($pattern) as $child) {
             switch ($child->localName) {
+                case 'title':
+                case 'p':
                 case 'let':
                     break;
                 case 'rule':
@@ -761,7 +767,7 @@ final class Compiler
             switch ($child->localName) {
                 case 'let':
                     $lets[] = $this->let($child, $scope, global: false);
-                    $scope[] = $child->getAttribute('name');
+                    $scope[] = $this->variableName($child, 'variable');
                     break;
                 case 'assert':
                 case 'report':
@@ -1047,6 +1053,10 @@ final class Compiler
     {
         $allowed = self::ATTRIBUTES[$element->namespaceURI ?? ''][$element->localName ?? $element->nodeName] ?? [];
         foreach ($element->attributes ?? [] as $attribute) {
+            // Only affects how a stylesheet is serialized, which this compiler does not do.
+            if ($element->localName === 'schema' && $attribute->namespaceURI === self::XSLT_NAMESPACE && $attribute->localName === 'exclude-result-prefixes') {
+                continue;
+            }
             if ($attribute->namespaceURI !== null || ! in_array($attribute->localName, $allowed, true)) {
                 throw new UnsupportedSchematron("Unsupported attribute \"{$attribute->nodeName}\" of element \"{$this->elementName($element)}\" ({$this->line($element)}).");
             }

@@ -40,6 +40,21 @@ final readonly class StaticContext
         return self::FIXED[$prefix] ?? $this->namespaces[$prefix] ?? null;
     }
 
+    /**
+     * The canonical name of a variable: unprefixed names stay as they are, a prefixed name becomes
+     * "{uri}local". Returns null when the prefix is not bound.
+     */
+    public function variableName(string $qname): ?string
+    {
+        if (! str_contains($qname, ':')) {
+            return $qname;
+        }
+        [$prefix, $local] = explode(':', $qname, 2);
+        $uri = $this->namespaceUri($prefix);
+
+        return $uri === null ? null : "{{$uri}}{$local}";
+    }
+
     public function hasFunction(string $uri, string $local, int $arity): bool
     {
         return isset($this->functions[self::functionKey($uri, $local, $arity)]);

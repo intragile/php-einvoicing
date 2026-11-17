@@ -186,6 +186,14 @@ final class EvaluatorTest extends TestCase
         self::assertFalse($this->evaluator->effectiveBoolean($ast, $this->document, ['currencies' => array_slice($currencies, 0, 1)]));
     }
 
+    public function test_prefixed_variable_is_bound_by_its_expanded_name(): void
+    {
+        $ast = (new Parser)->parse('$u:n + 1 = 42', new StaticContext(['u' => 'utils'], ['{utils}n']));
+        $value = $this->evaluator->evaluate($this->parse('41'), $this->document);
+
+        self::assertTrue($this->evaluator->effectiveBoolean($ast, $this->document, ['{utils}n' => $value]));
+    }
+
     public function test_and_or_raise_an_operand_error_only_when_the_other_does_not_decide(): void
     {
         self::assertFalse($this->evaluator->effectiveBoolean($this->parse("false() and xs:decimal('x') = 1"), $this->document));

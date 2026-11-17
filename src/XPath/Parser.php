@@ -707,12 +707,16 @@ final class Parser
     {
         $this->expect(Token::SYMBOL, '$');
         $token = $this->current();
-        if (! $token->is(Token::NAME) || str_contains($token->value, ':')) {
-            throw $token->is(Token::NAME) ? $this->unsupported('prefixed variable $'.$token->value, $token) : $this->syntaxError('Expected a variable name');
+        if (! $token->is(Token::NAME) || str_contains($token->value, '*')) {
+            throw $this->syntaxError('Expected a variable name');
+        }
+        $name = $this->context->variableName($token->value);
+        if ($name === null) {
+            throw $this->unsupported('variable $'.$token->value.' with an unbound prefix (XPST0081)', $token);
         }
         $this->advance();
 
-        return $token->value;
+        return $name;
     }
 
     private function expectTypeName(): string

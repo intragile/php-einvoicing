@@ -256,6 +256,24 @@ final class ParserTest extends TestCase
         }
     }
 
+    public function test_prefixed_variable_resolves_to_its_expanded_name(): void
+    {
+        $context = new StaticContext(['u' => 'utils', 'w' => 'utils'], ['{utils}a']);
+
+        self::assertSame([Op::VAR, '{utils}a'], (new Parser)->parse('$u:a', $context));
+        self::assertSame([Op::VAR, '{utils}a'], (new Parser)->parse('$w:a', $context));
+    }
+
+    public function test_unbound_variable_prefix_is_xps_t0081(): void
+    {
+        try {
+            self::parse('$z:a');
+            self::fail('Expected UnsupportedXPath');
+        } catch (UnsupportedXPath $e) {
+            self::assertStringContainsString('XPST0081', $e->getMessage());
+        }
+    }
+
     public function test_incomplete_expression_reports_offset(): void
     {
         try {

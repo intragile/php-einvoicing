@@ -387,6 +387,86 @@ final class CompilerTest extends TestCase
         self::assertSame(['{utils}twice#1'], array_keys($compiled['functions']));
     }
 
+    public function test_exclude_result_prefixes_on_schema_is_ignored(): void
+    {
+        $cbc = self::CBC;
+        $compiled = Compiler::compileString(<<<XML
+            <schema xmlns="http://purl.oclc.org/dsdl/schematron" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xsl:exclude-result-prefixes="cbc" queryBinding="xslt2">
+              <ns prefix="cbc" uri="{$cbc}"/>
+              <pattern id="p"><rule context="cbc:ID"><assert id="R-1" flag="fatal" test="true()">x</assert></rule></pattern>
+            </schema>
+            XML, 'tiny.sch', 'tiny', '0.1');
+
+        self::assertCount(1, $compiled['patterns']);
+    }
+
+    public function test_other_xslt_attribute_on_schema_is_refused(): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('Unsupported attribute "xsl:version" of element "schema"');
+
+        Compiler::compileString(<<<'XML'
+            <schema xmlns="http://purl.oclc.org/dsdl/schematron" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xsl:version="2.0" queryBinding="xslt2">
+              <pattern id="p"/>
+            </schema>
+            XML, 'tiny.sch', 'tiny', '0.1');
+    }
+
+    public function test_title_and_p_in_pattern_are_ignored(): void
+    {
+        $compiled = Compiler::compile(self::writeSchematronDocument(<<<'XML'
+            <pattern id="p">
+              <title>Heading</title>
+              <p>Prose</p>
+              <let name="a" value="1"/>
+              <p>More prose</p>
+              <rule context="cbc:ID"><assert id="R-1" flag="fatal" test="$a = 1">x</assert></rule>
+            </pattern>
+            XML), 'tiny', '0.1');
+
+        self::assertCount(1, $compiled['patterns'][0]['rules']);
+        self::assertSame(['a'], array_column($compiled['lets'], 'name'));
+    }
+
+    public function test_prefixed_variable_declared_and_referenced(): void
+    {
+        $compiled = Compiler::compile(self::writeSchematronDocument(<<<'XML'
+            <let name="u:a" value="1"/>
+            <let name="b" value="$u:a + 1"/>
+            <pattern id="p"><rule context="cbc:ID"><assert id="R-1" flag="fatal" test="$u:a = 1 and $b = 2">x</assert></rule></pattern>
+            XML), 'tiny', '0.1');
+
+        self::assertSame(['{utils}a', 'b'], array_column($compiled['lets'], 'name'));
+        self::assertSame([Op::VAR, '{utils}a'], $compiled['lets'][1]['ast'][2]);
+    }
+
+    public function test_two_prefixes_for_one_uri_name_the_same_variable(): void
+    {
+        $compiled = Compiler::compile(self::writeSchematronDocument(<<<'XML'
+            <ns prefix="w" uri="utils"/>
+            <let name="u:a" value="1"/>
+            <pattern id="p"><rule context="cbc:ID"><assert id="R-1" flag="fatal" test="$w:a = 1">x</assert></rule></pattern>
+            XML), 'tiny', '0.1');
+
+        self::assertSame(['{utils}a'], array_column($compiled['lets'], 'name'));
+
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('declared twice');
+        Compiler::compile(self::writeSchematronDocument('<ns prefix="w" uri="utils"/><let name="u:a" value="1"/><let name="w:a" value="2"/>'), 'tiny', '0.1');
+    }
+
+    public function test_unbound_variable_prefix_is_xps_t0081(): void
+    {
+        foreach (['<let name="z:a" value="1"/>', '<let name="a" value="$z:b"/>'] as $body) {
+            try {
+                Compiler::compile(self::writeSchematronDocument($body), 'tiny', '0.1');
+                self::fail('Expected UnsupportedSchematron');
+            } catch (UnsupportedSchematron $e) {
+                self::assertStringContainsString('XPST0081', $e->getMessage());
+            }
+        }
+    }
+
     /**
      * @return iterable<string, array{string, string}>
      */
