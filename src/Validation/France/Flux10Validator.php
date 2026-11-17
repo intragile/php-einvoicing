@@ -7,13 +7,11 @@ namespace IntrAgile\EInvoicing\Validation\France;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
-use IntrAgile\EInvoicing\Schematron\RuleSet;
-use IntrAgile\EInvoicing\Schematron\Runner;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\Exception\UnusableSchema;
+use IntrAgile\EInvoicing\Validation\MessageType;
 use IntrAgile\EInvoicing\Validation\MessageValidationReport;
-use IntrAgile\EInvoicing\Validation\SchemaValidator;
 
 /**
  * Validates French Flux 10 e-reporting transmissions against the DGFiP e-reporting schema and the
@@ -28,24 +26,18 @@ use IntrAgile\EInvoicing\Validation\SchemaValidator;
  */
 final class Flux10Validator
 {
-    public const ROOT = 'Report';
+    private const ROOT = 'Report';
 
     private const SCHEMA = 'ereporting.xsd';
 
-    private ?RuleSet $ruleSet = null;
-
-    private function __construct(
-        private readonly string $rulesDir,
-        private readonly Runner $runner,
-        private readonly SchemaValidator $schemaValidator,
-    ) {}
+    private function __construct(private readonly MessageRun $run) {}
 
     /**
      * A validator for the French rules installed in $rulesDir. The rules are loaded on first use.
      */
     public static function create(string $rulesDir): self
     {
-        return new self($rulesDir, new Runner, new SchemaValidator);
+        return new self(new MessageRun($rulesDir));
     }
 
     /**
@@ -71,16 +63,6 @@ final class Flux10Validator
             ));
         }
 
-        $schemaErrors = $this->schemaValidator->validate($document, FranceRules::schema($this->rulesDir, 'flux10', self::SCHEMA));
-        $ruleSet = $this->ruleSet ??= FranceRules::load($this->rulesDir, 'flux10');
-        $result = $this->runner->run($ruleSet, $document);
-
-        return new MessageValidationReport(
-            MessageType::Flux10,
-            ["{$ruleSet->id()} {$ruleSet->version()}"],
-            $result->findings,
-            $result->dynamicErrors,
-            $schemaErrors,
-        );
+        return $this->run->validate($document, MessageType::Flux10, self::SCHEMA);
     }
 }

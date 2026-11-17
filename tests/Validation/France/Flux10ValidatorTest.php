@@ -9,7 +9,7 @@ use IntrAgile\EInvoicing\Tests\Validation\Peppol\BuildDir;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\France\Flux10Validator;
 use IntrAgile\EInvoicing\Validation\France\FranceSources;
-use IntrAgile\EInvoicing\Validation\France\MessageType;
+use IntrAgile\EInvoicing\Validation\MessageType;
 use IntrAgile\EInvoicing\Validation\MessageValidationReport;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -64,6 +64,23 @@ final class Flux10ValidatorTest extends TestCase
 
         self::assertContains('G6.29 fatal', $report->verdict(), self::describe($report));
         self::assertFalse($report->isValid());
+    }
+
+    public function test_rule_set_runs_when_the_schema_check_fails(): void
+    {
+        // An element the schema does not allow, next to a value a rule refuses.
+        $xml = str_replace(
+            ['<TypeCode>IN</TypeCode>', '</ReportDocument>'],
+            ['<TypeCode>XX</TypeCode>', '<Unexpected/></ReportDocument>'],
+            self::fixture('flux10-base.xml'),
+            $count,
+        );
+        self::assertSame(2, $count);
+
+        $report = self::validator()->validate($xml);
+
+        self::assertNotSame([], $report->schemaErrors, self::describe($report));
+        self::assertContains('G8.01 fatal', $report->verdict(), self::describe($report));
     }
 
     public function test_namespaced_report_is_refused(): void

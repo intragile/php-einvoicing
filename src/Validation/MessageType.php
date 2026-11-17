@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-namespace IntrAgile\EInvoicing\Validation\France;
+namespace IntrAgile\EInvoicing\Validation;
 
 /**
- * The French reform messages that are not invoices.
+ * The kinds of message other than invoices that a validator checks: the French reform lifecycle
+ * messages and e-reporting transmissions.
  */
 enum MessageType: string
 {

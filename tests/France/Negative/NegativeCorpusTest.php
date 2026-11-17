@@ -117,6 +117,8 @@ final class NegativeCorpusTest extends TestCase
         'cbc' => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
     ];
 
+    private const CDAR_ROOT = 'urn:un:unece:uncefact:data:standard:CrossDomainAcknowledgementAndResponse:100';
+
     private static ?FranceValidator $validator = null;
 
     private static ?CdarValidator $cdarValidator = null;
@@ -329,10 +331,10 @@ final class NegativeCorpusTest extends TestCase
         $document = SafeXml::loadPreservingWhitespace($xml);
         $root = $document->documentElement;
 
-        if ($root?->namespaceURI === CdarValidator::NAMESPACE) {
+        if ($root?->namespaceURI === self::CDAR_ROOT) {
             return self::message(self::cdarValidator()->validate($xml));
         }
-        if ($root?->namespaceURI === null && $root?->localName === Flux10Validator::ROOT) {
+        if ($root?->namespaceURI === null && $root?->localName === 'Report') {
             return self::message(self::flux10Validator()->validate($xml));
         }
 

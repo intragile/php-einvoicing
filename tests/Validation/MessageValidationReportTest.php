@@ -7,7 +7,7 @@ namespace IntrAgile\EInvoicing\Tests\Validation;
 use IntrAgile\EInvoicing\Syntax\Syntax;
 use IntrAgile\EInvoicing\Validation\DynamicError;
 use IntrAgile\EInvoicing\Validation\Finding;
-use IntrAgile\EInvoicing\Validation\France\MessageType;
+use IntrAgile\EInvoicing\Validation\MessageType;
 use IntrAgile\EInvoicing\Validation\MessageValidationReport;
 use IntrAgile\EInvoicing\Validation\SchemaError;
 use IntrAgile\EInvoicing\Validation\Severity;

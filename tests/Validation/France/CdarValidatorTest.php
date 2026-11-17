@@ -10,7 +10,7 @@ use IntrAgile\EInvoicing\Tests\Validation\Peppol\BuildDir;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\France\CdarValidator;
 use IntrAgile\EInvoicing\Validation\France\FranceSources;
-use IntrAgile\EInvoicing\Validation\France\MessageType;
+use IntrAgile\EInvoicing\Validation\MessageType;
 use IntrAgile\EInvoicing\Validation\MessageValidationReport;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
