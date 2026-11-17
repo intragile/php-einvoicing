@@ -43,8 +43,18 @@ Jelenleg tartalmazza:
   ellenőrzése, az opcionális, Apache-2.0 licencű `intragile/einvoicing-rules-facturx`
   szabálycsomaggal ([ZUGFeRD / Factur-X](#zugferd--factur-x)). A PDF-réteg tisztán PHP-s
   ([PDF-réteg](docs/PDF.md), angolul).
+- Francia számlák az e-számlázási reformhoz: UBL, CII D22B és Factur-X a francia adatokkal
+  (számlázási keret, SIREN és SIRET, a kötelező megjegyzések, EXTENDED-CTC-FR altételsorok),
+  valamint ellenőrzés az FNFE-MPE France_RFE 1.4.0.04 szabályai szerint, amelyeket a saját
+  gépeden fordítasz le a `vendor/bin/einvoicing-rules install france --dir=var/france-rules`
+  paranccsal. Az eredmények egyezését az FNFE saját, Saxonnal futtatott XSLT-jével 4889
+  dokumentumon ellenőriztük ([Franciaország](docs/countries/FRANCE.md), angolul). A CDAR
+  életciklus-üzenetek, a Flux 10 e-riportolás és a *plateforme agréée* felé történő továbbítás
+  még nincs benne.
 
-Országjegyzetek: [Németország](docs/countries/DE.md) (jogalap, formátumok, csatornák és az ellenőrzés, angolul).
+Országjegyzetek: [Németország](docs/countries/DE.md) (jogalap, formátumok, csatornák és az ellenőrzés, angolul),
+[Franciaország](docs/countries/FRANCE.md) (a reform, a profilok, a francia szabályok telepítése és
+futtatása, ami még hiányzik; angolul).
 
 Nincs benne: önszámlázó (self-billing) számlák küldése Peppolon, valamint CII a Peppol BIS
 Billing 3.0 szerint (CII Peppolon csak XRechnungként megy). A számla PDF-jének megjelenítése
@@ -105,6 +115,10 @@ $invoice = TotalsCalculator::complete($invoice); // line net amounts, VAT breakd
 $ubl = (new UblWriter)->write($invoice); // UBL 2.1 XML string
 $cii = (new CiiWriter)->write($invoice); // UN/CEFACT CII XML string
 ```
+
+A `CiiWriter` UN/CEFACT CII D22B szerint ír, amely több előzményszámla-hivatkozást (BG-3) is
+megenged. A `new CiiWriter(CiiVersion::D16B)` szigorú D16B-t ír, amely csak egyet enged. Az
+XRechnung specifikációazonosítójú (BT-24) számla mindig D16B-ként íródik.
 
 A `TotalsCalculator::complete()` kitölti az üresen hagyott tételsori nettó összegeket és
 ÁFA-összesítő sorokat, a megadottakat pedig megtartja. A számla végösszesítőit mindig újraszámolja,

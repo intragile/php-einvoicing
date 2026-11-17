@@ -43,9 +43,17 @@ Included today:
   PDF, and validating it, with the optional Apache-2.0 rules package
   `intragile/einvoicing-rules-facturx` ([ZUGFeRD / Factur-X](#zugferd--factur-x)). The PDF layer is
   pure PHP ([PDF layer](docs/PDF.md)).
+- French invoices for the e-invoicing reform: UBL, CII D22B and Factur-X with the French data
+  (billing framework, SIREN and SIRET, the mandatory notes, EXTENDED-CTC-FR sub-lines), and
+  validation against the FNFE-MPE France_RFE rules 1.4.0.04, compiled on your machine with
+  `vendor/bin/einvoicing-rules install france --dir=var/france-rules`. Verdicts are checked equal
+  to FNFE's own XSLT run by Saxon on 4,889 documents ([France](docs/countries/FRANCE.md)). CDAR
+  lifecycle messages, Flux 10 e-reporting and the transport to a *plateforme agréée* are not
+  included yet.
 
 Country notes: [Germany](docs/countries/DE.md) (legal basis, formats, channels and what is
-verified).
+verified), [France](docs/countries/FRANCE.md) (the reform, profiles, installing and running the
+French rules, what is not covered yet).
 
 Not included: self-billing over Peppol, and CII under Peppol BIS Billing 3.0 (CII goes over
 Peppol only as XRechnung). Rendering the invoice PDF is out of scope: you supply the PDF. The

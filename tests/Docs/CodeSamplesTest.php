@@ -15,10 +15,11 @@ use RuntimeException;
 /**
  * Keeps the PHP samples of the documentation working.
  *
- * Every fenced php block in the READMEs, docs/*.md and the rule packages' READMEs must compile
- * (php -l). A block whose fence is preceded by the line <!-- sample: run --> is also executed in
- * a child process with the Composer autoloader loaded and a fresh working directory that holds a
- * valid EN 16931 UBL invoice as invoice.xml. It must exit 0 and write nothing to standard error.
+ * Every fenced php block in the READMEs, docs/*.md, docs/countries/*.md and the rule packages'
+ * READMEs must compile (php -l). A block whose fence is preceded by the line <!-- sample: run -->
+ * is also executed in a child process with the Composer autoloader loaded and a fresh working
+ * directory that holds a valid EN 16931 UBL invoice as invoice.xml. It must exit 0 and write
+ * nothing to standard error.
  */
 final class CodeSamplesTest extends TestCase
 {
@@ -34,6 +35,7 @@ final class CodeSamplesTest extends TestCase
         'README.hu.md' => 3,
         'docs/FACTURX.md' => 1,
         'docs/TRANSPORT.md' => 1,
+        'docs/countries/FRANCE.md' => 2,
     ];
 
     /**
@@ -122,6 +124,7 @@ final class CodeSamplesTest extends TestCase
         $paths = [
             ...(glob(self::ROOT.'/README*.md') ?: []),
             ...(glob(self::ROOT.'/docs/*.md') ?: []),
+            ...(glob(self::ROOT.'/docs/countries/*.md') ?: []),
             ...(glob(self::ROOT.'/packages/*/README.md') ?: []),
         ];
         $prefix = realpath(self::ROOT).'/';

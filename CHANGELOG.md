@@ -8,6 +8,42 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **France:** `FranceValidator` validates French invoices against the FNFE-MPE France_RFE rules
+  1.4.0.04: UBL and CII (EN 16931 and EXTENDED-CTC-FR) with `validate()`, and the CII of Factur-X
+  BASIC WL, BASIC, EN 16931 and EXTENDED with `validateFacturX()`. The chain (XML Schema, then the
+  rule sets in order) is chosen by the specification identifier (BT-24). Factur-X MINIMUM and
+  XRECHNUNG, CDAR and Flux 10 documents are refused. French Factur-X EXTENDED runs FNFE's patched
+  copy of the Factur-X EXTENDED rules.
+- **France:** `vendor/bin/einvoicing-rules install france --dir=DIR [--from=DIR]` and
+  `check france --dir=DIR`. The France_RFE files are not redistributable, so they are downloaded
+  at a pinned commit (or read from a checkout), checked against committed SHA-256 sums and
+  compiled locally into seven rule sets, with the FNFE XML Schemas copied next to them.
+- **France:** French data on the model and in the writers and readers: `France::mark()` and
+  `France::processControl()` (billing framework as BT-23, profile as BT-24), `BillingFramework`,
+  `FrenchProfile`, `Siren` and `Siret` identifiers, notes for the mandatory mentions
+  (`recoveryFeeNote()`, `latePaymentPenaltyNote()`, `earlyPaymentDiscountNote()`,
+  `treatmentNote()`, `singleVatGroupNote()`), and the `FrenchInvoice` extension, which the UBL
+  and CII readers attach when BT-23 is a French billing framework or BT-24 is EXTENDED-CTC-FR.
+- **France:** EXTENDED-CTC-FR line data in UBL, CII D22B and Factur-X EXTENDED: `FrenchLine`
+  (parent line, DETAIL sub-type, `LineSeller`, line preceding invoice, `LineDelivery`, line VAT
+  data, further object identifiers) on invoice lines, and GROUP and INFORMATION lines as
+  `InformationalLine`, held by `FrenchInvoice` outside the invoice lines and the totals, with an
+  explicit line order.
+- **France:** `FrenchGuard`, run by `UblWriter`, `CiiWriter` and the Factur-X writer before a
+  French invoice is written: the French decimal limits (amounts 2, quantities 4, prices 6, VAT
+  rates 2) and the EXTENDED-CTC-FR line structure. `UblWriter` refuses a line amount with VAT
+  (EXT-FR-FE-184), which UBL cannot carry, and a line VAT point date code without a line period;
+  `FacturXXmlWriter` refuses an EXTENDED-CTC-FR invoice for any profile but EXTENDED.
+- **Validation engine:** prefixed variable names, `title` and `p` in patterns,
+  `xsl:exclude-result-prefixes` on the schema, node sequence types (`element()`, `element()?`,
+  `node()?`, `item()*`) on function parameters, variables and results, a filtered parenthesised
+  union at the start of a match pattern, and compile options that take a missing rule id from a
+  leading `[CODE]` in the message or hash a whitespace-normalised test. CEN, Peppol, XRechnung and
+  Factur-X verdicts are unchanged.
+- **Documentation:** [docs/countries/FRANCE.md](docs/countries/FRANCE.md).
+
 ### Changed
 
 - **CII:** `CiiWriter` targets UN/CEFACT D22B by default and writes every preceding invoice

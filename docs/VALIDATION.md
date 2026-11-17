@@ -112,6 +112,14 @@ XRechnung 2.6.0 schemas use, so they compile as published:
 - **Global pattern lets.** A `let` of a pattern is a global variable, as in the ISO skeleton and
   SchXslt: every rule, let and XSLT function of every pattern sees it, and its name must be unique
   among the schema and pattern lets (`XTSE0630`).
+- **Prefixed variable names.** A variable name `prefix:local` (in `let`, `xsl:variable`,
+  `xsl:param` and `$prefix:local` references) is resolved through the schema's `ns` bindings to
+  its expanded name, so two prefixes bound to the same namespace URI name the same variable. An
+  unbound prefix is refused with `XPST0081`. Unprefixed names are unchanged.
+- **Pattern titles.** `title` and `p` children of a `pattern` (also among pattern-level lets) are
+  documentation and are ignored.
+- **`xsl:exclude-result-prefixes`.** This attribute on `schema` is accepted and ignored; it has no
+  effect on a validation report. Every other foreign attribute is still refused.
 - **Messages.** An assert message may contain empty `name` elements (without `path`) and
   `value-of select="…"` elements. When the assert fails, `name` is the qualified name of the failing
   node as the document writes it (XPath `name()`), and `value-of` is the string value of the
@@ -127,7 +135,13 @@ XRechnung 2.6.0 schemas use, so they compile as published:
   default flag, and a prefix for synthesized ids of the form `<prefix>-<first ten hex digits of
   SHA-256(rule context, line feed, test)>`, which can be recomputed from the official SVRL. By
   default both are refused. An empty `id=""` is never synthesized; it is refused. The `flag` of a
-  `rule` is not inherited by its asserts and reports.
+  `rule` is not inherited by its asserts and reports. Two further options exist for rule sets
+  whose messages carry the rule code (the French Flux 10 rules): with `idFromMessage`, an assert
+  or report without an id takes the code of a leading `[CODE]` in its message (`[G1.104] …` gives
+  `G1.104`), and when several share a code they get `CODE-1` to `CODE-n` in document order; one
+  without a code falls back to the prefix rule. With `normalizeTestWhitespace`, the test is
+  collapsed like `normalize-space()` before it is hashed, so reformatting a test does not change its
+  id. An explicit id always wins.
 - **`document()`.** The files `fn:document()` reads (the Factur-X code lists) are embedded in the
   rule set when it is compiled, and the runner reads them from there; it never opens a file or the
   network at run time. The compiler checks every `document()` call, and one it cannot resolve
@@ -332,6 +346,40 @@ To write XRechnung, give the invoice `XRechnung::processControl()` (or
 `XRechnung::processControl(XRechnung::EXTENSION)`), which sets BT-24 and the Peppol billing
 profile as BT-23.
 
+## French rules
+
+`IntrAgile\EInvoicing\Validation\France\FranceValidator` validates French invoices against the
+FNFE-MPE France_RFE rules 1.4.0.04 (pinned commit `97ba0f3d4ef2abed5780e9490d5c3a2be832ab1d`).
+The licence of those files does not allow redistribution, so `vendor/bin/einvoicing-rules install
+france --dir=DIR` downloads them (or reads them from a checkout with `--from=DIR`), checks each file
+against the SHA-256 sum in `resources/france/france-rfe-1.4.0.04.sha256`, and compiles them on the
+user's machine. `vendor/bin/einvoicing-rules check france --dir=DIR` verifies an installation.
+Nothing is replaced unless every file matches and every rule set compiles. Profiles, chains and
+usage are in [countries/FRANCE.md](countries/FRANCE.md).
+
+The upstream files are compiled unchanged. Where one leaves out what the engine requires, the
+installer passes compile options, never a per-rule exception:
+
+| Rule set | Source file | Options |
+|---|---|---|
+| `flux2-cii` | `CII/EN16931/schematron/BR-FR-Flux2-Schematron-CII.sch` | none |
+| `flux2-ubl` | `UBL/EN16931/schematron/BR-FR-Flux2-Schematron-UBL.sch` | none |
+| `extended-ctc-fr-cii` | `CII/EXTENDED-CTC-FR/schematron/EXTENDED-CTC-FR-CII.sch` | default flag `warning`, ids from message codes, else prefix `FR-REPORT` |
+| `extended-ctc-fr-ubl` | `UBL/EXTENDED-CTC-FR/schematron/EXTENDED-CTC-FR-UBL.sch` | none |
+| `cdar` | `CDAR/schematron/BR-FR-CDV-Schematron-CDAR.sch` | none |
+| `flux10` | `Flux10/Flux10.sch` | ids from message codes, else prefix `FR10` with whitespace-normalised tests |
+| `facturx-extended` | `Factur-X/EXTENDED/schematron/FACTUR-X_EXTENDED.sch` (FNFE's fork) | default flag `fatal`, prefix `FX-REPORT` |
+
+In `EXTENDED-CTC-FR-CII.sch`, BR-FXEXT-04 has no `id` attribute (its code is in the message) but
+already carries `flag="warning"` upstream, so it is reported as warning BR-FXEXT-04. Flux 10's 150 asserts all
+get their id from the message code (134 with a numbering suffix because the code is shared, 16
+plain). The CDAR and Flux 10 rule sets are installed and compiled, but `FranceValidator` refuses
+those documents: their validators come with the lifecycle and e-reporting support.
+
+The French rules are where the engine needed the additions listed above: node sequence types on
+function parameters, prefixed variable names, pattern titles, `xsl:exclude-result-prefixes`, a
+filtered union at the start of a match pattern, and ids from message codes.
+
 ## How verdict equality is checked
 
 The test group `oracle` runs the official CEN XSLT through SaxonC-HE in Docker as the judge
@@ -360,7 +408,22 @@ PHP 8.3, 8.4 and 8.5 the whole oracle group, including the single expression pro
 wrapper guard below and the Peppol corpus ([PEPPOL.md](PEPPOL.md#how-the-verdicts-are-verified):
 1,611 documents compared with the OpenPeppol Schematron compiled by the ISO skeleton in Saxon,
 plus a guard that the skeleton-compiled CEN 1.3.17 Schematron equals the official CEN 1.3.17
-XSLT on 34 examples and 200 mutations), is 6,202 tests; any mismatch fails the build.
+XSLT on 34 examples and 200 mutations), the Factur-X corpus and the French corpus below, is
+11,822 tests; any mismatch fails the build.
+
+The French corpus (`tests/Oracle/FranceConformanceTest.php`) compares each document with FNFE's
+own compiled XSLT of the same France_RFE commit, run by SaxonC: the 41 FNFE invoice examples and
+the 59 CDAR examples, invoices written by this library, their round trips, the negative recipes
+(one per reachable French rule) and seeded mutations (leaf text set to `X Y`, leaf removed, extra
+decimals), 4,889 documents in all. Ids are mapped through the rule context and test, because the
+FNFE XSLT reports some asserts without an id. Every verdict is equal, with one documented
+exception, the allow-list: where a mutation makes a date or an amount unreadable, Saxon may
+evaluate an XSLT local variable or a rule-level let eagerly and stop with `FORG0001`, while the
+engine evaluates it lazily and reports the format rule for that field (BR-FR-03 for a date, the
+Flux 10 amount rule for an amount). A difference counts as this case only when all three hold:
+Saxon stops with `FORG0001`, our findings contain that format rule for the mutated field, and the
+mutated field is a date or an amount. The test pins how often each entry is used (26 CII dates, 16
+UBL dates, 4 Flux 10 amounts), so the allow-list cannot grow unnoticed.
 
 The SaxonC PHP extension gives no error code for a dynamic error and cannot run another
 transformation after one. The oracle therefore wraps the official stylesheet in a test-only XSLT
