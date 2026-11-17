@@ -38,7 +38,6 @@ final class RouterTest extends TestCase
         $decision = self::router()->route(FrenchInvoices::domesticB2b());
 
         self::assertDecision(Channel::EInvoice, PaymentReporting::None, RoutingRule::DomesticB2b, null, $decision);
-        self::assertFalse($decision->needsDirectoryCheck);
     }
 
     public function test_domestic_b2b_services_on_collection_needs_collected_status(): void
@@ -190,8 +189,7 @@ final class RouterTest extends TestCase
     {
         $decision = (new Router(new StaticAnnuaire))->route(FrenchInvoices::domesticB2b());
 
-        self::assertDecision(Channel::EInvoice, PaymentReporting::None, RoutingRule::DomesticB2b, null, $decision);
-        self::assertTrue($decision->needsDirectoryCheck);
+        self::assertDecision(Channel::EInvoice, PaymentReporting::None, RoutingRule::DomesticB2b, null, $decision, needsDirectoryCheck: true);
     }
 
     public function test_domestic_buyer_without_siren_is_unknown_without_a_lookup(): void
@@ -213,8 +211,7 @@ final class RouterTest extends TestCase
 
         $decision = (new Router($annuaire))->route($invoice);
 
-        self::assertDecision(Channel::EInvoice, PaymentReporting::None, RoutingRule::DomesticB2b, null, $decision);
-        self::assertTrue($decision->needsDirectoryCheck);
+        self::assertDecision(Channel::EInvoice, PaymentReporting::None, RoutingRule::DomesticB2b, null, $decision, needsDirectoryCheck: true);
         self::assertSame([], $annuaire->lookups);
     }
 
@@ -329,10 +326,11 @@ final class RouterTest extends TestCase
         RoutingRule $rule,
         ?DeclarantRole $declarant,
         RoutingDecision $decision,
+        bool $needsDirectoryCheck = false,
     ): void {
         self::assertSame(
-            [$channel, $payment, $rule, $declarant],
-            [$decision->channel, $decision->payment, $decision->rule, $decision->declarant],
+            [$channel, $payment, $rule, $declarant, $needsDirectoryCheck],
+            [$decision->channel, $decision->payment, $decision->rule, $decision->declarant, $decision->needsDirectoryCheck],
         );
     }
 
