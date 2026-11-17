@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Schematron;
 
 use DOMElement;
 use DOMNode;
+use DOMXPath;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
@@ -19,6 +20,7 @@ use IntrAgile\EInvoicing\XPath\SequenceType;
 use IntrAgile\EInvoicing\XPath\StaticContext;
 use IntrAgile\EInvoicing\XPath\XPathError;
 use InvalidArgumentException;
+use LogicException;
 use SplObjectStorage;
 
 /**
@@ -168,6 +170,9 @@ final class Compiler
     /** @var SplObjectStorage<DOMElement, string> document element of each included file => its name in messages */
     private SplObjectStorage $includedFiles;
 
+    /** @var SplObjectStorage<DOMElement, string> assert or report without an id => the id taken from its message code */
+    private SplObjectStorage $messageCodeIds;
+
     /**
      * @param  ?string  $baseDir  directory the includes of the top-level schema resolve against
      * @param  ?string  $includeRoot  directory tree every included file must stay inside
@@ -182,6 +187,7 @@ final class Compiler
     ) {
         $this->parser = new Parser;
         $this->includedFiles = new SplObjectStorage;
+        $this->messageCodeIds = new SplObjectStorage;
     }
 
     /**
@@ -262,6 +268,9 @@ final class Compiler
         }
         $this->checkAttributes($schema);
         $this->resolveIncludes($schema);
+        if ($this->options->idFromMessage) {
+            $this->assignMessageCodeIds($schema);
+        }
 
         $letElements = [];
         $functionElements = [];
@@ -782,6 +791,43 @@ final class Compiler
     }
 
     /**
+     * Derives the ids of the asserts and reports without an id attribute from the "[CODE]" that
+     * their message starts with: the code itself, or "CODE-1" to "CODE-n" in document order when
+     * several of them share it. Asserts without such a code are left out.
+     */
+    private function assignMessageCodeIds(DOMElement $schema): void
+    {
+        $xpath = new DOMXPath($schema->ownerDocument ?? throw new LogicException('The schema has no document.'));
+        $xpath->registerNamespace('s', self::SCHEMATRON_NAMESPACE);
+        $nodes = $xpath->query('//s:assert[not(@id)] | //s:report[not(@id)]');
+        $codes = [];
+        $byCode = [];
+        foreach ($nodes === false ? [] : $nodes as $node) {
+            if (! $node instanceof DOMElement) {
+                continue;
+            }
+            $text = '';
+            foreach ($node->childNodes as $child) {
+                if ($child instanceof DOMElement) {
+                    break;
+                }
+                if ($child->nodeType === XML_TEXT_NODE || $child->nodeType === XML_CDATA_SECTION_NODE) {
+                    $text .= $child->nodeValue;
+                }
+            }
+            $code = CompileOptions::messageCode($text);
+            if ($code !== null) {
+                $byCode[$code][] = $node;
+            }
+        }
+        foreach ($byCode as $code => $elements) {
+            foreach ($elements as $index => $element) {
+                $this->messageCodeIds[$element] = count($elements) > 1 ? $code.'-'.($index + 1) : (string) $code;
+            }
+        }
+    }
+
+    /**
      * Compiles an assert or a report.
      *
      * @param  list<string>  $scope  names of the variables in scope
@@ -792,7 +838,11 @@ final class Compiler
         $kind = $assert->localName === 'report' ? 'report' : 'assert';
         $what = ucfirst($kind);
         $id = $assert->getAttribute('id');
-        $synthesize = ! $assert->hasAttribute('id') && $this->options->missingIdPrefix !== null;
+        $fromMessage = isset($this->messageCodeIds[$assert]) ? $this->messageCodeIds[$assert] : null;
+        if ($fromMessage !== null) {
+            $id = $fromMessage;
+        }
+        $synthesize = ! $assert->hasAttribute('id') && $fromMessage === null && $this->options->missingIdPrefix !== null;
         if ($id === '' && ! $synthesize) {
             throw new UnsupportedSchematron("{$what} without an id in the rule with context \"{$context}\" ({$this->line($assert)}).");
         }
@@ -804,7 +854,7 @@ final class Compiler
         }
         $test = $assert->getAttribute('test');
         if ($synthesize) {
-            $id = CompileOptions::synthesizedId($this->options->missingIdPrefix, $context, $test);
+            $id = CompileOptions::synthesizedId($this->options->missingIdPrefix, $context, $test, $this->options->normalizeTestWhitespace);
         }
 
         if ($assert->hasAttribute('flag')) {

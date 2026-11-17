@@ -664,6 +664,93 @@ final class CompilerTest extends TestCase
         ], $ids);
     }
 
+    public function test_id_from_leading_message_code(): void
+    {
+        $path = self::writeSchematron('<rule context="cbc:ID"><assert test="true()">  [G1.104] The value <value-of select="."/> is wrong.</assert>'
+            .'<report test="false()"><![CDATA[[BR-FXEXT-04]]]> text</report></rule>');
+
+        $compiled = Compiler::compile($path, 'tiny', '0.1', null, new CompileOptions(defaultFlag: 'fatal', idFromMessage: true));
+
+        self::assertSame(['G1.104', 'BR-FXEXT-04'], array_column(self::asserts($compiled), 'id'));
+    }
+
+    public function test_shared_message_code_gets_ordinal_suffixes(): void
+    {
+        $path = self::writeSchematron('<rule context="cbc:ID"><assert test="true()">[G1.1] a</assert><assert test="1 = 1">[G2.2] b</assert></rule>'
+            .'<rule context="cbc:Note"><report test="false()">[G1.1] c</report><assert id="G1.1-1" test="true()">[G1.1] explicit</assert><assert test="2 = 2">[G1.1] d</assert></rule>');
+
+        $compiled = Compiler::compile($path, 'tiny', '0.1', null, new CompileOptions(defaultFlag: 'fatal', idFromMessage: true));
+
+        // An explicit id never takes part in the count, and a collision with one is not checked.
+        self::assertSame(['G1.1-1', 'G2.2', 'G1.1-2', 'G1.1-1', 'G1.1-3'], array_column(self::asserts($compiled), 'id'));
+    }
+
+    public function test_explicit_id_wins_over_message_code(): void
+    {
+        $path = self::writeSchematron('<rule context="cbc:ID"><assert id="KEPT" test="true()">[G1.1] a</assert></rule>');
+
+        $compiled = Compiler::compile($path, 'tiny', '0.1', null, new CompileOptions(defaultFlag: 'fatal', idFromMessage: true));
+
+        self::assertSame(['KEPT'], array_column(self::asserts($compiled), 'id'));
+    }
+
+    public function test_message_without_code_falls_back_to_hash(): void
+    {
+        $path = self::writeSchematron('<rule context="cbc:ID"><assert test="true()">No code here.</assert><assert test="1 = 1"><value-of select="."/>[G1.1] late</assert></rule>');
+
+        $compiled = Compiler::compile($path, 'tiny', '0.1', null, new CompileOptions(defaultFlag: 'fatal', missingIdPrefix: 'FR10', idFromMessage: true));
+
+        self::assertSame([
+            'FR10-'.substr(hash('sha256', "cbc:ID\ntrue()"), 0, 10),
+            'FR10-'.substr(hash('sha256', "cbc:ID\n1 = 1"), 0, 10),
+        ], array_column(self::asserts($compiled), 'id'));
+    }
+
+    public function test_message_without_code_and_without_prefix_is_refused(): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('Assert without an id');
+
+        Compiler::compile(self::writeSchematron('<rule context="cbc:ID"><assert test="true()">No code.</assert></rule>'), 'tiny', '0.1', null, new CompileOptions(defaultFlag: 'fatal', idFromMessage: true));
+    }
+
+    public function test_message_code_is_ignored_unless_requested(): void
+    {
+        $path = self::writeSchematron('<rule context="cbc:ID"><assert test="true()">[G1.1] a</assert></rule>');
+
+        $compiled = Compiler::compile($path, 'tiny', '0.1', null, new CompileOptions(defaultFlag: 'fatal', missingIdPrefix: 'FR10'));
+
+        self::assertSame(['FR10-'.substr(hash('sha256', "cbc:ID\ntrue()"), 0, 10)], array_column(self::asserts($compiled), 'id'));
+    }
+
+    public function test_normalized_hash_ignores_whitespace_runs(): void
+    {
+        $path = self::writeSchematron("<rule context=\"cbc:ID\"><assert test=\"  a  =&#10;&#9;'b'  \">x</assert></rule>");
+
+        $plain = Compiler::compile($path, 'tiny', '0.1', null, new CompileOptions(defaultFlag: 'fatal', missingIdPrefix: 'P'));
+        $normalized = Compiler::compile($path, 'tiny', '0.1', null, new CompileOptions(defaultFlag: 'fatal', missingIdPrefix: 'P', normalizeTestWhitespace: true));
+
+        self::assertSame(['P-'.substr(hash('sha256', "cbc:ID\n  a  =\n\t'b'  "), 0, 10)], array_column(self::asserts($plain), 'id'));
+        self::assertSame(['P-'.substr(hash('sha256', "cbc:ID\na = 'b'"), 0, 10)], array_column(self::asserts($normalized), 'id'));
+    }
+
+    public function test_default_hash_is_unchanged(): void
+    {
+        self::assertSame('FX-REPORT-'.substr(hash('sha256', "//ram:X\n@schemeID"), 0, 10), CompileOptions::synthesizedId('FX-REPORT', '//ram:X', '@schemeID'));
+        self::assertSame(CompileOptions::synthesizedId('P', 'c', 'a = b'), CompileOptions::synthesizedId('P', 'c', " a \n=\t b ", true));
+        self::assertNotSame(CompileOptions::synthesizedId('P', 'c', 'a = b'), CompileOptions::synthesizedId('P', 'c', " a \n=\t b "));
+    }
+
+    public function test_message_code_syntax(): void
+    {
+        self::assertSame('G1.104', CompileOptions::messageCode("\n [G1.104] text"));
+        self::assertSame('a_b-1', CompileOptions::messageCode('[a_b-1]'));
+        self::assertNull(CompileOptions::messageCode('[] x'));
+        self::assertNull(CompileOptions::messageCode('[.x] x'));
+        self::assertNull(CompileOptions::messageCode('x [G1]'));
+        self::assertNull(CompileOptions::messageCode('[G 1]'));
+    }
+
     public function test_nul_in_include_href_is_unsupported_schematron(): void
     {
         $dir = self::includeScratch('nul', [
