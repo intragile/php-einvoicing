@@ -1,0 +1,17 @@
+{
+    "invoice": {
+        "id": 590101,
+        "type": "IssuedInvoice",
+        "number": "FA-2026-0001",
+        "state": "new",
+        "state_updated_at": "2026-11-18T09:00:02.000Z",
+        "document_type_code": "xml.ubl.invoice.frcius.v1",
+        "currency": "EUR",
+        "error_code": null,
+        "error_message": null,
+        "errors": [],
+        "created_at": "2026-11-18T09:00:01.000Z",
+        "updated_at": "2026-11-18T09:00:02.000Z",
+        "request_log_url": "https://app.b2brouter.net/api_requests/0"
+    }
+}

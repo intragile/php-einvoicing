@@ -75,6 +75,22 @@ final class B2BrouterConfigTest extends TestCase
         self::assertFalse((new B2BrouterConfig('TEST_FAKEKEY000000', 1))->isSandboxKey());
     }
 
+    public function test_staging_key_is_detected(): void
+    {
+        self::assertTrue((new B2BrouterConfig('stag_FAKEKEY000000', 1))->isStagingKey());
+        self::assertTrue((new B2BrouterConfig(' stag_FAKEKEY000000', 1))->isStagingKey());
+        self::assertFalse((new B2BrouterConfig(self::KEY, 1))->isStagingKey());
+        self::assertFalse((new B2BrouterConfig('prod_FAKEKEY000000', 1))->isStagingKey());
+        self::assertFalse((new B2BrouterConfig('STAG_FAKEKEY000000', 1))->isStagingKey());
+        self::assertFalse((new B2BrouterConfig('FAKEKEY000000stag_', 1))->isStagingKey());
+    }
+
+    public function test_staging_base_url_constant(): void
+    {
+        self::assertSame('https://api-staging.b2brouter.net', B2BrouterConfig::STAGING_BASE_URL);
+        self::assertSame(B2BrouterConfig::STAGING_BASE_URL, (new B2BrouterConfig('stag_FAKEKEY000000', 1, B2BrouterConfig::STAGING_BASE_URL))->baseUrl);
+    }
+
     public function test_config_dump_hides_secrets(): void
     {
         $config = new B2BrouterConfig(self::KEY, 4711);

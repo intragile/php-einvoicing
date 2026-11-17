@@ -1,0 +1,1 @@
+{"error": {"code": "invalid_document", "type": "invalid_request_error", "message": "Schematron validation failed: [G1.24] the VAT rate of a line is not an allowed French rate.", "invoice_id": 590103}}

@@ -1,0 +1,18 @@
+{
+    "invoice": {
+        "id": 590102,
+        "type": "IssuedInvoice",
+        "number": "FA-2026-0002",
+        "state": "error",
+        "state_updated_at": "2026-11-18T09:01:04.000Z",
+        "document_type_code": "xml.ubl.invoice.frcius.v1",
+        "error_code": null,
+        "error_message": null,
+        "errors": [
+            "The buyer SIREN is not listed in the French directory.",
+            {"error": "No routing address could be found for the buyer."}
+        ],
+        "created_at": "2026-11-18T09:01:00.000Z",
+        "updated_at": "2026-11-18T09:01:04.000Z"
+    }
+}

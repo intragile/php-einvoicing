@@ -23,6 +23,9 @@ final readonly class B2BrouterConfig
 {
     public const DEFAULT_BASE_URL = 'https://api.b2brouter.net';
 
+    /** The base URL of the B2Brouter staging environment, which takes keys that start with "stag_". */
+    public const STAGING_BASE_URL = 'https://api-staging.b2brouter.net';
+
     /** The API version the driver was built against, pinned so that account settings cannot change the response shapes. */
     public const API_VERSION = '2026-06-26';
 
@@ -39,6 +42,9 @@ final readonly class B2BrouterConfig
 
     /** Prefix of the keys that B2Brouter routes to the sandbox. */
     private const SANDBOX_KEY_PREFIX = 'test_';
+
+    /** Prefix of the keys of the B2Brouter staging environment. */
+    private const STAGING_KEY_PREFIX = 'stag_';
 
     private const DOCUMENT_TYPE_CODE_PATTERN = '/^[a-z0-9._]{3,100}\z/';
 
@@ -89,6 +95,15 @@ final readonly class B2BrouterConfig
     public function isSandboxKey(): bool
     {
         return str_starts_with($this->apiKey->reveal(), self::SANDBOX_KEY_PREFIX);
+    }
+
+    /**
+     * Whether the key is a staging key, which belongs to the staging environment at
+     * STAGING_BASE_URL.
+     */
+    public function isStagingKey(): bool
+    {
+        return str_starts_with($this->apiKey->reveal(), self::STAGING_KEY_PREFIX);
     }
 
     /**
