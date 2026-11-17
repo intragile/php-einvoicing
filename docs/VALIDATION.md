@@ -158,6 +158,11 @@ with the behaviour Saxon shows on probe cases (`ProbeCases::functions()`):
   test is true, else `xsl:otherwise`. A function body may not use the focus (`.`, `/`, a relative
   path, `last()`, `string()` without argument): XSLT leaves it absent there, and the compiler
   rejects such a body.
+- **Node types.** `element()`, `element()?`, `node()?` and `item()*` pass nodes through unchanged
+  (no atomisation): `element()` needs exactly one element node, `element()?` zero or one,
+  `node()?` zero or one node of any kind, `item()*` anything. A wrong kind or count is `XPTY0004`
+  for a parameter, `XTTE0570` for a variable and `XTTE0780` for a result. A compiled rule file
+  carrying any other `as` value is refused when it is loaded.
 - **Conversion rules.** The `as` types `xs:boolean`, `xs:integer`, `xs:decimal`, `xs:string` and
   `xs:string?` convert a parameter, a variable and a function result: the value is atomised and an
   untyped value (text from the document) is cast to the type, so untyped `abc` for an `xs:decimal`

@@ -17,10 +17,12 @@ use LogicException;
 
 /**
  * The conversion an XSLT "as" attribute applies to a parameter, a function result or a variable
- * (the function conversion rules), for the sequence types the compiler accepts: xs:boolean,
- * xs:integer, xs:decimal, xs:string and xs:string?.
+ * (the function conversion rules), for the sequence types the compiler accepts (SUPPORTED).
  *
- * The value is atomised; an untyped item is cast to the type (a failing cast is FORG0001); an
+ * A node type (element(), element()?, node()?) and item()* keep the nodes: nothing is atomised, the
+ * kind and the number of items are checked and a mismatch is the given type error.
+ *
+ * For an atomic type the value is atomised; an untyped item is cast to the type (a failing cast is FORG0001); an
  * xs:integer is accepted where an xs:decimal is expected and stays an xs:integer; an xs:double
  * given for an xs:decimal becomes the shortest decimal that reads back as that double, as Saxon 13
  * does after the XPath 4.0 coercion rules (NaN and the infinities cannot be converted). Any other
@@ -32,6 +34,9 @@ use LogicException;
  */
 final class SequenceType
 {
+    /** The sequence types an "as" attribute may carry. */
+    public const SUPPORTED = ['xs:boolean', 'xs:integer', 'xs:decimal', 'xs:string', 'xs:string?', 'element()', 'element()?', 'node()?', 'item()*'];
+
     /**
      * @param  ?string  $as  the sequence type, or null for no conversion
      * @param  list<DOMNode|AtomicValue>  $value
@@ -45,6 +50,9 @@ final class SequenceType
     {
         if ($as === null) {
             return $value;
+        }
+        if (in_array($as, ['element()', 'element()?', 'node()?', 'item()*'], true)) {
+            return self::nodes($as, $value, $typeError);
         }
         $optional = str_ends_with($as, '?');
         $type = $optional ? substr($as, 0, -1) : $as;
@@ -62,6 +70,32 @@ final class SequenceType
         }
 
         return $result;
+    }
+
+    /**
+     * @param  list<DOMNode|AtomicValue>  $value
+     * @return list<DOMNode|AtomicValue>
+     *
+     * @throws XPathError
+     */
+    private static function nodes(string $as, array $value, string $typeError): array
+    {
+        if ($as === 'item()*') {
+            return $value;
+        }
+        $count = count($value);
+        if ($count > 1 || ($count === 0 && ! str_ends_with($as, '?'))) {
+            throw new XPathError($typeError, "A sequence of {$count} items does not match the required type {$as}.");
+        }
+        foreach ($value as $item) {
+            $matches = $item instanceof DOMNode && ($as === 'node()?' || $item->nodeType === XML_ELEMENT_NODE);
+            if (! $matches) {
+                $found = $item instanceof DOMNode ? 'node of kind '.$item->nodeType : $item->type();
+                throw new XPathError($typeError, "A value of type {$found} does not match the required type {$as}.");
+            }
+        }
+
+        return $value;
     }
 
     /**

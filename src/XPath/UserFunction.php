@@ -15,7 +15,10 @@ use LogicException;
  * - each argument is evaluated before the call and converted to its parameter's "as" type
  *   (SequenceType, type errors XPTY0004);
  * - local variables are lazy (Thunk): one that is never read is never evaluated, and its "as"
- *   type is applied when it is (type errors XTTE0570);
+ *   type is applied when it is (type errors XTTE0570). XPath 2.0 section 2.3.4 permits this, and
+ *   Saxon behaves the same on a cold call; it may evaluate a local eagerly once a function has been
+ *   called repeatedly (observed after about 50 calls), so a cast that fails only in an unread local
+ *   is a dynamic error in Saxon and not here;
  * - xsl:choose runs the body of the first xsl:when whose test is true, else xsl:otherwise;
  * - the result is converted to the function's "as" type (type errors XTTE0780).
  *

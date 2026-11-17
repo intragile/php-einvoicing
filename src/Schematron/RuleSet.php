@@ -10,6 +10,7 @@ use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Validation\Severity;
 use IntrAgile\EInvoicing\XPath\DocumentIndex;
+use IntrAgile\EInvoicing\XPath\SequenceType;
 
 /**
  * A compiled Schematron rule set (the array a compiled rule file returns), with its shape checked.
@@ -346,12 +347,13 @@ final class RuleSet
         $params = [];
         foreach (self::list($function['params'] ?? null, "The parameters of {$key}") as $param) {
             $param = self::map($param, "A parameter of {$key}");
-            $params[] = ['name' => self::string($param, 'name', "A parameter of {$key}"), 'as' => self::optionalString($param, 'as', "A parameter of {$key}")];
+            $name = self::string($param, 'name', "A parameter of {$key}");
+            $params[] = ['name' => $name, 'as' => self::sequenceType(self::optionalString($param, 'as', "A parameter of {$key}"), "The parameter \"{$name}\" of the function {$key}")];
         }
 
         return [
             'name' => self::string($function, 'name', $what),
-            'as' => self::optionalString($function, 'as', $what),
+            'as' => self::sequenceType(self::optionalString($function, 'as', $what), "The result of the function {$key}"),
             'params' => $params,
             'body' => self::instructions($function['body'] ?? null, "The body of {$key}"),
         ];
@@ -383,6 +385,10 @@ final class RuleSet
             if (! $valid) {
                 throw new UnsupportedSchematron("{$what} is malformed: an unknown or incomplete instruction.");
             }
+            [$kind, $name, $as] = $instruction + [null, null, null];
+            if (($kind === 'variable' || $kind === 'variable-text') && is_string($name) && (is_string($as) || $as === null)) {
+                self::sequenceType($as, "The variable \"{$name}\" of {$what}");
+            }
             $result = $instruction[0] === 'sequence' || $instruction[0] === 'choose';
             $instructions[] = $instruction;
         }
@@ -391,6 +397,18 @@ final class RuleSet
         }
 
         return $instructions;
+    }
+
+    /**
+     * @throws UnsupportedSchematron when the "as" value is not one the engine converts
+     */
+    private static function sequenceType(?string $as, string $what): ?string
+    {
+        if ($as !== null && ! in_array($as, SequenceType::SUPPORTED, true)) {
+            throw new UnsupportedSchematron("{$what} has the unsupported sequence type \"{$as}\".");
+        }
+
+        return $as;
     }
 
     private static function noResult(string $what): UnsupportedSchematron

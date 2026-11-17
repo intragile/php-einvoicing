@@ -488,7 +488,7 @@ final class CompilerTest extends TestCase
         yield 'function using a rule let' => [str_replace('test="u:f(.)"', 'test="u:f($c)"', $function('<xsl:sequence select="$c"/>')), '$c'];
         yield 'duplicate function signature' => [$function('<xsl:sequence select="true()"/>').'<xsl:function name="u:f" as="xs:boolean"><xsl:param name="w"/><xsl:sequence select="false()"/></xsl:function>', 'u:f is declared twice'];
         yield 'for-each in a function' => [$function('<xsl:for-each select="1"><xsl:sequence select="true()"/></xsl:for-each>'), '{http://www.w3.org/1999/XSL/Transform}for-each'];
-        yield 'unsupported sequence type' => [$function('<xsl:sequence select="true()"/>', 'name="u:f" as="item()*"'), '"item()*"'];
+        yield 'unsupported sequence type' => [$function('<xsl:sequence select="true()"/>', 'name="u:f" as="attribute()"'), '"attribute()"'];
         yield 'unsupported param type' => [str_replace('<xsl:param name="v"/>', '<xsl:param name="v" as="node()"/>', $function('<xsl:sequence select="true()"/>')), '"node()"'];
         yield 'two results' => [$function('<xsl:sequence select="true()"/><xsl:sequence select="true()"/>'), 'exactly one result'];
         yield 'no result' => [$function('<xsl:variable name="x" select="1"/>'), 'exactly one result'];

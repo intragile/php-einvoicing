@@ -636,6 +636,7 @@ final class ProbeCases
             .'<xsl:when test="$n lt 0"><xsl:sequence select="\'negative\'"/></xsl:when>'
             .'<xsl:when test="$n eq 0"><xsl:variable name="z" select="\'zero\'"/><xsl:sequence select="$z"/></xsl:when>'
             .'<xsl:otherwise><xsl:sequence select="\'positive\'"/></xsl:otherwise></xsl:choose></xsl:function>';
+        $elem = '<xsl:function name="f:elem" as="xs:string"><xsl:param name="e" as="element()?"/><xsl:sequence select="if (exists($e)) then local-name($e) else \'none\'"/></xsl:function>';
         $slack = '{peppol:u:slack}';
         $piva = '{peppol:u:checkPIVAseIT}{peppol:u:checkPIVA}{peppol:u:addPIVA}';
 
@@ -672,6 +673,10 @@ final class ProbeCases
             'optional string parameter empty' => ['f:opt(())', $p, '(xs:string:[])', $opt],
             'optional string parameter node' => ['f:opt(/r/t)', $p, '(xs:string:[true])', $opt],
             'optional string parameter integer' => ['f:opt(1)', $p, 'error:XPTY0004', $opt],
+
+            // a node sequence type keeps the nodes: no atomisation, the kind and the count are checked
+            'element parameter with an element' => ['f:elem(/r)', $p, '(xs:string:r)', $elem],
+            'element parameter empty' => ['f:elem(())', $p, '(xs:string:none)', $elem],
 
             // result conversion: a type error is XTTE0780 (XTTE0570 for a variable), a failing cast FORG0001
             'boolean result from an integer' => ['f:one()', $p, 'error:XTTE0780', '<xsl:function name="f:one" as="xs:boolean"><xsl:sequence select="1"/></xsl:function>'],

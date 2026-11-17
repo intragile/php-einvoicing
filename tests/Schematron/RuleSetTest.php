@@ -132,6 +132,16 @@ final class RuleSetTest extends TestCase
         ]]);
     }
 
+    public function test_unknown_sequence_type_in_compiled_file_is_refused(): void
+    {
+        $this->expectException(UnsupportedSchematron::class);
+        $this->expectExceptionMessage('The parameter "v" of the function f:g has the unsupported sequence type "attribute()".');
+
+        RuleSet::fromArray(['format' => 4, 'id' => 'r', 'version' => '1', 'namespaces' => [], 'lets' => [], 'patterns' => [], 'functions' => [
+            'f:g' => ['name' => 'f:g', 'as' => null, 'params' => [['name' => 'v', 'as' => 'attribute()']], 'body' => [['sequence', ['call', 'fn:true', []]]]],
+        ]]);
+    }
+
     public function test_format_5_is_refused_with_recompile_message(): void
     {
         $this->expectException(UnsupportedSchematron::class);

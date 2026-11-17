@@ -15,6 +15,7 @@ use IntrAgile\EInvoicing\XPath\Exception\XPathSyntaxError;
 use IntrAgile\EInvoicing\XPath\Op;
 use IntrAgile\EInvoicing\XPath\Parser;
 use IntrAgile\EInvoicing\XPath\Regex;
+use IntrAgile\EInvoicing\XPath\SequenceType;
 use IntrAgile\EInvoicing\XPath\StaticContext;
 use IntrAgile\EInvoicing\XPath\XPathError;
 use InvalidArgumentException;
@@ -98,9 +99,6 @@ final class Compiler
 
     /** The flags an assert or report may carry. */
     public const FLAGS = ['fatal', 'warning', 'information'];
-
-    /** The sequence types accepted in the "as" attribute of XSLT functions, parameters and variables. */
-    private const SEQUENCE_TYPES = ['xs:boolean', 'xs:integer', 'xs:decimal', 'xs:string', 'xs:string?'];
 
     /** Functions that read the context item when called without argument. */
     private const FOCUS_FUNCTIONS = ['fn:local-name', 'fn:name', 'fn:normalize-space', 'fn:number', 'fn:string', 'fn:string-length'];
@@ -558,7 +556,7 @@ final class Compiler
             return null;
         }
         $as = $element->getAttribute('as');
-        if (! in_array($as, self::SEQUENCE_TYPES, true)) {
+        if (! in_array($as, SequenceType::SUPPORTED, true)) {
             throw new UnsupportedSchematron("Unsupported sequence type \"{$as}\" of element \"{$this->elementName($element)}\" ({$this->line($element)}).");
         }
 

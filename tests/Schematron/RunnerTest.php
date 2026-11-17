@@ -242,6 +242,25 @@ final class RunnerTest extends TestCase
         self::assertSame([], $result->findings);
     }
 
+    public function test_function_with_element_param_called_with_root_element(): void
+    {
+        $result = self::runSchematron(<<<'SCH'
+            <xsl:function name="u:isRoot" as="xs:boolean">
+              <xsl:param name="e" as="element()?"/>
+              <xsl:sequence select="exists($e) and local-name($e) = 'Root'"/>
+            </xsl:function>
+            <pattern id="p">
+              <rule context="t:Root">
+                <assert id="ROOT" test="u:isRoot(/t:Root)" flag="fatal">root</assert>
+                <assert id="NONE" test="not(u:isRoot(/t:Missing))" flag="fatal">none</assert>
+              </rule>
+            </pattern>
+            SCH);
+
+        self::assertSame([], $result->dynamicErrors);
+        self::assertSame([], $result->findings);
+    }
+
     public function test_recursive_user_function(): void
     {
         $result = self::runSchematron(<<<'SCH'
