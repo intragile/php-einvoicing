@@ -261,13 +261,27 @@ final class FranceValidator implements DocumentValidator
                 'The specification identifier (BT-24) %s is not accepted for a French invoice. It must be exactly one of: %s.%s',
                 $id === null ? 'is missing and' : '"'.$id.'"',
                 implode(', ', array_map(static fn (FrenchProfile $p): string => $p->value, FrenchProfile::cases())),
-                $syntax === Syntax::Cii && $id !== null && FacturXProfile::fromGuidelineId($id) !== null
-                    ? ' The CII of a Factur-X invoice is validated with validateFacturX().'
-                    : '',
+                $syntax === Syntax::Cii && $id !== null ? self::facturXHint($id) : '',
             ));
         }
 
         return $profile;
+    }
+
+    /**
+     * What to tell the caller about a Factur-X guideline identifier in a standalone CII: an
+     * accepted Factur-X profile is validated with validateFacturX(), which refuses the others.
+     */
+    private static function facturXHint(string $id): string
+    {
+        $profile = FacturXProfile::fromGuidelineId($id);
+
+        return match (true) {
+            $profile === null => '',
+            in_array($profile, self::FACTUR_X_PROFILES, true) => ' The CII of a Factur-X invoice is validated with validateFacturX().',
+            $profile === FacturXProfile::Minimum => ' The Factur-X MINIMUM profile is not a valid invoice under the French reform.',
+            default => " The Factur-X {$profile->value} profile is not accepted for a French invoice.",
+        };
     }
 
     /**

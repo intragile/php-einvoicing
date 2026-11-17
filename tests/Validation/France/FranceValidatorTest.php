@@ -270,6 +270,28 @@ final class FranceValidatorTest extends TestCase
         self::validator()->validate(self::example('FX/BASICWL/Facture_F20260023-LE_FOURNISSEUR-POUR-LE_CLIENT_BASICWL_FX_CII_Commentee.xml'));
     }
 
+    /**
+     * validateFacturX() refuses MINIMUM and XRECHNUNG too, so pointing a caller to it would be
+     * wrong; the refusal gives the reason instead.
+     */
+    public function test_refused_facturx_identifier_in_a_standalone_cii_gives_the_reason(): void
+    {
+        $example = self::example('FX/BASICWL/Facture_F20260023-LE_FOURNISSEUR-POUR-LE_CLIENT_BASICWL_FX_CII_Commentee.xml');
+        foreach ([
+            'MINIMUM' => [FacturXProfile::Minimum, 'not a valid invoice under the French reform'],
+            'XRECHNUNG' => [FacturXProfile::XRechnung, 'not accepted for a French invoice'],
+        ] as $case => [$profile, $reason]) {
+            try {
+                self::validator()->validate(self::withSpecification($example, FacturXProfile::BasicWl->guidelineId(), $profile->guidelineId()));
+                self::fail("A Factur-X {$case} identifier was accepted.");
+            } catch (UnsupportedDocument $exception) {
+                self::assertStringContainsString($case, $exception->getMessage(), $case);
+                self::assertStringContainsString($reason, $exception->getMessage(), $case);
+                self::assertStringNotContainsString('validateFacturX', $exception->getMessage(), $case);
+            }
+        }
+    }
+
     public function test_cdar_message_is_not_an_invoice(): void
     {
         $this->expectException(UnsupportedDocument::class);
