@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\France\Negative;
 
-use DOMDocument;
 use IntrAgile\EInvoicing\France\FrenchProfile;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Rules\En16931\RuleFiles as En16931RuleFiles;
@@ -21,10 +20,12 @@ use IntrAgile\EInvoicing\Tests\Fixtures;
 use IntrAgile\EInvoicing\Tests\Support\FrenchInvoices;
 use IntrAgile\EInvoicing\Tests\Validation\France\InstalledFranceRules;
 use IntrAgile\EInvoicing\Validation\Finding;
+use IntrAgile\EInvoicing\Validation\France\CdarValidator;
+use IntrAgile\EInvoicing\Validation\France\Flux10Validator;
 use IntrAgile\EInvoicing\Validation\France\FranceRules;
 use IntrAgile\EInvoicing\Validation\France\FranceSources;
 use IntrAgile\EInvoicing\Validation\France\FranceValidator;
-use IntrAgile\EInvoicing\Validation\SchemaValidator;
+use IntrAgile\EInvoicing\Validation\MessageValidationReport;
 use IntrAgile\EInvoicing\Validation\Severity;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -116,9 +117,11 @@ final class NegativeCorpusTest extends TestCase
         'cbc' => 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
     ];
 
-    private const CDAR_ROOT = 'urn:un:unece:uncefact:data:standard:CrossDomainAcknowledgementAndResponse:100';
-
     private static ?FranceValidator $validator = null;
+
+    private static ?CdarValidator $cdarValidator = null;
+
+    private static ?Flux10Validator $flux10Validator = null;
 
     /**
      * Every base a recipe names, plus our own fixtures.
@@ -317,7 +320,7 @@ final class NegativeCorpusTest extends TestCase
     /**
      * Every problem of a document under its chain: schema errors, dynamic errors and findings of
      * any severity. An invoice runs through FranceValidator (validateFacturX() for a Factur-X
-     * guideline identifier); a CDAR or Flux 10 document through its FNFE schema and rule set.
+     * guideline identifier); a CDAR or Flux 10 document through CdarValidator or Flux10Validator.
      *
      * @return list<string>
      */
@@ -326,11 +329,11 @@ final class NegativeCorpusTest extends TestCase
         $document = SafeXml::loadPreservingWhitespace($xml);
         $root = $document->documentElement;
 
-        if ($root?->namespaceURI === self::CDAR_ROOT) {
-            return self::message($document, 'cdar', 'CrossDomainAcknowledgementAndResponse_100pD22B.xsd');
+        if ($root?->namespaceURI === CdarValidator::NAMESPACE) {
+            return self::message(self::cdarValidator()->validate($xml));
         }
-        if ($root?->namespaceURI === null && $root?->localName === 'Report') {
-            return self::message($document, 'flux10', 'ereporting.xsd');
+        if ($root?->namespaceURI === null && $root?->localName === Flux10Validator::ROOT) {
+            return self::message(self::flux10Validator()->validate($xml));
         }
 
         // The EN 16931 identifier is both a French specification identifier and the Factur-X EN 16931
@@ -355,19 +358,17 @@ final class NegativeCorpusTest extends TestCase
     /**
      * @return list<string>
      */
-    private static function message(DOMDocument $document, string $key, string $schema): array
+    private static function message(MessageValidationReport $report): array
     {
-        $dir = InstalledFranceRules::dir();
         $problems = [];
-        foreach ((new SchemaValidator)->validate($document, FranceRules::schema($dir, $key, $schema)) as $error) {
+        foreach ($report->schemaErrors as $error) {
             $problems[] = "schema {$error->line}: {$error->message}";
         }
-        $result = (new Runner)->run(self::ruleSet($key), $document);
-        foreach ($result->dynamicErrors as $error) {
+        foreach ($report->dynamicErrors as $error) {
             $problems[] = "dynamic {$error->ruleId} {$error->errorCode}: {$error->message}";
         }
 
-        return [...$problems, ...self::lines($result->findings)];
+        return [...$problems, ...self::lines($report->findings)];
     }
 
     /**
@@ -451,6 +452,16 @@ final class NegativeCorpusTest extends TestCase
     private static function validator(): FranceValidator
     {
         return self::$validator ??= FranceValidator::create(InstalledFranceRules::dir());
+    }
+
+    private static function cdarValidator(): CdarValidator
+    {
+        return self::$cdarValidator ??= CdarValidator::create(InstalledFranceRules::dir());
+    }
+
+    private static function flux10Validator(): Flux10Validator
+    {
+        return self::$flux10Validator ??= Flux10Validator::create(InstalledFranceRules::dir());
     }
 
     /**

@@ -39,8 +39,9 @@ use IntrAgile\EInvoicing\Validation\ValidationReport;
  *   CII.
  *
  * The rule sets run even when the schema check fails, so the report lists every problem at once.
- * Factur-X MINIMUM and XRECHNUNG documents, CDAR lifecycle messages and e-reporting files are not
- * invoices under these rules and are refused.
+ * Factur-X MINIMUM and XRECHNUNG documents are not invoices under these rules and are refused, as
+ * are CDAR lifecycle messages and Flux 10 e-reporting files, which CdarValidator and
+ * Flux10Validator check.
  *
  * Usage: FranceValidator::create($rulesDir)->validate($xml)->isValid(), once the French rules are
  * installed with vendor/bin/einvoicing-rules install france --dir=DIR. Factur-X documents also need
@@ -239,7 +240,7 @@ final class FranceValidator implements DocumentValidator
             $root = $document->documentElement;
 
             throw new UnsupportedDocument(sprintf(
-                'The document element {%s}%s is not an invoice. French invoices are UBL Invoice or CreditNote or CII CrossIndustryInvoice documents.',
+                'The document element {%s}%s is not an invoice. French invoices are UBL Invoice or CreditNote or CII CrossIndustryInvoice documents; use CdarValidator for lifecycle messages and Flux10Validator for e-reporting.',
                 $root->namespaceURI ?? '',
                 $root->localName ?? '',
             ), previous: $exception);

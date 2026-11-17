@@ -295,7 +295,7 @@ final class FranceValidatorTest extends TestCase
     public function test_cdar_message_is_not_an_invoice(): void
     {
         $this->expectException(UnsupportedDocument::class);
-        $this->expectExceptionMessage('CrossDomainAcknowledgementAndResponse is not an invoice');
+        $this->expectExceptionMessage('{urn:un:unece:uncefact:data:standard:CrossDomainAcknowledgementAndResponse:100}CrossDomainAcknowledgementAndResponse is not an invoice. French invoices are UBL Invoice or CreditNote or CII CrossIndustryInvoice documents; use CdarValidator for lifecycle messages and Flux10Validator for e-reporting.');
 
         self::validator()->validate(self::example('CDAR/UC1_F202500003_02-CDV-202_Recue.xml'));
     }
