@@ -38,7 +38,9 @@ use SplObjectStorage;
  *
  * Only schema, title, ns, let, phase, active, pattern, rule, assert and report are accepted, plus
  * XSLT functions at schema level and empty name (without path) and value-of elements in assert and
- * report messages, each with the attributes listed in ATTRIBUTES; anything else (other message
+ * report messages, each with the attributes listed in ATTRIBUTES. A pattern may also contain title
+ * and p elements, which are ignored, and the schema element may carry xsl:exclude-result-prefixes,
+ * which is ignored too; anything else (other message
  * elements, foreign elements, processing instructions, abstract patterns or rules, attributes such
  * as pattern/@documents or assert/@diagnostics) raises UnsupportedSchematron instead of being ignored,
  * because ignoring it could change a verdict or a message. Phases are not compiled: like the

@@ -324,6 +324,49 @@ final class RunnerTest extends TestCase
         ]])->rootRuleFired);
     }
 
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function prefixedVariableShapes(): iterable
+    {
+        yield 'same prefix' => ['custom', 'custom'];
+        yield 'two prefixes for one URI' => ['a', 'b'];
+    }
+
+    #[DataProvider('prefixedVariableShapes')]
+    public function test_prefixed_function_variable_is_read_at_runtime(string $declared, string $referenced): void
+    {
+        $xml = <<<XML
+            <schema xmlns="http://purl.oclc.org/dsdl/schematron" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" queryBinding="xslt2">
+              <ns prefix="a" uri="urn:vars"/>
+              <ns prefix="b" uri="urn:vars"/>
+              <ns prefix="custom" uri="urn:vars"/>
+              <ns prefix="f" uri="urn:funcs"/>
+              <pattern id="p">
+                <rule context="/doc">
+                  <assert id="R-1" flag="fatal" test="f:valid(@code)">bad code</assert>
+                </rule>
+              </pattern>
+              <xsl:function name="f:valid" as="xs:boolean">
+                <xsl:param name="code" as="xs:string"/>
+                <xsl:variable name="{$declared}:codes" select="'A B'"/>
+                <xsl:sequence select="\$code = tokenize(\${$referenced}:codes, '\\s+')"/>
+              </xsl:function>
+            </schema>
+            XML;
+        $rules = RuleSet::fromArray(Compiler::compileString($xml, 'tiny.sch', 'tiny', '0.1'));
+        $runner = new Runner;
+
+        $good = $runner->run($rules, SafeXml::load('<doc code="B"/>'));
+        $bad = $runner->run($rules, SafeXml::load('<doc code="Z"/>'));
+
+        self::assertSame([], $good->dynamicErrors);
+        self::assertSame([], $good->findings);
+        self::assertSame([], $bad->dynamicErrors);
+        self::assertCount(1, $bad->findings);
+        self::assertSame('R-1', $bad->findings[0]->ruleId);
+    }
+
     public function test_refuses_when_root_rule_did_not_fire(): void
     {
         $result = (new Runner)->run(RuleSet::fromFile(RuleFiles::ubl()), self::load(Fixtures::official('cii')[0]));
