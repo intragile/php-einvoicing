@@ -24,7 +24,7 @@
     <groups>
         <exclude><group>oracle</group><group>kosit-oracle</group><group>verapdf</group><group>network</group><group>recommand-live</group><group>b2brouter-live</group><group>einvoicebe-live</group><group>performance</group><group>release-artefacts</group><group>release-gate</group></exclude>
     </groups>
-    <!-- The suite needs about 160 MB on PHP 8.3, above the stock 128M limit of PHP images. -->
+    <!-- The suite needs about 250 MB on PHP 8.5, above the stock 128M limit of PHP images. -->
     <php>
         <ini name="memory_limit" value="512M"/>
     </php>

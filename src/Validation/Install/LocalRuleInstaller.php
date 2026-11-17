@@ -137,7 +137,9 @@ final class LocalRuleInstaller
             }
 
             if ($verbatim !== []) {
-                $tree = $this->writeTree($targetDir, $verbatimDir, $verbatim, $pinned);
+                // Assigned before writing, so the finally block removes a tree that failed halfway.
+                $tree = rtrim($targetDir, '/\\').'/'.$verbatimDir.'.tmp-'.bin2hex(random_bytes(6));
+                self::writeTree($tree, $verbatim, $pinned);
             }
             unset($pinned);
 
@@ -200,11 +202,9 @@ final class LocalRuleInstaller
      *
      * @param  array<string, string>  $verbatim
      * @param  array<string, array{string, string}>  $pinned
-     * @return string the temporary folder
      */
-    private function writeTree(string $targetDir, string $verbatimDir, array $verbatim, array $pinned): string
+    private static function writeTree(string $tree, array $verbatim, array $pinned): void
     {
-        $tree = rtrim($targetDir, '/\\').'/'.$verbatimDir.'.tmp-'.bin2hex(random_bytes(6));
         foreach (array_keys($verbatim) as $path) {
             $target = $tree.'/'.$path;
             if (! is_dir(dirname($target)) && ! @mkdir(dirname($target), 0775, true) && ! is_dir(dirname($target))) {
@@ -214,8 +214,6 @@ final class LocalRuleInstaller
                 throw new RuntimeException("Cannot write \"{$target}\".");
             }
         }
-
-        return $tree;
     }
 
     /**
@@ -274,7 +272,7 @@ final class LocalRuleInstaller
         if (file_exists($installed)) {
             $backup = $installed.'.bak-'.bin2hex(random_bytes(6));
             if (! ($this->rename)($installed, $backup)) {
-                throw new RuntimeException("Cannot move the installed folder \"{$installed}\" aside. The previous rules were restored; nothing was changed.");
+                throw new RuntimeException("Cannot move the installed folder \"{$installed}\" aside; nothing was changed.");
             }
         }
         if (($this->rename)($tree, $installed)) {
