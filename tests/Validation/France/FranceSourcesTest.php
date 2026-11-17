@@ -124,10 +124,11 @@ final class FranceSourcesTest extends TestCase
     {
         $first = FranceSources::files('schema');
         $cache = new ReflectionProperty(FranceSources::class, 'manifest');
-        self::assertSame($first, $cache->getValue()['schema'] ?? null);
+        $original = $cache->getValue();
+        self::assertIsArray($original);
+        self::assertSame($first, $original['schema'] ?? null);
 
         $planted = ['rules' => [], 'schema' => ['FNFE_RFE_INVOICE/planted.xsd' => str_repeat('0', 64)], 'oracle' => [], 'example' => []];
-        $original = $cache->getValue();
         $cache->setValue(null, $planted);
         try {
             self::assertSame($planted['schema'], FranceSources::files('schema'));
