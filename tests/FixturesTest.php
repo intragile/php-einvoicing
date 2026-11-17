@@ -11,6 +11,7 @@ use IntrAgile\EInvoicing\Rules\FacturX\RuleFiles;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Tests\Validation\Peppol\BuildDir;
 use IntrAgile\EInvoicing\Validation\FacturX\FacturXSources;
+use IntrAgile\EInvoicing\Validation\France\FranceSources;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use PHPUnit\Framework\TestCase;
 
@@ -333,5 +334,19 @@ final class FixturesTest extends TestCase
         exec($command, $output, $exitCode);
 
         self::assertSame(0, $exitCode, 'The Factur-X example files must never be committed.');
+    }
+
+    public function test_france_corpus_matches_manifest(): void
+    {
+        $root = Fixtures::franceRfeRoot();
+
+        foreach (['rules', 'schema', 'oracle', 'example'] as $kind) {
+            foreach (FranceSources::files($kind) as $path => $sha256) {
+                self::assertFileExists($root.'/'.$path);
+                self::assertSame($sha256, hash_file('sha256', $root.'/'.$path), $path);
+            }
+        }
+
+        self::assertNotEmpty(Fixtures::franceExamples('CII/EXTENDED-CTC-FR'));
     }
 }

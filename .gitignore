@@ -10,3 +10,5 @@
 /tests/fixtures/peppol-*/
 # The FeRD and Mustang example files carry no licence statement: downloaded, never committed.
 /tests/fixtures/facturx-examples/
+# The FNFE France_RFE files have no redistribution licence: downloaded, never committed.
+/tests/fixtures/france-rfe/

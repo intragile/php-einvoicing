@@ -52,6 +52,11 @@ declare(strict_types=1);
  *                      into the git-ignored tests/fixtures/facturx-examples/ (by repository path),
  *                      each verified against tests/fixtures/facturx-examples.sha256. These files
  *                      carry no licence statement and are never committed.
+ *  --france            downloads every file listed in resources/france/france-rfe-<version>.sha256
+ *                      (the FNFE-MPE France_RFE rules, schemas, XSLT oracles and examples) into
+ *                      the git-ignored tests/fixtures/france-rfe/ (by repository path), each file
+ *                      verified against that manifest before it is written. The repository has no
+ *                      redistribution licence, so nothing from it is ever committed.
  * With --write-manifest, the file list is taken from the GitHub tree of the pinned commit and the
  * manifest is rewritten; for --facturx the folders must still match the aggregate SHA-256 values
  * and the licence sums pinned in FacturXSources.
@@ -61,10 +66,12 @@ use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Validation\FacturX\FacturXSources;
+use IntrAgile\EInvoicing\Validation\France\FranceSources;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungSources;
 
 require_once dirname(__DIR__).'/src/Validation/FacturX/FacturXSources.php';
+require_once dirname(__DIR__).'/src/Validation/France/FranceSources.php';
 require_once dirname(__DIR__).'/src/Validation/Peppol/PeppolSources.php';
 require_once dirname(__DIR__).'/src/Validation/XRechnung/XRechnungSources.php';
 require_once dirname(__DIR__).'/src/Exception/UnsafeXml.php';
@@ -180,10 +187,17 @@ $xrechnungDir = $root.'/tests/fixtures/official/xrechnung';
 $peppolDir = $root.'/tests/fixtures/peppol-'.PeppolSources::VERSION;
 $facturxDir = $root.'/tests/fixtures/official/facturx-'.FacturXSources::VERSION;
 $facturxExamplesDir = $root.'/tests/fixtures/facturx-examples';
-$options = getopt('', ['write-manifest', 'facturx', 'facturx-examples']) ?: [];
+$franceDir = $root.'/tests/fixtures/france-rfe';
+$options = getopt('', ['write-manifest', 'facturx', 'facturx-examples', 'france']) ?: [];
 $writeManifest = array_key_exists('write-manifest', $options);
 
 try {
+    if (array_key_exists('france', $options)) {
+        $count = fetchFrance($franceDir);
+        fwrite(STDOUT, 'france-rfe-'.FranceSources::VERSION.": {$count} files, manifest verified\n");
+        exit(0);
+    }
+
     if (array_key_exists('facturx', $options) || array_key_exists('facturx-examples', $options)) {
         if (array_key_exists('facturx', $options)) {
             $count = fetchFacturx($facturxDir, dirname($facturxDir).'/facturx.sha256', $writeManifest);
@@ -678,6 +692,52 @@ function fetchFacturxExamples(string $target, string $manifestPath, bool $writeM
     replaceTree($staging, $target);
 
     return count($actual);
+}
+
+/**
+ * Rebuilds $target from the France_RFE manifest: every listed file is taken from the current copy
+ * when it already matches its sum, otherwise downloaded from the pinned commit; a download that
+ * does not match its sum aborts the run, naming the file, before anything is written. Returns the
+ * file count.
+ */
+function fetchFrance(string $target): int
+{
+    $expected = FranceSources::all();
+    $staging = $target.'.tmp';
+    removeTree($staging);
+    ensureDirectory($staging);
+
+    $complete = false;
+    try {
+        foreach ($expected as $path => $sha256) {
+            $destination = $staging.'/'.$path;
+            ensureDirectory(dirname($destination));
+
+            if (is_file($target.'/'.$path) && hash_file('sha256', $target.'/'.$path) === $sha256) {
+                copyFile($target.'/'.$path, $destination);
+
+                continue;
+            }
+
+            $body = httpGet(FranceSources::url($path), FACTURX_FILE_TIMEOUT);
+            $sum = hash('sha256', $body);
+            if ($sum !== $sha256) {
+                throw new RuntimeException("Checksum mismatch for {$path}: expected {$sha256}, got {$sum}");
+            }
+            if (file_put_contents($destination, $body) === false) {
+                throw new RuntimeException("Cannot write {$destination}");
+            }
+        }
+        $complete = true;
+    } finally {
+        if (! $complete) {
+            removeTree($staging);
+        }
+    }
+
+    replaceTree($staging, $target);
+
+    return count($expected);
 }
 
 /**

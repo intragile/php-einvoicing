@@ -11,6 +11,7 @@ use FilesystemIterator;
 use IntrAgile\EInvoicing\Rules\FacturX\RuleFiles as FacturXRuleFiles;
 use IntrAgile\EInvoicing\Tests\Support\UnitTestDocument;
 use IntrAgile\EInvoicing\Validation\FacturX\FacturXSources;
+use IntrAgile\EInvoicing\Validation\France\FranceSources;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungSources;
 use InvalidArgumentException;
@@ -66,6 +67,9 @@ final class Fixtures
 
     /** Git-ignored folder filled by bin/fetch-official.php --facturx-examples, laid out by repository path. */
     private const FACTURX_EXAMPLES_DIR = __DIR__.'/fixtures/facturx-examples';
+
+    /** Git-ignored folder filled by bin/fetch-official.php --france, laid out by repository path. */
+    private const FRANCE_RFE_DIR = __DIR__.'/fixtures/france-rfe';
 
     private const FACTURX_EXAMPLES_MANIFEST = __DIR__.'/fixtures/facturx-examples.sha256';
 
@@ -393,6 +397,41 @@ final class Fixtures
     public static function hasFacturxExamples(): bool
     {
         return is_dir(self::FACTURX_EXAMPLES_DIR);
+    }
+
+    /**
+     * Absolute path of the downloaded France_RFE tree, in which every file sits at its repository
+     * path. Skips the test when the folder is missing.
+     */
+    public static function franceRfeRoot(): string
+    {
+        if (! is_dir(self::FRANCE_RFE_DIR)) {
+            Assert::markTestSkipped('Run composer fetch-official -- --france');
+        }
+
+        return self::FRANCE_RFE_DIR;
+    }
+
+    /**
+     * The France_RFE example XML files below FNFE_RFE_INVOICE/Z.example/TEST/<folder>, such as
+     * "CII/EXTENDED-CTC-FR": file name => absolute path, sorted by name.
+     *
+     * @return array<string, string>
+     */
+    public static function franceExamples(string $folder): array
+    {
+        $root = self::franceRfeRoot();
+        $prefix = 'FNFE_RFE_INVOICE/Z.example/TEST/'.$folder.'/';
+
+        $examples = [];
+        foreach (array_keys(FranceSources::files('example')) as $path) {
+            if (str_starts_with($path, $prefix) && str_ends_with($path, '.xml') && ! str_contains(substr($path, strlen($prefix)), '/')) {
+                $examples[basename($path)] = $root.'/'.$path;
+            }
+        }
+        ksort($examples, SORT_STRING);
+
+        return $examples;
     }
 
     /**

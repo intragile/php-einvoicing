@@ -354,6 +354,22 @@ Names are the repository path without `src/test/resources/`, for example
 composer fetch-official -- --facturx-examples
 ```
 
+## France_RFE 1.4.0.04 (downloaded, not committed)
+
+| | |
+|---|---|
+| Project | [fnfempe/France_RFE](https://github.com/fnfempe/France_RFE) (FNFE-MPE, French e-invoicing format rules) |
+| Release | 1.4.0.04 |
+| Commit | `97ba0f3d4ef2abed5780e9490d5c3a2be832ab1d` |
+| Manifest | `resources/france/france-rfe-1.4.0.04.sha256` (`<sha256>  <kind>  <path>`; kinds `rules`, `schema`, `oracle`, `example`) |
+
+The repository states no licence that permits redistribution, so no file of it is committed or
+shipped: `tests/fixtures/france-rfe/` is git-ignored and `composer fetch-official -- --france`
+fills it, verifying every file against the manifest before it is written. The manifest holds only
+paths and SHA-256 sums. It lists the seven Schematron rule sources and the Factur-X EXTENDED
+code database, the 163 XSD files of the CII, UBL, CDAR and Flux 10 trees, the matching compiled
+XSLT files (the verdict oracle), and the example XML files and Factur-X example PDFs.
+
 ## Refreshing
 
 ```bash
