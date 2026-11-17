@@ -22,6 +22,7 @@ use IntrAgile\EInvoicing\Tests\Support\FrenchPdfCarrier;
 use IntrAgile\EInvoicing\Tests\Validation\France\InstalledFranceRules;
 use IntrAgile\EInvoicing\Validation\France\FranceValidator;
 use IntrAgile\EInvoicing\Validation\ValidationReport;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -83,6 +84,26 @@ final class FrenchFacturXTest extends TestCase
     {
         yield 'EN 16931' => [FacturXProfile::En16931];
         yield 'BASIC WL' => [FacturXProfile::BasicWl];
+    }
+
+    /**
+     * @return iterable<string, array{FacturXProfile}>
+     */
+    public static function profilesBelowExtended(): iterable
+    {
+        yield 'MINIMUM' => [FacturXProfile::Minimum];
+        yield 'BASIC WL' => [FacturXProfile::BasicWl];
+        yield 'BASIC' => [FacturXProfile::Basic];
+        yield 'EN 16931' => [FacturXProfile::En16931];
+    }
+
+    #[DataProvider('profilesBelowExtended')]
+    public function test_extended_ctc_fr_invoice_is_refused_outside_the_extended_profile(FacturXProfile $profile): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/'.preg_quote(sprintf('Factur-X %s profile', $profile->value), '/').'.*EXTENDED-CTC-FR needs Factur-X EXTENDED/');
+
+        (new FacturXXmlWriter)->write(FrenchInvoices::extendedCtcFr(), $profile);
     }
 
     #[DataProvider('en16931Profiles')]

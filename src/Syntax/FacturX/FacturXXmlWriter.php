@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Syntax\FacturX;
 
 use DOMDocument;
+use IntrAgile\EInvoicing\France\FrenchInvoice;
+use IntrAgile\EInvoicing\France\FrenchProfile;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\ProcessControl;
 use IntrAgile\EInvoicing\Rules\FacturX\RuleFiles;
@@ -14,6 +16,7 @@ use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Validation\Exception\RulesNotInstalled;
 use IntrAgile\EInvoicing\Validation\Exception\UnusableSchema;
 use IntrAgile\EInvoicing\Validation\SchemaValidator;
+use InvalidArgumentException;
 use LogicException;
 use RuntimeException;
 
@@ -40,6 +43,8 @@ final class FacturXXmlWriter
     ) {}
 
     /**
+     * @throws InvalidArgumentException when the invoice is an EXTENDED-CTC-FR French invoice and the
+     *                                  profile is not EXTENDED
      * @throws RulesNotInstalled when a Factur-X profile is requested and intragile/einvoicing-rules-facturx is not installed
      * @throws UnusableSchema when the installed profile schema cannot be used for the reduction
      * @throws LogicException when the reduced document does not validate against the profile
@@ -47,6 +52,16 @@ final class FacturXXmlWriter
      */
     public function write(Invoice $invoice, FacturXProfile $profile): ReducedXml
     {
+        // EXTENDED-CTC-FR data (EXT-FR-FE) exists only in the EXTENDED profile; reducing it away
+        // would silently drop mandatory data, so the combination is refused instead.
+        if ($profile !== FacturXProfile::Extended
+            && $invoice->extensions()->get(FrenchInvoice::class)?->profile === FrenchProfile::ExtendedCtcFr) {
+            throw new InvalidArgumentException(sprintf(
+                'An EXTENDED-CTC-FR invoice cannot be written to the Factur-X %s profile: EXTENDED-CTC-FR needs Factur-X EXTENDED.',
+                $profile->value,
+            ));
+        }
+
         $xml = $this->writer->write($invoice->withProcessControl(
             new ProcessControl($profile->guidelineId(), $invoice->processControl?->businessProcessType),
         ));
