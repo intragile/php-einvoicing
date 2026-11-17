@@ -216,8 +216,8 @@ final class Validator implements DocumentValidator
      *
      * @throws InvalidArgumentException when the writer refuses the model, for example because its
      *                                  totals are not completed (see TotalsCalculator::complete()),
-     *                                  or when an EXTENDED-CTC-FR invoice is to be validated as CII,
-     *                                  which D16B cannot carry (validate it with FranceValidator)
+     *                                  or when the invoice is an EXTENDED-CTC-FR invoice, in any
+     *                                  syntax (validate it with FranceValidator)
      * @throws UnsupportedDocument when no rule of the rule set handles the written document element
      * @throws LogicException when called on the envelope validator of peppolEnvelope(), which
      *                        takes a Standard Business Document, not an invoice
@@ -227,10 +227,10 @@ final class Validator implements DocumentValidator
         if ($this->envelopeRuleSet !== null) {
             throw new LogicException('validateInvoice() needs an invoice validator; this one validates SBDH envelopes');
         }
-        if ($syntax === Syntax::Cii && $invoice->extensions()->get(FrenchInvoice::class)?->profile === FrenchProfile::ExtendedCtcFr) {
+        if ($invoice->extensions()->get(FrenchInvoice::class)?->profile === FrenchProfile::ExtendedCtcFr) {
             throw new InvalidArgumentException(
-                'An EXTENDED-CTC-FR invoice cannot be validated as CII here: it is written in CII D22B, while this validator writes D16B. '
-                .'Write it with CiiWriter and validate the document with FranceValidator::validate().',
+                'An EXTENDED-CTC-FR invoice cannot be validated here: the EN 16931 rules do not cover its GROUP and INFORMATION lines. '
+                .'Write it with the UBL or CII writer and validate the document with FranceValidator::validate().',
             );
         }
 

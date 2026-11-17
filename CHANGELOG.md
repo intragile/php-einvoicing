@@ -53,12 +53,14 @@ All notable changes to this project are documented here. The format follows
   EXTENDED-CTC-FR identifier, and writing such an invoice applies the French decimal limits of
   `FrenchGuard`. An invoice read before with more decimals than those limits is now refused when
   written.
-
 - **CII:** `CiiWriter` targets UN/CEFACT D22B by default and writes every preceding invoice
   reference (BG-3) as its own `ram:InvoiceReferencedDocument`. `new CiiWriter(CiiVersion::D16B)`
   keeps strict D16B, which refuses more than one. An invoice whose specification identifier
   (BT-24) starts with the XRechnung CIUS is always written as D16B. Output for invoices with at
   most one BG-3 is unchanged.
+- **Validation:** `Validator::validateInvoice()` refuses an EXTENDED-CTC-FR invoice for every
+  syntax, because the EN 16931 rules do not cover its GROUP and INFORMATION lines; validate it
+  with `FranceValidator::validate()`.
 
 ## [1.0.2] - 2026-11-17
 

@@ -140,6 +140,18 @@ final class ValidatorTest extends TestCase
         }
     }
 
+    public function test_ubl_validation_refuses_an_extended_ctc_fr_invoice(): void
+    {
+        try {
+            Validator::en16931()->validateInvoice(FrenchInvoices::extendedCtcFrUbl(), Syntax::Ubl);
+            self::fail('An EXTENDED-CTC-FR invoice was validated against the EN 16931 rules.');
+        } catch (InvalidArgumentException $exception) {
+            self::assertStringContainsString('EXTENDED-CTC-FR', $exception->getMessage());
+            self::assertStringContainsString('FranceValidator', $exception->getMessage());
+            self::assertStringNotContainsString('CiiVersion', $exception->getMessage());
+        }
+    }
+
     public function test_cii_validation_writes_d16b_and_refuses_two_preceding_invoices(): void
     {
         $invoice = TotalsCalculator::complete(InvoiceFactory::mixedVat())->withPrecedingInvoices([
