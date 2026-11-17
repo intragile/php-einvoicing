@@ -8,6 +8,8 @@ use DOMDocument;
 use DOMElement;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+use IntrAgile\EInvoicing\France\FrenchInvoice;
+use IntrAgile\EInvoicing\France\FrenchProfile;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Rules\En16931\RuleFiles;
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
@@ -210,8 +212,12 @@ final class Validator implements DocumentValidator
     /**
      * Writes an invoice model in the given syntax and validates the result.
      *
+     * CII is written in D16B, the release the EN 16931 rules are written for.
+     *
      * @throws InvalidArgumentException when the writer refuses the model, for example because its
-     *                                  totals are not completed (see TotalsCalculator::complete())
+     *                                  totals are not completed (see TotalsCalculator::complete()),
+     *                                  or when an EXTENDED-CTC-FR invoice is to be validated as CII,
+     *                                  which D16B cannot carry (validate it with FranceValidator)
      * @throws UnsupportedDocument when no rule of the rule set handles the written document element
      * @throws LogicException when called on the envelope validator of peppolEnvelope(), which
      *                        takes a Standard Business Document, not an invoice
@@ -220,6 +226,12 @@ final class Validator implements DocumentValidator
     {
         if ($this->envelopeRuleSet !== null) {
             throw new LogicException('validateInvoice() needs an invoice validator; this one validates SBDH envelopes');
+        }
+        if ($syntax === Syntax::Cii && $invoice->extensions()->get(FrenchInvoice::class)?->profile === FrenchProfile::ExtendedCtcFr) {
+            throw new InvalidArgumentException(
+                'An EXTENDED-CTC-FR invoice cannot be validated as CII here: it is written in CII D22B, while this validator writes D16B. '
+                .'Write it with CiiWriter and validate the document with FranceValidator::validate().',
+            );
         }
 
         return $this->validate(match ($syntax) {

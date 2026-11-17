@@ -24,6 +24,7 @@ use IntrAgile\EInvoicing\Schematron\RuleSet;
 use IntrAgile\EInvoicing\Syntax\Syntax;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Tests\Fixtures;
+use IntrAgile\EInvoicing\Tests\Support\FrenchInvoices;
 use IntrAgile\EInvoicing\Tests\Support\HostileXml;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
 use IntrAgile\EInvoicing\Validation\DynamicError;
@@ -120,6 +121,23 @@ final class ValidatorTest extends TestCase
 
         self::assertSame(Syntax::Cii, $report->syntax);
         self::assertTrue($report->isValid(), implode("\n", $report->verdict()));
+    }
+
+    /**
+     * The validator writes CII D16B, which cannot carry EXTENDED-CTC-FR, and its rule sets do not
+     * cover the French profile; the refusal points to FranceValidator, not to a writer setting the
+     * caller cannot reach.
+     */
+    public function test_cii_validation_refuses_an_extended_ctc_fr_invoice(): void
+    {
+        try {
+            Validator::en16931()->validateInvoice(FrenchInvoices::extendedCtcFr(), Syntax::Cii);
+            self::fail('An EXTENDED-CTC-FR invoice was validated as CII D16B.');
+        } catch (InvalidArgumentException $exception) {
+            self::assertStringContainsString('EXTENDED-CTC-FR', $exception->getMessage());
+            self::assertStringContainsString('FranceValidator', $exception->getMessage());
+            self::assertStringNotContainsString('CiiVersion', $exception->getMessage());
+        }
     }
 
     public function test_cii_validation_writes_d16b_and_refuses_two_preceding_invoices(): void
