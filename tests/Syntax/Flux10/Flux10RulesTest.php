@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Syntax\Flux10;
 
+use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
+use IntrAgile\EInvoicing\France\BillingFramework;
+use IntrAgile\EInvoicing\France\EReporting\B2cAggregator;
 use IntrAgile\EInvoicing\France\EReporting\EReport;
+use IntrAgile\EInvoicing\France\EReporting\TransactionCategory;
 use IntrAgile\EInvoicing\France\FrenchInvoice;
 use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Syntax\Flux10\Flux10Writer;
 use IntrAgile\EInvoicing\Tests\Support\EReports;
 use IntrAgile\EInvoicing\Tests\Support\FrenchInvoices;
@@ -52,6 +57,44 @@ final class Flux10RulesTest extends TestCase
     }
 
     /**
+     * Consumer sales aggregated by B2cAggregator: a day of sales at two rates, a day with only a
+     * credit note and a day of a mixed invoice split by a classifier.
+     *
+     * @return iterable<string, array{EReport}>
+     */
+    public static function aggregatedDays(): iterable
+    {
+        $sales = (new B2cAggregator)->aggregate([
+            EReports::consumerSale(BillingFramework::B1, 'T-1', '2026-11-10', [
+                EReports::consumerLine('1', 'GOODS', '50.00', '5.5'),
+                EReports::consumerLine('2', 'GOODS', '100.00', '20'),
+            ])->withTaxPointDateCode('3'),
+            EReports::consumerSale(BillingFramework::B1, 'T-2', '2026-11-10', [EReports::consumerLine('1', 'GOODS', '200.00', '20')])->withTaxPointDateCode('3'),
+        ]);
+        yield 'sales' => [EReports::days('TR-2026-0201', $sales)];
+
+        $creditNote = (new B2cAggregator)->aggregate([
+            EReports::consumerSale(BillingFramework::S1, 'A-1', '2026-11-12', [EReports::consumerLine('1', 'SERVICE', '100.00', '20')], InvoiceTypeCode::C_381),
+        ]);
+        yield 'credit note' => [EReports::days('TR-2026-0202', $creditNote)];
+
+        $classifier = static fn (InvoiceLine $line, Invoice $invoice): TransactionCategory => match ($line->item->name) {
+            'SERVICE' => TransactionCategory::Services,
+            'EXPORT' => TransactionCategory::NotTaxedInFrance,
+            default => TransactionCategory::Goods,
+        };
+        $mixed = (new B2cAggregator($classifier))->aggregate([
+            EReports::consumerSale(BillingFramework::M1, 'T-3', '2026-11-13', [
+                EReports::consumerLine('1', 'GOODS', '10.05', '5.5'),
+                EReports::consumerLine('2', 'SERVICE', '100.00', '20'),
+                EReports::consumerLine('3', 'GOODS', '10.05', '5.5'),
+                EReports::consumerLine('4', 'EXPORT', '40.00', null),
+            ]),
+        ]);
+        yield 'mixed with classifier' => [EReports::days('TR-2026-0203', $mixed)];
+    }
+
+    /**
      * @return iterable<string, array{Invoice}>
      */
     public static function frenchInvoices(): iterable
@@ -72,6 +115,12 @@ final class Flux10RulesTest extends TestCase
 
     #[DataProvider('reports')]
     public function test_every_ereports_factory_is_valid(EReport $report): void
+    {
+        self::assertValid((new Flux10Writer)->write($report));
+    }
+
+    #[DataProvider('aggregatedDays')]
+    public function test_aggregated_consumer_sales_are_valid(EReport $report): void
     {
         self::assertValid((new Flux10Writer)->write($report));
     }

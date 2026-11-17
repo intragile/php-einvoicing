@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Tests\Support;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
 use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
@@ -194,6 +195,78 @@ final class EReports
             self::platform(),
             self::seller(),
             new TransactionsReport(self::november(), $invoices),
+        );
+    }
+
+    /**
+     * A transactions transmission of aggregated days for November 2026.
+     *
+     * @param  list<DailyTransactions>  $days
+     */
+    public static function days(string $id, array $days): EReport
+    {
+        return EReport::transactions(
+            $id,
+            self::issuedAt(),
+            ReportType::Initial,
+            self::platform(),
+            self::seller(),
+            new TransactionsReport(self::november(), [], $days),
+        );
+    }
+
+    /**
+     * A sale to a consumer (B2C) under the given billing framework, completed with its totals and
+     * VAT breakdown.
+     *
+     * @param  list<InvoiceLine>  $lines
+     * @param  list<DocumentAllowance>  $allowances
+     */
+    public static function consumerSale(
+        BillingFramework $framework,
+        string $number,
+        string $issueDate,
+        array $lines,
+        InvoiceTypeCode $type = InvoiceTypeCode::C_380,
+        array $allowances = [],
+    ): Invoice {
+        $invoice = FrenchInvoices::domesticB2b()
+            ->withNumber($number)
+            ->withIssueDate(new DateTimeImmutable($issueDate))
+            ->withType($type)
+            ->withBuyer(self::consumer())
+            ->withLines($lines)
+            ->withAllowances($allowances)
+            ->withVatBreakdown([])
+            ->withTotals(null);
+
+        return France::mark(TotalsCalculator::complete($invoice), $framework);
+    }
+
+    /**
+     * A one-unit line of the given net amount, standard rated unless the rate is null (then not
+     * subject to VAT).
+     *
+     * @param  numeric-string  $netAmount
+     * @param  numeric-string|null  $rate
+     */
+    public static function consumerLine(string $id, string $name, string $netAmount, ?string $rate): InvoiceLine
+    {
+        return new InvoiceLine(
+            id: $id,
+            quantity: '1',
+            unit: UnitCode::C62,
+            price: new Price(netPrice: $netAmount),
+            item: new Item(name: $name),
+            vat: $rate === null ? new LineVat(VatCategory::NotSubjectToVat) : new LineVat(VatCategory::StandardRate, $rate),
+        );
+    }
+
+    public static function consumer(): Party
+    {
+        return new Party(
+            name: 'PARTICULIER',
+            address: new PostalAddress(country: CountryCode::FR, city: 'LYON'),
         );
     }
 
