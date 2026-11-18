@@ -227,6 +227,62 @@ final class Fa3ReaderTest extends TestCase
         self::assertSame('2026-07-14', $invoice->precedingInvoices[0]->issueDate?->format('Y-m-d'));
     }
 
+    public function test_before_row_amounts_are_negated_and_restored_on_write(): void
+    {
+        $xml = str_replace(
+            '<P_11>270.00</P_11>',
+            '<P_10>5.00</P_10><P_11>270.00</P_11><P_11A>332.10</P_11A><P_11Vat>62.10</P_11Vat>',
+            self::write(PolishInvoices::correctionBeforeAfter()),
+        );
+        $xml = (string) preg_replace('~<P_12>23</P_12>~', '<P_12>23</P_12><KwotaAkcyzy>1.50</KwotaAkcyzy>', $xml, 1);
+        $result = self::read($xml);
+        $line = $result->invoice->lines[0];
+        $polish = $line->extensions()->get(PolishLine::class);
+
+        self::assertSame([], $result->ignored);
+        self::assertTrue($polish?->stateBefore);
+        self::assertSame('-5.00', (string) $line->allowances[0]->amount);
+        self::assertSame('-332.10', (string) $polish->grossAmount);
+        self::assertSame('-62.10', (string) $polish->vatAmount);
+        self::assertSame('-1.50', (string) $polish->excise);
+        self::assertSame('90.00', (string) $line->price->netPrice);
+        $compact = static fn (string $x): string => (string) preg_replace('~>\s+<~', '><', $x);
+        self::assertSame($compact($xml), $compact(self::write($result->invoice)));
+    }
+
+    public function test_vat_in_pln_on_a_pln_invoice_is_reported(): void
+    {
+        $xml = str_replace('<P_14_1>10.03</P_14_1>', '<P_14_1>10.03</P_14_1><P_14_1W>10.03</P_14_1W>', PolishSamples::official('invoice-template-fa-3.xml'));
+        $result = self::read($xml);
+
+        self::assertSame(['/fa:Faktura/fa:Fa/fa:P_14_1W (VAT in PLN on a PLN invoice)'], $result->ignored);
+        self::assertNull($result->invoice->totals?->totalVatInAccountingCurrency);
+        self::assertSame([], self::polish($result->invoice)->vatInPln);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invalidCreationTimes(): array
+    {
+        return [
+            'month 13' => ['2025-13-01T00:00:00Z'],
+            'February 30' => ['2025-02-30T00:00:00Z'],
+            'hour 24' => ['2025-09-01T24:00:00Z'],
+            'no time' => ['2025-09-01'],
+        ];
+    }
+
+    #[DataProvider('invalidCreationTimes')]
+    public function test_invalid_creation_time_is_reported_not_thrown(string $value): void
+    {
+        $xml = str_replace('2025-09-01T00:00:00Z', $value, PolishSamples::official('invoice-template-fa-3.xml'));
+        $result = self::read($xml);
+
+        self::assertSame(["/fa:Faktura/fa:Naglowek/fa:DataWytworzeniaFa (invalid date-time '{$value}')"], $result->ignored);
+        self::assertNull(self::polish($result->invoice)->createdAt);
+    }
+
     public function test_zal_without_lines_gets_bucket_lines(): void
     {
         $result = self::read(self::write(PolishInvoices::advanceInEuro()));

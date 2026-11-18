@@ -120,7 +120,7 @@ final class Fa3Reader
             foreach ($rows as $index => $row) {
                 $lines[] = $lineMapper->line($row, $lineTerms[$index] ?? [], $buyerCountry, $annotations->margin !== null);
             }
-            $buckets = $this->buckets($d, $fa);
+            $buckets = $this->buckets($d, $fa, $currency);
             if ($lines === []) {
                 $position = 0;
                 foreach ($buckets as [$bucket, $net]) {
@@ -314,20 +314,30 @@ final class Fa3Reader
     }
 
     /**
-     * The P_13 buckets present: bucket, net (P_13_x), VAT (P_14_x) and VAT in PLN (P_14_xW).
+     * The P_13 buckets present: bucket, net (P_13_x), VAT (P_14_x) and VAT in PLN (P_14_xW). VAT
+     * in PLN on a PLN invoice, or for a bucket without amounts, is reported, not read.
      *
      * @return list<array{VatBucket, BigDecimal, ?BigDecimal, ?BigDecimal}>
      */
-    private function buckets(Fa3Document $d, DOMElement $fa): array
+    private function buckets(Fa3Document $d, DOMElement $fa, CurrencyCode $currency): array
     {
         $buckets = [];
         foreach (VatBucket::cases() as $bucket) {
             $net = $d->decimal('fa:'.$bucket->netElement(), $fa);
             $vatElement = $bucket->vatElement();
             $vat = $vatElement === null ? null : $d->decimal('fa:'.$vatElement, $fa);
-            $plnElement = $bucket->plnVatElement();
-            $pln = $plnElement === null ? null : $d->decimal('fa:'.$plnElement, $fa);
-            if ($net !== null || $vat !== null) {
+            $plnName = $bucket->plnVatElement();
+            $plnElement = $plnName === null ? null : $d->one('fa:'.$plnName, $fa);
+            $present = $net !== null || $vat !== null;
+            $pln = null;
+            if ($plnElement !== null && $currency === CurrencyCode::PLN) {
+                $d->reject($plnElement, 'VAT in PLN on a PLN invoice');
+            } elseif ($plnElement !== null && ! $present) {
+                $d->reject($plnElement, sprintf('VAT in PLN without %s', $bucket->netElement()));
+            } elseif ($plnElement !== null) {
+                $pln = $d->decimalOf($plnElement);
+            }
+            if ($present) {
                 $buckets[] = [$bucket, $net ?? BigDecimal::zero(), $vat, $pln];
             }
         }

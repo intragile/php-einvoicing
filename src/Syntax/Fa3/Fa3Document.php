@@ -10,6 +10,7 @@ use DateTimeZone;
 use DOMDocument;
 use DOMElement;
 use DOMNode;
+use Exception;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Poland\RawFragment;
 use IntrAgile\EInvoicing\Syntax\XmlDocument;
@@ -51,14 +52,36 @@ final class Fa3Document extends XmlDocument
             return null;
         }
         $value = trim($element->textContent);
-        if (preg_match(self::DATE_TIME, $value) !== 1) {
+        $parsed = self::parseDateTime($value);
+        if ($parsed === null) {
             $this->reject($element, "invalid date-time '{$value}'");
 
             return null;
         }
         $this->use($element);
 
-        return (new DateTimeImmutable($value, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('UTC'));
+        return $parsed;
+    }
+
+    /**
+     * An xsd:dateTime in UTC, or null when the text is not one or names a day or time that does
+     * not exist (the parser would otherwise roll it over or throw).
+     */
+    private static function parseDateTime(string $value): ?DateTimeImmutable
+    {
+        if (preg_match(self::DATE_TIME, $value) !== 1) {
+            return null;
+        }
+        [$year, $month, $day] = array_map('intval', explode('-', substr($value, 0, 10)));
+        [$hour, $minute, $second] = array_map('intval', explode(':', substr($value, 11, 8)));
+        if (! checkdate($month, $day, $year) || $hour > 23 || $minute > 59 || $second > 59) {
+            return null;
+        }
+        try {
+            return (new DateTimeImmutable($value, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('UTC'));
+        } catch (Exception) {
+            return null;
+        }
     }
 
     /**
