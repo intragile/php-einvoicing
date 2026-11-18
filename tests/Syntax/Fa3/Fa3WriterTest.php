@@ -9,6 +9,7 @@ use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
+use IntrAgile\EInvoicing\CodeList\AllowanceReasonCode;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\IdentifierScheme;
 use IntrAgile\EInvoicing\CodeList\PaymentMeansCode;
@@ -392,6 +393,25 @@ final class Fa3WriterTest extends TestCase
             '1|Powód rabatu (BT-139)|Promocja',
         ], self::descriptions($xml));
         self::assertSame([], self::values($xml, '//fa:DaneKontaktowe[not(fa:Email)]/fa:Telefon'));
+    }
+
+    public function test_line_allowance_details_go_to_dodatkowy_opis(): void
+    {
+        $invoice = PolishInvoices::domestic();
+        $lines = $invoice->lines;
+        $lines[1] = $lines[1]->withAllowance(new LineAllowance('2.50', baseAmount: '50.00', percentage: '5', reason: 'Rabat', reasonCode: AllowanceReasonCode::C_95))
+            ->withAllowance(new LineAllowance('1.00', percentage: '2'));
+        $xml = self::write(TotalsCalculator::complete($invoice->withLines(array_values($lines))->withVatBreakdown([])));
+
+        self::assertSchemaValid($xml);
+        self::assertSame([
+            '2|Powód rabatu (BT-139)|Rabat',
+            '2|Podstawa rabatu (BT-137)|50.00',
+            '2|Procent rabatu (BT-138)|5',
+            '2|Kod powodu rabatu (BT-140)|95',
+            '2|Procent rabatu (BT-138)|2',
+        ], self::descriptions($xml));
+        self::assertSame(['3.50'], self::values($xml, '//fa:FaWiersz[2]/fa:P_10'));
     }
 
     public function test_exemption_reason_is_superseded_by_the_exemption_annotation(): void

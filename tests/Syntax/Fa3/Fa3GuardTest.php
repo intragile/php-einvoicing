@@ -10,12 +10,15 @@ use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
 use IntrAgile\EInvoicing\CodeList\ElectronicAddressScheme;
 use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
+use IntrAgile\EInvoicing\CodeList\PaymentMeansCode;
 use IntrAgile\EInvoicing\CodeList\TextSubjectCode;
 use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
+use IntrAgile\EInvoicing\Model\Contact;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentAllowance;
 use IntrAgile\EInvoicing\Model\ElectronicAddress;
+use IntrAgile\EInvoicing\Model\Identifier;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Model\Item;
@@ -24,15 +27,19 @@ use IntrAgile\EInvoicing\Model\ItemClassification;
 use IntrAgile\EInvoicing\Model\LineVat;
 use IntrAgile\EInvoicing\Model\Note;
 use IntrAgile\EInvoicing\Model\Party;
+use IntrAgile\EInvoicing\Model\PaymentInstructions;
 use IntrAgile\EInvoicing\Model\Period;
 use IntrAgile\EInvoicing\Model\PostalAddress;
 use IntrAgile\EInvoicing\Model\PrecedingInvoiceReference;
 use IntrAgile\EInvoicing\Model\Price;
+use IntrAgile\EInvoicing\Model\TaxRegistration;
 use IntrAgile\EInvoicing\Poland\Annotations;
 use IntrAgile\EInvoicing\Poland\DocumentReference;
 use IntrAgile\EInvoicing\Poland\PolishInvoice;
 use IntrAgile\EInvoicing\Poland\PolishLine;
 use IntrAgile\EInvoicing\Poland\RawFragment;
+use IntrAgile\EInvoicing\Poland\ThirdParty;
+use IntrAgile\EInvoicing\Poland\ThirdPartyRole;
 use IntrAgile\EInvoicing\Poland\TransactionTerms;
 use IntrAgile\EInvoicing\Poland\VatRateCode;
 use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Format;
@@ -199,6 +206,43 @@ final class Fa3GuardTest extends TestCase
         $message = self::refusal($invoice);
         self::assertStringContainsString('BT-12: "UM/1"', $message);
         self::assertStringContainsString('"UM/2"', $message);
+    }
+
+    public function test_schemes_and_remaining_unmapped_values_are_refused(): void
+    {
+        $invoice = PolishInvoices::exportBuyer();
+        $buyer = $invoice->buyer;
+        $lines = $invoice->lines;
+        $line = $lines[0];
+        $lines[0] = new InvoiceLine(
+            id: $line->id,
+            quantity: $line->quantity,
+            unit: $line->unit,
+            price: new Price($line->price->netPrice, baseQuantityUnit: UnitCode::KGM),
+            item: $line->item,
+            vat: $line->vat,
+            netAmount: $line->netAmount,
+            objectIdentifier: new Identifier('OBJ-1', 'AAA'),
+        );
+        $thirdParty = new ThirdParty(
+            party: new Party(name: 'Płatnik', tradingName: 'Płatnik Handel', vatIdentifier: 'PL'.PolishInvoices::JST_UNIT_NIP, contact: new Contact(name: 'Ewa Zielińska')),
+            role: ThirdPartyRole::Payer,
+        );
+        $invoice = $invoice
+            ->withLines($lines)
+            ->withBuyer(new Party(
+                name: $buyer->name,
+                legalRegistration: new Identifier('US-123', '0060'),
+                taxRegistration: new TaxRegistration('TAX-1'),
+                address: $buyer->address,
+            ))
+            ->withPayment(new PaymentInstructions(PaymentMeansCode::C_30, meansText: 'Przelew'))
+            ->withExtension(new PolishInvoice(thirdParties: [$thirdParty]));
+
+        $message = self::refusal($invoice);
+        foreach (['BT-47-1: ', 'BT-128-1 (line "1"): ', 'BT-150 (line "1"): ', 'BT-82: ', 'Podmiot2 tax registration: ', 'Podmiot3[1] trading name: ', 'Podmiot3[1] contact name: '] as $term) {
+            self::assertStringContainsString($term, $message);
+        }
     }
 
     public function test_missing_totals_are_refused(): void

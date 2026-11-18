@@ -13,6 +13,7 @@ use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Poland\DocumentReference;
 use IntrAgile\EInvoicing\Poland\InvoiceKind;
 use IntrAgile\EInvoicing\Poland\Nip;
+use IntrAgile\EInvoicing\Poland\PaymentForm;
 use IntrAgile\EInvoicing\Poland\PolishInvoice;
 use IntrAgile\EInvoicing\Poland\PolishLine;
 use InvalidArgumentException;
@@ -37,7 +38,11 @@ use InvalidArgumentException;
  * that is not a correction, line periods (BG-26), item price discounts and gross prices (BT-147,
  * BT-148), item classifications (BT-158) and item attributes (BG-32). VAT exemption reasons
  * (BT-120, BT-121) are accepted only with the exemption annotation (Annotations::$exemption),
- * which supersedes them; the legal basis is never guessed. A contract or purchase order
+ * which supersedes them; the legal basis is never guessed. Also refused: identifier schemes FA(3)
+ * has no field for (BT-128-1, BT-47-1 and the third-party legal registration scheme), a price
+ * base quantity unit (BT-150) other than the line unit, the payment means text (BT-82) when a
+ * payment form is written, the tax registration and additional legal information of the buyer
+ * or a third party, and the trading name and contact name of a third party. A contract or purchase order
  * reference (BT-12, BT-13) that differs from the contracts or orders of the transaction terms
  * is refused.
  *
@@ -106,6 +111,11 @@ final class Fa3Guard
         $refuse(self::nonZero($invoice->totals?->roundingAmount), 'BT-114');
         $refuse($invoice->payment?->card !== null, 'BG-18', 'FA(3) carries the payment form only, not card data');
         $refuse($invoice->payment?->directDebit !== null, 'BG-19', 'FA(3) has no direct debit');
+        $refuse(
+            $invoice->payment?->meansText !== null && ($polish->paymentForm ?? PaymentForm::fromMeansCode($invoice->payment->meansCode)) !== null,
+            'BT-82',
+            'FA(3) writes the payment means text (OpisPlatnosci) only for a payment without an FA(3) payment form (PlatnoscInna)',
+        );
         foreach ($invoice->notes as $index => $note) {
             $refuse($note->subjectCode !== null, sprintf('BT-21 (note %d)', $index + 1), 'FA(3) has no note subject code');
         }
@@ -148,6 +158,12 @@ final class Fa3Guard
             $refuse($line->price->grossPrice !== null, 'BT-148'.$at, 'FA(3) states the net unit price only (P_9A)');
             $refuse($line->item->classifications !== [], 'BT-158'.$at, 'FA(3) carries classifications only as the Polish PKWiU, CN and PKOB codes of the line extension');
             $refuse($line->item->attributes !== [], 'BG-32'.$at);
+            $refuse($line->objectIdentifier?->scheme !== null, 'BT-128-1'.$at, 'FA(3) has no scheme field; the identifier value is carried as an additional description');
+            $refuse(
+                $line->price->baseQuantityUnit !== null && $line->price->baseQuantityUnit !== $line->unit,
+                'BT-150'.$at,
+                'FA(3) has one unit per line (P_8A); the price base quantity unit must be the line unit (BT-130)',
+            );
             $base = $line->price->baseQuantity;
             $refuse(
                 $base !== null && ! $base->isEqualTo(1),
@@ -190,7 +206,7 @@ final class Fa3Guard
             $violations[] = 'Podmiot1: the seller has no customer number (NrKlienta) or buyer identifier (IDNabywcy)';
         }
 
-        $violations = [...$violations, ...self::identification($buyer, 'BT-48', 'BT-46', 'BT-47', 'BT-49')];
+        $violations = [...$violations, ...self::identification($buyer, 'Podmiot2', 'BT-48', 'BT-46', 'BT-47', 'BT-47-1', 'BT-49')];
         if ($polish->buyer?->vatPrefix !== null) {
             $violations[] = 'Podmiot2: FA(3) has no buyer VAT prefix; the EU prefix is taken from the buyer VAT identifier (BT-48)';
         }
@@ -200,8 +216,14 @@ final class Fa3Guard
 
         foreach ($polish->thirdParties as $index => $thirdParty) {
             $at = sprintf('Podmiot3[%d]', $index + 1);
-            foreach (self::identification($thirdParty->party, $at.' VAT identifier', $at.' identifiers', $at.' legal registration', $at.' electronic address') as $violation) {
+            foreach (self::identification($thirdParty->party, $at, $at.' VAT identifier', $at.' identifiers', $at.' legal registration', $at.' legal registration scheme', $at.' electronic address') as $violation) {
                 $violations[] = $violation;
+            }
+            if ($thirdParty->party->tradingName !== null) {
+                $violations[] = $at.' trading name: FA(3) has no element for it';
+            }
+            if ($thirdParty->party->contact?->name !== null) {
+                $violations[] = $at.' contact name: FA(3) carries only the e-mail address and phone number (DaneKontaktowe)';
             }
             if ($thirdParty->internalId !== null && $thirdParty->party->vatIdentifier !== null) {
                 $violations[] = $at.': FA(3) identifies a third party by its internal identifier (IDWew) or its VAT identifier, not both';
@@ -225,7 +247,7 @@ final class Fa3Guard
      *
      * @return list<string>
      */
-    private static function identification(Party $party, string $vatTerm, string $identifiersTerm, string $legalTerm, string $addressTerm): array
+    private static function identification(Party $party, string $label, string $vatTerm, string $identifiersTerm, string $legalTerm, string $schemeTerm, string $addressTerm): array
     {
         $violations = [];
         $nip = Fa3PartyWriter::nip($party->vatIdentifier);
@@ -241,6 +263,15 @@ final class Fa3Guard
         }
         if ($party->legalRegistration !== null && $party->vatIdentifier !== null) {
             $violations[] = $legalTerm.': FA(3) carries it only as the tax number (NrID) of a party without a VAT identifier';
+        }
+        if ($party->legalRegistration?->scheme !== null) {
+            $violations[] = $schemeTerm.': FA(3) has no scheme for the tax number (NrID)';
+        }
+        if ($party->taxRegistration !== null) {
+            $violations[] = $label.' tax registration: FA(3) has no element for it';
+        }
+        if ($party->additionalLegalInformation !== null) {
+            $violations[] = $label.' additional legal information: FA(3) has no element for it';
         }
         if ($party->electronicAddress !== null) {
             $violations[] = $addressTerm.': FA(3) has no element for it';

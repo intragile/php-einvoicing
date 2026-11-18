@@ -282,6 +282,9 @@ final class Fa3Writer
             $add('BT-159', $line->item->originCountry?->value, $position);
             foreach ($line->allowances as $allowance) {
                 $add('BT-139', $allowance->reason, $position);
+                $add('BT-137', $allowance->baseAmount?->__toString(), $position);
+                $add('BT-138', $allowance->percentage?->__toString(), $position);
+                $add('BT-140', $allowance->reasonCode?->value, $position);
             }
         }
 
