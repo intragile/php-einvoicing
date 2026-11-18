@@ -21,7 +21,8 @@ use InvalidArgumentException;
  *
  * Line numbers (NrWierszaFa) run 1 to n in output order; the line identifier (BT-126) goes to
  * UU_ID when it differs from that number. The unit (P_8A) is the Polish unit label, else the
- * UN/ECE code of BT-130; with a label, a BT-130 other than C62 goes to a line description
+ * UN/ECE code of BT-130; a one-stop-shop line (PolishLine::$ossRate) is written with P_12_XII and
+ * without P_12; with a label, a BT-130 other than C62 goes to a line description
  * (DodatkowyOpis) under its fixed key. P_10 is the sum of the line allowances (BT-136). P_8A, P_8B and P_9A are
  * left out for a row read without them (the PolishLine omission markers) as long as the line still
  * holds the values read from their absence; P_12 is left out for a row read without it.
@@ -37,14 +38,14 @@ final class Fa3LineWriter
 {
     /**
      * The P_12 code of the line: the Polish override, else the code of its VAT category and rate.
-     * A margin scheme line has none.
+     * A margin scheme line and a one-stop-shop line (PolishLine::$ossRate) have none.
      *
      * @throws InvalidArgumentException when the category and rate have no FA(3) code
      */
     public static function rateCode(InvoiceLine $line, ?CountryCode $buyerCountry): ?VatRateCode
     {
         $polish = $line->extensions()->get(PolishLine::class);
-        if ($polish?->margin === true) {
+        if ($polish?->margin === true || $polish?->ossRate !== null) {
             return null;
         }
 
@@ -52,20 +53,25 @@ final class Fa3LineWriter
     }
 
     /**
-     * The summary bucket the line feeds: the bucket of its rate code, or the margin bucket.
+     * The summary bucket the line feeds: the margin bucket for a margin scheme line, the
+     * one-stop-shop bucket (P_13_5) for a line with an OSS rate, else the bucket of its rate code.
      *
      * @throws InvalidArgumentException when the line has no FA(3) code or its code has no bucket
      */
     public static function bucket(InvoiceLine $line, ?CountryCode $buyerCountry): VatBucket
     {
-        $code = self::rateCode($line, $buyerCountry);
-        if ($code === null) {
+        $polish = $line->extensions()->get(PolishLine::class);
+        if ($polish?->margin === true) {
             return VatBucket::Margin;
         }
+        if ($polish?->ossRate !== null) {
+            return VatBucket::Oss;
+        }
+        $code = self::rateCode($line, $buyerCountry) ?? VatRateCode::fromModel($line->vat->category, $line->vat->rate, $buyerCountry);
         $bucket = $code->bucket();
         if ($bucket === null) {
             throw new InvalidArgumentException(sprintf(
-                'rate code "%s" has no P_13 summary bucket in FA(3), so it cannot be written.',
+                'rate code "%s" has no P_13 summary bucket in FA(3): the brochure ties no rate code to the taxi lump-sum summary (P_13_4), so the row cannot be written',
                 $code->value,
             ));
         }

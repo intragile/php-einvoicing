@@ -72,7 +72,7 @@ enum VatRateCode: string
         foreach ([self::Rate4, self::Rate3] as $bucketless) {
             if ($category === VatCategory::StandardRate && $rate?->isEqualTo($bucketless->value)) {
                 throw new InvalidArgumentException(sprintf(
-                    'VAT category S with rate %s maps to P_12 code "%s", but FA(3) has no P_13 summary bucket for it, so it cannot be written.',
+                    'VAT category S with rate %s maps to P_12 code "%s", but FA(3) has no P_13 summary bucket for it (the brochure ties no rate code to the taxi lump-sum summary P_13_4), so it cannot be written',
                     $rate->__toString(),
                     $bucketless->value,
                 ));
@@ -92,9 +92,15 @@ enum VatRateCode: string
             VatCategory::CanaryIslands, VatCategory::CeutaAndMelilla, VatCategory::TransferredVat => null,
         };
 
+        if ($code === null && $category === VatCategory::StandardRate && $rate !== null) {
+            throw new InvalidArgumentException(sprintf(
+                'VAT category S with rate %s has no FA(3) P_12 rate code: FA(3) knows the standard rates 23, 22, 8, 7 and 5, and a supply under the one-stop-shop procedure (OSS) sets the OSS rate of the Polish line extension (PolishLine::$ossRate)',
+                $rate->__toString(),
+            ));
+        }
         if ($code === null) {
             throw new InvalidArgumentException(sprintf(
-                'VAT category %s with %s has no FA(3) P_12 rate code; set the Polish line rate code explicitly.',
+                'VAT category %s with %s has no FA(3) P_12 rate code',
                 $category->value,
                 $rate === null ? 'no rate' : 'rate '.$rate->__toString(),
             ));

@@ -28,6 +28,7 @@ use IntrAgile\EInvoicing\Model\VatBreakdown;
 use IntrAgile\EInvoicing\Poland\InvoiceKind;
 use IntrAgile\EInvoicing\Poland\KeyValue;
 use IntrAgile\EInvoicing\Poland\PolishInvoice;
+use IntrAgile\EInvoicing\Poland\PolishLine;
 use IntrAgile\EInvoicing\Poland\VatBucket;
 use IntrAgile\EInvoicing\Syntax\ReadResult;
 use IntrAgile\EInvoicing\Syntax\SafeXml;
@@ -45,7 +46,9 @@ use InvalidArgumentException;
  *   (BT-16), the others are the extension's warehouse documents.
  * - Each P_13_x bucket is one VAT breakdown row (BT-116, BT-117 from P_14_x). Its category and
  *   rate are those of the rate code its lines carry; lines of two codes (23 and 22) give
- *   category S without a rate. The zero, exempt and reverse charge rows have rate 0.
+ *   category S without a rate. The zero, exempt and reverse charge rows have rate 0. The
+ *   one-stop-shop row (P_13_5) is category S at the OSS rate (P_12_XII) of its rows, without a
+ *   rate when they differ.
  * - An invoice without FaWiersz rows gets one synthetic bucket line per P_13 bucket.
  * - Totals: BT-106 sums the line net amounts, BT-109 the P_13 buckets, BT-110 P_14_1 to P_14_5;
  *   BT-112 is P_15 and BT-115 the Rozliczenie balance (DoZaplaty, or DoRozliczenia negated),
@@ -366,11 +369,21 @@ final class Fa3Reader
     private function vatBreakdown(array $lines, array $buckets, ?CountryCode $buyerCountry): array
     {
         $codes = [];
+        $ossRates = [];
         foreach ($lines as $line) {
             try {
                 $bucket = Fa3LineWriter::bucket($line, $buyerCountry);
                 $code = Fa3LineWriter::rateCode($line, $buyerCountry);
             } catch (InvalidArgumentException) {
+                continue;
+            }
+            $ossRate = $line->extensions()->get(PolishLine::class)?->ossRate;
+            if ($bucket === VatBucket::Oss && $ossRate !== null) {
+                $known = array_filter($ossRates, static fn (BigDecimal $rate): bool => $rate->isEqualTo($ossRate));
+                if ($known === []) {
+                    $ossRates[] = $ossRate;
+                }
+
                 continue;
             }
             $codes[$bucket->value][$code->value ?? ''] = $code;
@@ -379,7 +392,10 @@ final class Fa3Reader
         $rows = [];
         foreach ($buckets as [$bucket, $net, $vat]) {
             $found = $codes[$bucket->value] ?? [];
-            if (count($found) > 1) {
+            if ($bucket === VatBucket::Oss) {
+                $category = VatCategory::StandardRate;
+                $rate = count($ossRates) === 1 ? reset($ossRates) : null;
+            } elseif (count($found) > 1) {
                 $category = VatCategory::StandardRate;
                 $rate = null;
             } else {

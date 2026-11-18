@@ -41,7 +41,8 @@ use InvalidArgumentException;
  *   when the invoice declares a margin scheme. Otherwise it is marked as written without P_12
  *   (PolishLine::$rateCodeOmitted) and takes the category and rate of the default code of the
  *   invoice's only summary bucket; with several buckets the row's bucket is unknown, so it is
- *   category O without a rate and no code is guessed.
+ *   category O without a rate and no code is guessed. A row with an OSS rate (P_12_XII) and
+ *   without P_12 is a one-stop-shop line: category S at that rate.
  * - P_10 is one line allowance with that amount; its reason is the fixed-key description of
  *   the row, else "P_10".
  * - A row without P_8A, P_8B or P_9A is marked with the matching PolishLine omission marker, so
@@ -84,8 +85,12 @@ final class Fa3LineMapper
         $code = $d->code(VatRateCode::class, $codeElement);
         $margin = false;
         $omitted = false;
+        $ossRate = $d->decimal('fa:P_12_XII', $row);
         if ($code !== null) {
             [$vat, $override] = self::vat($code, $buyerCountry);
+        } elseif ($codeElement === null && $ossRate !== null) {
+            $vat = new LineVat(VatCategory::StandardRate, $ossRate);
+            $override = null;
         } else {
             $margin = $codeElement === null && $marginInvoice;
             $omitted = $codeElement === null && ! $margin;
@@ -133,7 +138,7 @@ final class Fa3LineMapper
             grossUnitPrice: $d->decimal('fa:P_9B', $row),
             grossAmount: $sign($gross),
             vatAmount: $sign($d->decimal('fa:P_11Vat', $row)),
-            ossRate: $d->decimal('fa:P_12_XII', $row),
+            ossRate: $ossRate,
             annex15: $d->flag('fa:P_12_Zal_15', $row),
             excise: $sign($d->decimal('fa:KwotaAkcyzy', $row)),
             gtu: $d->code(Gtu::class, $d->one('fa:GTU', $row)),

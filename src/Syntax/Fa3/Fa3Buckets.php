@@ -16,7 +16,8 @@ use InvalidArgumentException;
  * Maps the VAT breakdown (BG-23) onto the FA(3) summary buckets (P_13_x net, P_14_x VAT).
  *
  * Each breakdown row feeds the bucket of the rate code its lines map to (category and rate,
- * or the Polish rate code override); a row without lines maps by its own category and rate.
+ * or the Polish rate code override; margin and one-stop-shop lines feed P_13_11 and P_13_5); a row
+ * without lines maps by its own category and rate.
  * Rows of one bucket are summed: P_13_x = sum of BT-116, P_14_x = sum of BT-117.
  *
  * @internal
@@ -77,7 +78,8 @@ final class Fa3Buckets
             $lines = array_filter($invoice->lines, static fn (InvoiceLine $line): bool => self::matches($row, $line));
             foreach ($lines as $line) {
                 try {
-                    $codes[Fa3LineWriter::rateCode($line, $buyerCountry)->value ?? 'margin'] = Fa3LineWriter::bucket($line, $buyerCountry);
+                    $bucket = Fa3LineWriter::bucket($line, $buyerCountry);
+                    $codes[Fa3LineWriter::rateCode($line, $buyerCountry)->value ?? $bucket->netElement()] = $bucket;
                 } catch (InvalidArgumentException) {
                     // Reported per line.
                 }

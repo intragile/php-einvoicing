@@ -11,6 +11,7 @@ use DOMElement;
 use DOMNode;
 use DOMXPath;
 use IntrAgile\EInvoicing\Poland\KsefNumber;
+use IntrAgile\EInvoicing\Poland\VatRateCode;
 use IntrAgile\EInvoicing\Schematron\LocationPath;
 use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Format;
 use IntrAgile\EInvoicing\Validation\Finding;
@@ -48,17 +49,6 @@ final class Fa3Rules
     private const CORRECTION_ELEMENTS = [
         'PrzyczynaKorekty', 'TypKorekty', 'DaneFaKorygowanej', 'OkresFaKorygowanej', 'NrFaKorygowany',
         'Podmiot1K', 'Podmiot2K', 'P_15ZK', 'KursWalutyZK',
-    ];
-
-    /** The total of each rate code (P_12) that has one: rates 4 % and 3 % have no total in FA(3). */
-    private const BUCKETS = [
-        '23' => 'P_13_1', '22' => 'P_13_1',
-        '8' => 'P_13_2', '7' => 'P_13_2',
-        '5' => 'P_13_3',
-        '0 KR' => 'P_13_6_1', '0 WDT' => 'P_13_6_2', '0 EX' => 'P_13_6_3',
-        'zw' => 'P_13_7',
-        'np I' => 'P_13_8', 'np II' => 'P_13_9',
-        'oo' => 'P_13_10',
     ];
 
     /**
@@ -276,7 +266,8 @@ final class Fa3Rules
         if (in_array($kind, self::WITH_RATE_TOTALS, true)) {
             foreach (self::all($xpath, 'fa:FaWiersz/fa:P_12', $fa) as $element) {
                 $code = trim($element->textContent);
-                $bucket = self::BUCKETS[$code] ?? null;
+                // Rates 4 % and 3 % have no total in FA(3).
+                $bucket = VatRateCode::tryFrom($code)?->bucket()?->netElement();
                 if ($bucket !== null && self::first($xpath, "fa:{$bucket}", $fa) === null) {
                     $report('PL-FA3-17', $element, "P_12 {$code} needs {$bucket}.");
                 }

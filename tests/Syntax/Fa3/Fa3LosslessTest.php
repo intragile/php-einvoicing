@@ -223,6 +223,105 @@ final class Fa3LosslessTest extends TestCase
         self::assertStringContainsString('Podmiot2 GLN: ', $message);
     }
 
+    public function test_one_stop_shop_line_feeds_p_13_5_without_a_rate_code(): void
+    {
+        $line = PolishInvoices::line('1', 'Ebook', '1', UnitCode::C62, '100.00', VatCategory::StandardRate, '19')
+            ->withExtension(new PolishLine(ossRate: '19'));
+        $invoice = TotalsCalculator::complete(PolishInvoices::consumer()->withLines([$line])->withVatBreakdown([]));
+
+        $xml = self::write($invoice);
+        $fields = Fa3Fields::of($xml);
+        self::assertSame(['100.00'], $fields['Fa/P_13_5']);
+        self::assertSame(['19.00'], $fields['Fa/P_14_5']);
+        self::assertSame(['19'], $fields['Fa/FaWiersz[1]/P_12_XII']);
+        self::assertArrayNotHasKey('Fa/FaWiersz[1]/P_12', $fields);
+        self::assertTrue(Fa3Validator::create()->validate($xml)->isValid());
+
+        $read = (new Fa3Reader)->read($xml);
+        self::assertSame([], $read->ignored);
+        $readLine = $read->invoice->lines[0];
+        self::assertSame(VatCategory::StandardRate, $readLine->vat->category);
+        self::assertSame('19', (string) $readLine->vat->rate);
+        self::assertSame('19', (string) $readLine->extensions()->get(PolishLine::class)?->ossRate);
+        self::assertSame($xml, self::write($read->invoice));
+    }
+
+    public function test_one_stop_shop_file_survives_read_and_write(): void
+    {
+        $source = preg_replace(
+            ['#<P_13_1>([^<]*)</P_13_1>\s*<P_14_1>([^<]*)</P_14_1>#', '#<P_12>23</P_12>#'],
+            ['<P_13_5>$1</P_13_5><P_14_5>$2</P_14_5>', '<P_12_XII>19</P_12_XII>'],
+            self::write(PolishInvoices::consumer()),
+        );
+        self::assertIsString($source);
+        self::assertTrue(Fa3Validator::create()->validate($source)->isValid());
+
+        $read = (new Fa3Reader)->read($source)->invoice;
+        self::assertSame(VatCategory::StandardRate, $read->vatBreakdown[0]->category);
+        self::assertSame('19', (string) $read->vatBreakdown[0]->rate);
+        self::assertSame(Fa3Fields::of($source), Fa3Fields::of(self::write($read)));
+    }
+
+    /**
+     * @return array<string, array{VatCategory, numeric-string|null, PolishLine, string}>
+     */
+    public static function badOssLines(): array
+    {
+        return [
+            'with a rate code override' => [VatCategory::NotSubjectToVat, null, new PolishLine(ossRate: '19', rateCode: VatRateCode::OutsideTerritory), 'P_12_XII (line "1"): '],
+            'not standard rated' => [VatCategory::NotSubjectToVat, null, new PolishLine(ossRate: '19'), 'P_12_XII (line "1"): '],
+            'rate differs' => [VatCategory::StandardRate, '20', new PolishLine(ossRate: '19'), 'P_12_XII (line "1"): '],
+        ];
+    }
+
+    /**
+     * @param  numeric-string|null  $rate
+     */
+    #[DataProvider('badOssLines')]
+    public function test_one_stop_shop_line_must_be_standard_rated_at_its_oss_rate(VatCategory $category, ?string $rate, PolishLine $polish, string $term): void
+    {
+        $line = PolishInvoices::line('1', 'Ebook', '1', UnitCode::C62, '100.00', $category, $rate)->withExtension($polish);
+        $invoice = TotalsCalculator::complete(PolishInvoices::consumer()->withLines([$line])->withVatBreakdown([]));
+
+        self::assertStringContainsString($term, self::refusal($invoice));
+    }
+
+    public function test_one_stop_shop_bucket_line_is_refused(): void
+    {
+        $invoice = PolishInvoices::advanceInEuro();
+        $line = PolishInvoices::line('1', 'P_13_5', '1', UnitCode::C62, '3252.03', VatCategory::StandardRate, '19')
+            ->withExtension(new PolishLine(bucketLine: true, ossRate: '19'));
+
+        self::assertStringContainsString('P_12_XII (bucket line "1"): ', self::refusal($invoice->withLines([$line])));
+    }
+
+    public function test_taxi_lump_sum_file_is_read_and_refused_clearly_on_write(): void
+    {
+        $source = preg_replace(
+            ['#<P_13_1>([^<]*)</P_13_1>\s*<P_14_1>([^<]*)</P_14_1>#', '#<P_12>23</P_12>#'],
+            ['<P_13_4>$1</P_13_4><P_14_4>$2</P_14_4>', '<P_12>4</P_12>'],
+            self::write(PolishInvoices::consumer()),
+        );
+        self::assertIsString($source);
+        $result = (new Fa3Reader)->read($source);
+        self::assertSame([], $result->ignored);
+        self::assertSame('99.00', (string) $result->invoice->vatBreakdown[0]->taxableAmount);
+
+        $exception = self::capture(fn () => self::write($result->invoice));
+        self::assertInstanceOf(InvalidArgumentException::class, $exception);
+        self::assertStringContainsString('taxi lump-sum', $exception->getMessage());
+        self::assertStringContainsString('P_13_4', $exception->getMessage());
+    }
+
+    public function test_unknown_standard_rate_points_to_the_oss_rate_not_to_an_override(): void
+    {
+        $line = PolishInvoices::line('1', 'Ebook', '1', UnitCode::C62, '100.00', VatCategory::StandardRate, '19');
+        $message = self::refusal(TotalsCalculator::complete(PolishInvoices::consumer()->withLines([$line])->withVatBreakdown([])));
+
+        self::assertStringContainsString('PolishLine::$ossRate', $message);
+        self::assertStringNotContainsString('rate code explicitly', $message);
+    }
+
     private static function refusal(Invoice $invoice): string
     {
         $exception = self::capture(static fn () => Fa3Guard::check($invoice));

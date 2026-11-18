@@ -22,7 +22,7 @@ use LogicException;
 final class Fa3Fields
 {
     /** Fields of one FaWiersz row. */
-    private const ROW_FIELDS = ['P_7', 'P_8A', 'P_8B', 'P_9A', 'P_10', 'P_11', 'P_12', 'GTU', 'Procedura', 'StanPrzed'];
+    private const ROW_FIELDS = ['P_7', 'P_8A', 'P_8B', 'P_9A', 'P_10', 'P_11', 'P_12', 'P_12_XII', 'GTU', 'Procedura', 'StanPrzed'];
 
     /** Blocks of Fa compared with every leaf below them. */
     private const FA_BLOCKS = ['Adnotacje', 'DaneFaKorygowanej', 'ZaliczkaCzesciowa', 'FakturaZaliczkowa', 'Rozliczenie', 'Platnosc'];

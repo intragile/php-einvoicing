@@ -12,6 +12,7 @@ use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Model\Contact;
 use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Poland\DocumentReference;
 use IntrAgile\EInvoicing\Poland\InvoiceKind;
@@ -670,6 +671,9 @@ final class Fa3Guard
 
                 continue;
             }
+            foreach (self::ossProblems($line) as $problem) {
+                $violations[] = sprintf('P_12_XII (line "%s"): %s', $line->id, $problem);
+            }
             if ($override !== null && ! self::overrideFits($override, $line->vat->category, $line->vat->rate, $buyerCountry)) {
                 [$category, $rate] = $override->toModel();
                 $violations[] = sprintf(
@@ -697,6 +701,40 @@ final class Fa3Guard
         }
 
         return [...$violations, ...Fa3Buckets::problems($invoice)];
+    }
+
+    /**
+     * Why a one-stop-shop line (PolishLine::$ossRate) cannot be written: it feeds P_13_5 without a
+     * rate code, so it takes no rate code override, is not a margin scheme line, and is VAT
+     * category S at its OSS rate.
+     *
+     * @return list<string>
+     */
+    private static function ossProblems(InvoiceLine $line): array
+    {
+        $polish = $line->extensions()->get(PolishLine::class);
+        $oss = $polish?->ossRate;
+        if ($oss === null) {
+            return [];
+        }
+        $problems = [];
+        if ($polish->rateCode !== null) {
+            $problems[] = sprintf('a one-stop-shop line feeds P_13_5 and is written without a rate code (P_12), so it takes no rate code override, got "%s"', $polish->rateCode->value);
+        }
+        if ($polish->margin) {
+            $problems[] = 'a margin scheme line has no one-stop-shop rate';
+        }
+        $rate = $line->vat->rate;
+        if ($line->vat->category !== VatCategory::StandardRate || $rate === null || ! $rate->isEqualTo($oss)) {
+            $problems[] = sprintf(
+                'a one-stop-shop line is VAT category S at its OSS rate %s, got %s%s',
+                $oss,
+                $line->vat->category->value,
+                $rate === null ? ' without a rate' : ' '.$rate,
+            );
+        }
+
+        return $problems;
     }
 
     /**
@@ -769,6 +807,7 @@ final class Fa3Guard
                 'PKWiU' => $polish->pkwiu !== null,
                 'CN' => $polish->cn !== null,
                 'PKOB' => $polish->pkob !== null,
+                'P_12_XII' => $polish->ossRate !== null,
             ];
             foreach ($present as $term => $set) {
                 if ($set) {

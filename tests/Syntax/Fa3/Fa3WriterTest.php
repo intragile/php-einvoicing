@@ -279,7 +279,6 @@ final class Fa3WriterTest extends TestCase
             'P_11=32.93',
             'P_11A=40.50',
             'P_11Vat=7.57',
-            'P_12=23',
             'P_12_XII=23',
             'P_12_Zal_15=1',
             'KwotaAkcyzy=1.00',

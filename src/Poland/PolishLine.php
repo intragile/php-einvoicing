@@ -29,7 +29,11 @@ final readonly class PolishLine
     /** Line VAT amount (P_11Vat). */
     public ?BigDecimal $vatAmount;
 
-    /** VAT rate of a one-stop-shop supply in percent (P_12_XII). */
+    /**
+     * VAT rate of a supply under the one-stop-shop procedure (OSS) in percent (P_12_XII). The line
+     * then feeds the OSS summary (P_13_5, P_14_5) and is written without a rate code (P_12); its VAT
+     * category is S at this rate.
+     */
     public ?BigDecimal $ossRate;
 
     /** Excise duty amount (KwotaAkcyzy). */
