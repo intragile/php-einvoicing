@@ -42,29 +42,33 @@ final class B2BrouterFranceLiveGuardTest extends TestCase
         }
     }
 
-    public function test_staging_cases_need_staging_host_and_key(): void
+    public function test_french_cases_need_an_accepted_environment_and_account(): void
     {
         $staging = new B2BrouterConfig('stag_FAKEKEY000000', self::ACCOUNT_ID, B2BrouterConfig::STAGING_BASE_URL);
-        self::assertNull(B2BrouterFranceLiveTest::keyRefusal($staging));
-        self::assertNull(B2BrouterFranceLiveTest::stagingSkip($staging, self::FR_ACCOUNT_ID));
+        $sandbox = new B2BrouterConfig('test_FAKEKEY000000', self::ACCOUNT_ID);
+        self::assertSame('needs a B2Brouter French sandbox or staging account', B2BrouterFranceLiveTest::FRENCH_ACCOUNT_SKIP);
 
-        // Without the French staging account the staging cases skip.
-        self::assertSame(B2BrouterFranceLiveTest::STAGING_SKIP, B2BrouterFranceLiveTest::stagingSkip($staging, ''));
-        self::assertSame('needs a B2Brouter French staging account', B2BrouterFranceLiveTest::STAGING_SKIP);
-
-        // A staging key on any other host never reaches the staging cases.
-        foreach ([B2BrouterConfig::DEFAULT_BASE_URL, 'https://api.example.test'] as $baseUrl) {
-            $elsewhere = new B2BrouterConfig('stag_FAKEKEY000000', self::ACCOUNT_ID, $baseUrl);
-            self::assertSame(B2BrouterFranceLiveTest::STAGING_SKIP, B2BrouterFranceLiveTest::stagingSkip($elsewhere, self::FR_ACCOUNT_ID), $baseUrl);
+        foreach ([$staging, $sandbox] as $config) {
+            self::assertNull(B2BrouterFranceLiveTest::keyRefusal($config));
+            self::assertNull(B2BrouterFranceLiveTest::frenchAccountSkip($config, self::FR_ACCOUNT_ID));
+            // Without the French account the send and e-reporting cases skip.
+            self::assertSame(B2BrouterFranceLiveTest::FRENCH_ACCOUNT_SKIP, B2BrouterFranceLiveTest::frenchAccountSkip($config, ''));
         }
     }
 
-    public function test_sandbox_key_allows_lookup_only(): void
+    public function test_french_cases_skip_on_a_refused_key_or_host(): void
     {
-        $sandbox = new B2BrouterConfig('test_FAKEKEY000000', self::ACCOUNT_ID);
+        $cases = [
+            ['stag_FAKEKEY000000', B2BrouterConfig::DEFAULT_BASE_URL],
+            ['stag_FAKEKEY000000', 'https://api.example.test'],
+            ['test_FAKEKEY000000', B2BrouterConfig::STAGING_BASE_URL],
+            ['test_FAKEKEY000000', 'https://api.example.test'],
+            ['prod_FAKEKEY000000', B2BrouterConfig::DEFAULT_BASE_URL],
+        ];
+        foreach ($cases as [$key, $baseUrl]) {
+            $config = new B2BrouterConfig($key, self::ACCOUNT_ID, $baseUrl);
 
-        self::assertNull(B2BrouterFranceLiveTest::keyRefusal($sandbox));
-        self::assertSame(B2BrouterFranceLiveTest::STAGING_SKIP, B2BrouterFranceLiveTest::stagingSkip($sandbox, self::FR_ACCOUNT_ID));
-        self::assertSame(B2BrouterFranceLiveTest::STAGING_SKIP, B2BrouterFranceLiveTest::stagingSkip($sandbox, ''));
+            self::assertSame(B2BrouterFranceLiveTest::FRENCH_ACCOUNT_SKIP, B2BrouterFranceLiveTest::frenchAccountSkip($config, self::FR_ACCOUNT_ID), $key.' at '.$baseUrl);
+        }
     }
 }

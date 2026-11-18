@@ -49,18 +49,18 @@ use PHPUnit\Framework\TestCase;
  * so the test can never reach production.
  *
  * The directory lookup runs in both environments. Sending an invoice and depositing a Flux 10
- * file need a French staging account: B2BROUTER_FR_ACCOUNT_ID with a "stag_" key on the staging
- * host; without one these cases skip. Each staging case reads the account company's SIREN and
- * makes it the seller (invoice) or the declarant (e-report), because B2Brouter accepts only
- * documents of its own account company.
+ * file need a French account in the same environment: B2BROUTER_FR_ACCOUNT_ID, reachable with the
+ * configured key; without one these cases skip. Each of these cases reads the account company's
+ * SIREN and makes it the seller (invoice) or the declarant (e-report), because B2Brouter accepts
+ * only documents of its own account company.
  *
  * Output never contains the API key, the account ids or the account company's tax identifiers.
  */
 #[Group('b2brouter-france-live')]
 final class B2BrouterFranceLiveTest extends TestCase
 {
-    /** Why the send and e-reporting cases skip outside a French staging account. */
-    public const STAGING_SKIP = 'needs a B2Brouter French staging account';
+    /** Why the send and e-reporting cases skip without a French account. */
+    public const FRENCH_ACCOUNT_SKIP = 'needs a B2Brouter French sandbox or staging account';
 
     /** A SIREN with a valid check digit that belongs to no company. */
     private const FICTITIOUS_SIREN = '842917361';
@@ -93,14 +93,13 @@ final class B2BrouterFranceLiveTest extends TestCase
     }
 
     /**
-     * Why the staging cases skip, or null when the configuration is a staging key on the staging
-     * host and a French staging account id is given.
+     * Why the send and e-reporting cases skip, or null when the configuration is accepted (a
+     * sandbox key on the sandbox host or a staging key on the staging host) and a French account
+     * id is given.
      */
-    public static function stagingSkip(B2BrouterConfig $config, string $frenchAccountId): ?string
+    public static function frenchAccountSkip(B2BrouterConfig $config, string $frenchAccountId): ?string
     {
-        $staging = $config->isStagingKey() && $config->baseUrl === B2BrouterConfig::STAGING_BASE_URL;
-
-        return $staging && $frenchAccountId !== '' ? null : self::STAGING_SKIP;
+        return self::keyRefusal($config) === null && $frenchAccountId !== '' ? null : self::FRENCH_ACCOUNT_SKIP;
     }
 
     protected function setUp(): void
@@ -130,9 +129,9 @@ final class B2BrouterFranceLiveTest extends TestCase
         });
     }
 
-    public function test_staging_send_reaches_deposited(): void
+    public function test_send_reaches_deposited(): void
     {
-        [$config, $siren] = $this->frenchStagingAccount();
+        [$config, $siren] = $this->frenchAccount();
 
         LiveTransport::failRedacted($this->redactor, function () use ($config, $siren): void {
             $france = new B2BrouterFrance($config, $this->http());
@@ -146,20 +145,20 @@ final class B2BrouterFranceLiveTest extends TestCase
             }
 
             LiveTransport::report(self::TAG, sprintf(
-                'Staging invoice: platform state "%s", lifecycle %s, delivery %s.',
+                'French invoice: platform state "%s", lifecycle %s, delivery %s.',
                 $status->platformState,
                 $status->lifecycle === null ? '(none)' : $status->lifecycle->name,
                 $status->delivery->state->name,
             ), $this->redactor);
             // Deposited or any later lifecycle status counts; a failed delivery does not.
-            self::assertNotNull($status->lifecycle, sprintf('The staging invoice has no lifecycle status yet (platform state "%s").', $status->platformState));
+            self::assertNotNull($status->lifecycle, sprintf('The French invoice has no lifecycle status yet (platform state "%s").', $status->platformState));
             self::assertNotSame(DeliveryState::Failed, $status->delivery->state, (string) $status->delivery->failure?->message);
         });
     }
 
-    public function test_staging_flux10_deposit_is_accepted(): void
+    public function test_flux10_deposit_is_accepted(): void
     {
-        [$config, $siren] = $this->frenchStagingAccount();
+        [$config, $siren] = $this->frenchAccount();
 
         LiveTransport::failRedacted($this->redactor, function () use ($config, $siren): void {
             $today = new DateTimeImmutable('today', new DateTimeZone('Europe/Paris'));
@@ -183,25 +182,26 @@ final class B2BrouterFranceLiveTest extends TestCase
 
             $deposit = (new B2BrouterFrance($config, $this->http()))->depositReport($report);
 
-            LiveTransport::report(self::TAG, sprintf('Staging Flux 10 deposit: state "%s".', $deposit->state->value), $this->redactor);
+            LiveTransport::report(self::TAG, sprintf('Flux 10 deposit: state "%s".', $deposit->state->value), $this->redactor);
             self::assertContains($deposit->state, [LedgerState::New, LedgerState::Sent], (string) $deposit->errorDescription);
         });
     }
 
     /**
-     * The configuration of the French staging account and its company's SIREN; skips without the
-     * account and refuses a key or host other than staging before any request.
+     * The configuration of the French account and its company's SIREN, in the environment of the
+     * configured key; skips without the account and refuses any key or host but sandbox or staging
+     * before any request.
      *
      * @return array{B2BrouterConfig, string}
      */
-    private function frenchStagingAccount(): array
+    private function frenchAccount(): array
     {
         $accountId = (string) getenv('B2BROUTER_FR_ACCOUNT_ID');
-        $skip = self::stagingSkip($this->config, $accountId);
+        $skip = self::frenchAccountSkip($this->config, $accountId);
         if ($skip !== null) {
             self::markTestSkipped($skip);
         }
-        $config = new B2BrouterConfig($this->apiKeyFromEnvironment(), $accountId, B2BrouterConfig::STAGING_BASE_URL);
+        $config = new B2BrouterConfig($this->apiKeyFromEnvironment(), $accountId, $this->config->baseUrl);
         $refusal = self::keyRefusal($config);
         if ($refusal !== null) {
             self::fail($refusal);
@@ -219,7 +219,7 @@ final class B2BrouterFranceLiveTest extends TestCase
             $siren = is_string($tin) ? self::sirenOf($tin) : null;
         });
         if (! is_string($siren)) {
-            self::fail('The French staging account has no SIREN, SIRET or French VAT number as its tax identifier.');
+            self::fail('The French account has no SIREN, SIRET or French VAT number as its tax identifier.');
         }
         $tin = self::frenchVat($siren);
         $this->redactor = new Redactor([...$this->secrets(), $accountId, $siren, $tin]);

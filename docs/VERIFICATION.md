@@ -156,12 +156,15 @@ Live-tested: directory lookup only, against the B2Brouter sandbox (a `test_` key
 | fictitious SIREN with a valid check digit (`842917361`), manual | `GET /directory/fr/0002/{siren}` | 202 `processing`, then about 6 s later 404 `resource_missing` | `NotListed` |
 | SIREN of a real listed company (not listed here), manual | `GET /directory/fr/0002/{siren}` | 200, flat company object with `FR_ASSUJETTI_ACTIVE` | `Active` |
 | `b2brouter-france-live`, test file of commit `32980b2` (3 tests, 1 assertion, 2 skipped) | lookup of the fictitious SIREN through `B2BrouterAnnuaire` | | `NotListed` |
+| French sandbox account (fictitious company, `GET /accounts/{id}`), manual, 2026-11-18 | account read | 200; `tin_value` is the French VAT number, the SIREN is in `cin_value` (scheme `0002`) | SIREN read from the VAT number |
+| `b2brouter-france-live` with a French sandbox account, 2026-11-18 (3 tests, 7 assertions, 1 failure) | lookup; send of a domestic B2B invoice and lifecycle polling; Flux 10 deposit | lookup `NotListed`; invoice platform state `sent`; deposit 422 `unprocessable_entity` "The account has no enabled DGFiP e-reporting configuration" | `NotListed`; lifecycle `Deposited`, delivery `Delivered`; `DocumentRejected` |
 
-The two skipped cases, a send that must reach `Deposited` and a Flux 10 deposit, need a French
-B2Brouter staging account (`B2BROUTER_FR_ACCOUNT_ID` with a `stag_` key on
-`https://api-staging.b2brouter.net`). Sending, lifecycle statuses, buyer answers, payments, Flux 10
-deposits and the ledger webhook are verified offline only, against fixtures hand-written from
-B2Brouter's API reference and guides; their live run is pending a French staging account.
+The send case ran in the B2Brouter sandbox with a French account of a fictitious company and
+reached `Deposited`. The Flux 10 deposit was refused because the account has no DGFiP e-reporting
+configuration; the refusal confirms that a 422 answer of the ledger endpoint maps to
+`DocumentRejected` with B2Brouter's message, but an accepted deposit is not yet verified live.
+Buyer answers, payments and the ledger webhook are verified offline only, against fixtures
+hand-written from B2Brouter's API reference and guides.
 
 ## D3: import into Lexware Office
 

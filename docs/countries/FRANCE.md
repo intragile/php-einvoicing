@@ -713,8 +713,8 @@ channel, not for B2Brouter.
 `B2BrouterFrance` is not a `Transport`: it does not plug into `ValidatingTransport`, and Peppol
 documents still go through `B2BrouterTransport`. Every call is a synchronous request.
 
-> **Live-tested: directory lookup only.** Sending, lifecycle statuses, answers, payments and Flux
-> 10 deposits are tested offline only; a live test needs a French B2Brouter staging account (see
+> **Live-tested in the sandbox: directory lookup, sending and lifecycle up to `Deposited`.** Buyer
+> answers, payments and an accepted Flux 10 deposit are tested offline only (see
 > [What is verified live](#what-is-verified-live)).
 
 ### Send
@@ -1058,16 +1058,21 @@ Live-tested: directory lookup only, on 2026-11-18 against the B2Brouter sandbox.
 with a valid check digit was answered 202, then 404 `resource_missing` about six seconds later
 (`NotListed`); the SIREN of a real listed company was answered 200 with `FR_ASSUJETTI_ACTIVE` in
 the flat shape. The live group `b2brouter-france-live` repeats the fictitious lookup (`NotListed`
-on that run). Sending, lifecycle statuses, answers, payments and Flux 10 deposits are tested
-offline only; their live cases in the same group run only with a French B2Brouter staging account
-(`B2BROUTER_FR_ACCOUNT_ID` with a `stag_` key on `https://api-staging.b2brouter.net`), which was
-not available. See [VERIFICATION.md](../VERIFICATION.md).
+on that run). With a French sandbox account of a fictitious company (`B2BROUTER_FR_ACCOUNT_ID`,
+reachable with the configured key) the same group sent a domestic B2B invoice that reached
+`Deposited` with delivery `Delivered`; its Flux 10 deposit was refused with 422 because the
+account has no DGFiP e-reporting configuration. Buyer answers, payments and an accepted deposit are
+tested offline only. See [VERIFICATION.md](../VERIFICATION.md).
 
 ```bash
 # Directory lookup (sandbox):
 B2BROUTER_API_KEY=test_… B2BROUTER_ACCOUNT_ID=… vendor/bin/phpunit --group b2brouter-france-live
 
-# Plus the staging cases (send, deposit) with a French staging account:
+# Plus the send and deposit cases with a French account in the same environment:
+B2BROUTER_API_KEY=test_… B2BROUTER_ACCOUNT_ID=… B2BROUTER_FR_ACCOUNT_ID=… \
+  vendor/bin/phpunit --group b2brouter-france-live
+
+# The same on staging:
 B2BROUTER_API_KEY=stag_… B2BROUTER_ACCOUNT_ID=… B2BROUTER_FR_ACCOUNT_ID=… \
   B2BROUTER_BASE_URL=https://api-staging.b2brouter.net vendor/bin/phpunit --group b2brouter-france-live
 ```
@@ -1111,8 +1116,8 @@ and guides, and only its directory lookup is live-tested (see
 - **Other plateformes agréées.** B2Brouter is the only PA supported, through its own API. The
   standard PA API (AFNOR XP Z12-013) is not implemented. e-invoice.be and Recommand are Peppol
   access points, not PAs, and do not satisfy a French sender's obligation.
-- **Live tests of the B2Brouter flow beyond the directory.** Sending, lifecycle statuses,
-  answers, payments and Flux 10 deposits await a French B2Brouter staging account.
+- **Live tests of the rest of the B2Brouter flow.** Buyer answers, payments and an accepted Flux
+  10 deposit (which needs a DGFiP e-reporting configuration on the account) are not yet run live.
 - **Queued French sends in the Laravel bridge.** The bridge's queued sending pipeline stays
   Peppol-only; French sends are synchronous calls.
 - **Received Factur-X PDFs.** French invoices are received with
