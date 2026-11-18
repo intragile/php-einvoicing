@@ -31,5 +31,35 @@ final class Fa3Format
     /** Local name of the document element. */
     public const ROOT = 'Faktura';
 
+    /** The schema instance namespace (prefix "xsi"). */
+    public const XSI_NS = 'http://www.w3.org/2001/XMLSchema-instance';
+
+    /**
+     * Member state codes FA(3) accepts as the prefix of an EU VAT number (XSD type TKodyKrajowUE).
+     * Greece is EL and Northern Ireland XI, as in VAT numbers.
+     */
+    public const EU_VAT_PREFIXES = [
+        'AT', 'BE', 'BG', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'EL', 'HR', 'HU', 'IE', 'IT',
+        'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'XI',
+    ];
+
+    /**
+     * Fixed keys of the additional descriptions (DodatkowyOpis/Klucz) that carry EN 16931 text
+     * terms FA(3) has no element for, per business term.
+     */
+    public const DESCRIPTION_KEYS = [
+        'BT-10' => 'Referencja nabywcy (BT-10)',
+        'BT-11' => 'Projekt (BT-11)',
+        'BT-14' => 'Zamówienie sprzedaży (BT-14)',
+        'BT-15' => 'Przyjęcie dostawy (BT-15)',
+        'BT-17' => 'Przetarg lub partia (BT-17)',
+        'BT-19' => 'Konto księgowe nabywcy (BT-19)',
+        'BT-20' => 'Warunki płatności (BT-20)',
+        'BT-22' => 'Uwagi (BT-22)',
+        'BT-83' => 'Tytuł płatności (BT-83)',
+        'BT-127' => 'Uwagi do pozycji (BT-127)',
+        'BT-154' => 'Opis (BT-154)',
+    ];
+
     private function __construct() {}
 }
