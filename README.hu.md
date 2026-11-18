@@ -391,7 +391,7 @@ A hálózatot csak szimuláló szolgáltatói sandbox elleni teszt a szolgáltat
 igazolja, nem a Peppolon történő kézbesítést; a Peppol teszthálót csak a Recommand éri el. Az
 e-invoice.be csak Peppol BIS Billing 3.0 UBL-t küld. A B2Brouter a továbbított dokumentumot a
 saját számlamodelljéből állítja elő, így a kézbesített bájtok eltérhetnek a te XML-edtől. A
-webhook-aláírásokat a szolgáltatók dokumentált sémája szerint offline ellenőrizzük (az e-invoice.be-ét a közzétett tesztvektorral is); a webhookokat nem teszteltük élesben. Mindhárom meghajtót offline is teszteljük a szolgáltatók közzétett API-leírásából írt mintaválaszokkal. A futtatások eredménye: [docs/VERIFICATION.md](docs/VERIFICATION.md) (angolul).
+webhook-aláírásokat a szolgáltatók dokumentált sémája szerint offline ellenőrizzük (az e-invoice.be-ét a közzétett tesztvektorral is); élesben csak a B2Brouter webhookjait teszteltük (2026-11-18, sandbox-kézbesítések a Laravel hídon visszajátszva). Mindhárom meghajtót offline is teszteljük a szolgáltatók közzétett API-leírásából írt mintaválaszokkal. A futtatások eredménye: [docs/VERIFICATION.md](docs/VERIFICATION.md) (angolul).
 Meghajtónkénti részletek: [docs/TRANSPORT.md](docs/TRANSPORT.md) (angolul).
 
 Mit lehet elküldeni: Peppol BIS Billing 3.0 számlát UBL Invoice vagy CreditNote formában, a
@@ -444,7 +444,7 @@ nem tartalmaz hitelesítő adatot és fiókazonosítót.
 - **Offline egyezés.** A validátor eredményei megegyeznek a hivatalos XSLT-ével 1892 (CEN), 1611
   (Peppol), 584 (KoSIT, XRechnung) és 699 (Factur-X) dokumentumon.
 - **Webhookok.** Az aláírásokat a szolgáltatók dokumentált sémája szerint offline ellenőrizzük
-  (az e-invoice.be-ét a közzétett tesztvektorral is); a webhookokat nem teszteltük élesben.
+  (az e-invoice.be-ét a közzétett tesztvektorral is); élesben csak a B2Brouter webhookjait teszteltük (2026-11-18, sandbox-kézbesítések a Laravel hídon visszajátszva).
 
 ### Ismert korlátok (1.x-re halasztva)
 

@@ -14,7 +14,7 @@ agréée* is described in [FRANCE.md](countries/FRANCE.md#sending-through-a-plat
 > e-invoice.be are live-tested against the provider sandbox (simulated network). All three are also
 > tested offline against fixtures written by hand from each provider's published API description.
 > Webhook signatures are verified offline against each provider's documented scheme (e-invoice.be
-> also against its published test vector); webhooks were not live-tested. The results are in
+> also against its published test vector); only B2Brouter's webhooks were live-tested (2026-11-18, sandbox deliveries replayed through the Laravel bridge). The results are in
 > [VERIFICATION.md](VERIFICATION.md); see also [What is verified](#what-is-verified).
 
 ## Quick start
@@ -410,9 +410,10 @@ return response('', 204);
   once is refused**, even when the copies are identical.
 - `verify($rawBody, $headers)` returns the signature check alone as a boolean and never throws.
 - Answer a notification you ignore with 2xx, or the provider keeps retrying it.
-- **Webhooks are not live-tested.** That needs a public HTTPS endpoint. The signatures are
-  verified offline against each provider's documented scheme; for e-invoice.be also against its
-  published test vector.
+- **Only B2Brouter's webhooks are live-tested** (2026-11-18): deliveries the sandbox really sent
+  were captured and replayed through the Laravel bridge, and their signatures verified. Recommand
+  and e-invoice.be webhooks need a public HTTPS endpoint and are verified offline against each
+  provider's documented scheme; for e-invoice.be also against its published test vector.
 
 Recommand:
 
@@ -832,7 +833,7 @@ no field that tells a sandbox company apart (see above).
 | B2Brouter driver | Offline contract tests with JSON fixtures hand-written from B2Brouter's public API reference (OpenAPI 2026-06-26) and developer guides; live test group `b2brouter-live` | **Live-tested against the provider sandbox (simulated network)** (2026-11-15) |
 | B2Brouter French flow (`B2BrouterFrance`, `B2BrouterAnnuaire`) | Offline contract tests with JSON fixtures hand-written from B2Brouter's API reference and its DGFiP and Flux 10 guides; live test group `b2brouter-france-live` | **Live-tested (sandbox, 2026-11-18): directory lookup, every document type, lifecycle, every buyer answer and payment**; an accepted Flux 10 deposit offline only (the deposit was refused live for a missing DGFiP e-reporting configuration) |
 | e-invoice.be driver | Offline contract tests with JSON fixtures hand-written from e-invoice.be's public API reference (OpenAPI 1.1.0) and guides; live test group `einvoicebe-live` | **Live-tested against the provider sandbox (simulated network)** (2026-11-15) |
-| Webhook signatures | Offline tests against each provider's documented signing scheme; e-invoice.be also against its published test vector | Verified offline; **webhooks were not live-tested** (needs a public HTTPS endpoint) |
+| Webhook signatures | Offline tests against each provider's documented signing scheme; e-invoice.be also against its published test vector | Verified offline; **B2Brouter webhooks live-tested** (2026-11-18: real signed sandbox deliveries replayed through the bridge); Recommand and e-invoice.be webhooks not live-tested |
 
 The run results are recorded in [VERIFICATION.md](VERIFICATION.md). A live test group,
 `recommand-live`, sends the Peppol base example through a Recommand

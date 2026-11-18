@@ -374,7 +374,7 @@ Recommand, B2Brouter and e-invoice.be are the available drivers; Storecove is pl
 A test against a provider sandbox that simulates the network proves the provider's API contract,
 not delivery over Peppol; only Recommand can reach the Peppol test network. e-invoice.be sends
 Peppol BIS Billing 3.0 UBL only. B2Brouter renders the document it transmits from its own invoice
-model, so the delivered bytes may differ from your XML. Webhook signatures are verified offline against each provider's documented scheme (e-invoice.be also against its published test vector); webhooks were not live-tested. All three drivers are also tested offline against fixtures written from the providers' published API descriptions. The run results are in [docs/VERIFICATION.md](docs/VERIFICATION.md). Details per driver:
+model, so the delivered bytes may differ from your XML. Webhook signatures are verified offline against each provider's documented scheme (e-invoice.be also against its published test vector); only B2Brouter's webhooks were live-tested (2026-11-18, sandbox deliveries replayed through the Laravel bridge). All three drivers are also tested offline against fixtures written from the providers' published API descriptions. The run results are in [docs/VERIFICATION.md](docs/VERIFICATION.md). Details per driver:
 [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 What can be sent: Peppol BIS Billing 3.0 as UBL Invoice or CreditNote, with the exact BIS
@@ -425,7 +425,7 @@ credentials and no account identifiers.
 - **Offline parity.** The validator's verdicts equal the official XSLT on 1,892 documents (CEN),
   1,611 (Peppol), 584 (KoSIT, XRechnung) and 699 (Factur-X).
 - **Webhooks.** Signatures are verified offline against each provider's documented scheme
-  (e-invoice.be also against its published test vector); webhooks were not live-tested.
+  (e-invoice.be also against its published test vector); only B2Brouter's webhooks were live-tested (2026-11-18, sandbox deliveries replayed through the Laravel bridge).
 
 ### Known limits (deferred to 1.x)
 

@@ -838,6 +838,10 @@ the API key again) and returns a `PlatformStatus`:
 
 The `B2BrouterWebhook` events `issued_invoice.state_change` and `received_invoice.state_change`
 carry the same status in `$event->lifecycleStatus` (see [TRANSPORT.md](../TRANSPORT.md#b2brouter-webhooks)).
+Observed in the sandbox (2026-11-18): an issued invoice notifies `issued`, `sending` and `sent`
+(`Deposited`); a received invoice notifies `received_invoice.created` (`new`) and its answer
+(`accepted`, `Approved`). A recorded payment turns the invoice `paid` without any notification,
+so read `Collected` from what `recordPayment()` returns or from `lifecycle()`, not from a webhook.
 
 ### Answering a received invoice
 
