@@ -1061,8 +1061,11 @@ the flat shape. The live group `b2brouter-france-live` repeats the fictitious lo
 on that run). With a French sandbox account of a fictitious company (`B2BROUTER_FR_ACCOUNT_ID`,
 reachable with the configured key) the same group sent a domestic B2B invoice that reached
 `Deposited` with delivery `Delivered`; its Flux 10 deposit was refused with 422 because the
-account has no DGFiP e-reporting configuration. A full payment of a services invoice read back as
-`Collected`, and approving a received invoice read back as `Approved`. An accepted deposit is
+account has no DGFiP e-reporting configuration. Every French document type (UBL and CII invoice,
+Factur-X EN 16931 PDF, UBL credit note, UBL EXTENDED-CTC-FR invoice and credit note) reached
+`Deposited`; a full payment of a services invoice read back as `Collected`; every buyer answer read
+back as the table above says, a dispute as `null`. Factur-X MINIMUM and BASIC WL sent past the
+local refusal were refused by B2Brouter with 422 "Invoice Must have lines". An accepted deposit is
 tested offline only. See [VERIFICATION.md](../VERIFICATION.md).
 
 ```bash
@@ -1118,7 +1121,7 @@ and guides, and only its directory lookup is live-tested (see
   standard PA API (AFNOR XP Z12-013) is not implemented. e-invoice.be and Recommand are Peppol
   access points, not PAs, and do not satisfy a French sender's obligation.
 - **Live test of an accepted Flux 10 deposit.** It needs a DGFiP e-reporting configuration on the
-  account and is not yet run live; answers other than an approval are tested offline only.
+  account and is not yet run live.
 - **Queued French sends in the Laravel bridge.** The bridge's queued sending pipeline stays
   Peppol-only; French sends are synchronous calls.
 - **Received Factur-X PDFs.** French invoices are received with

@@ -159,15 +159,18 @@ Live-tested: directory lookup only, against the B2Brouter sandbox (a `test_` key
 | French sandbox account (fictitious company, `GET /accounts/{id}`), manual, 2026-11-18 | account read | 200; `tin_value` is the French VAT number, the SIREN is in `cin_value` (scheme `0002`) | SIREN read from the VAT number |
 | `b2brouter-france-live` with a French sandbox account, 2026-11-18 (3 tests, 7 assertions, 1 failure) | lookup; send of a domestic B2B invoice and lifecycle polling; Flux 10 deposit | lookup `NotListed`; invoice platform state `sent`; deposit 422 `unprocessable_entity` "The account has no enabled DGFiP e-reporting configuration" | `NotListed`; lifecycle `Deposited`, delivery `Delivered`; `DocumentRejected` |
 | `b2brouter-france-live` with the same account, 2026-11-18 (2 tests, 8 assertions) | full payment of a sent services invoice; import of a received invoice bought by the account, `lifecycle()` on it, then `respond()` with an approval | payment: platform state `paid`; received invoice `new`, after `mark_as` `accepted` | `Collected`; no status before the answer, `Approved` after it |
+| `b2brouter-france-live` with the same account, 2026-11-18 (2 tests, 29 + 16 assertions) | send of every other French document type (CII invoice, Factur-X EN 16931 PDF, UBL credit note, UBL EXTENDED-CTC-FR invoice and credit note); every buyer answer on its own received invoice | each document: platform state `sent`; answers: `read`, `accepted`, `annotated`, `refused`, `paid` | each document `Deposited`, delivery `Delivered`; `InProcess`, `Approved` (partial approval), `null` (dispute), `Refused`, `PaymentSent` |
+| Factur-X MINIMUM and BASIC WL sent past the local refusal, manual probe, 2026-11-18 | `B2BrouterFrance::send()` with a hand-built `FrenchDocument` | 422 "Validation failed: Invoice Must have lines" for both | `DocumentRejected`; confirms the local refusal |
+| Disputed received invoice read back, manual probe, 2026-11-18 | `GET /invoices/{id}` after `mark_as` with `annotated` and `dispute: true` | 200, `state` `annotated`; the invoice carries no dispute flag | `null`, as documented |
 
 The send case ran in the B2Brouter sandbox with a French account of a fictitious company and
 reached `Deposited`. The Flux 10 deposit was refused because the account has no DGFiP e-reporting
 configuration; the refusal confirms that a 422 answer of the ledger endpoint maps to
 `DocumentRejected` with B2Brouter's message, but an accepted deposit is not yet verified live.
-A full payment of a services invoice read back as `Collected`, and approving a received invoice
-read back as `Approved`; reading and answering the received invoice both worked. The ledger
-webhook and an accepted Flux 10 deposit are verified offline only, against fixtures hand-written
-from B2Brouter's API reference and guides.
+A full payment of a services invoice read back as `Collected`; every French document type reached
+`Deposited`, and every buyer answer read back as documented, a dispute as `null` because B2Brouter
+keeps no dispute flag. The ledger webhook and an accepted Flux 10 deposit are verified offline
+only, against fixtures hand-written from B2Brouter's API reference and guides.
 
 ## D3: import into Lexware Office
 

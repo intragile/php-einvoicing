@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
 use IntrAgile\EInvoicing\CodeList\ElectronicAddressScheme;
+use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
 use IntrAgile\EInvoicing\France\EReporting\DailyTransactions;
 use IntrAgile\EInvoicing\France\EReporting\Declarant;
 use IntrAgile\EInvoicing\France\EReporting\DeclarantRole;
@@ -17,15 +18,23 @@ use IntrAgile\EInvoicing\France\EReporting\ReportType;
 use IntrAgile\EInvoicing\France\EReporting\TransactionCategory;
 use IntrAgile\EInvoicing\France\EReporting\TransactionsReport;
 use IntrAgile\EInvoicing\France\EReporting\VatSubtotal;
+use IntrAgile\EInvoicing\France\Lifecycle\CharacteristicType;
 use IntrAgile\EInvoicing\France\Lifecycle\LifecycleStatus;
+use IntrAgile\EInvoicing\France\Lifecycle\StatusReason;
 use IntrAgile\EInvoicing\France\Routing\AnnuaireStatus;
 use IntrAgile\EInvoicing\France\Siren;
 use IntrAgile\EInvoicing\Model\ElectronicAddress;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\Party;
+use IntrAgile\EInvoicing\Model\PrecedingInvoiceReference;
+use IntrAgile\EInvoicing\Syntax\FacturX\FacturXPdfWriter;
+use IntrAgile\EInvoicing\Syntax\FacturX\FacturXProfile;
+use IntrAgile\EInvoicing\Syntax\FacturX\FacturXXmlWriter;
+use IntrAgile\EInvoicing\Syntax\Syntax;
 use IntrAgile\EInvoicing\Tests\Support\EReports;
 use IntrAgile\EInvoicing\Tests\Support\FrenchInvoices;
 use IntrAgile\EInvoicing\Tests\Support\LiveTransport;
+use IntrAgile\EInvoicing\Tests\Support\PdfBuilder;
 use IntrAgile\EInvoicing\Tests\Support\StreamHttpClient;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
 use IntrAgile\EInvoicing\Transport\B2Brouter\France\B2BrouterAnnuaire;
@@ -152,6 +161,79 @@ final class B2BrouterFranceLiveTest extends TestCase
         });
     }
 
+    public function test_every_french_document_type_reaches_deposited(): void
+    {
+        [$config, $siren] = $this->frenchAccount();
+
+        LiveTransport::failRedacted($this->redactor, function () use ($config, $siren): void {
+            $france = new B2BrouterFrance($config, $this->http());
+            // Every document gets its own number: B2Brouter refuses a number already taken.
+            $documents = [
+                'CII invoice' => FrenchDocument::fromInvoice(self::fromSeller(FrenchInvoices::domesticB2b(), $siren), Syntax::Cii),
+                'Factur-X EN 16931' => FrenchDocument::fromFacturX(self::facturX(self::fromSeller(FrenchInvoices::domesticB2b(), $siren))),
+                'UBL credit note' => FrenchDocument::fromInvoice(self::fromSeller(FrenchInvoices::creditNoteWithTwoPrecedingInvoices(), $siren)),
+                'UBL EXTENDED-CTC-FR invoice' => FrenchDocument::fromInvoice(self::fromSeller(FrenchInvoices::extendedCtcFrUbl(), $siren)),
+                'UBL EXTENDED-CTC-FR credit note' => FrenchDocument::fromInvoice(self::fromSeller(FrenchInvoices::extendedCtcFrUbl()
+                    ->withType(InvoiceTypeCode::C_381)
+                    ->withPrecedingInvoices([new PrecedingInvoiceReference('F202600001', new DateTimeImmutable('2026-10-01'))]), $siren)),
+            ];
+
+            $outcomes = [];
+            foreach ($documents as $label => $document) {
+                [, $status] = self::sendDocumentAndWait($france, $document);
+                $outcomes[$label] = $status;
+                LiveTransport::report(self::TAG, sprintf(
+                    '%s (%s): platform state "%s", lifecycle %s, delivery %s.',
+                    $label,
+                    $document->type->value,
+                    $status->platformState,
+                    $status->lifecycle === null ? '(none)' : $status->lifecycle->name,
+                    $status->delivery->state->name,
+                ), $this->redactor);
+            }
+            foreach ($outcomes as $label => $status) {
+                self::assertNotNull($status->lifecycle, $label.' has no lifecycle status yet.');
+                self::assertNotSame(DeliveryState::Failed, $status->delivery->state, $label.': '.$status->delivery->failure?->message);
+            }
+        });
+    }
+
+    public function test_buyer_answers_read_back_as_their_statuses(): void
+    {
+        [$config, $siren] = $this->frenchAccount();
+
+        LiveTransport::failRedacted($this->redactor, function () use ($config, $siren): void {
+            $france = new B2BrouterFrance($config, $this->http());
+            // B2Brouter keeps one state for an approval and a partial approval (205). A dispute
+            // leaves the invoice "annotated", which carries no dispute flag, so it reads as null.
+            $answers = [
+                'in process' => [[BuyerResponse::inProcess()], LifecycleStatus::InProcess],
+                'partially approved' => [[BuyerResponse::partiallyApproved('100.00', CharacteristicType::MAP, 'Only part of the goods was delivered.')], LifecycleStatus::Approved],
+                'disputed' => [[BuyerResponse::disputed('The unit price differs from the order.')], null],
+                'refused' => [[BuyerResponse::refused(StatusReason::CMD_ERR, 'The order reference is wrong.')], LifecycleStatus::Refused],
+                'approved, then payment sent' => [[BuyerResponse::approved(), BuyerResponse::paymentSent()], LifecycleStatus::PaymentSent],
+            ];
+
+            $outcomes = [];
+            foreach ($answers as $label => [$responses, $expected]) {
+                $id = $this->importReceived($config, $siren);
+                foreach ($responses as $response) {
+                    $status = $france->respond($id, $response);
+                }
+                $outcomes[$label] = [$status, $expected];
+                LiveTransport::report(self::TAG, sprintf(
+                    'Answer "%s": platform state "%s", lifecycle %s.',
+                    $label,
+                    $status->platformState,
+                    $status->lifecycle === null ? '(none)' : $status->lifecycle->name,
+                ), $this->redactor);
+            }
+            foreach ($outcomes as $label => [$status, $expected]) {
+                self::assertSame($expected, $status->lifecycle, $label);
+            }
+        });
+    }
+
     public function test_full_payment_of_services_invoice_reads_collected(): void
     {
         [$config, $siren] = $this->frenchAccount();
@@ -181,20 +263,7 @@ final class B2BrouterFranceLiveTest extends TestCase
         [$config, $siren] = $this->frenchAccount();
 
         LiveTransport::failRedacted($this->redactor, function () use ($config, $siren): void {
-            // The sandbox does not simulate inbound traffic; importing with issued=false creates a
-            // received invoice, bought by the account company.
-            $document = FrenchDocument::fromInvoice(self::toBuyer(self::fromSeller(FrenchInvoices::domesticB2b(), self::FICTITIOUS_SIREN), $siren));
-            $import = $this->http()->send(
-                'POST',
-                sprintf('%s/accounts/%d/invoices/import?issued=false', $config->baseUrl, $config->accountId),
-                $config->headers() + ['Content-Type' => FranceResponseMapper::IMPORT_CONTENT_TYPE],
-                $document->bytes,
-            );
-            self::assertSame(201, $import->getStatusCode(), LiveTransport::excerpt($this->redactor, 'The import of the received invoice', $import));
-            $imported = json_decode((string) $import->getBody(), true);
-            $id = is_array($imported) && is_array($imported['invoice'] ?? null) ? ($imported['invoice']['id'] ?? null) : null;
-            self::assertIsInt($id, LiveTransport::excerpt($this->redactor, 'The import answer has no invoice id', $import));
-            $id = (string) $id;
+            $id = $this->importReceived($config, $siren);
 
             $france = new B2BrouterFrance($config, $this->http());
             $received = $france->lifecycle($id);
@@ -315,7 +384,17 @@ final class B2BrouterFranceLiveTest extends TestCase
      */
     private static function sendAndWait(B2BrouterFrance $france, Invoice $invoice): array
     {
-        $result = $france->send(FrenchDocument::fromInvoice($invoice));
+        return self::sendDocumentAndWait($france, FrenchDocument::fromInvoice($invoice));
+    }
+
+    /**
+     * Sends the document and polls its status until it is deposited or later, or failed for good.
+     *
+     * @return array{string, PlatformStatus} the B2Brouter invoice id and its last status
+     */
+    private static function sendDocumentAndWait(B2BrouterFrance $france, FrenchDocument $document): array
+    {
+        $result = $france->send($document);
         self::assertNotSame('', $result->documentId);
 
         $status = $france->lifecycle($result->documentId);
@@ -325,6 +404,44 @@ final class B2BrouterFranceLiveTest extends TestCase
         }
 
         return [$result->documentId, $status];
+    }
+
+    /**
+     * Imports a domestic invoice bought by the account company as a received invoice and returns
+     * its B2Brouter id. The sandbox does not simulate inbound traffic; importing with issued=false
+     * creates a received invoice.
+     */
+    private function importReceived(B2BrouterConfig $config, string $siren): string
+    {
+        $document = FrenchDocument::fromInvoice(self::toBuyer(self::fromSeller(FrenchInvoices::domesticB2b(), self::FICTITIOUS_SIREN), $siren));
+        $import = $this->http()->send(
+            'POST',
+            sprintf('%s/accounts/%d/invoices/import?issued=false', $config->baseUrl, $config->accountId),
+            $config->headers() + ['Content-Type' => FranceResponseMapper::IMPORT_CONTENT_TYPE],
+            $document->bytes,
+        );
+        self::assertSame(201, $import->getStatusCode(), LiveTransport::excerpt($this->redactor, 'The import of the received invoice', $import));
+        $imported = json_decode((string) $import->getBody(), true);
+        $id = is_array($imported) && is_array($imported['invoice'] ?? null) ? ($imported['invoice']['id'] ?? null) : null;
+        self::assertIsInt($id, LiveTransport::excerpt($this->redactor, 'The import answer has no invoice id', $import));
+
+        return (string) $id;
+    }
+
+    /**
+     * The invoice as a Factur-X EN 16931 PDF on a blank page.
+     */
+    private static function facturX(Invoice $invoice): string
+    {
+        $xml = (new FacturXXmlWriter)->write($invoice, FacturXProfile::En16931)->xml;
+        $page = (new PdfBuilder('1.7'))
+            ->object(1, '<< /Type /Catalog /Pages 2 0 R >>')
+            ->object(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>')
+            ->object(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>')
+            ->trailer('/Root 1 0 R /ID [<4652454E4348> <00>]')
+            ->classic();
+
+        return (new FacturXPdfWriter)->embed($page, $xml, FacturXProfile::En16931)->pdf;
     }
 
     /**
