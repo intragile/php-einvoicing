@@ -51,7 +51,8 @@ use InvalidArgumentException;
  *
  * Also refused: a seller VAT identifier (BT-31) that is not "PL" with a NIP of the schema
  * pattern, missing document totals, VAT categories and rates without an FA(3) rate code or
- * summary bucket, VAT breakdown rows whose lines map to different rate codes, decimals beyond
+ * summary bucket, a written line whose summary bucket (P_13_x) no VAT breakdown row writes, VAT
+ * breakdown rows whose lines map to different rate codes, decimals beyond
  * the schema (amounts 2, quantities and rates 6, unit prices and P_10 8), a half-open invoicing
  * period (BG-14), an actual delivery date (BT-72) that differs from the tax point date (BT-7),
  * a supply date (P_6) next to an invoicing period, which FA(3) offers as alternatives, a
@@ -646,12 +647,23 @@ final class Fa3Guard
     {
         $violations = [];
         $buyerCountry = $invoice->buyer->address?->country;
+        $written = Fa3Buckets::written($invoice);
         foreach ($invoice->lines as $line) {
             $override = $line->extensions()->get(PolishLine::class)?->rateCode;
             try {
-                Fa3LineWriter::bucket($line, $buyerCountry);
+                $bucket = Fa3LineWriter::bucket($line, $buyerCountry);
             } catch (InvalidArgumentException $e) {
                 $violations[] = sprintf('%s (line "%s"): %s', $override === null ? 'BT-151' : 'P_12', $line->id, $e->getMessage());
+
+                continue;
+            }
+            if (Fa3LineWriter::isWritten($line) && ! in_array($bucket, $written, true)) {
+                $violations[] = sprintf(
+                    '%s (line "%s"): the line feeds %s, which no VAT breakdown row (BG-23) writes; every row needs its summary bucket',
+                    $override === null ? 'BT-151' : 'P_12',
+                    $line->id,
+                    $bucket->netElement(),
+                );
             }
         }
 

@@ -53,6 +53,16 @@ final class Fa3Buckets
     }
 
     /**
+     * The buckets the breakdown rows that can be assigned feed, in schema order.
+     *
+     * @return list<VatBucket>
+     */
+    public static function written(Invoice $invoice): array
+    {
+        return array_map(static fn (array $entry): VatBucket => $entry[0], self::resolve($invoice)[0]);
+    }
+
+    /**
      * @return array{list<array{VatBucket, BigDecimal, BigDecimal}>, list<string>}
      */
     private static function resolve(Invoice $invoice): array

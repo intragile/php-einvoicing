@@ -117,11 +117,12 @@ final class Fa3Reader
                 static fn (?string $wz): bool => $wz !== null,
             ));
 
+            $buckets = $this->buckets($d, $fa, $currency);
+            $onlyBucket = count($buckets) === 1 ? $buckets[0][0] : null;
             $lines = [];
             foreach ($rows as $index => $row) {
-                $lines[] = $lineMapper->line($row, $lineTerms[$index] ?? [], $buyerCountry, $annotations->margin !== null);
+                $lines[] = $lineMapper->line($row, $lineTerms[$index] ?? [], $buyerCountry, $annotations->margin !== null, $onlyBucket);
             }
-            $buckets = $this->buckets($d, $fa, $currency);
             if ($lines === []) {
                 $position = 0;
                 foreach ($buckets as [$bucket, $net]) {

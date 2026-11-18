@@ -38,7 +38,10 @@ use InvalidArgumentException;
  *   key gives the unit code beside the label.
  * - P_12 gives the VAT category and rate; the code is kept as the Polish rate code when the
  *   category and rate would derive another code. A row without P_12 is a margin scheme line
- *   when the invoice declares a margin scheme, else category O without a rate.
+ *   when the invoice declares a margin scheme. Otherwise it is marked as written without P_12
+ *   (PolishLine::$rateCodeOmitted) and takes the category and rate of the default code of the
+ *   invoice's only summary bucket; with several buckets the row's bucket is unknown, so it is
+ *   category O without a rate and no code is guessed.
  * - P_10 is one line allowance with that amount; its reason is the fixed-key description of
  *   the row, else "P_10".
  * - A row without P_8A, P_8B or P_9A is marked with the matching PolishLine omission marker, so
@@ -58,8 +61,9 @@ final class Fa3LineMapper
      *                                        BT-128, BT-132, BT-133, BT-156, BT-159, BT-130, and BT-139,
      *                                        BT-137, BT-138, BT-140 of the allowance); values are
      *                                        already checked
+     * @param  ?VatBucket  $onlyBucket  the summary bucket when the invoice writes exactly one
      */
-    public function line(DOMElement $row, array $terms, ?CountryCode $buyerCountry, bool $marginInvoice): InvoiceLine
+    public function line(DOMElement $row, array $terms, ?CountryCode $buyerCountry, bool $marginInvoice, ?VatBucket $onlyBucket = null): InvoiceLine
     {
         $d = $this->d;
         $before = $d->flag('fa:StanPrzed', $row);
@@ -79,12 +83,16 @@ final class Fa3LineMapper
         $codeElement = $d->one('fa:P_12', $row);
         $code = $d->code(VatRateCode::class, $codeElement);
         $margin = false;
+        $omitted = false;
         if ($code !== null) {
             [$vat, $override] = self::vat($code, $buyerCountry);
         } else {
             $margin = $codeElement === null && $marginInvoice;
-            $vat = new LineVat(VatCategory::NotSubjectToVat);
-            $override = null;
+            $omitted = $codeElement === null && ! $margin;
+            $default = $omitted && $onlyBucket !== null ? self::defaultCode($onlyBucket) : null;
+            [$vat, $override] = $default === null
+                ? [new LineVat(VatCategory::NotSubjectToVat), null]
+                : self::vat($default, $buyerCountry);
         }
 
         $position = $d->token('fa:NrWierszaFa', $row);
@@ -139,6 +147,7 @@ final class Fa3LineMapper
             unitOmitted: ! $d->has('fa:P_8A', $row),
             quantityOmitted: $writtenQuantity === null,
             unitPriceOmitted: ! $d->has('fa:P_9A', $row),
+            rateCodeOmitted: $omitted,
         );
 
         return $polish == new PolishLine ? $line : $line->withExtension($polish);

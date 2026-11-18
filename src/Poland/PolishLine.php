@@ -13,9 +13,10 @@ use InvalidArgumentException;
  * Polish FA(3) line extension (FaWiersz data the EN 16931 line does not carry), attached to an
  * invoice line through its extension bag.
  *
- * The three omission markers (unitOmitted, quantityOmitted, unitPriceOmitted) record that a row
- * read from FA(3) had no P_8A, P_8B or P_9A, so writing the read invoice back keeps those optional
- * elements absent. Invoices built in code leave them false and get all three elements written.
+ * The omission markers (unitOmitted, quantityOmitted, unitPriceOmitted, rateCodeOmitted) record
+ * that a row read from FA(3) had no P_8A, P_8B, P_9A or P_12, so writing the read invoice back
+ * keeps those optional elements absent. Invoices built in code leave them false and get the
+ * elements written.
  */
 final readonly class PolishLine
 {
@@ -45,8 +46,9 @@ final readonly class PolishLine
      * @param  BigDecimal|numeric-string|int|null  $excise
      * @param  BigDecimal|numeric-string|int|null  $exchangeRate
      *
-     * @throws InvalidArgumentException when a margin line has a VAT rate code, or a bucket line is
-     *                                  flagged as a state-before row
+     * @throws InvalidArgumentException when a margin line has a VAT rate code, a bucket line is
+     *                                  flagged as a state-before row, or the rate code omission
+     *                                  marker is set on a margin line
      */
     public function __construct(
         /** VAT rate code (P_12); overrides the code derived from the line VAT category and rate. */
@@ -103,12 +105,21 @@ final readonly class PolishLine
          * (P_11, else P_11A) divided by the quantity.
          */
         public bool $unitPriceOmitted = false,
+        /**
+         * The source row had no VAT rate code (P_12) and is not a margin scheme row. Set by the
+         * FA(3) reader; the writer leaves P_12 out. The rate code override, else the line VAT
+         * category and rate, still decide the summary bucket (P_13_x) the line feeds.
+         */
+        public bool $rateCodeOmitted = false,
     ) {
         if ($margin && $rateCode !== null) {
             throw new InvalidArgumentException(sprintf(
                 'A margin scheme line carries no VAT rate code (P_12), got %s.',
                 $rateCode->value,
             ));
+        }
+        if ($rateCodeOmitted && $margin) {
+            throw new InvalidArgumentException('A margin scheme line carries no VAT rate code (P_12) already; it takes no rate code omission marker.');
         }
         if ($bucketLine && $stateBefore) {
             throw new InvalidArgumentException('A bucket line is not a state-before row (StanPrzed).');

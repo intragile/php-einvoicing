@@ -24,7 +24,7 @@ use InvalidArgumentException;
  * UN/ECE code of BT-130; with a label, a BT-130 other than C62 goes to a line description
  * (DodatkowyOpis) under its fixed key. P_10 is the sum of the line allowances (BT-136). P_8A, P_8B and P_9A are
  * left out for a row read without them (the PolishLine omission markers) as long as the line still
- * holds the values read from their absence.
+ * holds the values read from their absence; P_12 is left out for a row read without it.
  *
  * A state-before row of a correction (PolishLine::$stateBefore) is held in storno form, so the
  * invoice totals give the difference; it is written with StanPrzed = 1 and the sign of its
@@ -123,7 +123,7 @@ final class Fa3LineWriter
         $output->decimal($row, 'P_11', $sign($line->netAmount));
         $output->decimal($row, 'P_11A', $sign($polish?->grossAmount));
         $output->decimal($row, 'P_11Vat', $sign($polish?->vatAmount));
-        $output->text($row, 'P_12', self::rateCode($line, $buyerCountry)?->value);
+        $output->text($row, 'P_12', $polish?->rateCodeOmitted === true ? null : self::rateCode($line, $buyerCountry)?->value);
         $output->decimal($row, 'P_12_XII', $polish?->ossRate);
         if ($polish?->annex15 === true) {
             $output->marker($row, 'P_12_Zal_15');
