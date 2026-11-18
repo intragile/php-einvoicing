@@ -98,9 +98,15 @@ All notable changes to this project are documented here. The format follows
   without rows, partial advances, settled advance invoices, the order of an advance invoice, the
   VAT in PLN supplied by the issuer, charges and deductions (`Rozliczenie`), payment form and bank
   accounts, footer, transaction terms, and verbatim fragments for the transport, authorised party
-  and attachment blocks. A writer guard refuses, in one exception, every value FA(3) cannot carry;
-  EN 16931 text terms without an FA(3) element are written as additional descriptions with fixed
-  keys (`Fa3Format::DESCRIPTION_KEYS`) and read back.
+  and attachment blocks. A writer guard refuses, in one exception, the model values FA(3) cannot
+  carry and the combinations the FA(3) rules reject, and the writer validates its own output with
+  the bundled schema and the fatal FA(3) rules before returning it; a test keeps every model
+  property the writer reads classified as written, carried or refused. EN 16931 text terms without
+  an FA(3) element, including the amount of each of several line allowances, are written as
+  additional descriptions with fixed keys (`Fa3Format::DESCRIPTION_KEYS`) and read back.
+  One-stop-shop lines (`PolishLine::$ossRate`, `P_13_5`) are written and read; rows without a rate
+  code (`P_12`) are read and written back without one; taxi lump-sum invoices (`P_13_4`) are read
+  but refused on write, because the brochure ties no rate code to that summary.
 - **Poland:** code lists `InvoiceKind`, `VatRateCode` (P_12), `VatBucket` (P_13), `Gtu`,
   `Procedure`, `PaymentForm`, `ThirdPartyRole`, `MarginScheme`, `ExemptionBasis`,
   `CorrectionEffect` and `TaxpayerStatus`.

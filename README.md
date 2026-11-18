@@ -56,7 +56,8 @@ Included today:
   the library maps its states to statuses), and a live directory lookup. Tested offline;
   live-tested in the sandbox: directory lookup, sending, lifecycle, buyer approval and payment.
 - Polish KSeF invoices in the FA(3) format: writing and reading FA(3) from the same model, with the
-  Polish data (invoice kinds, corrections, advances, VAT in PLN, annotations) in extensions, and
+  Polish data (invoice kinds, corrections, advances, VAT in PLN, annotations, one-stop-shop lines)
+  in extensions (taxi lump-sum invoices are read but not written), and
   validation against the bundled official FA(3) XSD plus 21 rules from the Ministry of Finance
   brochure, offline; helpers for the NIP, the KSeF number and the KOD I verification link. Format
   verified offline against the official FA(3) XSD and the published brochure rules, no official

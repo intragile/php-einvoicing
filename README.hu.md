@@ -58,8 +58,8 @@ Jelenleg tartalmazza:
   valamint élő címtár- (*annuaire*) lekérdezés. Hálózat nélkül tesztelve; élesben (sandboxban) a
   címtár-lekérdezést, a küldést, az életciklust, a vevői jóváhagyást és a fizetést teszteltük.
 - Lengyel KSeF-számlák FA(3) formátumban: FA(3) írása és olvasása ugyanabból a modellből, a lengyel
-  adatokkal (számlafajták, helyesbítések, előlegek, az ÁFA zlotyban, a kötelező jelölések)
-  bővítményekben, valamint ellenőrzés a csomagban szállított hivatalos FA(3) XSD-vel és a lengyel
+  adatokkal (számlafajták, helyesbítések, előlegek, az ÁFA zlotyban, a kötelező jelölések, az OSS
+  szerinti tételek) bővítményekben (a taxis átalányadós számlákat csak olvassa, nem írja), valamint ellenőrzés a csomagban szállított hivatalos FA(3) XSD-vel és a lengyel
   Pénzügyminisztérium tájékoztató füzetéből vett 21 szabállyal, hálózat nélkül; segédosztályok a
   NIP-hez, a KSeF-számhoz és a KOD I ellenőrző linkhez. A formátumot hálózat nélkül ellenőriztük a
   hivatalos FA(3) XSD és a közzétett szabályok alapján, hivatalos futtatható referencia nélkül; a

@@ -62,9 +62,10 @@ EN 16931 does not carry goes into two extensions:
   charges and deductions (`Settlement`), the payment form, bank accounts, the footer, transaction
   terms, verbatim fragments and the header data.
 - `PolishLine` (on a line): the P_12 rate code override, a free-text unit (P_8A), the line
-  supply date, gross unit price and amount, line VAT, the OSS rate, annex 15, excise, GTU,
-  procedure, line exchange rate, PKWiU, CN and PKOB, and the flags for state-before rows,
-  margin lines and synthetic bucket lines.
+  supply date, gross unit price and amount, line VAT, the OSS rate (see
+  [One-stop shop](#one-stop-shop-oss)), annex 15, excise, GTU, procedure, line exchange rate,
+  PKWiU, CN and PKOB, the flags for state-before rows, margin lines and synthetic bucket lines,
+  and the omission markers the reader sets (see [Read](#read)).
 
 <!-- sample: run -->
 ```php
@@ -142,7 +143,21 @@ written only when `PolishInvoice::$systemInfo` is set.
 
 Before anything is written, the writer guard checks the whole invoice and throws one
 `InvalidArgumentException` that names every value FA(3) cannot carry (see
-[Mapping](#mapping)). FA(3) data is never dropped silently.
+[Mapping](#mapping)). Every model value the writer reads is written to an FA(3) element, carried
+as a fixed-key additional description, or refused; a test keeps that classification complete for
+the party, line, item, price, payment, address, contact and Polish extension classes. The only
+values replaced by design are the EN 16931 ones a Polish override supersedes (see below).
+
+The guard also refuses what the FA(3) rules would reject: a corrective invoice without the
+corrected invoice (neither BG-3 with its issue date nor correction data, PL-FA3-01), a buyer marked
+JST or GV without the third party in role 8 or 10 (PL-FA3-13), and a domestic reverse-charge row
+(`oo`) without the reverse-charge annotation (PL-FA3-19), which is never set for you. As a safety
+net, the writer then validates its own output offline with the bundled schema and the fatal
+PL-FA3 rules and, instead of returning the document, throws one `InvalidArgumentException` listing
+every schema error and fatal finding. That catches the limits the guard does not check itself,
+such as the text lengths of the schema (256 characters for most texts, 512 for names, 50 for
+`UU_ID`). `ContactDetails` refuses an empty e-mail address or phone number and `KeyValue` a line
+number below 1.
 
 The invoice kind (`RodzajFaktury`) is `PolishInvoice::$kind`, else derived from the invoice type
 code (BT-3): 380 is VAT, 381 and 384 are KOR, 386 is ZAL. Any other BT-3 needs an explicit kind.
@@ -163,8 +178,9 @@ model:
 
 `Fa3Reader` reads an FA(3) invoice into the same model, with the Polish data in the
 `PolishInvoice` and `PolishLine` extensions. Elements that are not mapped are listed in
-`ReadResult::$ignored`; only a document without invoice number, issue date, currency or seller
-NIP is refused (`UnsupportedDocument`).
+`ReadResult::$ignored`. A document whose root is not an FA(3) `Faktura`, or without invoice number,
+issue date, currency or seller NIP, is refused with `UnsupportedDocument`; a document with a DOCTYPE
+declaration is refused with `UnsafeXml` before anything is read.
 
 <!-- sample: run -->
 ```php
@@ -199,6 +215,19 @@ write them back on their own. To change them, change the Polish data:
 - **BT-13** (purchase order reference) is the first order number of `WarunkiTransakcji/Zamowienia`.
 - **BT-6** (VAT accounting currency) is PLN and **BT-111** the sum of `P_14_1W` to `P_14_4W` on an
   invoice in a foreign currency; the per-bucket amounts are kept in `PolishInvoice::$vatInPln`.
+
+Rows are read as written, with nothing guessed:
+
+- **A row without `P_12`** (allowed on simplified invoices and in the cases of p. 92) that is not a
+  margin row is marked `PolishLine::$rateCodeOmitted` and written back without `P_12`. When the
+  invoice has exactly one summary bucket, the line takes the category and rate of that bucket's
+  default code (for example S 23 for `P_13_1`); with several buckets its bucket is unknown, so it
+  is category O without a rate, and writing it back is refused unless `P_13_8` is present.
+- **A row with `P_12_XII` and without `P_12`** is a one-stop-shop line (category S at that rate).
+- **A description whose `NrWiersza` several rows share** (rows numbered 1, 1, 2, 2) is not
+  attached to any of them: it stays a `PolishInvoice::$descriptions` entry and the ambiguity is
+  listed in `ignored`.
+- A description with a line number below 1 is listed in `ignored`.
 
 ## Validate
 
@@ -350,6 +379,13 @@ no `FaWiersz`. The model needs at least one line, so such an invoice carries one
 net = the bucket amount). The writer never writes a bucket line as `FaWiersz`; its amounts reach
 `P_13_x` and `P_14_x` through the VAT breakdown. The reader creates bucket lines when a ZAL, KOR_ZAL
 or KOR has no rows. Bucket lines are refused on other kinds.
+
+A bucket line carries nothing but its identifier, quantity 1, price, net amount and VAT, with the
+bucket element name or an empty item name: any other line data (unit other than C62, description,
+identifiers, note, references, allowances, unit label, GTU and the other row fields of
+`PolishLine`) would not be written, so the guard refuses it. The taxi lump-sum (`P_13_4`) and
+one-stop-shop (`P_13_5`) buckets have no rate code, so an invoice without rows that uses them is
+read (with a category S line without a rate) but cannot be written back.
 
 An invoice may mix bucket lines with real lines; nothing refuses it, because FA(3) allows rows on
 these kinds. Both kinds of line feed the buckets, so do not describe the same amount twice.
@@ -507,6 +543,29 @@ $line = (new InvoiceLine(
 $polish = new PolishInvoice(annotations: new Annotations(margin: MarginScheme::UsedGoods)); // P_PMarzy_3_1
 ```
 
+## One-stop shop (OSS)
+
+A supply under the one-stop-shop procedure (VAT Act, dział XII rozdział 6a) is taxed at the rate of
+the buyer's member state. Give the line VAT category S at that rate and the same rate as
+`PolishLine::$ossRate`. The line is written with `P_12_XII` and without `P_12` (the code `np I`
+excludes OSS, p. 92) and feeds the OSS summary `P_13_5` with its VAT in `P_14_5` (pp. 49-50).
+
+```php
+$line = (new InvoiceLine(
+    id: '1',
+    quantity: '1',
+    unit: UnitCode::C62,
+    price: new Price('100.00'),
+    item: new Item('E-book'),
+    vat: new LineVat(VatCategory::StandardRate, '19'),
+))->withExtension(new PolishLine(ossRate: '19')); // P_12_XII 19, P_13_5 100.00, P_14_5 19.00
+```
+
+The guard refuses an OSS line with a rate code override, a margin flag, or another category or
+rate than S at its OSS rate. On read, such rows come back as S at the OSS rate with the OSS rate
+kept, and the `P_13_5` breakdown row is S at that rate (without a rate when the rows' rates
+differ, which then cannot be written back). FA(3) has no `P_14_5W`, so no VAT in PLN is needed.
+
 ## Mapping
 
 ### Header, parties and payment
@@ -547,11 +606,21 @@ foreign post code and city come back joined in BT-37 / BT-52 (for example city `
 | AE, buyer in PL or no buyer country | `oo` | `P_13_10` |
 | AE, buyer abroad | `np II` | `P_13_9` |
 | margin line (`PolishLine::$margin`) | none | `P_13_11` |
+| one-stop-shop line (`PolishLine::$ossRate`) | none, `P_12_XII` | `P_13_5` |
 
-`PolishLine::$rateCode` overrides the derived code. S at 4 % or 3 %, and the categories L, M and B,
-are refused: the brochure gives rates 4 and 3 no bucket (`P_13_4` is described only as the taxi
-lump sum). On read, Z, K, G, E and AE get rate 0 and O no rate; a bucket holding rows of two codes
-(23 and 22) reads as one VAT breakdown row with category S and no rate.
+`PolishLine::$rateCode` overrides the derived code, but only within the line's category and rate
+bucket: 22 for S 23 (or 23 for S 22), 7 for S 8 (or 8 for S 7), `np II` or `oo` for AE, and the
+zero and exempt codes for their own categories. Any other override (for example `zw` on an S 23
+line) is refused, and so is a VAT amount (BT-117) other than zero on a breakdown row whose bucket
+has no VAT element (`P_13_6_x` to `P_13_11`), so VAT is never lost through an override.
+
+S at 4 % or 3 %, and the categories L, M and B, are refused: the brochure ties no rate code to a
+summary bucket for rates 4 and 3 (`P_13_4` is described only as the taxi lump sum, p. 49).
+**Taxi lump-sum invoices** (`P_13_4`, rows with `P_12` = `4`) are therefore read (lines S 4 with
+the code kept, a breakdown row S without a rate) but refused on write with a message naming the
+taxi lump-sum summary. Every written row's bucket must be written too: a line whose bucket no VAT
+breakdown row feeds is refused. On read, Z, K, G, E and AE get rate 0 and O no rate; a bucket
+holding rows of two codes (23 and 22) reads as one VAT breakdown row with category S and no rate.
 
 ### Lines
 
@@ -562,7 +631,7 @@ lump sum). On read, Z, K, G, E and AE get rate 0 and O no rate; a bucket holding
 | BT-130 | `P_8A` | `PolishLine::$unitLabel`, else the UN/ECE code |
 | BT-129 | `P_8B` | |
 | BT-146 | `P_9A` | |
-| BG-27 (sum) | `P_10` | the sum of the line allowances |
+| BG-27 (sum) | `P_10` | the sum of the line allowances; with several, each amount is also a description (`Kwota rabatu (BT-136)`) |
 | BT-131 | `P_11` | |
 
 Units (P13, amended): a free-text unit label is written as `P_8A`. When the line's unit code
@@ -600,6 +669,7 @@ terms. The line terms carry the row number (`NrWiersza`). BT-22 is written once 
 | BT-156 | `Indeks nabywcy (BT-156)` | line |
 | BT-159 | `Kraj pochodzenia (BT-159)` | line |
 | BT-130 | `Jednostka miary UN/ECE (BT-130)` | line, only beside a unit label |
+| BT-136 | `Kwota rabatu (BT-136)` | line allowance, only on a line with several allowances; starts the terms of its allowance |
 | BT-139 | `Powód rabatu (BT-139)` | line allowance |
 | BT-137 | `Podstawa rabatu (BT-137)` | line allowance |
 | BT-138 | `Procent rabatu (BT-138)` | line allowance |
@@ -621,8 +691,11 @@ the paid amount (BT-113, except on ROZ) and the rounding amount (BT-114) when no
 and direct debit (BG-18, BG-19), note subject codes (BT-21), country subdivisions (BT-39, BT-54),
 line periods (BG-26), item price discounts and gross prices (BT-147, BT-148), item classifications
 (BT-158), item attributes (BG-32), scheme identifiers FA(3) has no field for (BT-128-1, BT-47-1),
-a price base quantity unit (BT-150) other than the line unit, and the payment means text (BT-82)
-when a payment form is written. VAT exemption reasons (BT-120, BT-121) are accepted only with the
+a price base quantity unit (BT-150) other than the line unit, the payment means text (BT-82)
+when a payment form is written, a third party with an internal identifier (`IDWew`) next to a VAT
+identifier or a legal registration, a GLN (`PolishParty::$gln`) of a party without an address, a
+rate code override outside the line's category or rate bucket, and data on a bucket line beyond
+its amounts (see [Invoices without rows](#invoices-without-rows)). VAT exemption reasons (BT-120, BT-121) are accepted only with the
 exemption annotation (`Annotations::$exemption`, `P_19` with its legal basis), which supersedes
 them; the legal basis is never guessed.
 
@@ -635,9 +708,11 @@ has none.
 Write → read → write keeps every FA(3) field. Going the other way, from an EN 16931 invoice through
 FA(3) and back, these differences remain:
 
-- **Several allowances on one line read back as one.** FA(3) has only the total `P_10`. The
-  details of each allowance (reason, base, percentage, code) go into the row's descriptions, and
-  the reader returns one allowance of the `P_10` total.
+- **Several allowances on one line** keep their amounts: FA(3) has only the total `P_10`, so each
+  allowance is written as the description `Kwota rabatu (BT-136)` followed by its reason, base,
+  percentage and code, and the reader rebuilds the allowances when at least two such amounts add
+  up to `P_10`. A file whose amounts do not add up (or are malformed) reads as one allowance of
+  `P_10`, with the amounts kept as descriptions. A line with one allowance carries no amount key.
 - **An allowance read from `P_10` alone has the reason `P_10`** (`Fa3Format::ALLOWANCE_REASON`).
   The writer does not repeat that reason as a BT-139 description, so an allowance whose real
   reason is the literal text `P_10` loses it.
@@ -649,8 +724,9 @@ FA(3) and back, these differences remain:
   `DoRozliczenia` from the entries and `P_15`, at 2 decimals. A source that wrote them at another
   scale (for example `37` for `37.00`) comes back normalised; a source whose sum differs from its
   entries has that sum listed in `ignored` and the computed one used.
-- **Omitted `P_8A`, `P_8B`, `P_9A`.** A row read without them is marked (`unitOmitted`,
-  `quantityOmitted`, `unitPriceOmitted`) and written back without them while the line still holds
+- **Omitted `P_8A`, `P_8B`, `P_9A`, `P_12`.** A row read without `P_12` is marked
+  `rateCodeOmitted` and written back without it (see [Read](#read)). A row read without the others
+  is marked (`unitOmitted`, `quantityOmitted`, `unitPriceOmitted`) and written back without them while the line still holds
   the values read from their absence. For `P_9A` the check is by value: a net price changed to an
   equal value at another scale (for example `45.9` and `45.90`) keeps `P_9A` omitted, so the price
   comes back at the reader's scale.
@@ -697,7 +773,9 @@ echo $number->issuerIdentifier, ' ', $number->acceptedOn->format('Y-m-d'), "\n";
 var_dump(KsefNumber::isValid('9999999999-20260714-D5FB0C9ED490-9A')); // bool(false)
 ```
 
-`VerificationLink::invoice()` and `invoiceFromHash()` take the NIP and issue date directly.
+`VerificationLink::invoice()` takes the NIP, the issue date and the invoice XML (it hashes the
+XML); `invoiceFromHash()` takes the NIP, the issue date and a hash you computed with
+`VerificationLink::invoiceHash()`.
 
 ## NIP
 
