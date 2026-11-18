@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/" xmlns:etd="http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2022/01/05/eD/DefinicjeTypy/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Naglowek>
+    <KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza>
+    <WariantFormularza>3</WariantFormularza>
+    <DataWytworzeniaFa>2026-09-20T10:00:00Z</DataWytworzeniaFa>
+  </Naglowek>
+  <Podmiot1>
+    <DaneIdentyfikacyjne>
+      <NIP>2222222222</NIP>
+      <Nazwa>Maszyny Pakujące Przykład Sp. z o.o.</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>PL</KodKraju>
+      <AdresL1>ul. Przemysłowa 8</AdresL1>
+      <AdresL2>61-001 Poznań</AdresL2>
+    </Adres>
+  </Podmiot1>
+  <Podmiot2>
+    <DaneIdentyfikacyjne>
+      <NIP>1111111111</NIP>
+      <Nazwa>Zakład Produkcyjny Wzorzec S.A.</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>PL</KodKraju>
+      <AdresL1>ul. Fabryczna 3</AdresL1>
+      <AdresL2>80-001 Gdańsk</AdresL2>
+    </Adres>
+    <JST>2</JST>
+    <GV>2</GV>
+  </Podmiot2>
+  <Fa>
+    <KodWaluty>EUR</KodWaluty>
+    <P_1>2026-09-20</P_1>
+    <P_2>FZ/7/09/2026</P_2>
+    <P_13_1>3252.03</P_13_1>
+    <P_14_1>747.97</P_14_1>
+    <P_14_1W>3351.17</P_14_1W>
+    <P_15>4000.00</P_15>
+    <Adnotacje>
+      <P_16>2</P_16>
+      <P_17>2</P_17>
+      <P_18>2</P_18>
+      <P_18A>2</P_18A>
+      <Zwolnienie>
+        <P_19N>1</P_19N>
+      </Zwolnienie>
+      <NoweSrodkiTransportu>
+        <P_22N>1</P_22N>
+      </NoweSrodkiTransportu>
+      <P_23>2</P_23>
+      <PMarzy>
+        <P_PMarzyN>1</P_PMarzyN>
+      </PMarzy>
+    </Adnotacje>
+    <RodzajFaktury>ZAL</RodzajFaktury>
+    <ZaliczkaCzesciowa>
+      <P_6Z>2026-09-10</P_6Z>
+      <P_15Z>500</P_15Z>
+      <KursWalutyZW>4.4512</KursWalutyZW>
+    </ZaliczkaCzesciowa>
+    <ZaliczkaCzesciowa>
+      <P_6Z>2026-09-15</P_6Z>
+      <P_15Z>2500</P_15Z>
+      <KursWalutyZW>4.4724</KursWalutyZW>
+    </ZaliczkaCzesciowa>
+    <ZaliczkaCzesciowa>
+      <P_6Z>2026-09-20</P_6Z>
+      <P_15Z>1000</P_15Z>
+      <KursWalutyZW>4.5148</KursWalutyZW>
+    </ZaliczkaCzesciowa>
+    <Platnosc>
+      <TerminPlatnosci>
+        <Termin>2026-10-20</Termin>
+      </TerminPlatnosci>
+      <FormaPlatnosci>6</FormaPlatnosci>
+      <RachunekBankowy>
+        <NrRB>61109010140000071219812874</NrRB>
+      </RachunekBankowy>
+    </Platnosc>
+    <Zamowienie>
+      <WartoscZamowienia>10000.00</WartoscZamowienia>
+      <ZamowienieWiersz>
+        <NrWierszaZam>1</NrWierszaZam>
+        <P_7Z>Linia do pakowania kartonów</P_7Z>
+        <P_8AZ>szt.</P_8AZ>
+        <P_8BZ>1</P_8BZ>
+        <P_9AZ>8130.08</P_9AZ>
+        <P_11NettoZ>8130.08</P_11NettoZ>
+        <P_11VatZ>1869.92</P_11VatZ>
+        <P_12Z>23</P_12Z>
+      </ZamowienieWiersz>
+    </Zamowienie>
+  </Fa>
+</Faktura>

@@ -368,9 +368,6 @@ final class Fa3ReaderTest extends TestCase
     public static function factories(): array
     {
         $invoices = PolishInvoices::all() + PolishInvoices::kinds();
-        // A non-Polish AdresL2 is read as address line 2, which the writer joins into AdresL1;
-        // see test_non_polish_address_line_2_is_read_as_line_2.
-        unset($invoices['euBuyer'], $invoices['exportBuyer']);
 
         return array_map(static fn (Invoice $invoice): array => [$invoice], $invoices);
     }
@@ -453,7 +450,7 @@ final class Fa3ReaderTest extends TestCase
         self::assertStringContainsString('<P_10>100</P_10>', $xml);
     }
 
-    public function test_non_polish_address_line_2_is_read_as_line_2(): void
+    public function test_non_polish_address_line_2_is_read_as_city(): void
     {
         $result = self::read(self::write(PolishInvoices::euBuyer()));
         $address = $result->invoice->buyer->address;
@@ -461,9 +458,45 @@ final class Fa3ReaderTest extends TestCase
         self::assertSame([], $result->ignored);
         self::assertSame('DE123456789', $result->invoice->buyer->vatIdentifier);
         self::assertSame(CountryCode::DE, $address?->country);
-        self::assertSame(['Hauptstraße 5', '10115 Berlin', null, null], [$address->line1, $address->line2, $address->city, $address->postCode]);
+        self::assertSame(['Hauptstraße 5', null, '10115 Berlin', null], [$address->line1, $address->line2, $address->city, $address->postCode]);
         self::assertSame(CountryCode::PL, self::polish($result->invoice)->seller?->vatPrefix);
         self::assertSame('US-123', self::read(self::write(PolishInvoices::exportBuyer()))->invoice->buyer->vatIdentifier);
+    }
+
+    public function test_polish_address_line_2_in_another_layout_is_read_as_city(): void
+    {
+        $source = str_replace('<AdresL2>60-001 Poznań</AdresL2>', '<AdresL2>Poznań</AdresL2>', self::write(PolishInvoices::domestic()));
+        $result = self::read($source);
+        $address = $result->invoice->buyer->address;
+
+        self::assertSame([], $result->ignored);
+        self::assertSame(['ul. Polna 10', null, 'Poznań', null], [$address?->line1, $address?->line2, $address?->city, $address?->postCode]);
+        self::assertSame($source, self::write($result->invoice));
+    }
+
+    public function test_rows_without_unit_quantity_and_price_are_written_back_without_them(): void
+    {
+        $result = self::read(PolishSamples::official('invoice-template-fa-3-with-attachment.xml'));
+        $line = $result->invoice->lines[0];
+        $polish = $line->extensions()->get(PolishLine::class);
+
+        self::assertSame([true, true, true], [$polish?->unitOmitted, $polish?->quantityOmitted, $polish?->unitPriceOmitted]);
+        self::assertSame(['1', '18.00', UnitCode::C62], [(string) $line->quantity, (string) $line->price->netPrice, $line->unit]);
+        $xml = self::write($result->invoice);
+        foreach (['P_8A', 'P_8B', 'P_9A'] as $name) {
+            self::assertStringNotContainsString('<'.$name.'>', $xml);
+        }
+
+        // The markers are honoured only while the values still equal those read from the absence.
+        $rewrite = static fn (InvoiceLine $changed): string => preg_replace('/>\s+</', '><', self::write(TotalsCalculator::complete($result->invoice
+            ->withLines([$changed->withNetAmount(null), ...array_slice($result->invoice->lines, 1)])
+            ->withVatBreakdown([])))) ?? '';
+        self::assertStringContainsString('<P_7>Razem za energię czynną</P_7><P_8B>2</P_8B><P_11>36.00</P_11>', $rewrite($line->withQuantity('2')));
+        self::assertStringContainsString(
+            '<P_8A>kWh</P_8A><P_8B>2</P_8B><P_9A>18.00</P_9A><P_10>1.00</P_10><P_11>35.00</P_11>',
+            $rewrite($line->withQuantity('2')->withAllowance(new LineAllowance('1.00', reason: 'Rabat'))
+                ->withExtension(new PolishLine(unitLabel: 'kWh', unitOmitted: true, quantityOmitted: true, unitPriceOmitted: true))),
+        );
     }
 
     public function test_settlement_invoice_amounts(): void

@@ -15,6 +15,7 @@ use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Model\Contact;
 use IntrAgile\EInvoicing\Model\CreditTransfer;
+use IntrAgile\EInvoicing\Model\DocumentTotals;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Model\Item;
@@ -22,6 +23,7 @@ use IntrAgile\EInvoicing\Model\LineVat;
 use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\PaymentInstructions;
 use IntrAgile\EInvoicing\Model\PostalAddress;
+use IntrAgile\EInvoicing\Model\PrecedingInvoiceReference;
 use IntrAgile\EInvoicing\Model\Price;
 use IntrAgile\EInvoicing\Poland\AdvanceInvoiceReference;
 use IntrAgile\EInvoicing\Poland\Annotations;
@@ -204,7 +206,8 @@ final class PolishInvoices
     /**
      * Corrective invoice (KOR, derived from type code 384) for goods returned under invoice
      * FV/110/07/2026, written as state-before and state-after rows. The before rows are held in
-     * storno form, so the totals are the differences.
+     * storno form, so the totals are the differences. The corrected invoice is also the preceding
+     * invoice reference (BG-3).
      */
     public static function correctionBeforeAfter(): Invoice
     {
@@ -229,13 +232,13 @@ final class PolishInvoices
             number: 'FK/1/09/2026',
             issueDate: '2026-09-10',
             type: InvoiceTypeCode::C_384,
-        ));
+        )->withPrecedingInvoices([new PrecedingInvoiceReference('FV/110/07/2026', new DateTimeImmutable('2026-07-14'))]));
     }
 
     /**
      * Advance invoice (ZAL) in euro documenting three partial advance payments with their
      * exchange rates; no FaWiersz, the 23 % bucket is carried by one bucket line, and the VAT in
-     * PLN is supplied.
+     * PLN is supplied (P_14_1W, with VAT accounting currency PLN and BT-111).
      */
     public static function advanceInEuro(): Invoice
     {
@@ -264,7 +267,7 @@ final class PolishInvoices
             issueDate: '2026-09-20',
             type: InvoiceTypeCode::C_386,
             currency: CurrencyCode::EUR,
-        ));
+        )->withTaxCurrency(CurrencyCode::PLN)->withTotals(new DocumentTotals('0', '0', '0', '0', totalVatInAccountingCurrency: '3351.17')));
     }
 
     /**
@@ -333,7 +336,7 @@ final class PolishInvoices
 
     /**
      * Transaction terms with the transport block and the attachment (Zalacznik) of the official
-     * templates, carried verbatim.
+     * templates, carried verbatim; the listed order is also the purchase order reference (BT-13).
      */
     public static function withTransportAndAttachment(): Invoice
     {
@@ -349,7 +352,7 @@ final class PolishInvoices
                 ),
                 attachment: self::officialFragment('invoice-template-fa-3-with-attachment.xml', 'Zalacznik'),
             ),
-        ));
+        )->withPurchaseOrderReference('4354343'));
     }
 
     /**

@@ -262,6 +262,15 @@ final class Fa3WriterKindsTest extends TestCase
         self::assertStringContainsString('PMarzy: ', self::refusal($unannotated));
     }
 
+    public function test_split_payment_writes_p18a_and_annex_15(): void
+    {
+        $xml = self::write(PolishInvoices::splitPayment());
+
+        self::assertSame(['1'], self::values($xml, '//fa:Adnotacje/fa:P_18A'));
+        self::assertSame(['1'], self::values($xml, '//fa:FaWiersz/fa:P_12_Zal_15'));
+        self::assertSame(['15375.00'], self::values($xml, '//fa:Fa/fa:P_15'));
+    }
+
     public function test_settlement_writes_do_rozliczenia_37(): void
     {
         $xml = self::write(PolishInvoices::withSettlement());

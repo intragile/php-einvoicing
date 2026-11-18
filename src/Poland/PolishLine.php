@@ -12,6 +12,10 @@ use InvalidArgumentException;
 /**
  * Polish FA(3) line extension (FaWiersz data the EN 16931 line does not carry), attached to an
  * invoice line through its extension bag.
+ *
+ * The three omission markers (unitOmitted, quantityOmitted, unitPriceOmitted) record that a row
+ * read from FA(3) had no P_8A, P_8B or P_9A, so writing the read invoice back keeps those optional
+ * elements absent. Invoices built in code leave them false and get all three elements written.
  */
 final readonly class PolishLine
 {
@@ -82,6 +86,23 @@ final readonly class PolishLine
         public ?string $cn = null,
         /** PKOB classification (PKOB). */
         public ?string $pkob = null,
+        /**
+         * The source row had no unit (P_8A). Set by the FA(3) reader so that the row is written back
+         * without it; the writer leaves P_8A out only while the line still has unit C62 and no unit
+         * label, the values read from the missing element.
+         */
+        public bool $unitOmitted = false,
+        /**
+         * The source row had no quantity (P_8B). Set by the FA(3) reader; the writer leaves P_8B out
+         * only while the quantity is still 1 (-1 for a state-before row held in storno form).
+         */
+        public bool $quantityOmitted = false,
+        /**
+         * The source row had no net unit price (P_9A). Set by the FA(3) reader; the writer leaves
+         * P_9A out only while the price still equals the one read from its absence: the net amount
+         * (P_11, else P_11A) divided by the quantity.
+         */
+        public bool $unitPriceOmitted = false,
     ) {
         if ($margin && $rateCode !== null) {
             throw new InvalidArgumentException(sprintf(

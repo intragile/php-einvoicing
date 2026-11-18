@@ -24,7 +24,9 @@ use IntrAgile\EInvoicing\Poland\ThirdPartyRole;
  *   same way, KodUE and NrVatUE as one EU VAT identifier, and NrID as the VAT identifier as
  *   written. A missing buyer name (BrakID consumers) is read as an empty name.
  * - AdresL1 is address line 1. A Polish AdresL2 of the form "00-000 City" is split into post
- *   code and city; any other AdresL2 is address line 2.
+ *   code and city; any other AdresL2 (a foreign address, or a Polish one in another layout) is
+ *   read whole as the city, with no post code. The writer emits the city unchanged as AdresL2, so
+ *   the document survives a round trip; a foreign post code comes back as part of the city.
  * - The first contact entry (DaneKontaktowe) is the EN 16931 contact; with more than one entry,
  *   all are kept in the Polish party data.
  *
@@ -187,7 +189,7 @@ final class Fa3PartyMapper
             return new PostalAddress(country: $country, line1: $line1, city: $match[2], postCode: $match[1]);
         }
 
-        return new PostalAddress(country: $country, line1: $line1, line2: $line2);
+        return new PostalAddress(country: $country, line1: $line1, city: $line2);
     }
 
     /**

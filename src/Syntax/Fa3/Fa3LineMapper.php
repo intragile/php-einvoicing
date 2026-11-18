@@ -40,6 +40,8 @@ use InvalidArgumentException;
  *   when the invoice declares a margin scheme, else category O without a rate.
  * - P_10 is one line allowance with that amount; its reason is the fixed-key description of
  *   the row, else "P_10".
+ * - A row without P_8A, P_8B or P_9A is marked with the matching PolishLine omission marker, so
+ *   the writer leaves the element out again.
  * - A state-before row (StanPrzed) is held in storno form: P_8B, P_10, P_11, P_11A, P_11Vat and
  *   KwotaAkcyzy are negated; unit prices are kept as written.
  *
@@ -130,6 +132,9 @@ final class Fa3LineMapper
             pkwiu: $d->text('fa:PKWiU', $row),
             cn: $d->text('fa:CN', $row),
             pkob: $d->text('fa:PKOB', $row),
+            unitOmitted: ! $d->has('fa:P_8A', $row),
+            quantityOmitted: $writtenQuantity === null,
+            unitPriceOmitted: ! $d->has('fa:P_9A', $row),
         );
 
         return $polish == new PolishLine ? $line : $line->withExtension($polish);
@@ -219,7 +224,11 @@ final class Fa3LineMapper
         return $code === null ? [UnitCode::C62, $label] : [$code, null];
     }
 
-    private static function unitPrice(BigDecimal $amount, BigDecimal $quantity): BigDecimal
+    /**
+     * The net unit price of a row without P_9A: the amount divided by the quantity, exactly at a
+     * scale of at least 2 when possible, else rounded half up to 8 decimals.
+     */
+    public static function unitPrice(BigDecimal $amount, BigDecimal $quantity): BigDecimal
     {
         if ($quantity->isZero()) {
             return $amount;

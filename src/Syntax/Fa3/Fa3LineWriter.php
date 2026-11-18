@@ -8,6 +8,7 @@ use Brick\Math\BigDecimal;
 use DOMElement;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\IdentifierScheme;
+use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Poland\PolishLine;
 use IntrAgile\EInvoicing\Poland\VatBucket;
@@ -20,7 +21,9 @@ use InvalidArgumentException;
  *
  * Line numbers (NrWierszaFa) run 1 to n in output order; the line identifier (BT-126) goes to
  * UU_ID when it differs from that number. The unit (P_8A) is the Polish unit label, else the
- * UN/ECE code of BT-130. P_10 is the sum of the line allowances (BT-136).
+ * UN/ECE code of BT-130. P_10 is the sum of the line allowances (BT-136). P_8A, P_8B and P_9A are
+ * left out for a row read without them (the PolishLine omission markers) as long as the line still
+ * holds the values read from their absence.
  *
  * A state-before row of a correction (PolishLine::$stateBefore) is held in storno form, so the
  * invoice totals give the difference; it is written with StanPrzed = 1 and the sign of its
@@ -94,9 +97,15 @@ final class Fa3LineWriter
         $output->text($row, 'PKWiU', $polish?->pkwiu);
         $output->text($row, 'CN', $polish?->cn);
         $output->text($row, 'PKOB', $polish?->pkob);
-        $output->text($row, 'P_8A', $polish->unitLabel ?? $line->unit->value);
-        $output->decimal($row, 'P_8B', $sign($line->quantity));
-        $output->decimal($row, 'P_9A', $line->price->netPrice);
+        $quantity = $sign($line->quantity) ?? $line->quantity;
+        $omitQuantity = $polish?->quantityOmitted === true && $quantity->isEqualTo(1);
+        $omitUnit = $polish?->unitOmitted === true && $polish->unitLabel === null && $line->unit === UnitCode::C62;
+        $omitPrice = $polish?->unitPriceOmitted === true && $line->price->netPrice->isEqualTo(
+            Fa3LineMapper::unitPrice($sign($line->netAmount) ?? $sign($polish->grossAmount) ?? BigDecimal::zero(), $omitQuantity ? BigDecimal::one() : $quantity),
+        );
+        $output->text($row, 'P_8A', $omitUnit ? null : $polish->unitLabel ?? $line->unit->value);
+        $output->decimal($row, 'P_8B', $omitQuantity ? null : $quantity);
+        $output->decimal($row, 'P_9A', $omitPrice ? null : $line->price->netPrice);
         $output->decimal($row, 'P_9B', $polish?->grossUnitPrice);
         $output->decimal($row, 'P_10', $sign(self::allowanceTotal($line)));
         $output->decimal($row, 'P_11', $sign($line->netAmount));

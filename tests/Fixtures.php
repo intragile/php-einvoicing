@@ -73,6 +73,8 @@ final class Fixtures
 
     private const FACTURX_EXAMPLES_MANIFEST = __DIR__.'/fixtures/facturx-examples.sha256';
 
+    private const POLAND_BROCHURE_DIR = __DIR__.'/fixtures/poland/brochure';
+
     private const STYLESHEETS = [
         'ubl' => 'EN16931-UBL-validation.xslt',
         'cii' => 'EN16931-CII-validation.xslt',
@@ -435,6 +437,24 @@ final class Fixtures
             }
         }
         ksort($examples, SORT_STRING);
+
+        return $examples;
+    }
+
+    /**
+     * The hand-written FA(3) invoices that re-create examples of the Ministry of Finance FA(3)
+     * brochure (see fixtures/poland/brochure/README.md): file name => XML, sorted by name.
+     *
+     * @return array<string, string>
+     */
+    public static function polandBrochure(): array
+    {
+        $examples = [];
+        foreach (self::regularFiles(self::POLAND_BROCHURE_DIR) as $file) {
+            if (str_ends_with($file, '.xml')) {
+                $examples[$file] = (string) file_get_contents(self::POLAND_BROCHURE_DIR.'/'.$file);
+            }
+        }
 
         return $examples;
     }
