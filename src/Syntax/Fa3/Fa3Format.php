@@ -68,6 +68,7 @@ final class Fa3Format
         'BT-133' => 'Konto księgowe pozycji (BT-133)',
         'BT-156' => 'Indeks nabywcy (BT-156)',
         'BT-159' => 'Kraj pochodzenia (BT-159)',
+        'BT-130' => 'Jednostka miary UN/ECE (BT-130)',
         'BT-139' => 'Powód rabatu (BT-139)',
         'BT-137' => 'Podstawa rabatu (BT-137)',
         'BT-138' => 'Procent rabatu (BT-138)',

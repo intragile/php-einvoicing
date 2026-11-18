@@ -499,6 +499,30 @@ final class Fa3ReaderTest extends TestCase
         );
     }
 
+    public function test_unit_code_beside_a_unit_label_is_read_back(): void
+    {
+        $xml = self::write(PolishInvoices::correctionBeforeAfter());
+        $result = self::read($xml);
+
+        self::assertSame([], $result->ignored);
+        self::assertSame([], self::polish($result->invoice)->descriptions);
+        foreach ($result->invoice->lines as $line) {
+            self::assertSame(UnitCode::H87, $line->unit);
+            self::assertSame('szt.', $line->extensions()->get(PolishLine::class)?->unitLabel);
+        }
+        self::assertSame($xml, self::write($result->invoice));
+
+        // Without the entry P13 applies: the label is read with unit C62.
+        $bare = preg_replace('#<DodatkowyOpis>.*?</DodatkowyOpis>#s', '', $xml) ?? '';
+        self::assertSame(UnitCode::C62, self::read($bare)->invoice->lines[0]->unit);
+
+        // An entry that conflicts with a code in P_8A stays a description.
+        $conflict = str_replace('<P_8A>szt.</P_8A>', '<P_8A>KGM</P_8A>', $xml);
+        $read = self::read($conflict)->invoice;
+        self::assertSame(UnitCode::KGM, $read->lines[0]->unit);
+        self::assertCount(4, self::polish($read)->descriptions);
+    }
+
     public function test_settlement_invoice_amounts(): void
     {
         $invoice = self::read(self::write(PolishInvoices::settlementOfAdvances()))->invoice;

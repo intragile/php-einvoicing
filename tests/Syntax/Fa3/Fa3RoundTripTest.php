@@ -107,15 +107,12 @@ final class Fa3RoundTripTest extends TestCase
      * fails the test.
      *
      * - A foreign AdresL2 is read whole as the city, so a foreign post code comes back joined to it.
-     * - P_8A holds either the Polish unit label or the unit code, so a line with a label is read
-     *   back with unit C62.
      * - BT-115 of an invoice with Rozliczenie is read from DoZaplaty or DoRozliczenia, which is not
      *   the EN 16931 amount due the writer started from.
      */
     private const MODEL_DIFFERENCES = [
         'euBuyer' => ['buyer.address.city' => '10115 Berlin', 'buyer.address.postCode' => null],
         'exportBuyer' => ['buyer.address.city' => '02108 Boston', 'buyer.address.postCode' => null],
-        'correctionBeforeAfter' => ['lines.0.unit' => 'C62', 'lines.1.unit' => 'C62', 'lines.2.unit' => 'C62', 'lines.3.unit' => 'C62'],
         'withSettlement' => ['totals.amountDue' => '-37'],
     ];
 

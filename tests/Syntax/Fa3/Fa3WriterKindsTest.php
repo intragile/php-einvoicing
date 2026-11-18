@@ -79,7 +79,7 @@ final class Fa3WriterKindsTest extends TestCase
         self::assertSame(['Zwrot towaru'], self::values($xml, '//fa:Fa/fa:PrzyczynaKorekty'));
         self::assertSame(['2'], self::values($xml, '//fa:Fa/fa:TypKorekty'));
         self::assertSame(
-            ['RodzajFaktury', 'PrzyczynaKorekty', 'TypKorekty', 'DaneFaKorygowanej', 'FaWiersz'],
+            ['RodzajFaktury', 'PrzyczynaKorekty', 'TypKorekty', 'DaneFaKorygowanej', 'DodatkowyOpis'],
             self::following(self::childNames($xml, '//fa:Fa'), 'RodzajFaktury', 5),
         );
     }

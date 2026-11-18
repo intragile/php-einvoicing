@@ -314,6 +314,7 @@ final class Fa3Writer
             $add('BT-133', $line->buyerAccountingReference, $position);
             $add('BT-156', $line->item->buyersIdentifier, $position);
             $add('BT-159', $line->item->originCountry?->value, $position);
+            $add('BT-130', Fa3LineWriter::unitCodeBesideLabel($line), $position);
             foreach ($line->allowances as $allowance) {
                 $add('BT-139', $allowance->reason === Fa3Format::ALLOWANCE_REASON ? null : $allowance->reason, $position);
                 $add('BT-137', $allowance->baseAmount?->__toString(), $position);

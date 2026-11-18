@@ -21,7 +21,8 @@ use InvalidArgumentException;
  *
  * Line numbers (NrWierszaFa) run 1 to n in output order; the line identifier (BT-126) goes to
  * UU_ID when it differs from that number. The unit (P_8A) is the Polish unit label, else the
- * UN/ECE code of BT-130. P_10 is the sum of the line allowances (BT-136). P_8A, P_8B and P_9A are
+ * UN/ECE code of BT-130; with a label, a BT-130 other than C62 goes to a line description
+ * (DodatkowyOpis) under its fixed key. P_10 is the sum of the line allowances (BT-136). P_8A, P_8B and P_9A are
  * left out for a row read without them (the PolishLine omission markers) as long as the line still
  * holds the values read from their absence.
  *
@@ -70,6 +71,17 @@ final class Fa3LineWriter
         }
 
         return $bucket;
+    }
+
+    /**
+     * The unit code (BT-130) of a line whose P_8A is the Polish unit label, when that code is not
+     * C62. It is written as a line description so the code is not lost; null otherwise.
+     */
+    public static function unitCodeBesideLabel(InvoiceLine $line): ?string
+    {
+        $label = $line->extensions()->get(PolishLine::class)?->unitLabel;
+
+        return $label === null || $line->unit === UnitCode::C62 ? null : $line->unit->value;
     }
 
     /**

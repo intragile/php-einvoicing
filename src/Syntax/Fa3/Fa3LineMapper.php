@@ -34,7 +34,8 @@ use InvalidArgumentException;
  *   net price is P_9A, else P_11 (else P_11A) divided by the quantity; the item name is P_7, else
  *   empty.
  * - P_8A is the unit code (BT-130) when it is a UN/ECE Recommendation 20 code; any other text is
- *   unit C62 with the text as the Polish unit label.
+ *   unit C62 with the text as the Polish unit label, unless a line description under the BT-130
+ *   key gives the unit code beside the label.
  * - P_12 gives the VAT category and rate; the code is kept as the Polish rate code when the
  *   category and rate would derive another code. A row without P_12 is a margin scheme line
  *   when the invoice declares a margin scheme, else category O without a rate.
@@ -54,7 +55,7 @@ final class Fa3LineMapper
     /**
      * @param  array<string, string>  $terms  EN 16931 line terms carried as fixed-key descriptions
      *                                        of this row, keyed by business term (BT-127, BT-154,
-     *                                        BT-128, BT-132, BT-133, BT-156, BT-159, and BT-139,
+     *                                        BT-128, BT-132, BT-133, BT-156, BT-159, BT-130, and BT-139,
      *                                        BT-137, BT-138, BT-140 of the allowance); values are
      *                                        already checked
      */
@@ -72,6 +73,9 @@ final class Fa3LineMapper
         $allowance = $d->decimal('fa:P_10', $row);
 
         [$unit, $unitLabel] = $this->unit($row);
+        if ($unitLabel !== null && isset($terms['BT-130'])) {
+            $unit = UnitCode::from($terms['BT-130']);
+        }
         $codeElement = $d->one('fa:P_12', $row);
         $code = $d->code(VatRateCode::class, $codeElement);
         $margin = false;

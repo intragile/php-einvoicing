@@ -205,6 +205,28 @@ final class Fa3WriterTest extends TestCase
         );
     }
 
+    public function test_unit_code_beside_a_unit_label_is_written_as_a_line_description(): void
+    {
+        $xml = self::write(PolishInvoices::correctionBeforeAfter());
+
+        self::assertSchemaValid($xml);
+        self::assertSame(['szt.', 'szt.', 'szt.', 'szt.'], self::values($xml, '//fa:FaWiersz/fa:P_8A'));
+        self::assertSame(
+            ['1|Jednostka miary UN/ECE (BT-130)|H87', '2|Jednostka miary UN/ECE (BT-130)|H87', '3|Jednostka miary UN/ECE (BT-130)|H87', '4|Jednostka miary UN/ECE (BT-130)|H87'],
+            array_map(
+                static fn (DOMElement $e): string => implode('|', array_map(static fn (DOMElement $c): string => $c->textContent, iterator_to_array($e->getElementsByTagName('*'), false))),
+                self::nodes($xml, '//fa:Fa/fa:DodatkowyOpis'),
+            ),
+        );
+
+        // No entry for a label over C62, or for a line without a label.
+        $plain = self::write(PolishInvoices::domestic());
+        self::assertSame([], self::nodes($plain, '//fa:DodatkowyOpis'));
+        $labelOverC62 = PolishInvoices::domestic();
+        $labelOverC62 = TotalsCalculator::complete($labelOverC62->withLines([PolishInvoices::line('1', 'Usługa', '1', UnitCode::C62, '10.00', VatCategory::StandardRate, '23')->withExtension(new PolishLine(unitLabel: 'usł.'))])->withVatBreakdown([]));
+        self::assertSame([], self::nodes(self::write($labelOverC62), '//fa:DodatkowyOpis'));
+    }
+
     public function test_line_mapping(): void
     {
         $line = (new InvoiceLine(

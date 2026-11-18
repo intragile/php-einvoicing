@@ -11,6 +11,7 @@ use DOMElement;
 use IntrAgile\EInvoicing\CodeList\AllowanceReasonCode;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
+use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
@@ -71,7 +72,7 @@ final class Fa3Reader
     private const HEADER_TERMS = ['BT-10', 'BT-11', 'BT-14', 'BT-15', 'BT-17', 'BT-19', 'BT-20', 'BT-28', 'BT-41', 'BT-45', 'BT-56', 'BT-83'];
 
     /** Single-value line terms carried as fixed-key descriptions. */
-    private const LINE_TERMS = ['BT-127', 'BT-154', 'BT-128', 'BT-132', 'BT-133', 'BT-156', 'BT-159'];
+    private const LINE_TERMS = ['BT-127', 'BT-154', 'BT-128', 'BT-132', 'BT-133', 'BT-156', 'BT-159', 'BT-130'];
 
     /** Line allowance terms carried as fixed-key descriptions; read for a row with P_10. */
     private const ALLOWANCE_TERMS = ['BT-139', 'BT-137', 'BT-138', 'BT-140'];
@@ -241,10 +242,13 @@ final class Fa3Reader
         $terms = array_flip(Fa3Format::DESCRIPTION_KEYS);
         $rowIndex = [];
         $allowanceRows = [];
+        $labelRows = [];
         foreach ($rows as $index => $row) {
             $position = trim($d->one('fa:NrWierszaFa', $row)->textContent ?? '');
             $rowIndex[$position] ??= $index;
             $allowanceRows[$index] = $d->has('fa:P_10', $row);
+            $unit = $d->one('fa:P_8A', $row);
+            $labelRows[$index] = $unit !== null && UnitCode::tryFrom(trim($unit->textContent)) === null;
         }
 
         $header = [];
@@ -271,7 +275,7 @@ final class Fa3Reader
 
                 continue;
             }
-            if ($term !== null && $index !== null && ! isset($lines[$index][$term]) && self::lineTermFits($term, $value, $allowanceRows[$index])) {
+            if ($term !== null && $index !== null && ! isset($lines[$index][$term]) && self::lineTermFits($term, $value, $allowanceRows[$index], $labelRows[$index])) {
                 $lines[$index][$term] = $value;
 
                 continue;
@@ -283,13 +287,18 @@ final class Fa3Reader
     }
 
     /**
-     * Whether a line term can take the value: a country code for BT-159, a number for BT-137 and
-     * BT-138, an allowance reason code for BT-140; allowance terms only on a row with P_10.
+     * Whether a line term can take the value: a country code for BT-159, a unit code other than
+     * C62 on a row whose P_8A is a unit label for BT-130, a number for BT-137 and BT-138, an
+     * allowance reason code for BT-140; allowance terms only on a row with P_10.
      */
-    private static function lineTermFits(string $term, string $value, bool $hasAllowance): bool
+    private static function lineTermFits(string $term, string $value, bool $hasAllowance, bool $hasUnitLabel): bool
     {
         if (in_array($term, self::LINE_TERMS, true)) {
-            return $term !== 'BT-159' || CountryCode::tryFrom($value) !== null;
+            return match ($term) {
+                'BT-159' => CountryCode::tryFrom($value) !== null,
+                'BT-130' => $hasUnitLabel && ! in_array(UnitCode::tryFrom($value), [null, UnitCode::C62], true),
+                default => true,
+            };
         }
         if (! in_array($term, self::ALLOWANCE_TERMS, true) || ! $hasAllowance) {
             return false;
