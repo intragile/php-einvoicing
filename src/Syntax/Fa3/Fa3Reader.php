@@ -266,6 +266,11 @@ final class Fa3Reader
             if ($key === null || $value === null) {
                 continue;
             }
+            if ($lineNumber !== null && preg_match('/\A[1-9]\d*\z/', $lineNumber) !== 1) {
+                $d->reject($element, sprintf('line number "%s" is not a positive integer', $lineNumber));
+
+                continue;
+            }
             $term = $terms[$key] ?? null;
             $index = $lineNumber === null ? null : ($rowIndex[$lineNumber] ?? null);
 

@@ -12,7 +12,8 @@ use InvalidArgumentException;
 final readonly class ContactDetails
 {
     /**
-     * @throws InvalidArgumentException when neither an e-mail address nor a phone number is given
+     * @throws InvalidArgumentException when neither an e-mail address nor a phone number is given,
+     *                                  or one of them is an empty string
      */
     public function __construct(
         /** E-mail address (Email). */
@@ -20,6 +21,9 @@ final readonly class ContactDetails
         /** Phone number (Telefon). */
         public ?string $phone = null,
     ) {
+        if ($email === '' || $phone === '') {
+            throw new InvalidArgumentException('A contact entry (DaneKontaktowe) takes no empty e-mail address or phone number; leave it null.');
+        }
         if ($email === null && $phone === null) {
             throw new InvalidArgumentException('A contact entry (DaneKontaktowe) needs an e-mail address or a phone number.');
         }

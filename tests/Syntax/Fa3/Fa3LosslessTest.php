@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\Tests\Syntax\Fa3;
 use DateTimeImmutable;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
+use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
 use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Model\Identifier;
@@ -14,13 +15,16 @@ use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Model\Item;
 use IntrAgile\EInvoicing\Model\LineAllowance;
+use IntrAgile\EInvoicing\Model\Note;
 use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\PostalAddress;
 use IntrAgile\EInvoicing\Model\VatBreakdown;
 use IntrAgile\EInvoicing\Poland\Annotations;
+use IntrAgile\EInvoicing\Poland\ContactDetails;
 use IntrAgile\EInvoicing\Poland\Exemption;
 use IntrAgile\EInvoicing\Poland\ExemptionBasis;
 use IntrAgile\EInvoicing\Poland\Gtu;
+use IntrAgile\EInvoicing\Poland\KeyValue;
 use IntrAgile\EInvoicing\Poland\PolishInvoice;
 use IntrAgile\EInvoicing\Poland\PolishLine;
 use IntrAgile\EInvoicing\Poland\PolishParty;
@@ -320,6 +324,98 @@ final class Fa3LosslessTest extends TestCase
 
         self::assertStringContainsString('PolishLine::$ossRate', $message);
         self::assertStringNotContainsString('rate code explicitly', $message);
+    }
+
+    public function test_corrective_invoice_without_the_corrected_invoice_is_refused(): void
+    {
+        $message = self::refusal(PolishInvoices::domestic()->withType(InvoiceTypeCode::C_384));
+
+        self::assertStringContainsString('DaneFaKorygowanej: ', $message);
+        self::assertStringContainsString('BG-3', $message);
+    }
+
+    /**
+     * @return array<string, array{PolishInvoice, string}>
+     */
+    public static function flagsWithoutThirdParty(): array
+    {
+        return [
+            'JST' => [new PolishInvoice(buyerIsJstUnit: true), 'JST: '],
+            'GV' => [new PolishInvoice(buyerIsGvMember: true), 'GV: '],
+        ];
+    }
+
+    #[DataProvider('flagsWithoutThirdParty')]
+    public function test_buyer_flag_without_its_third_party_is_refused(PolishInvoice $polish, string $term): void
+    {
+        $message = self::refusal(PolishInvoices::domestic()->withExtension($polish));
+
+        self::assertStringContainsString($term, $message);
+        self::assertStringContainsString('Podmiot3', $message);
+    }
+
+    public function test_domestic_reverse_charge_without_its_annotation_is_refused(): void
+    {
+        $message = self::refusal(PolishInvoices::domesticReverseCharge()->withExtension(new PolishInvoice));
+
+        self::assertStringContainsString('P_18: ', $message);
+        self::assertStringContainsString('line "1"', $message);
+    }
+
+    public function test_writer_validates_its_own_output(): void
+    {
+        $invoice = PolishInvoices::domestic()->withNotes([new Note(str_repeat('Uwaga ', 50))]);
+        Fa3Guard::check($invoice);
+
+        $exception = self::capture(fn () => self::write($invoice));
+        self::assertInstanceOf(InvalidArgumentException::class, $exception);
+        self::assertStringContainsString('Wartosc', $exception->getMessage());
+        self::assertStringContainsString('256', $exception->getMessage());
+    }
+
+    public function test_writer_reports_every_failure_of_its_own_output_at_once(): void
+    {
+        $invoice = PolishInvoices::domestic()
+            ->withNotes([new Note(str_repeat('a', 257)), new Note(str_repeat('b', 300))])
+            ->withExtension(new PolishInvoice(placeOfIssue: str_repeat('W', 257)));
+
+        $exception = self::capture(fn () => self::write($invoice));
+        self::assertInstanceOf(InvalidArgumentException::class, $exception);
+        self::assertSame(3, substr_count($exception->getMessage(), 'maxLength'), $exception->getMessage());
+    }
+
+    /**
+     * @return array<string, array{callable(): object}>
+     */
+    public static function emptyValues(): array
+    {
+        return [
+            'empty e-mail' => [static fn (): object => new ContactDetails(email: '')],
+            'empty phone' => [static fn (): object => new ContactDetails(email: 'a@b.example', phone: '')],
+            'line number 0' => [static fn (): object => new KeyValue(0, 'k', 'v')],
+            'negative line number' => [static fn (): object => new KeyValue(-1, 'k', 'v')],
+        ];
+    }
+
+    /**
+     * @param  callable(): object  $build
+     */
+    #[DataProvider('emptyValues')]
+    public function test_value_objects_refuse_values_fa3_cannot_hold(callable $build): void
+    {
+        self::assertInstanceOf(InvalidArgumentException::class, self::capture($build));
+    }
+
+    public function test_description_with_line_number_zero_is_reported_not_fatal(): void
+    {
+        $source = str_replace(
+            '<RodzajFaktury>VAT</RodzajFaktury>',
+            '<RodzajFaktury>VAT</RodzajFaktury><DodatkowyOpis><NrWiersza>0</NrWiersza><Klucz>k</Klucz><Wartosc>v</Wartosc></DodatkowyOpis>',
+            self::write(PolishInvoices::consumer()),
+        );
+        $result = (new Fa3Reader)->read($source);
+
+        self::assertNotSame([], $result->ignored);
     }
 
     private static function refusal(Invoice $invoice): string

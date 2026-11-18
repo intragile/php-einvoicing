@@ -19,6 +19,9 @@ use IntrAgile\EInvoicing\Poland\KeyValue;
 use IntrAgile\EInvoicing\Poland\PaymentForm;
 use IntrAgile\EInvoicing\Poland\PolishInvoice;
 use IntrAgile\EInvoicing\Syntax\WriterGuard;
+use IntrAgile\EInvoicing\Validation\Poland\Fa3Validator;
+use IntrAgile\EInvoicing\Validation\SchemaError;
+use IntrAgile\EInvoicing\Validation\Severity;
 use InvalidArgumentException;
 
 /**
@@ -63,7 +66,9 @@ use InvalidArgumentException;
  *   (BT-81); a code without a form is written as PlatnoscInna with the means text (BT-82), else
  *   the code. Bank accounts are the extension's, else the credit transfers (BG-17).
  *
- * Values FA(3) cannot carry are refused before anything is written, see Fa3Guard.
+ * Values FA(3) cannot carry are refused before anything is written, see Fa3Guard. As a safety
+ * net, the written document is validated offline with the bundled FA(3) schema and the fatal
+ * FA(3) rules (Fa3Validator) before it is returned; any failure is thrown as one exception.
  */
 final class Fa3Writer
 {
@@ -80,7 +85,8 @@ final class Fa3Writer
 
     /**
      * @throws InvalidArgumentException when the invoice holds text XML cannot carry or values
-     *                                  FA(3) cannot carry (see Fa3Guard)
+     *                                  FA(3) cannot carry (see Fa3Guard), or the written document
+     *                                  fails the bundled FA(3) schema or a fatal FA(3) rule
      */
     public function write(Invoice $invoice): string
     {
@@ -104,8 +110,33 @@ final class Fa3Writer
         if ($polish->attachment !== null) {
             $output->fragment($output->root, $polish->attachment);
         }
+        $xml = $output->xml();
+        self::verify($xml);
 
-        return $output->xml();
+        return $xml;
+    }
+
+    /**
+     * Validates the written document with the bundled FA(3) schema and the fatal FA(3) rules, as a
+     * safety net for limits the guard does not check (text lengths, patterns, rule combinations).
+     *
+     * @throws InvalidArgumentException listing every schema error and fatal rule finding
+     */
+    private static function verify(string $xml): void
+    {
+        $report = Fa3Validator::create()->validate($xml);
+        $errors = array_map(
+            static fn (SchemaError $error): string => sprintf('schema (line %d): %s', $error->line, rtrim(trim($error->message), '.')),
+            $report->schemaErrors,
+        );
+        foreach ($report->findings as $finding) {
+            if ($finding->severity === Severity::Fatal) {
+                $errors[] = $finding->ruleId.': '.rtrim($finding->message, '.');
+            }
+        }
+        if ($errors !== []) {
+            throw new InvalidArgumentException('The written FA(3) document fails its own validation, so it is not returned: '.implode('; ', $errors));
+        }
     }
 
     /**

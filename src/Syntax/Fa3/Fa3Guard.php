@@ -21,6 +21,8 @@ use IntrAgile\EInvoicing\Poland\PaymentForm;
 use IntrAgile\EInvoicing\Poland\PolishInvoice;
 use IntrAgile\EInvoicing\Poland\PolishLine;
 use IntrAgile\EInvoicing\Poland\PolishParty;
+use IntrAgile\EInvoicing\Poland\ThirdParty;
+use IntrAgile\EInvoicing\Poland\ThirdPartyRole;
 use IntrAgile\EInvoicing\Poland\VatBucket;
 use IntrAgile\EInvoicing\Poland\VatRateCode;
 use InvalidArgumentException;
@@ -112,7 +114,7 @@ final class Fa3Guard
             ...self::limits($invoice, $polish),
             ...self::fragments($polish),
             ...self::dates($invoice),
-            ...self::rates($invoice),
+            ...self::rates($invoice, $polish),
             ...self::decimals($invoice),
         ];
 
@@ -244,6 +246,12 @@ final class Fa3Guard
         }
         if ($polish->buyer?->gln !== null && $buyer->address === null) {
             $violations[] = 'Podmiot2 GLN: FA(3) writes the GLN in the address (Adres/GLN), and the buyer has no address';
+        }
+        foreach ([['JST', $polish->buyerIsJstUnit, ThirdPartyRole::JstRecipient, 'a subordinate unit of a local government'], ['GV', $polish->buyerIsGvMember, ThirdPartyRole::GvMemberRecipient, 'a VAT group member']] as [$flag, $set, $role, $what]) {
+            $found = array_filter($polish->thirdParties, static fn (ThirdParty $party): bool => $party->role === $role);
+            if ($set && $found === []) {
+                $violations[] = sprintf('%s: a buyer marked as %s needs that unit as a third party (Podmiot3) in role %d', $flag, $what, $role->value);
+            }
         }
         if ($polish->buyer?->status !== null) {
             $violations[] = 'Podmiot2: the taxpayer status (StatusInfoPodatnika) exists only for the seller';
@@ -415,6 +423,9 @@ final class Fa3Guard
         $refuse($polish->advanceInvoices !== [] && ! $in(InvoiceKind::Roz, InvoiceKind::KorRoz), 'FakturaZaliczkowa', 'settled advance invoices are written only on a settlement invoice or its correction (ROZ, KOR_ROZ)');
         $refuse($polish->order !== null && ! $in(InvoiceKind::Zal, InvoiceKind::KorZal), 'Zamowienie', 'the order is written only on an advance invoice or its correction (ZAL, KOR_ZAL)');
         $refuse($polish->exchangeRate !== null && ! $in(InvoiceKind::Zal, InvoiceKind::KorZal), 'KursWalutyZ', 'the exchange rate of an advance invoice is written only on ZAL and KOR_ZAL');
+        if ($kind->isCorrection() && Fa3BlockWriter::correction($invoice, $polish, $kind) === null) {
+            $violations[] = sprintf('DaneFaKorygowanej: a corrective invoice (%s) needs the corrected invoice: give the preceding invoice reference (BG-3) with its issue date, or the correction data of the Polish invoice extension', $kind->value);
+        }
         if ($kind === InvoiceKind::Zal && $polish->order === null) {
             $violations[] = 'Zamowienie: an advance invoice (ZAL) needs the order or contract it refers to (art. 106f ust. 1 pkt 4 of the VAT Act)';
         }
@@ -657,7 +668,7 @@ final class Fa3Guard
     /**
      * @return list<string>
      */
-    private static function rates(Invoice $invoice): array
+    private static function rates(Invoice $invoice, PolishInvoice $polish): array
     {
         $violations = [];
         $buyerCountry = $invoice->buyer->address?->country;
@@ -673,6 +684,11 @@ final class Fa3Guard
             }
             foreach (self::ossProblems($line) as $problem) {
                 $violations[] = sprintf('P_12_XII (line "%s"): %s', $line->id, $problem);
+            }
+            $polishLine = $line->extensions()->get(PolishLine::class);
+            if (! $polish->annotations->reverseCharge && Fa3LineWriter::isWritten($line) && $polishLine?->rateCodeOmitted !== true
+                && Fa3LineWriter::rateCode($line, $buyerCountry) === VatRateCode::ReverseCharge) {
+                $violations[] = sprintf('P_18: line "%s" is a domestic reverse-charge row (P_12 = oo), which needs the reverse-charge annotation (Annotations::$reverseCharge); it is never set silently', $line->id);
             }
             if ($override !== null && ! self::overrideFits($override, $line->vat->category, $line->vat->rate, $buyerCountry)) {
                 [$category, $rate] = $override->toModel();
