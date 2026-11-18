@@ -96,7 +96,7 @@ final class Fa3RulesTest extends TestCase
 
         self::assertSame([], self::schemaMessages($report), 'A case must stay schema-valid.');
         $severity = Fa3Rules::rules()[$rule]['severity'];
-        self::assertContains("{$rule} {$severity->value}", $report->verdict(), implode("\n", self::describe($report->findings)));
+        self::assertSame(["{$rule} {$severity->value}"], $report->verdict(), implode("\n", self::describe($report->findings)));
     }
 
     public function test_every_case_base_is_clean(): void
@@ -177,6 +177,45 @@ final class Fa3RulesTest extends TestCase
         self::assertSame('/fa:Faktura[1]/fa:Fa[1]/fa:DaneFaKorygowanej[1]/fa:NrKSeFFaKorygowanej[1]', $report->findings[0]->location);
     }
 
+    /**
+     * P_15 of a correction, an advance or a settlement is not the invoice total (p. 52), so a small
+     * P_15 there says nothing about the split payment threshold.
+     */
+    public function test_split_payment_threshold_ignores_kinds_without_an_invoice_total(): void
+    {
+        $splitPayment = ["{$this->fa()}/fa:Adnotacje/fa:P_18A", 'set', '1'];
+        $correction = Mutator::apply(Fixtures::polandBrochure()['correction-before-after.xml'], [
+            $splitPayment,
+            ["{$this->fa()}/fa:P_15", 'set', '-500.00'],
+        ], self::NAMESPACES);
+        $advance = Mutator::apply(Fixtures::polandBrochure()['advance-eur.xml'], [
+            $splitPayment,
+            ["{$this->fa()}/fa:KodWaluty", 'set', 'PLN'],
+            ["{$this->fa()}/fa:P_14_1W", 'remove'],
+            ["{$this->fa()}/fa:P_15", 'set', '100.00'],
+        ], self::NAMESPACES);
+
+        foreach (['KOR' => $correction, 'ZAL' => $advance] as $kind => $xml) {
+            $report = Fa3Validator::create()->validate($xml);
+            self::assertSame([], self::schemaMessages($report), $kind);
+            self::assertSame([], $report->verdict(), $kind);
+        }
+    }
+
+    public function test_simplified_invoice_may_omit_rate_totals(): void
+    {
+        $xml = Mutator::apply(self::base('domestic'), [
+            ["{$this->fa()}/fa:RodzajFaktury", 'set', 'UPR'],
+            ["{$this->fa()}/fa:P_13_2", 'remove'],
+            ["{$this->fa()}/fa:P_14_2", 'remove'],
+        ], self::NAMESPACES);
+
+        $report = Fa3Validator::create()->validate($xml);
+
+        self::assertSame([], self::schemaMessages($report));
+        self::assertSame([], $report->verdict());
+    }
+
     public function test_amounts_compare_as_decimals(): void
     {
         $xml = Mutator::apply(Fixtures::polandBrochure()['rozliczenie.xml'], [
@@ -185,6 +224,11 @@ final class Fa3RulesTest extends TestCase
         ], self::NAMESPACES);
 
         self::assertSame([], Fa3Validator::create()->validate($xml)->verdict());
+    }
+
+    private function fa(): string
+    {
+        return '/fa:Faktura/fa:Fa';
     }
 
     /**

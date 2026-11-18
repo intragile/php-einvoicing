@@ -61,6 +61,19 @@ final class Fa3Rules
         'oo' => 'P_13_10',
     ];
 
+    /**
+     * Kinds whose rows must each have their rate total (P_13_x). A simplified invoice (UPR) may
+     * omit the per-rate sums under art. 106e ust. 5 pkt 3 (p. 92 already exempts its P_12).
+     */
+    private const WITH_RATE_TOTALS = ['VAT', 'ROZ'];
+
+    /**
+     * Kinds whose P_15 is the total amount due of the invoice. On other kinds P_15 is the advance
+     * paid (ZAL), the amount still due (ROZ) or the correction difference (p. 52), so it cannot be
+     * compared with the split payment threshold.
+     */
+    private const WITH_TOTAL_DUE = ['VAT', 'UPR'];
+
     /** Split payment is mandatory above this gross amount in PLN. */
     private const SPLIT_PAYMENT_THRESHOLD = '15000';
 
@@ -93,11 +106,11 @@ final class Fa3Rules
             'PL-FA3-14' => self::rule($warning, 'p. 55', 'On a self-billed invoice (P_17 = 1) the buyer is not repeated as a third party (Podmiot3) in role 5 (issuer).'),
             'PL-FA3-15' => ['severity' => $fatal, 'source' => 'ksef-api faktury/numer-ksef.md', 'message' => 'A KSeF number (NrKSeFFaKorygowanej, NrKSeFFaZaliczkowej) must be 35 characters with a valid CRC-8 checksum.'],
             'PL-FA3-16' => self::rule($warning, 'pp. 45, 88', 'A common delivery date (P_6) and per-row dates (P_6A) exclude each other.'),
-            'PL-FA3-17' => self::rule($fatal, 'pp. 46-52, 92', 'On a basic, settlement or simplified invoice (VAT, ROZ, UPR) each row rate (P_12) needs its total (P_13_x).'),
+            'PL-FA3-17' => self::rule($fatal, 'pp. 46-52, 92', 'On a basic or settlement invoice (VAT, ROZ) each row rate (P_12) needs its total (P_13_x); a simplified invoice (UPR) may omit the per-rate sums (art. 106e ust. 5 pkt 3).'),
             'PL-FA3-18' => self::rule($fatal, 'pp. 51, 57', 'Exempt sales (P_13_7) need the exemption annotation (Zwolnienie/P_19 = 1).'),
             'PL-FA3-19' => self::rule($fatal, 'p. 55', 'A domestic reverse-charge row (P_12 = oo) needs the reverse-charge annotation (P_18 = 1).'),
             'PL-FA3-20' => self::rule($fatal, 'pp. 52, 63', 'Margin-scheme sales (P_13_11) need the margin annotation (PMarzy/P_PMarzy = 1).'),
-            'PL-FA3-21' => self::rule($warning, 'pp. 55-56', 'The split payment annotation (P_18A = 1) applies only above 15,000 PLN gross (P_15).'),
+            'PL-FA3-21' => self::rule($warning, 'pp. 55-56, 52', 'On a basic or simplified invoice (VAT, UPR) the split payment annotation (P_18A = 1) applies only above 15,000 PLN gross (P_15); other kinds are not checked because their P_15 is not the invoice total (p. 52).'),
         ];
     }
 
@@ -260,7 +273,7 @@ final class Fa3Rules
         }
 
         // PL-FA3-17
-        if (in_array($kind, self::WITH_ROWS, true)) {
+        if (in_array($kind, self::WITH_RATE_TOTALS, true)) {
             foreach (self::all($xpath, 'fa:FaWiersz/fa:P_12', $fa) as $element) {
                 $code = trim($element->textContent);
                 $bucket = self::BUCKETS[$code] ?? null;
@@ -292,7 +305,8 @@ final class Fa3Rules
         // PL-FA3-21
         $splitPayment = self::first($xpath, 'fa:Adnotacje/fa:P_18A', $fa);
         $gross = self::decimal(self::first($xpath, 'fa:P_15', $fa));
-        if ($splitPayment !== null && trim($splitPayment->textContent) === '1' && $currency === 'PLN'
+        if (in_array($kind, self::WITH_TOTAL_DUE, true)
+            && $splitPayment !== null && trim($splitPayment->textContent) === '1' && $currency === 'PLN'
             && $gross !== null && $gross->isLessThanOrEqualTo(self::SPLIT_PAYMENT_THRESHOLD)) {
             $report('PL-FA3-21', $splitPayment, "P_15 is {$gross}.");
         }
