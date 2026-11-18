@@ -14,16 +14,20 @@ use IntrAgile\EInvoicing\Validation\MessageValidationReport;
 use IntrAgile\EInvoicing\Validation\SchemaValidator;
 
 /**
- * Validates Polish FA(3) structured invoices against the bundled FA(3) XML Schema (version 1-0E).
+ * Validates Polish FA(3) structured invoices against the bundled FA(3) XML Schema (version 1-0E)
+ * and the FA(3) brochure rules the schema cannot express (Fa3Rules).
  *
  * The schema ships with the library and resolves without network access, so nothing needs to be
- * installed. The document element is checked by name before the schema runs.
+ * installed. The document element is checked by name before the schema runs. The rules run even
+ * when the schema check fails, so the report lists every problem at once.
  *
  * Usage: Fa3Validator::create()->validate($xml)->isValid().
  */
 final class Fa3Validator
 {
     private const SCHEMA_RUN = 'fa3-xsd '.Fa3Format::SCHEMA_VERSION;
+
+    private const RULES_RUN = Fa3Rules::ID.' '.Fa3Rules::VERSION;
 
     private function __construct(private readonly SchemaValidator $schemaValidator) {}
 
@@ -56,6 +60,12 @@ final class Fa3Validator
 
         $schemaErrors = $this->schemaValidator->validate($document, Fa3Schema::path(), Fa3Schema::localPrefixes());
 
-        return new MessageValidationReport(MessageType::Fa3, [self::SCHEMA_RUN], [], [], $schemaErrors);
+        return new MessageValidationReport(
+            MessageType::Fa3,
+            [self::SCHEMA_RUN, self::RULES_RUN],
+            Fa3Rules::check($document),
+            [],
+            $schemaErrors,
+        );
     }
 }

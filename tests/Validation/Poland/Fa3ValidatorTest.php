@@ -64,7 +64,7 @@ final class Fa3ValidatorTest extends TestCase
 
         self::assertSame(MessageType::Fa3, $report->type);
         self::assertSame('fa3', MessageType::Fa3->value);
-        self::assertSame(['fa3-xsd 1-0E'], $report->ruleSets);
+        self::assertSame(['fa3-xsd 1-0E', 'pl-fa3 2026-08'], $report->ruleSets);
         self::assertSame([], $report->findings);
         self::assertSame([], $report->dynamicErrors);
     }
