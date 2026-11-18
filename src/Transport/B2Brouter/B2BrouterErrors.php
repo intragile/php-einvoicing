@@ -236,6 +236,26 @@ final class B2BrouterErrors
     }
 
     /**
+     * The provider's reason for a refused request in quotes, redacted and shortened: the message
+     * of the error object, or the errors list B2Brouter answers some state changes with; a note
+     * that there is none otherwise.
+     */
+    public function quoteRefusal(ResponseInterface $response): string
+    {
+        $error = $this->error($response);
+        if (self::text($error['message'] ?? null) !== null) {
+            return $this->quote($error);
+        }
+        try {
+            $listed = $this->listedErrors(JsonResponse::decode($response)['errors'] ?? null);
+        } catch (UnexpectedResponse) {
+            $listed = null;
+        }
+
+        return $this->quote($listed === null ? null : ['message' => $listed]);
+    }
+
+    /**
      * The id of a B2Brouter object, which is a positive integer, as a string; null otherwise.
      */
     public static function id(mixed $value): ?string

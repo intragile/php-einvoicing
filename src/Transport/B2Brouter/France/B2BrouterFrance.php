@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Transport\B2Brouter\France;
 
+use Brick\Math\BigDecimal;
+use DateTimeImmutable;
+use DateTimeZone;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
 use IntrAgile\EInvoicing\Transport\B2Brouter\ResponseMapper;
 use IntrAgile\EInvoicing\Transport\B2Brouter\SameOriginRedirect;
+use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
 use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
@@ -30,6 +34,12 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class B2BrouterFrance
 {
+    /** The media type of JSON request bodies. */
+    private const JSON = 'application/json';
+
+    /** Payment dates are the dates in France. */
+    private const TIME_ZONE = 'Europe/Paris';
+
     private readonly HttpClient $http;
 
     private readonly FranceResponseMapper $mapper;
@@ -107,9 +117,7 @@ final class B2BrouterFrance
      */
     public function lifecycle(string $invoiceId): PlatformStatus
     {
-        if (preg_match('/^[0-9]{1,20}\z/', $invoiceId) !== 1) {
-            throw new InvalidArgumentException('A B2Brouter invoice id consists of digits only.');
-        }
+        self::checkInvoiceId($invoiceId);
 
         $url = sprintf('%s/invoices/%s', $this->config->baseUrl, $invoiceId);
         $response = $this->get($url);
@@ -123,6 +131,136 @@ final class B2BrouterFrance
 
         // Any other redirect is refused by the mapper without quoting its body.
         return $this->mapper->platformStatus($response, $invoiceId, $redirected);
+    }
+
+    /**
+     * Answers an invoice the account received; B2Brouter emits the lifecycle message for the
+     * answer's status to the seller.
+     *
+     * The returned status is read from B2Brouter's answer. B2Brouter keeps one state for an
+     * approval and a partial approval, so a partial approval reads back as Approved (205).
+     *
+     * @throws OutcomeUnknown when the request failed without an answer or B2Brouter answered a 5xx
+     *                        status; read the state with lifecycle() before answering again
+     * @throws DocumentRejected when B2Brouter refused the answer (HTTP 400, 422), for example a
+     *                          state change the invoice does not allow
+     * @throws UnexpectedResponse when the invoice is unknown, B2Brouter answered with a redirect
+     *                            or the body is not an invoice with a state
+     * @throws TransportException when B2Brouter refused the request
+     * @throws InvalidArgumentException when the id is not a B2Brouter invoice id (digits)
+     */
+    public function respond(string $receivedInvoiceId, BuyerResponse $response): PlatformStatus
+    {
+        self::checkInvoiceId($receivedInvoiceId);
+
+        try {
+            $answer = $this->http->send(
+                'POST',
+                sprintf('%s/invoices/%s/mark_as', $this->config->baseUrl, $receivedInvoiceId),
+                $this->config->headers() + ['Content-Type' => self::JSON],
+                $response->toJson(),
+            );
+        } catch (OutcomeUnknown $exception) {
+            throw new OutcomeUnknown(
+                sprintf(
+                    'Answering B2Brouter invoice "%s" with status %s failed without an answer, so the invoice may or may not have changed state. %s',
+                    $receivedInvoiceId,
+                    $response->status()->value,
+                    FranceResponseMapper::checkStateBeforeRepeating($receivedInvoiceId),
+                ),
+                $exception,
+            );
+        } catch (UnexpectedResponse $exception) {
+            throw $this->config->redactor()->sanitize($exception);
+        }
+
+        return $this->mapper->respondedStatus($answer, $receivedInvoiceId, $response);
+    }
+
+    /**
+     * Records a payment of an invoice the account issued, then reads the invoice.
+     *
+     * Without an amount the payment settles the amount outstanding when B2Brouter records it.
+     * B2Brouter reports the payment to the DGFiP itself: Collected (212) for a domestic invoice
+     * for services, an e-reporting payment record otherwise. Once the payments cover the invoice
+     * total the invoice turns "paid", which reads back as Collected (212).
+     *
+     * @param  BigDecimal|string|int|null  $amount  the cash amount paid, taxes included, greater
+     *                                              than zero with at most 2 decimals; null for
+     *                                              the full amount outstanding
+     * @param  DateTimeImmutable|null  $paidOn  when the payment was made, sent as its date in
+     *                                          Paris; B2Brouter takes today without it
+     *
+     * @throws OutcomeUnknown when the request failed without an answer or B2Brouter answered a 5xx
+     *                        status; a payment is not idempotent, so list the invoice's payments
+     *                        before recording it again
+     * @throws DocumentRejected when B2Brouter refused the payment (HTTP 400, 422)
+     * @throws UnexpectedResponse when reading the invoice after the payment was recorded failed;
+     *                            the payment must not be recorded again
+     * @throws TransportException when B2Brouter refused the request, for example for an invoice
+     *                            outside the account
+     * @throws InvalidArgumentException when the id is not a B2Brouter invoice id (digits) or the
+     *                                  amount is not accepted
+     */
+    public function recordPayment(string $issuedInvoiceId, BigDecimal|string|int|null $amount = null, ?DateTimeImmutable $paidOn = null): PlatformStatus
+    {
+        self::checkInvoiceId($issuedInvoiceId);
+        // The id is digits; a JSON number has no leading zeros.
+        $payment = ['invoice_id' => ltrim($issuedInvoiceId, '0') ?: '0'];
+        if ($amount === null) {
+            $payment['full'] = FranceResponseMapper::json(true);
+        } else {
+            $payment['amount'] = FranceResponseMapper::jsonAmount($amount, 'The payment amount');
+        }
+        if ($paidOn !== null) {
+            $payment['date'] = FranceResponseMapper::json($paidOn->setTimezone(new DateTimeZone(self::TIME_ZONE))->format('Y-m-d'));
+        }
+
+        try {
+            $answer = $this->http->send(
+                'POST',
+                sprintf('%s/accounts/%d/payments', $this->config->baseUrl, $this->config->accountId),
+                $this->config->headers() + ['Content-Type' => self::JSON],
+                FranceResponseMapper::jsonObject(['payment' => FranceResponseMapper::jsonObject($payment)]),
+            );
+        } catch (OutcomeUnknown $exception) {
+            throw new OutcomeUnknown(
+                sprintf(
+                    'Recording a payment on B2Brouter invoice "%s" failed without an answer, so B2Brouter may or may not have recorded it. %s',
+                    $issuedInvoiceId,
+                    FranceResponseMapper::checkPaymentsBeforeRepeating($this->config->accountId, $issuedInvoiceId),
+                ),
+                $exception,
+            );
+        } catch (UnexpectedResponse $exception) {
+            throw $this->config->redactor()->sanitize($exception);
+        }
+
+        $paymentId = $this->mapper->recordedPayment($answer, $this->config->accountId, $issuedInvoiceId);
+
+        try {
+            return $this->lifecycle($issuedInvoiceId);
+        } catch (TransportException $exception) {
+            throw new UnexpectedResponse(
+                sprintf(
+                    'B2Brouter recorded %s on invoice "%s", but reading the invoice afterwards failed; do not record it again, read its state with lifecycle(): %s',
+                    $paymentId === null ? 'the payment' : 'payment '.$paymentId,
+                    $issuedInvoiceId,
+                    $exception->getMessage(),
+                ),
+                previous: $exception,
+            );
+        }
+    }
+
+    /**
+     * @throws InvalidArgumentException when the id is not a B2Brouter invoice id (digits)
+     */
+    private static function checkInvoiceId(string $invoiceId): void
+    {
+        if (preg_match('/^[0-9]{1,20}\z/', $invoiceId) !== 1) {
+            throw new InvalidArgumentException('A B2Brouter invoice id consists of digits only.');
+        }
     }
 
     /**
