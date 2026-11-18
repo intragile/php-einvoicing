@@ -29,7 +29,7 @@ use InvalidArgumentException;
  * The type is detected from the document element and the specification identifier (BT-24),
  * compared exactly as written: a UBL Invoice or CreditNote under the French CIUS or the French
  * extension (EXTENDED-CTC-FR), a CII CrossIndustryInvoice under the French CIUS, or a Factur-X
- * hybrid PDF of any profile.
+ * hybrid PDF of the BASIC, EN 16931 or EXTENDED profile.
  */
 final readonly class FrenchDocument
 {

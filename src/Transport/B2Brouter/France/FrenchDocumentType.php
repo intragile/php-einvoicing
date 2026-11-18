@@ -27,6 +27,6 @@ enum FrenchDocumentType: string
     /** CII CrossIndustryInvoice under the French CIUS (EN 16931). */
     case CiiInvoice = 'xml.cii.cross_industry_invoice.frcius.v1';
 
-    /** Factur-X hybrid PDF of any profile. */
+    /** Factur-X hybrid PDF of the BASIC, EN 16931 or EXTENDED profile. */
     case FacturX = 'xml.cii.cross_industry_invoice.facturx.fr.all_profiles.v1';
 }

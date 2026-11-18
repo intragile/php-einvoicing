@@ -10,11 +10,11 @@ a technical guide, not legal or tax advice.
 
 Every in-scope French invoice must pass through a *plateforme agréée* (PA, approved platform). This
 package is not a PA and never talks to the DGFiP. In the reform's terms it is a *solution
-compatible*: software that builds, reads and validates the French documents and hands them to a
-PA. It builds the invoice, the lifecycle message (*compte rendu de vie*, CDV) and the Flux 10
-e-reporting file; the PA transmits them. Through B2Brouter, a registered PA, it also sends
-invoices, answers received invoices, records payments, deposits Flux 10 files and looks up the
-directory (see [Sending through a plateforme agréée (B2Brouter)](#sending-through-a-plateforme-agréée-b2brouter));
+compatible*: software that builds, reads and validates the French documents and hands them to a PA.
+It builds the invoice, the lifecycle message (*compte rendu de vie*, CDV) and the Flux 10
+e-reporting file; the PA transmits them. Through B2Brouter, a registered PA, it also sends invoices,
+answers received invoices, records payments, deposits Flux 10 files and looks up the directory (see
+[Sending through a plateforme agréée (B2Brouter)](#sending-through-a-plateforme-agréée-b2brouter));
 B2Brouter emits the lifecycle messages itself. Other PAs are not supported (see
 [Not covered yet](#not-covered-yet)).
 
@@ -121,9 +121,9 @@ $report = CdarValidator::create(__DIR__.'/var/france-rules')->validate($cdvXml);
 $report = Flux10Validator::create(__DIR__.'/var/france-rules')->validate($flux10Xml);
 ```
 
-For invoices, the specification identifier selects a chain. Every chain checks the XML Schema first and then runs
-its rule sets in order; the rule sets run even when the schema check fails, so one report lists
-every problem.
+For invoices, the specification identifier selects a chain. Every chain checks the XML Schema first
+and then runs its rule sets in order; the rule sets run even when the schema check fails, so one
+report lists every problem.
 
 | Document | Schema | Rule sets |
 |---|---|---|
@@ -733,10 +733,11 @@ type is detected from the document element and the specification identifier (BT-
 
 `FrenchDocument::fromXml($xml)` reads UBL or CII, `fromFacturX($pdf)` a Factur-X PDF (the number
 comes from its embedded XML; a MINIMUM or BASIC WL profile, read from the embedded BT-24, is refused
-with `UnsupportedDocument` as not an invoice under the French reform) and `fromInvoice($invoice, Syntax::Ubl)` writes the model first (CII
-as D22B). A CII EXTENDED-CTC-FR document is refused (`UnsupportedDocument`), since B2Brouter has
-no document type for it: write the invoice as UBL. A BT-24 that is not a French profile, such as
-Peppol BIS Billing 3.0 or XRechnung, is refused with a pointer to `B2BrouterTransport`.
+with `UnsupportedDocument` as not an invoice under the French reform) and
+`fromInvoice($invoice, Syntax::Ubl)` writes the model first (CII as D22B). A CII EXTENDED-CTC-FR
+document is refused (`UnsupportedDocument`), since B2Brouter has no document type for it: write the
+invoice as UBL. A BT-24 that is not a French profile, such as Peppol BIS Billing 3.0 or XRechnung,
+is refused with a pointer to `B2BrouterTransport`.
 
 `send($document)` imports the document into the account and sends it in one request
 (`POST /accounts/{id}/invoices/import`). Every document, XML or PDF, is uploaded as
@@ -837,11 +838,12 @@ the API key again) and returns a `PlatformStatus`:
   alone cannot tell which happened.
 
 The `B2BrouterWebhook` events `issued_invoice.state_change` and `received_invoice.state_change`
-carry the same status in `$event->lifecycleStatus` (see [TRANSPORT.md](../TRANSPORT.md#b2brouter-webhooks)).
-Observed in the sandbox (2026-11-18): an issued invoice notifies `issued`, `sending` and `sent`
-(`Deposited`); a received invoice notifies `received_invoice.created` (`new`) and its answer
-(`accepted`, `Approved`). A recorded payment turns the invoice `paid` without any notification,
-so read `Collected` from what `recordPayment()` returns or from `lifecycle()`, not from a webhook.
+carry the same status in `$event->lifecycleStatus` (see
+[TRANSPORT.md](../TRANSPORT.md#b2brouter-webhooks)). Observed in the sandbox (2026-11-18): an issued
+invoice notifies `issued`, `sending` and `sent` (`Deposited`); a received invoice notifies
+`received_invoice.created` (`new`) and its answer (`accepted`, `Approved`). A recorded payment turns
+the invoice `paid` without any notification, so read `Collected` from what `recordPayment()` returns
+or from `lifecycle()`, not from a webhook.
 
 ### Answering a received invoice
 
@@ -917,8 +919,9 @@ otherwise. Once the payments cover the total the invoice turns `paid`, which rea
 
 A payment is not idempotent. No answer, a 5xx answer, a redirect or a 2xx answer other than 200 and
 201 throws `OutcomeUnknown`; list the invoice's payments in the account
-(`GET /accounts/{account}/payments?invoice_id=…`) before recording it again. When the payment was recorded but reading the invoice afterwards
-failed, an `UnexpectedResponse` says so: do not record it again.
+(`GET /accounts/{account}/payments?invoice_id=…`) before recording it again. When the payment was
+recorded but reading the invoice afterwards failed, an `UnexpectedResponse` says so: do not record
+it again.
 
 ### Flux 10 deposit
 
