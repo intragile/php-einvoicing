@@ -21,8 +21,8 @@ use InvalidArgumentException;
  *
  * Line numbers (NrWierszaFa) run 1 to n in output order; the line identifier (BT-126) goes to
  * UU_ID when it differs from that number. The unit (P_8A) is the Polish unit label, else the
- * UN/ECE code of BT-130; a one-stop-shop line (PolishLine::$ossRate) is written with P_12_XII and
- * without P_12; with a label, a BT-130 other than C62 goes to a line description
+ * UN/ECE code of BT-130; a one-stop-shop line (PolishLine::$ossRate without a rate code override)
+ * is written with P_12_XII and without P_12, a line with both with both elements; with a label, a BT-130 other than C62 goes to a line description
  * (DodatkowyOpis) under its fixed key. P_10 is the sum of the line allowances (BT-136). P_8A, P_8B and P_9A are
  * left out for a row read without them (the PolishLine omission markers) as long as the line still
  * holds the values read from their absence; P_12 is left out for a row read without it.
@@ -38,14 +38,15 @@ final class Fa3LineWriter
 {
     /**
      * The P_12 code of the line: the Polish override, else the code of its VAT category and rate.
-     * A margin scheme line and a one-stop-shop line (PolishLine::$ossRate) have none.
+     * A margin scheme line and a one-stop-shop line (an OSS rate without a rate code override)
+     * have none.
      *
      * @throws InvalidArgumentException when the category and rate have no FA(3) code
      */
     public static function rateCode(InvoiceLine $line, ?CountryCode $buyerCountry): ?VatRateCode
     {
         $polish = $line->extensions()->get(PolishLine::class);
-        if ($polish?->margin === true || $polish?->ossRate !== null) {
+        if ($polish?->margin === true || self::isOss($line)) {
             return null;
         }
 
@@ -54,7 +55,8 @@ final class Fa3LineWriter
 
     /**
      * The summary bucket the line feeds: the margin bucket for a margin scheme line, the
-     * one-stop-shop bucket (P_13_5) for a line with an OSS rate, else the bucket of its rate code.
+     * one-stop-shop bucket (P_13_5) for a line with an OSS rate and no rate code override, else
+     * the bucket of its rate code.
      *
      * @throws InvalidArgumentException when the line has no FA(3) code or its code has no bucket
      */
@@ -64,7 +66,7 @@ final class Fa3LineWriter
         if ($polish?->margin === true) {
             return VatBucket::Margin;
         }
-        if ($polish?->ossRate !== null) {
+        if (self::isOss($line)) {
             return VatBucket::Oss;
         }
         $code = self::rateCode($line, $buyerCountry) ?? VatRateCode::fromModel($line->vat->category, $line->vat->rate, $buyerCountry);
@@ -77,6 +79,17 @@ final class Fa3LineWriter
         }
 
         return $bucket;
+    }
+
+    /**
+     * Whether the line is a one-stop-shop line: an OSS rate (P_12_XII) without a rate code
+     * override. A line with both is written with both elements in the bucket of its rate code.
+     */
+    public static function isOss(InvoiceLine $line): bool
+    {
+        $polish = $line->extensions()->get(PolishLine::class);
+
+        return $polish?->ossRate !== null && $polish->rateCode === null && ! $polish->margin;
     }
 
     /**

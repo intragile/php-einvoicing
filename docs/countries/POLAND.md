@@ -157,7 +157,8 @@ PL-FA3 rules and, instead of returning the document, throws one `InvalidArgument
 every schema error and fatal finding. That catches the limits the guard does not check itself,
 such as the text lengths of the schema (256 characters for most texts, 512 for names, 50 for
 `UU_ID`). `ContactDetails` refuses an empty e-mail address or phone number and `KeyValue` a line
-number below 1.
+number below 1; the guard refuses an empty phone number or e-mail address of an EN 16931 contact
+(BT-42, BT-43, BT-57, BT-58, or a third party's).
 
 The invoice kind (`RodzajFaktury`) is `PolishInvoice::$kind`, else derived from the invoice type
 code (BT-3): 380 is VAT, 381 and 384 are KOR, 386 is ZAL. Any other BT-3 needs an explicit kind.
@@ -216,14 +217,18 @@ write them back on their own. To change them, change the Polish data:
 - **BT-6** (VAT accounting currency) is PLN and **BT-111** the sum of `P_14_1W` to `P_14_4W` on an
   invoice in a foreign currency; the per-bucket amounts are kept in `PolishInvoice::$vatInPln`.
 
-Rows are read as written, with nothing guessed:
+Rows are read as written. Where a row leaves a value open, the reader takes it only from what the
+invoice states, never from a guess:
 
 - **A row without `P_12`** (allowed on simplified invoices and in the cases of p. 92) that is not a
   margin row is marked `PolishLine::$rateCodeOmitted` and written back without `P_12`. When the
-  invoice has exactly one summary bucket, the line takes the category and rate of that bucket's
-  default code (for example S 23 for `P_13_1`); with several buckets its bucket is unknown, so it
-  is category O without a rate, and writing it back is refused unless `P_13_8` is present.
+  invoice has exactly one summary bucket with a default code, the line takes the category and rate
+  of that code (for example S 23 for `P_13_1`). Otherwise its bucket is unknown because `P_12` was
+  absent: the line is category O without a rate, and writing it back is refused with a message
+  saying so, unless `P_13_8` is present.
 - **A row with `P_12_XII` and without `P_12`** is a one-stop-shop line (category S at that rate).
+  A row with both keeps `P_12` as `PolishLine::$rateCode` and `P_12_XII` as the OSS rate, and is
+  written back with both, in the bucket of its `P_12` code.
 - **A description whose `NrWiersza` several rows share** (rows numbered 1, 1, 2, 2) is not
   attached to any of them: it stays a `PolishInvoice::$descriptions` entry and the ambiguity is
   listed in `ignored`.
@@ -561,8 +566,10 @@ $line = (new InvoiceLine(
 ))->withExtension(new PolishLine(ossRate: '19')); // P_12_XII 19, P_13_5 100.00, P_14_5 19.00
 ```
 
-The guard refuses an OSS line with a rate code override, a margin flag, or another category or
-rate than S at its OSS rate. On read, such rows come back as S at the OSS rate with the OSS rate
+A line with both an OSS rate and a rate code override is not an OSS line: it is written with both
+`P_12` and `P_12_XII`, in the bucket of the override (as a read row with both elements comes
+back). The guard refuses an OSS line with a margin flag, or another category or rate than S at its
+OSS rate. On read, such rows come back as S at the OSS rate with the OSS rate
 kept, and the `P_13_5` breakdown row is S at that rate (without a rate when the rows' rates
 differ, which then cannot be written back). FA(3) has no `P_14_5W`, so no VAT in PLN is needed.
 
@@ -684,20 +691,20 @@ Refused, in one `InvalidArgumentException` naming each (FA(3) has no element for
 (BG-10), the tax representative (BG-11), the deliver-to party name, location and address (BT-70,
 BT-71, BG-15), document allowances and charges (BG-20, BG-21), additional supporting documents
 (BG-24), line charges (BG-28), the invoiced object identifier (BT-18), party identifiers (BT-29,
-BT-46), the seller legal registration (BT-30) and the buyer's next to a VAT identifier (BT-47),
-the seller tax registration and additional legal information (BT-32, BT-33), electronic addresses
-(BT-34, BT-49), a VAT accounting currency other than PLN (BT-6), the tax point date code (BT-8),
-the paid amount (BT-113, except on ROZ) and the rounding amount (BT-114) when not zero, payment card
-and direct debit (BG-18, BG-19), note subject codes (BT-21), country subdivisions (BT-39, BT-54),
-line periods (BG-26), item price discounts and gross prices (BT-147, BT-148), item classifications
-(BT-158), item attributes (BG-32), scheme identifiers FA(3) has no field for (BT-128-1, BT-47-1),
-a price base quantity unit (BT-150) other than the line unit, the payment means text (BT-82)
-when a payment form is written, a third party with an internal identifier (`IDWew`) next to a VAT
+BT-46), the seller legal registration (BT-30) and the buyer's next to a VAT identifier (BT-47), the
+seller tax registration and additional legal information (BT-32, BT-33), electronic addresses
+(BT-34, BT-49), a VAT accounting currency other than PLN (BT-6), the tax point date code (BT-8), the
+paid amount (BT-113, except on ROZ) and the rounding amount (BT-114) when not zero, payment card and
+direct debit (BG-18, BG-19), note subject codes (BT-21), country subdivisions (BT-39, BT-54), line
+periods (BG-26), item price discounts and gross prices (BT-147, BT-148), item classifications
+(BT-158), item attributes (BG-32), scheme identifiers FA(3) has no field for (BT-128-1, BT-47-1), a
+price base quantity unit (BT-150) other than the line unit, the payment means text (BT-82) when a
+payment form is written, a third party with an internal identifier (`IDWew`) next to a VAT
 identifier or a legal registration, a GLN (`PolishParty::$gln`) of a party without an address, a
-rate code override outside the line's category or rate bucket, and data on a bucket line beyond
-its amounts (see [Invoices without rows](#invoices-without-rows)). VAT exemption reasons (BT-120, BT-121) are accepted only with the
-exemption annotation (`Annotations::$exemption`, `P_19` with its legal basis), which supersedes
-them; the legal basis is never guessed.
+rate code override outside the line's category or rate bucket, and data on a bucket line beyond its
+amounts (see [Invoices without rows](#invoices-without-rows)). VAT exemption reasons (BT-120,
+BT-121) are accepted only with the exemption annotation (`Annotations::$exemption`, `P_19` with its
+legal basis), which supersedes them; the legal basis is never guessed.
 
 **Not carried: BT-23 and BT-24** (BG-2, process control). FA(3) identifies itself by its form code
 and has no business process element, so these are neither written nor refused, and a read invoice
@@ -713,6 +720,9 @@ FA(3) and back, these differences remain:
   percentage and code, and the reader rebuilds the allowances when at least two such amounts add
   up to `P_10`. A file whose amounts do not add up (or are malformed) reads as one allowance of
   `P_10`, with the amounts kept as descriptions. A line with one allowance carries no amount key.
+  On a state-before row (`StanPrzed`), the amounts are written as the line holds them, in storno
+  form (negative), while `P_10` is written with its sign restored; the reader compares their sum
+  with `P_10` negated.
 - **An allowance read from `P_10` alone has the reason `P_10`** (`Fa3Format::ALLOWANCE_REASON`).
   The writer does not repeat that reason as a BT-139 description, so an allowance whose real
   reason is the literal text `P_10` loses it.
@@ -724,12 +734,12 @@ FA(3) and back, these differences remain:
   `DoRozliczenia` from the entries and `P_15`, at 2 decimals. A source that wrote them at another
   scale (for example `37` for `37.00`) comes back normalised; a source whose sum differs from its
   entries has that sum listed in `ignored` and the computed one used.
-- **Omitted `P_8A`, `P_8B`, `P_9A`, `P_12`.** A row read without `P_12` is marked
-  `rateCodeOmitted` and written back without it (see [Read](#read)). A row read without the others
-  is marked (`unitOmitted`, `quantityOmitted`, `unitPriceOmitted`) and written back without them while the line still holds
-  the values read from their absence. For `P_9A` the check is by value: a net price changed to an
-  equal value at another scale (for example `45.9` and `45.90`) keeps `P_9A` omitted, so the price
-  comes back at the reader's scale.
+- **Omitted `P_8A`, `P_8B`, `P_9A`, `P_12`.** A row read without `P_12` is marked `rateCodeOmitted`
+  and written back without it (see [Read](#read)). A row read without the others is marked
+  (`unitOmitted`, `quantityOmitted`, `unitPriceOmitted`) and written back without them while the
+  line still holds the values read from their absence. For `P_9A` the check is by value: a net price
+  changed to an equal value at another scale (for example `45.9` and `45.90`) keeps `P_9A` omitted,
+  so the price comes back at the reader's scale.
 - **Foreign addresses** come back with post code and city joined in the city (see above).
 
 ### Verbatim blocks

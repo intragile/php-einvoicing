@@ -138,7 +138,7 @@ final class Fa3PropertyAuditTest extends TestCase
             'grossUnitPrice' => 'written: P_9B; refused: on a bucket line',
             'grossAmount' => 'written: P_11A; refused: on a bucket line',
             'vatAmount' => 'written: P_11Vat; refused: on a bucket line',
-            'ossRate' => 'written: P_12_XII with the bucket P_13_5; refused: with an override, a margin flag, another category or rate, or on a bucket line',
+            'ossRate' => 'written: P_12_XII, with the bucket P_13_5 when there is no rate code override, else beside P_12; refused: with a margin flag, another category or rate than S at the OSS rate without an override, or on a bucket line',
             'annex15' => 'written: P_12_Zal_15; refused: on a bucket line',
             'excise' => 'written: KwotaAkcyzy; refused: on a bucket line',
             'gtu' => 'written: GTU; refused: on a bucket line',

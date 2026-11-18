@@ -283,6 +283,20 @@ final class Fa3Guard
             }
         }
 
+        $contacts = [['BT-42', 'BT-43', $seller->contact], ['BT-57', 'BT-58', $buyer->contact]];
+        foreach ($polish->thirdParties as $index => $thirdParty) {
+            $at = sprintf('Podmiot3[%d] contact', $index + 1);
+            $contacts[] = [$at.' phone', $at.' e-mail', $thirdParty->party->contact];
+        }
+        foreach ($contacts as [$phoneTerm, $emailTerm, $contact]) {
+            if ($contact?->phone === '') {
+                $violations[] = $phoneTerm.': FA(3) has no empty phone number (DaneKontaktowe/Telefon); leave it null';
+            }
+            if ($contact?->email === '') {
+                $violations[] = $emailTerm.': FA(3) has no empty e-mail address (DaneKontaktowe/Email); leave it null';
+            }
+        }
+
         foreach ([[$seller, 'BG-5'], [$buyer, 'BG-8']] as [$party, $term]) {
             if ($party->address !== null && Fa3PartyWriter::addressLine1($party->address) === null) {
                 $violations[] = $term.': FA(3) requires at least one address line (AdresL1)';
@@ -703,7 +717,12 @@ final class Fa3Guard
                     $line->vat->rate === null ? '' : ' '.$line->vat->rate,
                 );
             }
-            if (Fa3LineWriter::isWritten($line) && ! in_array($bucket, $written, true)) {
+            if (Fa3LineWriter::isWritten($line) && ! in_array($bucket, $written, true) && $polishLine?->rateCodeOmitted === true) {
+                $violations[] = sprintf(
+                    'BT-151 (line "%s"): the row was read without P_12 and the invoice summary buckets do not tell which one it feeds, so its bucket is unknown and it cannot be written back; give the line its VAT category and rate',
+                    $line->id,
+                );
+            } elseif (Fa3LineWriter::isWritten($line) && ! in_array($bucket, $written, true)) {
                 $violations[] = sprintf(
                     '%s (line "%s"): the line feeds %s, which no VAT breakdown row (BG-23) writes; every row needs its summary bucket',
                     $override === null ? 'BT-151' : 'P_12',
@@ -721,9 +740,9 @@ final class Fa3Guard
     }
 
     /**
-     * Why a one-stop-shop line (PolishLine::$ossRate) cannot be written: it feeds P_13_5 without a
-     * rate code, so it takes no rate code override, is not a margin scheme line, and is VAT
-     * category S at its OSS rate.
+     * Why a one-stop-shop line (PolishLine::$ossRate without a rate code override) cannot be
+     * written: it feeds P_13_5 without a rate code, so it is not a margin scheme line and is VAT
+     * category S at its OSS rate. A line with an override is written with both elements.
      *
      * @return list<string>
      */
@@ -736,7 +755,8 @@ final class Fa3Guard
         }
         $problems = [];
         if ($polish->rateCode !== null) {
-            $problems[] = sprintf('a one-stop-shop line feeds P_13_5 and is written without a rate code (P_12), so it takes no rate code override, got "%s"', $polish->rateCode->value);
+            // Written with both P_12 and P_12_XII in the bucket of the rate code.
+            return [];
         }
         if ($polish->margin) {
             $problems[] = 'a margin scheme line has no one-stop-shop rate';

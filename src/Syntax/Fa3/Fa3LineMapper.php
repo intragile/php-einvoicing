@@ -42,7 +42,8 @@ use InvalidArgumentException;
  *   (PolishLine::$rateCodeOmitted) and takes the category and rate of the default code of the
  *   invoice's only summary bucket; with several buckets the row's bucket is unknown, so it is
  *   category O without a rate and no code is guessed. A row with an OSS rate (P_12_XII) and
- *   without P_12 is a one-stop-shop line: category S at that rate.
+ *   without P_12 is a one-stop-shop line: category S at that rate. A row with both keeps P_12
+ *   as the Polish rate code and P_12_XII as the OSS rate.
  * - P_10 is one line allowance with that amount; its reason is the fixed-key description of
  *   the row, else "P_10". When the row's descriptions carry the amounts of several allowances
  *   (BT-136) that add up to P_10, each becomes an allowance with the terms that follow it.
@@ -93,6 +94,8 @@ final class Fa3LineMapper
         $ossRate = $d->decimal('fa:P_12_XII', $row);
         if ($code !== null) {
             [$vat, $override] = self::vat($code, $buyerCountry);
+            // A row with both P_12 and P_12_XII keeps its code, so it is not taken for an OSS line.
+            $override = $ossRate !== null ? $code : $override;
         } elseif ($codeElement === null && $ossRate !== null) {
             $vat = new LineVat(VatCategory::StandardRate, $ossRate);
             $override = null;

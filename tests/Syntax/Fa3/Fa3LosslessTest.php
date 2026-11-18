@@ -11,6 +11,7 @@ use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
 use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
+use IntrAgile\EInvoicing\Model\Contact;
 use IntrAgile\EInvoicing\Model\Identifier;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\InvoiceLine;
@@ -100,7 +101,8 @@ final class Fa3LosslessTest extends TestCase
         $exception = self::capture(fn () => self::write($read));
         self::assertInstanceOf(InvalidArgumentException::class, $exception);
         self::assertStringContainsString('line "3"', $exception->getMessage());
-        self::assertStringContainsString('P_13_8', $exception->getMessage());
+        self::assertStringContainsString('read without P_12', $exception->getMessage());
+        self::assertStringContainsString('unknown', $exception->getMessage());
         self::assertStringNotContainsString('np I</P_12>', $source);
     }
 
@@ -276,7 +278,6 @@ final class Fa3LosslessTest extends TestCase
     public static function badOssLines(): array
     {
         return [
-            'with a rate code override' => [VatCategory::NotSubjectToVat, null, new PolishLine(ossRate: '19', rateCode: VatRateCode::OutsideTerritory), 'P_12_XII (line "1"): '],
             'not standard rated' => [VatCategory::NotSubjectToVat, null, new PolishLine(ossRate: '19'), 'P_12_XII (line "1"): '],
             'rate differs' => [VatCategory::StandardRate, '20', new PolishLine(ossRate: '19'), 'P_12_XII (line "1"): '],
         ];
@@ -555,6 +556,67 @@ final class Fa3LosslessTest extends TestCase
         self::assertNotSame([], $result->ignored);
         $kept = $result->invoice->extensions()->get(PolishInvoice::class)->descriptions ?? [];
         self::assertSame(['Uwaga A'], array_map(static fn (KeyValue $pair): string => $pair->value, $kept));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function rateCodeWithOssRate(): array
+    {
+        return ['same rate' => ['23'], 'other rate' => ['19']];
+    }
+
+    #[DataProvider('rateCodeWithOssRate')]
+    public function test_row_with_rate_code_and_oss_rate_survives_read_and_write(string $ossRate): void
+    {
+        $source = str_replace('<P_12>23</P_12>', "<P_12>23</P_12><P_12_XII>{$ossRate}</P_12_XII>", self::write(PolishInvoices::consumer()));
+        self::assertTrue(Fa3Validator::create()->validate($source)->isValid());
+
+        $read = (new Fa3Reader)->read($source);
+        self::assertSame([], $read->ignored);
+        $polish = $read->invoice->lines[0]->extensions()->get(PolishLine::class);
+        self::assertSame(VatRateCode::Rate23, $polish?->rateCode);
+        self::assertSame($ossRate, (string) $polish->ossRate);
+        $written = self::write($read->invoice);
+        self::assertSame(Fa3Fields::of($source), Fa3Fields::of($written));
+        self::assertSame($written, self::write((new Fa3Reader)->read($written)->invoice));
+        self::assertSame((string) preg_replace('#>\s+<#', '><', $source), (string) preg_replace('#>\s+<#', '><', $written));
+    }
+
+    public function test_line_with_rate_code_and_oss_rate_is_written_in_the_rate_code_bucket(): void
+    {
+        $line = PolishInvoices::line('1', 'Ebook', '1', UnitCode::C62, '100.00', VatCategory::StandardRate, '23')
+            ->withExtension(new PolishLine(rateCode: VatRateCode::Rate23, ossRate: '23'));
+        $fields = Fa3Fields::of(self::write(TotalsCalculator::complete(PolishInvoices::consumer()->withLines([$line])->withVatBreakdown([]))));
+
+        self::assertSame(['100.00'], $fields['Fa/P_13_1']);
+        self::assertSame(['23'], $fields['Fa/FaWiersz[1]/P_12']);
+        self::assertSame(['23'], $fields['Fa/FaWiersz[1]/P_12_XII']);
+        self::assertArrayNotHasKey('Fa/P_13_5', $fields);
+    }
+
+    public function test_row_without_rate_code_whose_bucket_is_unknown_says_so(): void
+    {
+        $source = preg_replace(
+            ['#<P_13_1>([^<]*)</P_13_1>\s*<P_14_1>([^<]*)</P_14_1>#', '#<P_12>23</P_12>#'],
+            ['<P_13_5>$1</P_13_5><P_14_5>$2</P_14_5>', ''],
+            self::write(PolishInvoices::consumer()),
+        );
+        self::assertIsString($source);
+
+        $exception = self::capture(fn () => self::write((new Fa3Reader)->read($source)->invoice));
+        self::assertInstanceOf(InvalidArgumentException::class, $exception);
+        self::assertStringContainsString('read without P_12', $exception->getMessage());
+        self::assertStringContainsString('unknown', $exception->getMessage());
+    }
+
+    public function test_empty_contact_phone_or_email_is_refused_by_the_guard(): void
+    {
+        $invoice = PolishInvoices::consumer();
+        $seller = $invoice->seller;
+        $invoice = $invoice->withSeller(new Party(name: $seller->name, vatIdentifier: $seller->vatIdentifier, address: $seller->address, contact: new Contact(phone: '', email: 'a@b.pl')));
+
+        self::assertStringContainsString('BT-42: ', self::refusal($invoice));
     }
 
     private static function refusal(Invoice $invoice): string

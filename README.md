@@ -57,11 +57,11 @@ Included today:
   live-tested in the sandbox: directory lookup, sending, lifecycle, buyer approval and payment.
 - Polish KSeF invoices in the FA(3) format: writing and reading FA(3) from the same model, with the
   Polish data (invoice kinds, corrections, advances, VAT in PLN, annotations, one-stop-shop lines)
-  in extensions (taxi lump-sum invoices are read but not written), and
-  validation against the bundled official FA(3) XSD plus 21 rules from the Ministry of Finance
-  brochure, offline; helpers for the NIP, the KSeF number and the KOD I verification link. Format
-  verified offline against the official FA(3) XSD and the published brochure rules, no official
-  executable reference; sending to KSeF is not included yet ([Poland](docs/countries/POLAND.md)).
+  in extensions (taxi lump-sum invoices are read but not written), and validation against the
+  bundled official FA(3) XSD plus 21 rules from the Ministry of Finance brochure, offline; helpers
+  for the NIP, the KSeF number and the KOD I verification link. Format verified offline against the
+  official FA(3) XSD and the published brochure rules, no official executable reference; sending to
+  KSeF is not included yet ([Poland](docs/countries/POLAND.md)).
 
 Country notes: [Germany](docs/countries/DE.md) (legal basis, formats, channels and what is
 verified), [France](docs/countries/FRANCE.md) (the reform, profiles, installing and running the
