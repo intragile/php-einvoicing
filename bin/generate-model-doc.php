@@ -134,6 +134,16 @@ function build(): string
             cell($doc),
         );
     }
+    $out .= "\n## Country extensions\n\n";
+    $out .= "Country data EN 16931 does not carry is attached through the extension bags of `Invoice`\n";
+    $out .= "and `InvoiceLine` (`withExtension()`, `extensions()->get()`), outside this table:\n\n";
+    $out .= "- France: `IntrAgile\\EInvoicing\\France\\FrenchInvoice` and `FrenchLine`, see\n";
+    $out .= "  [countries/FRANCE.md](countries/FRANCE.md).\n";
+    $out .= "- Poland: `IntrAgile\\EInvoicing\\Poland\\PolishInvoice` (invoice kind, annotations, Polish party\n";
+    $out .= "  data, correction data, advances, VAT in PLN, charges and deductions, payment form, bank\n";
+    $out .= "  accounts, transaction terms, verbatim blocks) and `PolishLine` (P_12 rate code, unit label,\n";
+    $out .= "  GTU, procedure, state-before, margin and bucket-line flags), see\n";
+    $out .= "  [countries/POLAND.md](countries/POLAND.md).\n";
     $out .= "\n---\n\nDeveloped and maintained by [IntrAgile Kft.](https://intragile.eu)\n";
 
     return $out;

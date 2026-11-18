@@ -55,11 +55,18 @@ Included today:
   invoices, buyer answers, payments and Flux 10 deposits (B2Brouter emits the lifecycle messages;
   the library maps its states to statuses), and a live directory lookup. Tested offline;
   live-tested in the sandbox: directory lookup, sending, lifecycle, buyer approval and payment.
+- Polish KSeF invoices in the FA(3) format: writing and reading FA(3) from the same model, with the
+  Polish data (invoice kinds, corrections, advances, VAT in PLN, annotations) in extensions, and
+  validation against the bundled official FA(3) XSD plus 21 rules from the Ministry of Finance
+  brochure, offline; helpers for the NIP, the KSeF number and the KOD I verification link. Format
+  verified offline against the official FA(3) XSD and the published brochure rules, no official
+  executable reference; sending to KSeF is not included yet ([Poland](docs/countries/POLAND.md)).
 
 Country notes: [Germany](docs/countries/DE.md) (legal basis, formats, channels and what is
 verified), [France](docs/countries/FRANCE.md) (the reform, profiles, installing and running the
 French rules, lifecycle statuses, e-reporting, routing, sending through B2Brouter, what is not
-covered yet).
+covered yet), [Poland](docs/countries/POLAND.md) (KSeF and FA(3), building, reading and validating
+Polish invoices, the mapping, the KSeF number and verification link, what is not covered yet).
 
 Not included: self-billing over Peppol, and CII under Peppol BIS Billing 3.0 (CII goes over
 Peppol only as XRechnung). Rendering the invoice PDF is out of scope: you supply the PDF. The

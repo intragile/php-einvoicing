@@ -286,6 +286,19 @@ seller, buyer and payee names), it appears once per id.
 | BT-164 | `PostalAddress` | `$line3` | `?string` | Address line 3 (BT-162 / BT-163 / BT-164 / BT-165). |
 | BT-165 | `PostalAddress` | `$line3` | `?string` | Address line 3 (BT-162 / BT-163 / BT-164 / BT-165). |
 
+## Country extensions
+
+Country data EN 16931 does not carry is attached through the extension bags of `Invoice`
+and `InvoiceLine` (`withExtension()`, `extensions()->get()`), outside this table:
+
+- France: `IntrAgile\EInvoicing\France\FrenchInvoice` and `FrenchLine`, see
+  [countries/FRANCE.md](countries/FRANCE.md).
+- Poland: `IntrAgile\EInvoicing\Poland\PolishInvoice` (invoice kind, annotations, Polish party
+  data, correction data, advances, VAT in PLN, charges and deductions, payment form, bank
+  accounts, transaction terms, verbatim blocks) and `PolishLine` (P_12 rate code, unit label,
+  GTU, procedure, state-before, margin and bucket-line flags), see
+  [countries/POLAND.md](countries/POLAND.md).
+
 ---
 
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)

@@ -57,11 +57,20 @@ Jelenleg tartalmazza:
   életciklus-üzeneteket a B2Brouter állítja elő, a könyvtár az állapotait státuszokra képezi le),
   valamint élő címtár- (*annuaire*) lekérdezés. Hálózat nélkül tesztelve; élesben (sandboxban) a
   címtár-lekérdezést, a küldést, az életciklust, a vevői jóváhagyást és a fizetést teszteltük.
+- Lengyel KSeF-számlák FA(3) formátumban: FA(3) írása és olvasása ugyanabból a modellből, a lengyel
+  adatokkal (számlafajták, helyesbítések, előlegek, az ÁFA zlotyban, a kötelező jelölések)
+  bővítményekben, valamint ellenőrzés a csomagban szállított hivatalos FA(3) XSD-vel és a lengyel
+  Pénzügyminisztérium tájékoztató füzetéből vett 21 szabállyal, hálózat nélkül; segédosztályok a
+  NIP-hez, a KSeF-számhoz és a KOD I ellenőrző linkhez. A formátumot hálózat nélkül ellenőriztük a
+  hivatalos FA(3) XSD és a közzétett szabályok alapján, hivatalos futtatható referencia nélkül; a
+  KSeF-be küldés még nincs benne ([Lengyelország](docs/countries/POLAND.md), angolul).
 
 Országjegyzetek: [Németország](docs/countries/DE.md) (jogalap, formátumok, csatornák és az ellenőrzés, angolul),
 [Franciaország](docs/countries/FRANCE.md) (a reform, a profilok, a francia szabályok telepítése és
 futtatása, életciklus-státuszok, e-riportolás, útválasztás, küldés a B2Brouteren keresztül, ami
-még hiányzik; angolul).
+még hiányzik; angolul), [Lengyelország](docs/countries/POLAND.md) (a KSeF és az FA(3), lengyel
+számlák készítése, olvasása és ellenőrzése, a leképezés, a KSeF-szám és az ellenőrző link, ami még
+hiányzik; angolul).
 
 Nincs benne: önszámlázó (self-billing) számlák küldése Peppolon, valamint CII a Peppol BIS
 Billing 3.0 szerint (CII Peppolon csak XRechnungként megy). A számla PDF-jének megjelenítése

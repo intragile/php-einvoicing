@@ -90,6 +90,29 @@ All notable changes to this project are documented here. The format follows
   bag per invoice line, as on `Invoice`.
 - **Documentation:** [docs/countries/FRANCE.md](docs/countries/FRANCE.md), including sending
   through B2Brouter.
+- **Poland:** `Fa3Writer` writes invoices as Polish structured invoices FA(3), schema 1-0E (KSeF),
+  and `Fa3Reader` reads them into the model, listing unmapped elements in `ignored`. The Polish
+  data EN 16931 does not carry is in the `PolishInvoice` and `PolishLine` extensions: invoice kind
+  (VAT, KOR, ZAL, ROZ, UPR, KOR_ZAL, KOR_ROZ), annotations, Polish party data, third parties,
+  correction data with state-before rows held in storno form, synthetic bucket lines for invoices
+  without rows, partial advances, settled advance invoices, the order of an advance invoice, the
+  VAT in PLN supplied by the issuer, charges and deductions (`Rozliczenie`), payment form and bank
+  accounts, footer, transaction terms, and verbatim fragments for the transport, authorised party
+  and attachment blocks. A writer guard refuses, in one exception, every value FA(3) cannot carry;
+  EN 16931 text terms without an FA(3) element are written as additional descriptions with fixed
+  keys (`Fa3Format::DESCRIPTION_KEYS`) and read back.
+- **Poland:** code lists `InvoiceKind`, `VatRateCode` (P_12), `VatBucket` (P_13), `Gtu`,
+  `Procedure`, `PaymentForm`, `ThirdPartyRole`, `MarginScheme`, `ExemptionBasis`,
+  `CorrectionEffect` and `TaxpayerStatus`.
+- **Poland:** `Fa3Validator::create()->validate()` checks an FA(3) invoice against the bundled
+  official FA(3) XSD (four Ministry of Finance files, byte-identical to CIRFMF/ksef-api
+  `d4460b6`, MIT, resolved offline) and the 21 rules of `Fa3Rules` (`PL-FA3-01` to `PL-FA3-21`),
+  each citing its page of the FA(3) brochure of August 2026, and returns a
+  `MessageValidationReport`. Format verified offline; no official executable reference exists.
+- **Poland:** offline helpers `Nip` (pattern, normalisation and check digit), `KsefNumber` (35
+  characters with the CRC-8 checksum), `VerificationLink` (the KOD I verification link from the
+  exact invoice bytes) and `KsefEnvironment` (TEST, DEMO, PRODUCTION base URLs).
+- **Documentation:** [docs/countries/POLAND.md](docs/countries/POLAND.md).
 
 ### Changed
 
@@ -106,6 +129,10 @@ All notable changes to this project are documented here. The format follows
 - **Validation:** `Validator::validateInvoice()` refuses an EXTENDED-CTC-FR invoice for every
   syntax, because the EN 16931 rules do not cover its GROUP and INFORMATION lines; validate it
   with `FranceValidator::validate()`.
+- **Validation:** `SchemaValidator::validate()` and `FileOnlyEntityLoader::run()` take an optional
+  map of absolute URI prefixes to local directories (`$localPrefixes`, default `[]`, behaviour
+  unchanged), so a schema with an absolute import resolves to a bundled copy without network
+  access. `MessageType` has the new case `Fa3`.
 
 ## [1.0.2] - 2026-11-17
 

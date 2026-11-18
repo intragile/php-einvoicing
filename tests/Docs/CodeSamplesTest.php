@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Docs;
 
+use DateTimeImmutable;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
+use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Writer;
 use IntrAgile\EInvoicing\Syntax\Ubl\UblWriter;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
+use IntrAgile\EInvoicing\Tests\Support\PolishInvoices;
 use IntrAgile\EInvoicing\Tests\Support\Process;
 use IntrAgile\EInvoicing\Tests\Validation\France\InstalledFranceRules;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -19,8 +22,8 @@ use RuntimeException;
  * Every fenced php block in the READMEs, docs/*.md, docs/countries/*.md and the rule packages'
  * READMEs must compile (php -l). A block whose fence is preceded by the line <!-- sample: run -->
  * is also executed in a child process with the Composer autoloader loaded and a fresh working
- * directory that holds a valid EN 16931 UBL invoice as invoice.xml. It must exit 0 and write
- * nothing to standard error. A runnable sample that names var/france-rules finds the French rules
+ * directory that holds a valid EN 16931 UBL invoice as invoice.xml and a valid Polish FA(3) invoice
+ * as faktura.xml. It must exit 0 and write nothing to standard error. A runnable sample that names var/france-rules finds the French rules
  * installed there; it is skipped when the France_RFE checkout has not been downloaded.
  */
 final class CodeSamplesTest extends TestCase
@@ -41,6 +44,7 @@ final class CodeSamplesTest extends TestCase
         'docs/FACTURX.md' => 1,
         'docs/TRANSPORT.md' => 1,
         'docs/countries/FRANCE.md' => 9,
+        'docs/countries/POLAND.md' => 4,
     ];
 
     /**
@@ -84,6 +88,7 @@ final class CodeSamplesTest extends TestCase
         $workDir = self::BUILD_DIR.'/work/'.self::slug($document).'-'.$line;
         self::emptyDirectory($workDir);
         file_put_contents($workDir.'/invoice.xml', (new UblWriter)->write(TotalsCalculator::complete(InvoiceFactory::mixedVat())));
+        file_put_contents($workDir.'/faktura.xml', (new Fa3Writer(static fn (): DateTimeImmutable => new DateTimeImmutable('2026-11-18T09:00:00Z')))->write(PolishInvoices::domestic()));
         self::linkFrenchRules($workDir, str_contains($code, self::FRANCE_RULES));
 
         $file = self::scratchFile($document, $line, 'run');

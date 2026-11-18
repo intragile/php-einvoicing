@@ -401,6 +401,30 @@ The French rules are where the engine needed the additions listed above: node se
 function parameters, prefixed variable names, pattern titles, `xsl:exclude-result-prefixes`, a
 filtered union at the start of a match pattern, and ids from message codes.
 
+## Polish FA(3) invoices
+
+`IntrAgile\EInvoicing\Validation\Poland\Fa3Validator` checks Polish structured invoices in the
+FA(3) format of KSeF. No official executable FA(3) rules exist, so it does not use the Schematron
+engine: it runs the official XML Schema and then PHP rules.
+
+- **Schema, offline.** The four Ministry of Finance files (`schemat_FA(3)_v1-0E.xsd` and its base
+  schemas `StrukturyDanych_v10-0E.xsd`, `ElementarneTypyDanych_v10-0E.xsd` and
+  `KodyKrajow_v10-0E.xsd`) ship in `resources/poland/fa3-1-0E/`, byte-identical to CIRFMF/ksef-api
+  commit `d4460b6c77616c423924254d8be1cbc2858027c6` (MIT) and pinned by SHA-256 in `SOURCE.md`. The
+  FA(3) schema imports its base schema by an absolute `http://crd.gov.pl/…` location. The file is
+  not rewritten: `SchemaValidator::validate()` takes an optional map of absolute URI prefixes to
+  local directories, and `FileOnlyEntityLoader` resolves the import to the bundled copy. Any other
+  remote location is still refused, so validation never touches the network.
+- **Rules.** `Fa3Rules` implements the 21 brochure rules the schema cannot express (`PL-FA3-01`
+  to `PL-FA3-21`, fatal or warning) on the DOM, so received files are checked too. Each finding's
+  `test` holds the source, usually a page of the FA(3) brochure of August 2026. The rule table is
+  in [countries/POLAND.md](countries/POLAND.md#rules).
+
+`Fa3Validator::create()->validate($xml)` checks the document element first (an
+`UnsupportedDocument` names what was expected), then the schema, then the rules, which run even when
+the schema check fails. It returns a `MessageValidationReport` with `MessageType::Fa3` and the rule
+sets `fa3-xsd 1-0E` and `pl-fa3 2026-08`.
+
 ## How verdict equality is checked
 
 The test group `oracle` runs the official CEN XSLT through SaxonC-HE in Docker as the judge
