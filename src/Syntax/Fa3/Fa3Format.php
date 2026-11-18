@@ -74,5 +74,11 @@ final class Fa3Format
         'BT-140' => 'Kod powodu rabatu (BT-140)',
     ];
 
+    /**
+     * Reason of a line allowance read from P_10 when no description names it. FA(3) carries only
+     * the allowance amount, so the writer does not repeat this reason as a description.
+     */
+    public const ALLOWANCE_REASON = 'P_10';
+
     private function __construct() {}
 }
