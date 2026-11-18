@@ -522,6 +522,41 @@ final class Fa3LosslessTest extends TestCase
         return $values;
     }
 
+    public function test_polish_post_code_without_a_city_is_read_as_the_post_code(): void
+    {
+        $buyer = new Party(name: 'B', vatIdentifier: PolishInvoices::BUYER_VAT, address: new PostalAddress(CountryCode::PL, line1: 'ul. B 2', postCode: '60-001'));
+        $address = (new Fa3Reader)->read(self::write(PolishInvoices::domestic()->withBuyer($buyer)))->invoice->buyer->address;
+
+        self::assertNotNull($address);
+        self::assertSame('60-001', $address->postCode);
+        self::assertNull($address->city);
+    }
+
+    public function test_guard_message_joins_reasons_without_a_stray_full_stop(): void
+    {
+        $invoice = PolishInvoices::domestic();
+        $lines = $invoice->lines;
+        $lines[0] = $lines[0]->withExtension(new PolishLine(rateCode: VatRateCode::Rate4));
+        $message = self::refusal($invoice->withLines($lines)->withPayee(new Party(name: 'Faktor')));
+
+        self::assertStringNotContainsString('.;', $message);
+    }
+
+    public function test_line_descriptions_of_a_repeated_row_number_are_not_attached_by_guess(): void
+    {
+        $line = PolishInvoices::line('1', 'A', '1', UnitCode::H87, '10.00', VatCategory::StandardRate, '23');
+        $invoice = PolishInvoices::domestic();
+        $invoice = TotalsCalculator::complete($invoice->withLines([$line->withNote('Uwaga A'), PolishInvoices::line('2', 'B', '1', UnitCode::H87, '10.00', VatCategory::StandardRate, '23')])->withVatBreakdown([]));
+        $source = str_replace('<NrWierszaFa>2</NrWierszaFa>', '<NrWierszaFa>1</NrWierszaFa><UU_ID>2</UU_ID>', self::write($invoice));
+
+        $result = (new Fa3Reader)->read($source);
+        self::assertNull($result->invoice->lines[0]->note);
+        self::assertNull($result->invoice->lines[1]->note);
+        self::assertNotSame([], $result->ignored);
+        $kept = $result->invoice->extensions()->get(PolishInvoice::class)->descriptions ?? [];
+        self::assertSame(['Uwaga A'], array_map(static fn (KeyValue $pair): string => $pair->value, $kept));
+    }
+
     private static function refusal(Invoice $invoice): string
     {
         $exception = self::capture(static fn () => Fa3Guard::check($invoice));

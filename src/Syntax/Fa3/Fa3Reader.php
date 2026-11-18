@@ -245,7 +245,9 @@ final class Fa3Reader
      * A row whose descriptions carry allowance amounts (BT-136) gets one allowance per amount, each
      * with the allowance terms that follow its amount, when every allowance term follows an amount,
      * there are at least two amounts and they add up to P_10. Otherwise the row gets one allowance
-     * of P_10 and the amounts stay descriptions.
+     * of P_10 and the amounts stay descriptions. A description whose line number several rows
+     * share is not attached to any of them: it stays an extension description and is reported in
+     * the ignored list.
      *
      * @param  list<DOMElement>  $rows
      * @return array{array<string, string>, list<string>, array<int, array<string, string>>, list<KeyValue>, array<int, list<array<string, string>>>}
@@ -254,14 +256,21 @@ final class Fa3Reader
     {
         $terms = array_flip(Fa3Format::DESCRIPTION_KEYS);
         $rowIndex = [];
+        $repeated = [];
         $allowanceRows = [];
         $labelRows = [];
         foreach ($rows as $index => $row) {
             $position = trim($d->one('fa:NrWierszaFa', $row)->textContent ?? '');
+            if (isset($rowIndex[$position])) {
+                $repeated[$position] = true;
+            }
             $rowIndex[$position] ??= $index;
             $allowanceRows[$index] = $d->has('fa:P_10', $row);
             $unit = $d->one('fa:P_8A', $row);
             $labelRows[$index] = $unit !== null && UnitCode::tryFrom(trim($unit->textContent)) === null;
+        }
+        foreach (array_keys($repeated) as $position) {
+            unset($rowIndex[$position]);
         }
         $elements = $d->all('fa:DodatkowyOpis', $fa);
         $amountRows = [];
@@ -296,6 +305,12 @@ final class Fa3Reader
             }
             $term = $terms[$key] ?? null;
             $index = $lineNumber === null ? null : ($rowIndex[$lineNumber] ?? null);
+            if ($lineNumber !== null && isset($repeated[$lineNumber])) {
+                $d->reject($element, sprintf('line number %s belongs to several rows (NrWierszaFa), so the description is kept as an extension description and not attached to a line', $lineNumber));
+                $descriptions[] = new KeyValue((int) $lineNumber, $key, $value);
+
+                continue;
+            }
             if ($term !== null && $index !== null && isset($amountRows[$index])
                 && ($term === self::ALLOWANCE_AMOUNT || in_array($term, self::ALLOWANCE_TERMS, true))) {
                 $pending[$index][] = [$term, $value, new KeyValue((int) $lineNumber, $key, $value)];

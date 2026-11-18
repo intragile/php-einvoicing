@@ -144,6 +144,8 @@ final class Fa3Writer
     /**
      * The supply date written as P_6: the actual delivery date (BT-72), else the tax point date
      * (BT-7), when it falls on another day than the issue date (BT-2); otherwise null.
+     *
+     * @internal shared with the FA(3) writer guard; not part of the public API
      */
     public static function supplyDate(Invoice $invoice): ?DateTimeImmutable
     {
@@ -169,7 +171,7 @@ final class Fa3Writer
      * The amount written as P_15: the amount due (BT-115) on a settlement invoice (ROZ), else the
      * invoice total with VAT (BT-112).
      */
-    public static function totalAmount(Invoice $invoice, InvoiceKind $kind): ?BigDecimal
+    private static function totalAmount(Invoice $invoice, InvoiceKind $kind): ?BigDecimal
     {
         return $kind === InvoiceKind::Roz ? $invoice->totals?->amountDue : $invoice->totals?->totalWithVat;
     }
@@ -234,6 +236,8 @@ final class Fa3Writer
      * the extension's warehouse documents.
      *
      * @return list<string>
+     *
+     * @internal shared with the FA(3) writer guard; not part of the public API
      */
     public static function warehouseDocuments(Invoice $invoice, PolishInvoice $polish): array
     {
@@ -393,6 +397,8 @@ final class Fa3Writer
      * transfers (BG-17).
      *
      * @return list<BankAccount>
+     *
+     * @internal shared with the FA(3) writer guard; not part of the public API
      */
     public static function bankAccounts(Invoice $invoice, PolishInvoice $polish): array
     {

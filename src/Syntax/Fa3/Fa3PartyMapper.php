@@ -36,6 +36,9 @@ final class Fa3PartyMapper
 {
     private const POLISH_POST_CODE = '/^(\d{2}-\d{3}) (.+)$/';
 
+    /** A Polish AdresL2 that is a post code alone. */
+    private const POLISH_POST_CODE_ONLY = '/^\d{2}-\d{3}$/';
+
     public function __construct(private readonly Fa3Document $d) {}
 
     /**
@@ -187,6 +190,9 @@ final class Fa3PartyMapper
         $line2 = $this->d->text('fa:AdresL2', $element);
         if ($line2 !== null && $country === CountryCode::PL && preg_match(self::POLISH_POST_CODE, $line2, $match) === 1) {
             return new PostalAddress(country: $country, line1: $line1, city: $match[2], postCode: $match[1]);
+        }
+        if ($line2 !== null && $country === CountryCode::PL && preg_match(self::POLISH_POST_CODE_ONLY, $line2) === 1) {
+            return new PostalAddress(country: $country, line1: $line1, postCode: $line2);
         }
 
         return new PostalAddress(country: $country, line1: $line1, city: $line2);

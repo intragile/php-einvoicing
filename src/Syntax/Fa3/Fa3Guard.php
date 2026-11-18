@@ -119,6 +119,7 @@ final class Fa3Guard
         ];
 
         if ($violations !== []) {
+            $violations = array_map(static fn (string $violation): string => rtrim($violation, '.'), $violations);
             throw new InvalidArgumentException('The invoice cannot be written as FA(3): '.implode('; ', $violations));
         }
     }
