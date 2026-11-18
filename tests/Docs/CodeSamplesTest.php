@@ -40,7 +40,7 @@ final class CodeSamplesTest extends TestCase
         'README.hu.md' => 3,
         'docs/FACTURX.md' => 1,
         'docs/TRANSPORT.md' => 1,
-        'docs/countries/FRANCE.md' => 6,
+        'docs/countries/FRANCE.md' => 9,
     ];
 
     /**

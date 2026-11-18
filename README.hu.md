@@ -52,12 +52,16 @@ Jelenleg tartalmazza:
   e-riportolás (számlánként, napi B2C összesítés, kifizetések) a validátorával, és egy hálózat
   nélküli útválasztó, amely eldönti, hogy a számlát e-számlaként kell-e küldeni vagy e-riportban
   jelenteni. Az eredmények egyezését az FNFE saját, Saxonnal futtatott XSLT-jével 5494 dokumentumon ellenőriztük
-  ([Franciaország](docs/countries/FRANCE.md), angolul). A *plateforme agréée* felé történő
-  továbbítás és az élő címtár- (*annuaire*) lekérdezés még nincs benne.
+  ([Franciaország](docs/countries/FRANCE.md), angolul). Küldés a B2Brouteren mint *plateforme
+  agréée*-n keresztül: számlák, vevői válaszok, kifizetések és Flux 10 beadások (az
+  életciklus-üzeneteket a B2Brouter állítja elő, a könyvtár az állapotait státuszokra képezi le),
+  valamint élő címtár- (*annuaire*) lekérdezés. Hálózat nélkül tesztelve; élesben csak a
+  címtár-lekérdezést teszteltük.
 
 Országjegyzetek: [Németország](docs/countries/DE.md) (jogalap, formátumok, csatornák és az ellenőrzés, angolul),
 [Franciaország](docs/countries/FRANCE.md) (a reform, a profilok, a francia szabályok telepítése és
-futtatása, életciklus-státuszok, e-riportolás, útválasztás, ami még hiányzik; angolul).
+futtatása, életciklus-státuszok, e-riportolás, útválasztás, küldés a B2Brouteren keresztül, ami
+még hiányzik; angolul).
 
 Nincs benne: önszámlázó (self-billing) számlák küldése Peppolon, valamint CII a Peppol BIS
 Billing 3.0 szerint (CII Peppolon csak XRechnungként megy). A számla PDF-jének megjelenítése

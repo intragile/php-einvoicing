@@ -51,12 +51,15 @@ Included today:
   Encaissée split per VAT rate), Flux 10 e-reporting (invoices one by one, B2C days, payments) with
   its validator, and an offline router that decides between e-invoicing and e-reporting. Verdicts
   are checked equal to FNFE's own XSLT run by Saxon on 5,494 documents
-  ([France](docs/countries/FRANCE.md)). The transport to a *plateforme agréée* and a live directory
-  lookup are not included yet.
+  ([France](docs/countries/FRANCE.md)). Sending through B2Brouter as *plateforme agréée*:
+  invoices, buyer answers, payments and Flux 10 deposits (B2Brouter emits the lifecycle messages;
+  the library maps its states to statuses), and a live directory lookup. Tested offline;
+  live-tested: directory lookup only.
 
 Country notes: [Germany](docs/countries/DE.md) (legal basis, formats, channels and what is
 verified), [France](docs/countries/FRANCE.md) (the reform, profiles, installing and running the
-French rules, lifecycle statuses, e-reporting, routing, what is not covered yet).
+French rules, lifecycle statuses, e-reporting, routing, sending through B2Brouter, what is not
+covered yet).
 
 Not included: self-billing over Peppol, and CII under Peppol BIS Billing 3.0 (CII goes over
 Peppol only as XRechnung). Rendering the invoice PDF is out of scope: you supply the PDF. The

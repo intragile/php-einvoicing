@@ -146,6 +146,23 @@ driver now downloads only from `*.r2.cloudflarestorage.com` over https. `GET /ap
 field that marks a sandbox company, so the live test keeps its explicit
 `EINVOICEBE_SANDBOX_CONFIRMED=1` opt-in.
 
+## D2d: B2Brouter French flow (2026-11-18)
+
+Live-tested: directory lookup only, against the B2Brouter sandbox (a `test_` key, API version
+2026-06-26). The sandbox account is not French, so nothing was sent, answered, paid or deposited.
+
+| Check | Request | Answer | Our status |
+|---|---|---|---|
+| fictitious SIREN with a valid check digit (`842917361`), manual | `GET /directory/fr/0002/{siren}` | 202 `processing`, then about 6 s later 404 `resource_missing` | `NotListed` |
+| SIREN of a real listed company (not listed here), manual | `GET /directory/fr/0002/{siren}` | 200, flat company object with `FR_ASSUJETTI_ACTIVE` | `Active` |
+| `b2brouter-france-live`, test file of commit `32980b2` (3 tests, 1 assertion, 2 skipped) | lookup of the fictitious SIREN through `B2BrouterAnnuaire` | | `NotListed` |
+
+The two skipped cases, a send that must reach `Deposited` and a Flux 10 deposit, need a French
+B2Brouter staging account (`B2BROUTER_FR_ACCOUNT_ID` with a `stag_` key on
+`https://api-staging.b2brouter.net`). Sending, lifecycle statuses, buyer answers, payments, Flux 10
+deposits and the ledger webhook are verified offline only, against fixtures hand-written from
+B2Brouter's API reference and guides; their live run is pending a French staging account.
+
 ## D3: import into Lexware Office
 
 Run on 2026-11-16 in a Lexware Office XL trial (web app; no version number is shown). The five

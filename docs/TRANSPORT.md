@@ -7,7 +7,8 @@ an access point (Recommand, B2Brouter and e-invoice.be are the available drivers
 planned), looking up participants in the SML and their SMP, searching the Peppol
 Directory, receiving documents by polling or webhooks, the errors and what to do about each, the
 SBDH envelope, and what is verified and what is not. The invoice format and its validation are
-described in [PEPPOL.md](PEPPOL.md).
+described in [PEPPOL.md](PEPPOL.md). Sending French invoices through B2Brouter as *plateforme
+agréée* is described in [FRANCE.md](countries/FRANCE.md#sending-through-a-plateforme-agréée-b2brouter).
 
 > **Live testing, per driver.** Recommand is live-tested on the Peppol test network. B2Brouter and
 > e-invoice.be are live-tested against the provider sandbox (simulated network). All three are also
@@ -638,7 +639,20 @@ $webhook = new B2BrouterWebhook($webhookSecret, 300);    // refuse a signed time
   table above (`null` when the notification has no state). The failure is always `null`, because
   the notification carries no error code: read `status()` for it. `received_invoice.created` is
   `DocumentReceived`; any other event with an invoice id is `Other`. A signed notification without
-  `data.invoice_id` throws `UnexpectedResponse`. The account id is `data.account_id`.
+  `data.invoice_id` throws `UnexpectedResponse`, unless it is a ledger event (below). The account
+  id is `data.account_id`.
+- `$event->lifecycleStatus` is the French lifecycle status (CDV code) that `data.state` stands
+  for: for `issued_invoice.state_change` as the seller's status, for
+  `received_invoice.state_change` (kind `Other`) as the buyer's response, with the mapping of
+  [FRANCE.md](countries/FRANCE.md#reading-the-lifecycle-status). It is derived from `data.state`
+  for every B2Brouter account and is meaningful only for a French account; it is `null` for any
+  other event and for a state that stands for no status.
+- `ledger.state_change` reports a deposited Flux 10 e-reporting file (a B2Brouter ledger)
+  changing state. It is `Other`, its document id is the ledger id, and it carries no delivery
+  state, failure or lifecycle status: read the state with `B2BrouterFrance::eReportStatus()`. A
+  notification without an event code whose object is a ledger counts as `ledger.state_change`.
+  Without a delivery id header, its deduplication key is
+  `"ledger.state_change:<ledger id>:<event id>"`, or `"ledger.state_change:<ledger id>:<state>"`.
 - The deduplication key is the `X-B2Brouter-Delivery-Id` header, the same on every attempt of one
   delivery. Without it, the key is `"<code>:<invoice id>:<data.event_id>"`, or
   `"<code>:<invoice id>:<data.state>"` when there is no event id either.
@@ -672,6 +686,16 @@ with the sent XML.
 - whether webhook retries are signed again;
 - whether a 429 answer carries `Retry-After`, and the full list of Peppol delivery error codes;
 - that the received-invoice list carries no Peppol participant identifiers.
+
+### French invoices through B2Brouter
+
+B2Brouter is also a French *plateforme agréée*. `B2BrouterFrance` sends French invoices (UBL and
+CII under the French CIUS, UBL EXTENDED-CTC-FR, Factur-X), reads their lifecycle status, answers
+received invoices, records payments and deposits Flux 10 e-reporting files; `B2BrouterAnnuaire`
+looks up the French directory. Both take the same `B2BrouterConfig` and `HttpClient`.
+`B2BrouterFrance` is not a `Transport`, and B2Brouter emits the lifecycle messages (CDV) itself;
+the library maps its states to statuses. Live-tested: directory lookup only. See
+[FRANCE.md](countries/FRANCE.md#sending-through-a-plateforme-agréée-b2brouter).
 
 ## e-invoice.be
 
@@ -806,6 +830,7 @@ no field that tells a sandbox company apart (see above).
 | Peppol Directory | Offline tests with recorded answers; one manual live search and lookup against the production Directory (no live test in the suite) | Manual check passed on 2026-11-12 |
 | Recommand driver | Offline tests with JSON fixtures hand-written from Recommand's published API description (OpenAPI document and source); live test group `recommand-live` | **Live-tested on the Peppol test network** (2026-11-15) |
 | B2Brouter driver | Offline contract tests with JSON fixtures hand-written from B2Brouter's public API reference (OpenAPI 2026-06-26) and developer guides; live test group `b2brouter-live` | **Live-tested against the provider sandbox (simulated network)** (2026-11-15) |
+| B2Brouter French flow (`B2BrouterFrance`, `B2BrouterAnnuaire`) | Offline contract tests with JSON fixtures hand-written from B2Brouter's API reference and its DGFiP and Flux 10 guides; live test group `b2brouter-france-live` | **Live-tested: directory lookup only** (sandbox, 2026-11-18); sending, lifecycle, answers, payments and Flux 10 deposits offline only, pending a French staging account |
 | e-invoice.be driver | Offline contract tests with JSON fixtures hand-written from e-invoice.be's public API reference (OpenAPI 1.1.0) and guides; live test group `einvoicebe-live` | **Live-tested against the provider sandbox (simulated network)** (2026-11-15) |
 | Webhook signatures | Offline tests against each provider's documented signing scheme; e-invoice.be also against its published test vector | Verified offline; **webhooks were not live-tested** (needs a public HTTPS endpoint) |
 

@@ -12,7 +12,10 @@ Every in-scope French invoice must pass through a *plateforme agréée* (PA, app
 package is not a PA and never talks to the DGFiP. In the reform's terms it is a *solution
 compatible*: software that builds, reads and validates the French documents and hands them to a
 PA. It builds the invoice, the lifecycle message (*compte rendu de vie*, CDV) and the Flux 10
-e-reporting file; the PA transmits them. The transport to a PA is not part of this version (see
+e-reporting file; the PA transmits them. Through B2Brouter, a registered PA, it also sends
+invoices, answers received invoices, records payments, deposits Flux 10 files and looks up the
+directory (see [Sending through a plateforme agréée (B2Brouter)](#sending-through-a-plateforme-agréée-b2brouter));
+B2Brouter emits the lifecycle messages itself. Other PAs are not supported (see
 [Not covered yet](#not-covered-yet)).
 
 The dates below come from our research notes, which cite the DGFiP and the BOFiP; check them
@@ -598,41 +601,7 @@ own time zone, not converted to Paris time as CDAR status times are: pass the Fr
 The PA matricule comes from your PA account. The file goes to the DGFiP through the PA.
 
 **Depositing through B2Brouter.** `B2BrouterFrance::depositReport($report)` writes the e-report
-and deposits it with the B2Brouter account as a ledger; `depositEReport($xml)` deposits a Flux 10
-file you wrote yourself (its document element must be `Report` without namespace).
-`eReportStatus($ledgerId)` reads the ledger state as the DGFiP processes the file (`LedgerState`:
-new, sent, acknowledged, deposited, then registered, refused with the DGFiP error code, or error),
-and B2Brouter announces each change with the `ledger.state_change` webhook, which
-`B2BrouterWebhook` reads as an event of kind `Other` whose document id is the ledger id.
-
-- **Own file or native pipeline, not both.** Depositing your own Flux 10 files and B2Brouter's
-  native e-reporting pipeline (B2Brouter building the e-reports from the invoices and payments it
-  handles) are exclusive per account. Choose one per B2Brouter account.
-- **Idempotent per key.** Each deposit carries an `Idempotency-Key`: the one you pass, or by
-  default the SHA-256 hash of the file. Depositing the same file under the same key again returns
-  the ledger already imported (`alreadyExisted` true); a different file under a used key is
-  refused (`DocumentRejected`, HTTP 409). After `OutcomeUnknown` (no answer, or a server error),
-  resending the same file with the same key is safe.
-- **B2Brouter rewrites two fields.** It replaces `ReportDocument/Id` with the ledger id and the
-  sender with its own platform matricule, so the `LifecycleParty::platform()` values in the file
-  may be placeholders.
-- **Plan permission.** The account needs a DGFiP tax report setting and the ledger permission on
-  its B2Brouter plan; without the permission the deposit fails with `AuthenticationFailed`
-  (HTTP 403).
-
-```php
-use IntrAgile\EInvoicing\Transport\B2Brouter\France\B2BrouterFrance;
-use IntrAgile\EInvoicing\Transport\B2Brouter\France\LedgerState;
-
-/** @var B2BrouterFrance $france */
-$deposit = $france->depositReport($report);
-
-// Later, or when the ledger.state_change webhook arrives:
-$status = $france->eReportStatus($deposit->ledgerId);
-if ($status->state === LedgerState::Refused) {
-    // $status->errorCode is the DGFiP error code, for example "303".
-}
-```
+and deposits it with a B2Brouter account; see [Flux 10 deposit](#flux-10-deposit).
 
 ## Routing
 
@@ -659,9 +628,11 @@ is set for e-reports, and `RoutingRule::legalBasis()` names the article of the C
 paragraph behind each rule.
 
 The directory (*annuaire*) is behind the `Annuaire` interface. `StaticAnnuaire` maps SIRENs to an
-`AnnuaireStatus`; a live lookup through a PA is not part of this version. An unknown status (the
-lookup was not possible) keeps the e-invoice and sets `needsDirectoryCheck`, because the
-fallback to e-reporting applies to a recipient that is absent, not to a failed lookup.
+`AnnuaireStatus`; `B2BrouterAnnuaire` looks the directory up live through B2Brouter (see
+[Directory lookup](#directory-lookup)), so with it `route()` makes a network request and may wait
+and throw. An unknown status (the lookup was not possible) keeps the e-invoice and sets
+`needsDirectoryCheck`, because the fallback to e-reporting applies to a recipient that is absent,
+not to a failed lookup.
 
 <!-- sample: run -->
 ```php
@@ -725,9 +696,369 @@ collectivities are treated as foreign, which is a known limitation. A party's lo
 address country, else the prefix of its VAT identifier; a party whose location cannot be
 determined counts as French. The treatment is read from the first BAR note with a known value.
 
+## Sending through a plateforme agréée (B2Brouter)
+
+B2Brouter is a registered PA. `B2BrouterFrance` sends French invoices through it, reads their
+lifecycle status, answers received invoices, records payments and deposits Flux 10 files;
+`B2BrouterAnnuaire` looks up the directory. Both take the same `B2BrouterConfig` and
+`HttpClient` as the Peppol driver ([TRANSPORT.md](../TRANSPORT.md#b2brouter)), with the id of a
+French B2Brouter account.
+
+**B2Brouter emits the CDV; the library maps statuses.** No CDAR lifecycle message is uploaded:
+B2Brouter writes and sends every CDV itself from the state changes it records (an import, an
+answer, a payment). This package sends those state changes and reads the states back as
+`LifecycleStatus` values. A CDAR built with `Lifecycle` is for your own records or for another
+channel, not for B2Brouter.
+
+`B2BrouterFrance` is not a `Transport`: it does not plug into `ValidatingTransport`, and Peppol
+documents still go through `B2BrouterTransport`. Every call is a synchronous request.
+
+> **Live-tested: directory lookup only.** Sending, lifecycle statuses, answers, payments and Flux
+> 10 deposits are tested offline only; a live test needs a French B2Brouter staging account (see
+> [What is verified live](#what-is-verified-live)).
+
+### Send
+
+`FrenchDocument` holds the bytes, the B2Brouter document type and the invoice number (BT-1). The
+type is detected from the document element and the specification identifier (BT-24):
+
+| Document | BT-24 | `FrenchDocumentType` | B2Brouter code |
+|---|---|---|---|
+| UBL Invoice | `urn:cen.eu:en16931:2017` (French CIUS) | `UblInvoice` | `xml.ubl.invoice.frcius.v1` |
+| UBL CreditNote | French CIUS | `UblCreditNote` | `xml.ubl.credit_note.frcius.v1` |
+| UBL Invoice | EXTENDED-CTC-FR | `UblInvoiceExtended` | `xml.ubl.invoice.fr.extension.v1` |
+| UBL CreditNote | EXTENDED-CTC-FR | `UblCreditNoteExtended` | `xml.ubl.credit_note.fr.extension.v1` |
+| CII CrossIndustryInvoice | French CIUS | `CiiInvoice` | `xml.cii.cross_industry_invoice.frcius.v1` |
+| Factur-X PDF, any profile | | `FacturX` | `xml.cii.cross_industry_invoice.facturx.fr.all_profiles.v1` |
+
+`FrenchDocument::fromXml($xml)` reads UBL or CII, `fromFacturX($pdf)` a Factur-X PDF (the number
+comes from its embedded XML) and `fromInvoice($invoice, Syntax::Ubl)` writes the model first (CII
+as D22B). A CII EXTENDED-CTC-FR document is refused (`UnsupportedDocument`), since B2Brouter has
+no document type for it: write the invoice as UBL. A BT-24 that is not a French profile, such as
+Peppol BIS Billing 3.0 or XRechnung, is refused with a pointer to `B2BrouterTransport`.
+
+`send($document)` imports the document into the account and sends it in one request
+(`POST /accounts/{id}/invoices/import`). Every document, XML or PDF, is uploaded as
+`application/octet-stream` with its B2Brouter code. The `SendResult` holds the B2Brouter invoice
+id and the state: `Pending` while B2Brouter sends, `Delivered` once sent, `Failed` with
+B2Brouter's errors.
+
+| Outcome | Exception |
+|---|---|
+| The document fails B2Brouter's French validation (HTTP 422), or the number is already taken | `DocumentRejected`. After a failed validation the invoice stays in B2Brouter in error state; correct or delete it there before the same number can be imported again |
+| B2Brouter does not accept the document type (HTTP 406) | `UnsupportedDocument`, naming the type and the media type |
+| The key is refused or a permission is missing (HTTP 401, 403) | `AuthenticationFailed` |
+| HTTP 429 | `RateLimited` |
+| No answer, a 5xx answer or an unreadable 201 answer | `OutcomeUnknown`: the invoice may have been imported, so look up its number in the account before resending |
+
+<!-- sample: run -->
+```php
+use IntrAgile\EInvoicing\France\Lifecycle\LifecycleStatus;
+use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
+use IntrAgile\EInvoicing\Transport\B2Brouter\France\B2BrouterFrance;
+use IntrAgile\EInvoicing\Transport\B2Brouter\France\FrenchDocument;
+use IntrAgile\EInvoicing\Transport\B2Brouter\France\FrenchDocumentType;
+use IntrAgile\EInvoicing\Transport\DeliveryState;
+use IntrAgile\EInvoicing\Transport\Http\HttpClient;
+use Nyholm\Psr7\Factory\Psr17Factory;
+use Nyholm\Psr7\Response;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
+
+// Stands in for your PSR-18 client (Guzzle, Symfony) and answers as B2Brouter would.
+$client = new class([
+    new Response(201, ['Content-Type' => 'application/json'], '{"invoice":{"id":590110,"state":"sending"}}'),
+    new Response(200, ['Content-Type' => 'application/json'], '{"invoice":{"id":590110,"type":"IssuedInvoice","state":"registered"}}'),
+]) implements ClientInterface {
+    /** @param list<ResponseInterface> $answers */
+    public function __construct(private array $answers) {}
+
+    public function sendRequest(RequestInterface $request): ResponseInterface
+    {
+        return array_shift($this->answers) ?? new Response(500);
+    }
+};
+$factory = new Psr17Factory;
+$france = new B2BrouterFrance(new B2BrouterConfig('test_your-api-key', 4711), new HttpClient($client, $factory, $factory));
+
+// invoice.xml is a UBL invoice under the French CIUS (BT-24 urn:cen.eu:en16931:2017).
+$document = FrenchDocument::fromXml((string) file_get_contents('invoice.xml'));
+$result = $france->send($document);
+
+$result->documentId;   // "590110", the B2Brouter invoice id
+$result->state;        // DeliveryState::Pending while B2Brouter sends
+
+// Later, or when the issued_invoice.state_change webhook arrives:
+$status = $france->lifecycle($result->documentId);
+$status->platformState;   // "registered"
+$status->lifecycle;       // LifecycleStatus::Received (202)
+
+if ($document->type !== FrenchDocumentType::UblInvoice || $result->state !== DeliveryState::Pending
+    || $status->lifecycle !== LifecycleStatus::Received) {
+    throw new RuntimeException('Unexpected send result.');
+}
+```
+
+### Reading the lifecycle status
+
+`lifecycle($invoiceId)` reads an issued or a received invoice (`GET /invoices/{id}`; B2Brouter
+answers a received invoice with a 302 redirect, which is followed once on the API host, sending
+the API key again) and returns a `PlatformStatus`:
+
+- `platformState` is B2Brouter's state as sent, kept for states this library does not know;
+- `lifecycle` is the `LifecycleStatus` it stands for, or `null`;
+- `received` says whether the account received the invoice rather than issued it;
+- `delivery` is the Peppol driver's `DeliveryStatus` for the same state. It is meaningful only
+  when `received` is false: for a received invoice it says nothing about delivery;
+- `refusalReason` is the `StatusReason` of a refusal, when B2Brouter reports one from the closed
+  French list;
+- `taxReportIds` are the ids of the B2Brouter tax reports (e-reporting flux 1) that carry the
+  invoice.
+
+| B2Brouter state | Issued invoice (seller's status) | Received invoice (buyer's response) |
+|---|---|---|
+| `new`, `sending` | `null` | `null` |
+| `sent` | `Deposited` (200) | `null` |
+| `registered` | `Received` (202) | `null` |
+| `read` | `InProcess` (204) | `InProcess` (204) |
+| `accepted` | `Approved` (205), also for a partial approval (206) | `Approved` (205), also for a partial approval (206) |
+| `annotated` | `Disputed` (207) | `null`: the state does not say whether the annotation was a dispute |
+| `refused` | `Refused` (210) | `Refused` (210) |
+| `paid` | `Collected` (212) | `PaymentSent` (211) |
+| `error` and any other state | `null` | `null` |
+
+- **205 and 206 both read as `Approved`.** B2Brouter keeps one state, `accepted`, for an approval
+  and a partial approval, so the state alone cannot tell them apart. A partial approval you send
+  with `respond()` also reads back as `Approved`.
+- **`paid` reads as `Collected` (212).** B2Brouter emits CDV 212 only for an invoice for services
+  (domestic); for other invoices it reports the payment in its e-reporting instead. The state
+  alone cannot tell which happened.
+
+The `B2BrouterWebhook` events `issued_invoice.state_change` and `received_invoice.state_change`
+carry the same status in `$event->lifecycleStatus` (see [TRANSPORT.md](../TRANSPORT.md#b2brouter-webhooks)).
+
+### Answering a received invoice
+
+`respond($receivedInvoiceId, $response)` sends the buyer's answer (`POST /invoices/{id}/mark_as`);
+B2Brouter emits the CDV for it to the seller. `BuyerResponse` builds the answer:
+
+| `BuyerResponse` | B2Brouter request | Status | Reads back as |
+|---|---|---|---|
+| `inProcess()` | `read` | 204 | `InProcess` |
+| `approved()` | `accepted` | 205 | `Approved` |
+| `partiallyApproved($amount, $amountType, $reason)` | `accepted` with `amount`, `amount_code` (`MAP`, `MAPTTC`, `MNA` or `MNATTC`) and `reason` | 206 | `Approved` |
+| `disputed($reason)` | `annotated` with `dispute: true` and `reason` | 207 | `null` |
+| `refused($reason, $comment)` | `refused` with `reason_code` and, when given, `reason` | 210 | `Refused` |
+| `paymentSent()` | `paid` | 211 | `PaymentSent` |
+
+- A refusal takes one of the 13 reasons B2Brouter accepts: `ADR_ERR`, `REF_CT_ABSENT`, `CMD_ERR`,
+  `TX_TVA_ERR`, `MONTANTTOTAL_ERR`, `CALCUL_ERR`, `DOUBLON`, `NON_CONFORME`, `DEST_ERR`,
+  `TRANSAC_INC`, `EMMET_INC`, `CONTRAT_TERM`, `DOUBLE_FACT`. Without a comment, B2Brouter writes
+  one from the label of the reason.
+- An amount is greater than zero, below 10^13 and has at most two decimals; it is sent as a JSON
+  number written from the decimal string, never through a float. A blank reason or comment is
+  refused.
+- B2Brouter does not report Payment sent (211) to the DGFiP.
+- A refused state change (HTTP 400, 422) throws `DocumentRejected`. After `OutcomeUnknown`, read
+  the state with `lifecycle()` before answering again.
+
+<!-- sample: run -->
+```php
+use IntrAgile\EInvoicing\France\Lifecycle\LifecycleStatus;
+use IntrAgile\EInvoicing\France\Lifecycle\StatusReason;
+use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
+use IntrAgile\EInvoicing\Transport\B2Brouter\France\B2BrouterFrance;
+use IntrAgile\EInvoicing\Transport\B2Brouter\France\BuyerResponse;
+use IntrAgile\EInvoicing\Transport\Http\HttpClient;
+use Nyholm\Psr7\Factory\Psr17Factory;
+use Nyholm\Psr7\Response;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
+
+// Stands in for your PSR-18 client and answers as B2Brouter would.
+$client = new class implements ClientInterface {
+    public function sendRequest(RequestInterface $request): ResponseInterface
+    {
+        return new Response(200, ['Content-Type' => 'application/json'],
+            '{"invoice":{"id":590200,"type":"ReceivedInvoice","state":"refused","refuse_reason_code":"DOUBLON"}}');
+    }
+};
+$factory = new Psr17Factory;
+$france = new B2BrouterFrance(new B2BrouterConfig('test_your-api-key', 4711), new HttpClient($client, $factory, $factory));
+
+// Refuse a received invoice as a duplicate (210); B2Brouter emits the CDV to the seller.
+$status = $france->respond('590200', BuyerResponse::refused(StatusReason::DOUBLON, 'Already invoiced as F-2026-0007.'));
+
+$status->lifecycle;       // LifecycleStatus::Refused
+$status->refusalReason;   // StatusReason::DOUBLON
+
+if ($status->lifecycle !== LifecycleStatus::Refused || $status->refusalReason !== StatusReason::DOUBLON || ! $status->received) {
+    throw new RuntimeException('Unexpected answer.');
+}
+```
+
+### Payments
+
+`recordPayment($issuedInvoiceId, $amount, $paidOn)` records a payment of an invoice the account
+issued (`POST /accounts/{id}/payments`) and then reads the invoice, returning its
+`PlatformStatus`. Without an amount the payment settles what is outstanding; the date is sent as
+the date in Paris, and B2Brouter takes today without it. B2Brouter reports the payment to the
+DGFiP itself: Collected (212) for a domestic invoice for services, an e-reporting payment record
+otherwise. Once the payments cover the total the invoice turns `paid`, which reads back as
+`Collected`.
+
+A payment is not idempotent. After `OutcomeUnknown`, list the invoice's payments in the account
+before recording it again. When the payment was recorded but reading the invoice afterwards
+failed, an `UnexpectedResponse` says so: do not record it again.
+
+### Flux 10 deposit
+
+`depositReport($report)` writes an `EReport` with `Flux10Writer` and deposits it;
+`depositEReport($xml)` deposits a Flux 10 file you wrote yourself (its document element must be
+`Report` without namespace). B2Brouter keeps it as a ledger (`POST /accounts/{id}/ledgers/import`)
+and sends it to the DGFiP. The `EReportDeposit` holds the ledger id, the `LedgerState` and whether
+the ledger already existed.
+
+- **Own file or native pipeline, not both.** Depositing your own Flux 10 files and B2Brouter's
+  native e-reporting pipeline (B2Brouter building the e-reports from the invoices and payments it
+  handles) are exclusive per account. Use the deposit only for an account, or a scope, whose
+  invoices never go through `send()` or `recordPayment()`. The library does not check which one
+  an account uses.
+- **B2Brouter rewrites two fields.** It replaces `ReportDocument/Id` with the ledger id and the
+  `Sender` with its own platform matricule, so the `LifecycleParty::platform()` values in the
+  file may be placeholders. No B2Brouter API returns that matricule.
+- **Idempotent per key.** Each deposit carries an `Idempotency-Key`: the one you pass (1 to 64
+  visible ASCII characters), or by default the SHA-256 hash of the file. Depositing the same file
+  under the same key again returns the ledger already imported (`alreadyExisted` true); a
+  different file under a used key is refused (`DocumentRejected`, HTTP 409). After
+  `OutcomeUnknown`, resending the same file with the same key is safe.
+- **Account setup.** The account needs a DGFiP tax report setting, and the issuer SIREN in the
+  file must be the account's; otherwise B2Brouter refuses the file (`DocumentRejected`, HTTP 422).
+  The ledger permission must be on the account's B2Brouter plan; without it the deposit fails with
+  `AuthenticationFailed` (HTTP 403).
+
+`eReportStatus($ledgerId)` reads the state as the DGFiP processes the file: `New`, `Sent`,
+`Acknowledged` (DGFiP 500), `Deposited`, then `Registered` (300), `Refused` (301, with the DGFiP
+error code in `errorCode`) or `Error` (501); `isFinal()` is true for the last three. A state this
+version does not know reads as `Unknown`. B2Brouter announces each change with the
+`ledger.state_change` webhook, which `B2BrouterWebhook` reads as an event of kind `Other` whose
+document id is the ledger id.
+
+<!-- sample: run -->
+```php
+use IntrAgile\EInvoicing\France\CollectedAmount;
+use IntrAgile\EInvoicing\France\EReporting\DailyPayments;
+use IntrAgile\EInvoicing\France\EReporting\Declarant;
+use IntrAgile\EInvoicing\France\EReporting\DeclarantRole;
+use IntrAgile\EInvoicing\France\EReporting\EReport;
+use IntrAgile\EInvoicing\France\EReporting\PaymentsReport;
+use IntrAgile\EInvoicing\France\EReporting\ReportPeriod;
+use IntrAgile\EInvoicing\France\EReporting\ReportType;
+use IntrAgile\EInvoicing\France\Lifecycle\LifecycleParty;
+use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
+use IntrAgile\EInvoicing\Transport\B2Brouter\France\B2BrouterFrance;
+use IntrAgile\EInvoicing\Transport\B2Brouter\France\LedgerState;
+use IntrAgile\EInvoicing\Transport\Http\HttpClient;
+use Nyholm\Psr7\Factory\Psr17Factory;
+use Nyholm\Psr7\Response;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
+
+// Stands in for your PSR-18 client and answers as B2Brouter would.
+$client = new class([
+    new Response(201, ['Content-Type' => 'application/json'], '{"ledger":{"id":7001,"state":"new"}}'),
+    new Response(200, ['Content-Type' => 'application/json'], '{"ledger":{"id":7001,"state":"refused","error_code":"303","error_description":"Invalid period."}}'),
+]) implements ClientInterface {
+    /** @param list<ResponseInterface> $answers */
+    public function __construct(private array $answers) {}
+
+    public function sendRequest(RequestInterface $request): ResponseInterface
+    {
+        return array_shift($this->answers) ?? new Response(500);
+    }
+};
+$factory = new Psr17Factory;
+$france = new B2BrouterFrance(new B2BrouterConfig('test_your-api-key', 4711), new HttpClient($client, $factory, $factory));
+
+// B2C collections of one day (10.4); B2Brouter replaces the id and the platform in the file.
+$report = EReport::payments(
+    id: 'PAY-2026-11',
+    issuedAt: new DateTimeImmutable('2026-12-01 09:30:00', new DateTimeZone('Europe/Paris')),
+    type: ReportType::Initial,
+    platform: LifecycleParty::platform('PA01', 'PLACEHOLDER'),
+    declarant: new Declarant('100000009', 'LE VENDEUR', DeclarantRole::Seller),
+    report: new PaymentsReport(ReportPeriod::month(2026, 11), days: [
+        new DailyPayments(new DateTimeImmutable('2026-11-10'), [new CollectedAmount('120.00', '20')]),
+    ]),
+);
+$deposit = $france->depositReport($report);   // the key defaults to the SHA-256 of the file
+
+// Later, or when the ledger.state_change webhook arrives:
+$status = $france->eReportStatus($deposit->ledgerId);
+if ($status->state === LedgerState::Refused) {
+    // $status->errorCode is the DGFiP error code, here "303".
+}
+
+if ($deposit->ledgerId !== '7001' || $deposit->alreadyExisted || ! $status->state->isFinal()) {
+    throw new RuntimeException('Unexpected deposit.');
+}
+```
+
+### Directory lookup
+
+`B2BrouterAnnuaire` implements `Annuaire`, so `Router` can use it in place of `StaticAnnuaire`.
+`status($siren)` gives the `AnnuaireStatus`; `lookup($scheme, $value)` takes a SIREN (`0002`), a
+SIRET (`0009`) or an electronic address (`0225`: SIREN, SIREN_SIRET, SIREN_SIRET_ROUTINGCODE or
+SIREN_SUFFIX) and returns an `AnnuaireEntry` with the status, the company name, the electronic
+address invoices are sent to, the B2Brouter document type code the recipient receives invoices in
+and the information flags. B2Brouter's guide wraps the company in `external_company` and its API
+returns it flat; both shapes are read.
+
+| B2Brouter answer | `AnnuaireStatus` |
+|---|---|
+| 200 with `FR_ASSUJETTI_ACTIVE` | `Active` |
+| 200 with `FR_ASSUJETTI_INACTIVE` | `Inactive` |
+| 200 with `FR_ASSUJETTI_UNKNOWN` (known to B2Brouter, absent from the Annuaire) | `NotListed` |
+| 404 `resource_missing` | `NotListed` |
+| 202 still after the last attempt, 424 (upstream directory unavailable), no answer, an unreadable body, no, an unknown or conflicting flag, any other status | `Unknown` |
+| 401, 403 | thrown: `AuthenticationFailed` |
+| 422 (identifier refused) | thrown: `InvalidArgumentException` |
+
+- **A cold lookup may block for about 9 seconds.** B2Brouter answers a lookup it has not resolved
+  yet with 202. The request is repeated, by default 4 attempts 3 seconds apart
+  (`new B2BrouterAnnuaire($config, $http, attempts: 4, retryDelaySeconds: 3)`); the polling URL is
+  not followed. A sleeper closure can be injected as the fifth argument.
+- **A malformed SIREN is `Unknown` without a request.** `status()` returns `Unknown` for a SIREN
+  that fails the local check (nine digits with a valid check digit, so no spaces); `lookup()`
+  throws `InvalidArgumentException` for a malformed identifier instead, also without a request.
+- **`Router::route()` can throw with it.** A misconfiguration must not hide as `Unknown`, so a
+  refused key (401, 403) throws `AuthenticationFailed` and an identifier B2Brouter refuses (422)
+  throws `InvalidArgumentException` out of `route()`.
+
+### What is verified live
+
+Live-tested: directory lookup only, on 2026-11-18 against the B2Brouter sandbox. A fictitious SIREN
+with a valid check digit was answered 202, then 404 `resource_missing` about six seconds later
+(`NotListed`); the SIREN of a real listed company was answered 200 with `FR_ASSUJETTI_ACTIVE` in
+the flat shape. The live group `b2brouter-france-live` repeats the fictitious lookup (`NotListed`
+on that run). Sending, lifecycle statuses, answers, payments and Flux 10 deposits are tested
+offline only; their live cases in the same group run only with a French B2Brouter staging account
+(`B2BROUTER_FR_ACCOUNT_ID` with a `stag_` key on `https://api-staging.b2brouter.net`), which was
+not available. See [VERIFICATION.md](../VERIFICATION.md).
+
+```bash
+B2BROUTER_API_KEY=test_… B2BROUTER_ACCOUNT_ID=… vendor/bin/phpunit --group b2brouter-france-live
+```
+
 ## How it is verified
 
-All of this is verified offline. Nothing has been sent to a PA or the DGFiP from this version.
+All of this is verified offline. Nothing has been sent to a PA or the DGFiP from this version:
+the B2Brouter flow is tested offline against fixtures hand-written from B2Brouter's API reference
+and guides, and only its directory lookup is live-tested (see
+[What is verified live](#what-is-verified-live)).
 
 - **FNFE examples.** In its own chain, each of the 41 FNFE invoice examples (13 UBL, 13 CII, 15
   Factur-X) passes with no finding of any severity. The corpus has no UBL CreditNote and no
@@ -758,11 +1089,18 @@ All of this is verified offline. Nothing has been sent to a PA or the DGFiP from
 
 ## Not covered yet
 
-- **Transport to a PA**: sending invoices, lifecycle messages and Flux 10 files. Of the existing
-  transport drivers, B2Brouter is a registered PA; e-invoice.be and Recommand are Peppol access
-  points, not PAs, and do not satisfy a French sender's obligation.
-- **Live directory (*annuaire*) lookup.** The router takes an `Annuaire` implementation; only the
-  fixed `StaticAnnuaire` ships.
+- **Other plateformes agréées.** B2Brouter is the only PA supported, through its own API. The
+  standard PA API (AFNOR XP Z12-013) is not implemented. e-invoice.be and Recommand are Peppol
+  access points, not PAs, and do not satisfy a French sender's obligation.
+- **Live tests of the B2Brouter flow beyond the directory.** Sending, lifecycle statuses,
+  answers, payments and Flux 10 deposits await a French B2Brouter staging account.
+- **Queued French sends in the Laravel bridge.** The bridge's queued sending pipeline stays
+  Peppol-only; French sends are synchronous calls.
+- **Received Factur-X PDFs.** French invoices are received with
+  `B2BrouterTransport::pending()`, `fetch()` and `acknowledge()`; `fetch()` reads XML only, so a
+  received Factur-X PDF is refused with `UnsupportedDocument`.
+- **Own Flux 10 file or native pipeline.** The exclusivity per B2Brouter account is not checked:
+  the library cannot see which one an account uses (see [Flux 10 deposit](#flux-10-deposit)).
 - **Chorus Pro** (B2G) is out of scope.
 
 ---

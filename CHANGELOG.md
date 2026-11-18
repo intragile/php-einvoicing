@@ -53,6 +53,27 @@ All notable changes to this project are documented here. The format follows
   e-reporting and the payment reporting (`RoutingDecision`, `Channel`, `PaymentReporting`,
   `RoutingRule` with its legal basis), with the directory behind the `Annuaire` interface and a
   fixed `StaticAnnuaire`.
+- **France, transport:** `B2BrouterFrance` sends French invoices through B2Brouter as
+  *plateforme agréée* (`send()` of a `FrenchDocument`: UBL and CII under the French CIUS, UBL
+  EXTENDED-CTC-FR, Factur-X, with the type detected from BT-24 as `FrenchDocumentType`), reads
+  their state as a `PlatformStatus` with the French `LifecycleStatus` (`lifecycle()`), answers
+  received invoices with a `BuyerResponse` (`respond()`: 204, 205, 206, 207, 210, 211) and records
+  payments (`recordPayment()`). B2Brouter emits the lifecycle messages (CDV) itself; the library
+  maps its states to statuses, and both 205 and 206 read back as `Approved`. `B2BrouterFrance` is
+  not a `Transport`.
+- **France, transport:** Flux 10 deposits through B2Brouter: `depositEReport()` and
+  `depositReport()` return an `EReportDeposit` (idempotent per key, by default the SHA-256 of the
+  file), and `eReportStatus()` reads the `LedgerState`. Depositing own files and B2Brouter's native
+  e-reporting are exclusive per account.
+- **France, routing:** `B2BrouterAnnuaire`, a live `Annuaire` through B2Brouter's French directory
+  (`status()`, and `lookup()` by SIREN, SIRET or electronic address returning an `AnnuaireEntry`).
+  A cold lookup may block for about 9 s; a refused key or identifier throws instead of reading as
+  `Unknown`. Live-tested on the B2Brouter sandbox; the rest of the French flow is tested offline
+  only.
+- **Peppol transport, webhooks:** `WebhookEvent::$lifecycleStatus` (default `null`).
+  `B2BrouterWebhook` sets it from `data.state` for `issued_invoice.state_change` and
+  `received_invoice.state_change`, and reads `ledger.state_change` as an event of kind `Other`
+  whose document id is the ledger id.
 - **Validation:** `CdarValidator` and `Flux10Validator` check lifecycle messages and Flux 10 files
   against the FNFE schemas and rule sets and return a `MessageValidationReport` (with
   `MessageType`), which has the same findings API as `ValidationReport`.
@@ -64,7 +85,8 @@ All notable changes to this project are documented here. The format follows
   Factur-X verdicts are unchanged.
 - **Model:** `InvoiceLine::extensions()`, `withExtension()` and `withExtensions()`: an extension
   bag per invoice line, as on `Invoice`.
-- **Documentation:** [docs/countries/FRANCE.md](docs/countries/FRANCE.md).
+- **Documentation:** [docs/countries/FRANCE.md](docs/countries/FRANCE.md), including sending
+  through B2Brouter.
 
 ### Changed
 
