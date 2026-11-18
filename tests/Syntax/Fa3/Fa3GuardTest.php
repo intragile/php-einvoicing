@@ -10,20 +10,30 @@ use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
 use IntrAgile\EInvoicing\CodeList\ElectronicAddressScheme;
 use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
+use IntrAgile\EInvoicing\CodeList\TextSubjectCode;
 use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentAllowance;
 use IntrAgile\EInvoicing\Model\ElectronicAddress;
 use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\InvoiceLine;
+use IntrAgile\EInvoicing\Model\Item;
+use IntrAgile\EInvoicing\Model\ItemAttribute;
+use IntrAgile\EInvoicing\Model\ItemClassification;
+use IntrAgile\EInvoicing\Model\LineVat;
+use IntrAgile\EInvoicing\Model\Note;
 use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\Period;
 use IntrAgile\EInvoicing\Model\PostalAddress;
+use IntrAgile\EInvoicing\Model\PrecedingInvoiceReference;
 use IntrAgile\EInvoicing\Model\Price;
 use IntrAgile\EInvoicing\Poland\Annotations;
+use IntrAgile\EInvoicing\Poland\DocumentReference;
 use IntrAgile\EInvoicing\Poland\PolishInvoice;
 use IntrAgile\EInvoicing\Poland\PolishLine;
 use IntrAgile\EInvoicing\Poland\RawFragment;
+use IntrAgile\EInvoicing\Poland\TransactionTerms;
 use IntrAgile\EInvoicing\Poland\VatRateCode;
 use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Format;
 use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Guard;
@@ -145,6 +155,50 @@ final class Fa3GuardTest extends TestCase
         foreach (['BG-11: ', 'BT-6: ', 'BT-8: ', 'BT-70: ', 'BG-15: ', 'BT-49: '] as $term) {
             self::assertStringContainsString($term, $message);
         }
+    }
+
+    public function test_terms_without_an_fa3_home_are_refused_together(): void
+    {
+        $invoice = PolishInvoices::domestic();
+        $seller = $invoice->seller;
+        $buyer = $invoice->buyer;
+        $lines = $invoice->lines;
+        $lines[0] = new InvoiceLine(
+            id: '1',
+            quantity: '1',
+            unit: UnitCode::H87,
+            price: new Price('100.00', discount: '10.00', grossPrice: '110.00'),
+            item: new Item(
+                'Drukarka',
+                classifications: [new ItemClassification('84433210', 'HS')],
+                attributes: [new ItemAttribute('Kolor', 'czarny')],
+            ),
+            vat: new LineVat(VatCategory::StandardRate, '23'),
+            netAmount: '100.00',
+            period: new Period(new DateTimeImmutable('2026-11-01'), new DateTimeImmutable('2026-11-30')),
+        );
+        $invoice = $invoice
+            ->withLines($lines)
+            ->withNote(new Note('Uwaga', TextSubjectCode::AAI))
+            ->withPrecedingInvoice(new PrecedingInvoiceReference('FV/2026/10/001'))
+            ->withSeller(new Party(name: $seller->name, vatIdentifier: $seller->vatIdentifier, address: new PostalAddress(CountryCode::PL, line1: 'ul. Kwiatowa 1', subdivision: 'mazowieckie')))
+            ->withBuyer(new Party(name: $buyer->name, vatIdentifier: $buyer->vatIdentifier, address: new PostalAddress(CountryCode::PL, line1: 'ul. Polna 10', subdivision: 'wielkopolskie')));
+
+        $message = self::refusal($invoice);
+        foreach (['BT-21 (note 1): ', 'BT-39: ', 'BT-54: ', 'BG-3: ', 'BG-26 (line "1"): ', 'BT-147 (line "1"): ', 'BT-148 (line "1"): ', 'BT-158 (line "1"): ', 'BG-32 (line "1"): '] as $term) {
+            self::assertStringContainsString($term, $message);
+        }
+    }
+
+    public function test_reference_conflicting_with_transaction_terms_is_refused(): void
+    {
+        $invoice = PolishInvoices::domestic()
+            ->withContractReference('UM/1')
+            ->withExtension(new PolishInvoice(transactionTerms: new TransactionTerms(contracts: [new DocumentReference(number: 'UM/2')])));
+
+        $message = self::refusal($invoice);
+        self::assertStringContainsString('BT-12: "UM/1"', $message);
+        self::assertStringContainsString('"UM/2"', $message);
     }
 
     public function test_missing_totals_are_refused(): void

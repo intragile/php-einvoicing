@@ -56,9 +56,19 @@ final class Fa3Format
         'BT-19' => 'Konto księgowe nabywcy (BT-19)',
         'BT-20' => 'Warunki płatności (BT-20)',
         'BT-22' => 'Uwagi (BT-22)',
+        'BT-28' => 'Nazwa handlowa sprzedawcy (BT-28)',
+        'BT-41' => 'Osoba kontaktowa sprzedawcy (BT-41)',
+        'BT-45' => 'Nazwa handlowa nabywcy (BT-45)',
+        'BT-56' => 'Osoba kontaktowa nabywcy (BT-56)',
         'BT-83' => 'Tytuł płatności (BT-83)',
         'BT-127' => 'Uwagi do pozycji (BT-127)',
         'BT-154' => 'Opis (BT-154)',
+        'BT-128' => 'Identyfikator obiektu (BT-128)',
+        'BT-132' => 'Pozycja zamówienia (BT-132)',
+        'BT-133' => 'Konto księgowe pozycji (BT-133)',
+        'BT-156' => 'Indeks nabywcy (BT-156)',
+        'BT-159' => 'Kraj pochodzenia (BT-159)',
+        'BT-139' => 'Powód rabatu (BT-139)',
     ];
 
     private function __construct() {}

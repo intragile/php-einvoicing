@@ -9,10 +9,13 @@ use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
+use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\IdentifierScheme;
 use IntrAgile\EInvoicing\CodeList\PaymentMeansCode;
 use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
+use IntrAgile\EInvoicing\CodeList\VatExemptionReason;
+use IntrAgile\EInvoicing\Model\Contact;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\Extensions;
 use IntrAgile\EInvoicing\Model\Identifier;
@@ -22,9 +25,11 @@ use IntrAgile\EInvoicing\Model\Item;
 use IntrAgile\EInvoicing\Model\LineAllowance;
 use IntrAgile\EInvoicing\Model\LineVat;
 use IntrAgile\EInvoicing\Model\Note;
+use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\PaymentInstructions;
 use IntrAgile\EInvoicing\Model\Period;
 use IntrAgile\EInvoicing\Model\Price;
+use IntrAgile\EInvoicing\Model\VatBreakdown;
 use IntrAgile\EInvoicing\Poland\Annotations;
 use IntrAgile\EInvoicing\Poland\Gtu;
 use IntrAgile\EInvoicing\Poland\KeyValue;
@@ -35,15 +40,19 @@ use IntrAgile\EInvoicing\Poland\Procedure;
 use IntrAgile\EInvoicing\Poland\RawFragment;
 use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Format;
 use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Writer;
+use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Tests\Support\PolishInvoices;
 use IntrAgile\EInvoicing\Tests\Support\PolishSamples;
 use IntrAgile\EInvoicing\Validation\Poland\Fa3Validator;
 use IntrAgile\EInvoicing\Validation\SchemaError;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class Fa3WriterTest extends TestCase
 {
+    use CapturesThrowable;
+
     private const CLOCK = '2026-11-18T09:30:47+01:00';
 
     /**
@@ -332,6 +341,75 @@ final class Fa3WriterTest extends TestCase
             '1|Uwagi do pozycji (BT-127)|Uwaga do pozycji',
             '1|Opis (BT-154)|Opis towaru',
         ], self::descriptions($xml));
+    }
+
+    public function test_contract_and_order_references_go_to_warunki_transakcji(): void
+    {
+        $xml = self::write(PolishInvoices::domestic()->withContractReference('UM/2026/7')->withPurchaseOrderReference('ZAM/991'));
+
+        self::assertSchemaValid($xml);
+        self::assertSame(['NrUmowy=UM/2026/7', 'NrZamowienia=ZAM/991'], self::leaves($xml, '//fa:Fa/fa:WarunkiTransakcji//*[not(*)]'));
+        self::assertSame('WarunkiTransakcji', array_slice(self::childNames($xml, '/fa:Faktura/fa:Fa'), -1)[0]);
+        self::assertSame([], self::descriptions($xml));
+    }
+
+    public function test_party_and_line_text_terms_go_to_dodatkowy_opis(): void
+    {
+        $invoice = PolishInvoices::domestic();
+        $seller = $invoice->seller;
+        $buyer = $invoice->buyer;
+        $line = new InvoiceLine(
+            id: '1',
+            quantity: '2',
+            unit: UnitCode::H87,
+            price: new Price('50.00'),
+            item: new Item('Toner', buyersIdentifier: 'NAB-77', originCountry: CountryCode::DE),
+            vat: new LineVat(VatCategory::StandardRate, '23'),
+            objectIdentifier: new Identifier('OBJ-1'),
+            orderLineReference: '4',
+            buyerAccountingReference: '402-01',
+            allowances: [new LineAllowance('5.00', reason: 'Rabat ilościowy'), new LineAllowance('1.00', reason: 'Promocja')],
+        );
+        $invoice = TotalsCalculator::complete($invoice
+            ->withSeller(new Party(name: $seller->name, tradingName: 'Sprzedawca', vatIdentifier: $seller->vatIdentifier, address: $seller->address, contact: new Contact(name: 'Anna Nowak', email: 'a@sprzedawca.example')))
+            ->withBuyer(new Party(name: $buyer->name, tradingName: 'Nabywca', vatIdentifier: $buyer->vatIdentifier, address: $buyer->address, contact: new Contact(name: 'Piotr Wiśniewski')))
+            ->withLines([$line])
+            ->withVatBreakdown([]));
+        $xml = self::write($invoice);
+
+        self::assertSchemaValid($xml);
+        self::assertSame([
+            '|Nazwa handlowa sprzedawcy (BT-28)|Sprzedawca',
+            '|Osoba kontaktowa sprzedawcy (BT-41)|Anna Nowak',
+            '|Nazwa handlowa nabywcy (BT-45)|Nabywca',
+            '|Osoba kontaktowa nabywcy (BT-56)|Piotr Wiśniewski',
+            '1|Identyfikator obiektu (BT-128)|OBJ-1',
+            '1|Pozycja zamówienia (BT-132)|4',
+            '1|Konto księgowe pozycji (BT-133)|402-01',
+            '1|Indeks nabywcy (BT-156)|NAB-77',
+            '1|Kraj pochodzenia (BT-159)|DE',
+            '1|Powód rabatu (BT-139)|Rabat ilościowy',
+            '1|Powód rabatu (BT-139)|Promocja',
+        ], self::descriptions($xml));
+        self::assertSame([], self::values($xml, '//fa:DaneKontaktowe[not(fa:Email)]/fa:Telefon'));
+    }
+
+    public function test_exemption_reason_is_superseded_by_the_exemption_annotation(): void
+    {
+        $invoice = PolishInvoices::exempt();
+        $row = $invoice->vatBreakdown[0];
+        $invoice = $invoice->withVatBreakdown([new VatBreakdown($row->taxableAmount, $row->taxAmount, $row->category, $row->rate, 'Zwolnienie z VAT', VatExemptionReason::VATEX_EU_132)]);
+        $xml = self::write($invoice);
+
+        self::assertSchemaValid($xml);
+        self::assertStringNotContainsString('Zwolnienie z VAT', $xml);
+        self::assertSame(['Art. 43 ust. 1 pkt 37 ustawy'], self::values($xml, '//fa:Zwolnienie/fa:P_19A'));
+
+        $exception = self::capture(static fn () => self::write($invoice->withExtension(new PolishInvoice)));
+        self::assertInstanceOf(InvalidArgumentException::class, $exception);
+        self::assertStringContainsString('BT-120 (E 0): ', $exception->getMessage());
+        self::assertStringContainsString('BT-121 (E 0): ', $exception->getMessage());
+        self::assertStringContainsString('Annotations::$exemption', $exception->getMessage());
     }
 
     public function test_supply_date_or_invoicing_period(): void

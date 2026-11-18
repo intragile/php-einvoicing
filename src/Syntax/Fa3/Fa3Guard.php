@@ -10,6 +10,7 @@ use IntrAgile\EInvoicing\CodeList\CurrencyCode;
 use IntrAgile\EInvoicing\CodeList\IdentifierScheme;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\Party;
+use IntrAgile\EInvoicing\Poland\DocumentReference;
 use IntrAgile\EInvoicing\Poland\InvoiceKind;
 use IntrAgile\EInvoicing\Poland\Nip;
 use IntrAgile\EInvoicing\Poland\PolishInvoice;
@@ -30,6 +31,15 @@ use InvalidArgumentException;
  * code (BT-8), the paid amount (BT-113, except on a settlement invoice) and the rounding amount
  * (BT-114), and payment card and direct debit data (BG-18, BG-19). The text terms FA(3) carries
  * as additional descriptions are not refused.
+ *
+ * Refused as well: note subject codes (BT-21), country subdivisions (BT-39, BT-54 and those of
+ * third-party and correspondence addresses), preceding invoice references (BG-3) on an invoice
+ * that is not a correction, line periods (BG-26), item price discounts and gross prices (BT-147,
+ * BT-148), item classifications (BT-158) and item attributes (BG-32). VAT exemption reasons
+ * (BT-120, BT-121) are accepted only with the exemption annotation (Annotations::$exemption),
+ * which supersedes them; the legal basis is never guessed. A contract or purchase order
+ * reference (BT-12, BT-13) that differs from the contracts or orders of the transaction terms
+ * is refused.
  *
  * Also refused: a seller VAT identifier (BT-31) that is not "PL" with a NIP of the schema
  * pattern, missing document totals, VAT categories and rates without an FA(3) rate code or
@@ -96,6 +106,33 @@ final class Fa3Guard
         $refuse(self::nonZero($invoice->totals?->roundingAmount), 'BT-114');
         $refuse($invoice->payment?->card !== null, 'BG-18', 'FA(3) carries the payment form only, not card data');
         $refuse($invoice->payment?->directDebit !== null, 'BG-19', 'FA(3) has no direct debit');
+        foreach ($invoice->notes as $index => $note) {
+            $refuse($note->subjectCode !== null, sprintf('BT-21 (note %d)', $index + 1), 'FA(3) has no note subject code');
+        }
+        $kind = self::kindOf($invoice, $polish);
+        $refuse(
+            $invoice->precedingInvoices !== [] && $kind?->isCorrection() !== true,
+            'BG-3',
+            'FA(3) references a preceding invoice only on a corrective invoice (KOR, KOR_ZAL, KOR_ROZ)',
+        );
+        $exempted = $polish->annotations->exemption !== null;
+        foreach ($invoice->vatBreakdown as $row) {
+            $label = sprintf(' (%s %s)', $row->category->value, $row->rate === null ? 'no rate' : $row->rate->__toString());
+            $hint = 'FA(3) states the exemption as P_19 with its legal basis; set Annotations::$exemption of the Polish invoice extension';
+            $refuse(! $exempted && $row->exemptionReason !== null, 'BT-120'.$label, $hint);
+            $refuse(! $exempted && $row->exemptionReasonCode !== null, 'BT-121'.$label, $hint);
+        }
+        foreach ([[$invoice->seller->address, 'BT-39'], [$invoice->buyer->address, 'BT-54'], [$polish->seller?->correspondenceAddress, 'Podmiot1/AdresKoresp subdivision'], [$polish->buyer?->correspondenceAddress, 'Podmiot2/AdresKoresp subdivision']] as [$address, $term]) {
+            $refuse($address?->subdivision !== null, $term, 'FA(3) addresses have no country subdivision');
+        }
+        foreach ($polish->thirdParties as $index => $thirdParty) {
+            foreach ([$thirdParty->party->address, $thirdParty->extras?->correspondenceAddress] as $address) {
+                $refuse($address?->subdivision !== null, sprintf('Podmiot3[%d] subdivision', $index + 1), 'FA(3) addresses have no country subdivision');
+            }
+        }
+        foreach (self::referenceConflicts($invoice, $polish) as $violation) {
+            $violations[] = $violation;
+        }
 
         foreach ($invoice->lines as $line) {
             $refuse($line->charges !== [], sprintf('BG-28 (line "%s")', $line->id), 'FA(3) has no line charges; include them in the net amount');
@@ -105,6 +142,12 @@ final class Fa3Guard
                 sprintf('BT-157 (line "%s")', $line->id),
                 sprintf('only a GTIN (scheme 0160) has an FA(3) element, got scheme "%s"', $scheme ?? ''),
             );
+            $at = sprintf(' (line "%s")', $line->id);
+            $refuse($line->period !== null, 'BG-26'.$at);
+            $refuse($line->price->discount !== null, 'BT-147'.$at, 'FA(3) states the net unit price only (P_9A)');
+            $refuse($line->price->grossPrice !== null, 'BT-148'.$at, 'FA(3) states the net unit price only (P_9A)');
+            $refuse($line->item->classifications !== [], 'BT-158'.$at, 'FA(3) carries classifications only as the Polish PKWiU, CN and PKOB codes of the line extension');
+            $refuse($line->item->attributes !== [], 'BG-32'.$at);
             $base = $line->price->baseQuantity;
             $refuse(
                 $base !== null && ! $base->isEqualTo(1),
@@ -219,6 +262,35 @@ final class Fa3Guard
             'BT-3: invoice type code %s implies no FA(3) invoice kind; set the kind of the Polish invoice extension',
             $invoice->type->value,
         )];
+    }
+
+    /**
+     * BT-12 and BT-13 share WarunkiTransakcji with the transaction terms of the extension; when
+     * the terms list contracts or orders, the EN reference must be one of their numbers.
+     *
+     * @return list<string>
+     */
+    private static function referenceConflicts(Invoice $invoice, PolishInvoice $polish): array
+    {
+        $terms = $polish->transactionTerms;
+        if ($terms === null) {
+            return [];
+        }
+        $violations = [];
+        foreach ([['BT-12', $invoice->contractReference, $terms->contracts, 'Umowy'], ['BT-13', $invoice->purchaseOrderReference, $terms->orders, 'Zamowienia']] as [$term, $reference, $documents, $element]) {
+            $numbers = array_map(static fn (DocumentReference $document): ?string => $document->number, $documents);
+            if ($reference !== null && $documents !== [] && ! in_array($reference, $numbers, true)) {
+                $violations[] = sprintf(
+                    '%s: "%s" conflicts with the %s of the transaction terms (%s); give the reference in one place',
+                    $term,
+                    $reference,
+                    $element,
+                    implode(', ', array_map(static fn (?string $number): string => '"'.($number ?? '').'"', $numbers)),
+                );
+            }
+        }
+
+        return $violations;
     }
 
     /**

@@ -38,6 +38,11 @@ use InvalidArgumentException;
  * - EN 16931 text terms without an FA(3) element are written as additional descriptions
  *   (DodatkowyOpis) with the fixed keys of Fa3Format::DESCRIPTION_KEYS, after the extension's
  *   own descriptions.
+ * - The contract reference (BT-12) and the purchase order reference (BT-13) are written in
+ *   WarunkiTransakcji as Umowy/NrUmowy and Zamowienia/NrZamowienia.
+ * - VAT exemption reasons (BT-120, BT-121) are superseded by the exemption annotation
+ *   (Annotations::$exemption, P_19 with its legal basis) and not written; without that
+ *   annotation the guard refuses them.
  * - The payment form is the extension's override, else derived from the payment means code
  *   (BT-81); a code without a form is written as PlatnoscInna with the means text (BT-82), else
  *   the code. Bank accounts are the extension's, else the credit transfers (BG-17).
@@ -140,6 +145,25 @@ final class Fa3Writer
             Fa3LineWriter::write($output, $fa, $line, $position, $buyerCountry);
         }
         $this->payment($output, $fa, $invoice, $polish);
+        $this->transactionTerms($output, $fa, $invoice);
+    }
+
+    /**
+     * WarunkiTransakcji with the contract reference (BT-12) as Umowy/NrUmowy and the purchase
+     * order reference (BT-13) as Zamowienia/NrZamowienia.
+     */
+    private function transactionTerms(Fa3Output $output, DOMElement $fa, Invoice $invoice): void
+    {
+        if ($invoice->contractReference === null && $invoice->purchaseOrderReference === null) {
+            return;
+        }
+        $element = $output->add($fa, 'WarunkiTransakcji');
+        if ($invoice->contractReference !== null) {
+            $output->text($output->add($element, 'Umowy'), 'NrUmowy', $invoice->contractReference);
+        }
+        if ($invoice->purchaseOrderReference !== null) {
+            $output->text($output->add($element, 'Zamowienia'), 'NrZamowienia', $invoice->purchaseOrderReference);
+        }
     }
 
     /**
@@ -243,10 +267,22 @@ final class Fa3Writer
         foreach ($invoice->notes as $note) {
             $add('BT-22', $note->text);
         }
+        $add('BT-28', $invoice->seller->tradingName);
+        $add('BT-41', $invoice->seller->contact?->name);
+        $add('BT-45', $invoice->buyer->tradingName);
+        $add('BT-56', $invoice->buyer->contact?->name);
         $add('BT-83', $invoice->payment?->remittanceInformation);
         foreach ($this->writtenLines($invoice) as $position => $line) {
             $add('BT-127', $line->note, $position);
             $add('BT-154', $line->item->description, $position);
+            $add('BT-128', $line->objectIdentifier?->value, $position);
+            $add('BT-132', $line->orderLineReference, $position);
+            $add('BT-133', $line->buyerAccountingReference, $position);
+            $add('BT-156', $line->item->buyersIdentifier, $position);
+            $add('BT-159', $line->item->originCountry?->value, $position);
+            foreach ($line->allowances as $allowance) {
+                $add('BT-139', $allowance->reason, $position);
+            }
         }
 
         return $descriptions;
