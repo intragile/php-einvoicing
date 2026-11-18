@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Tests\Syntax\Fa3;
 
 use DateTimeImmutable;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
+use IntrAgile\EInvoicing\CodeList\AllowanceReasonCode;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
 use IntrAgile\EInvoicing\CodeList\UnitCode;
@@ -15,9 +16,11 @@ use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\InvoiceLine;
 use IntrAgile\EInvoicing\Model\Item;
 use IntrAgile\EInvoicing\Model\LineAllowance;
+use IntrAgile\EInvoicing\Model\LineVat;
 use IntrAgile\EInvoicing\Model\Note;
 use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\PostalAddress;
+use IntrAgile\EInvoicing\Model\Price;
 use IntrAgile\EInvoicing\Model\VatBreakdown;
 use IntrAgile\EInvoicing\Poland\Annotations;
 use IntrAgile\EInvoicing\Poland\ContactDetails;
@@ -31,6 +34,7 @@ use IntrAgile\EInvoicing\Poland\PolishParty;
 use IntrAgile\EInvoicing\Poland\ThirdParty;
 use IntrAgile\EInvoicing\Poland\ThirdPartyRole;
 use IntrAgile\EInvoicing\Poland\VatRateCode;
+use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Format;
 use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Guard;
 use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Reader;
 use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Writer;
@@ -416,6 +420,106 @@ final class Fa3LosslessTest extends TestCase
         $result = (new Fa3Reader)->read($source);
 
         self::assertNotSame([], $result->ignored);
+    }
+
+    public function test_several_allowances_on_one_line_keep_their_amounts(): void
+    {
+        $line = new InvoiceLine(
+            id: '1',
+            quantity: '1',
+            unit: UnitCode::H87,
+            price: new Price('100.00'),
+            item: new Item('X'),
+            vat: new LineVat(VatCategory::StandardRate, '23'),
+            allowances: [
+                new LineAllowance(amount: '10.00', reason: 'Rabat A'),
+                new LineAllowance(amount: '5.00', baseAmount: '100.00', percentage: '5'),
+                new LineAllowance(amount: '2.50', reason: 'Rabat C', reasonCode: AllowanceReasonCode::C_95),
+            ],
+        );
+        $invoice = TotalsCalculator::complete(PolishInvoices::domestic()->withLines([$line])->withVatBreakdown([]));
+        $xml = self::write($invoice);
+
+        self::assertSame(['10.00', '5.00', '2.50'], self::descriptionValues($xml, Fa3Format::DESCRIPTION_KEYS['BT-136']));
+        $read = (new Fa3Reader)->read($xml);
+        self::assertSame([], $read->ignored);
+        $allowances = $read->invoice->lines[0]->allowances;
+        self::assertSame(
+            [['10.00', 'Rabat A', null, null, null], ['5.00', Fa3Format::ALLOWANCE_REASON, '100.00', '5', null], ['2.50', 'Rabat C', null, null, '95']],
+            array_map(static fn (LineAllowance $a): array => [(string) $a->amount, $a->reason, $a->baseAmount?->__toString(), $a->percentage?->__toString(), $a->reasonCode?->value], $allowances),
+        );
+        self::assertSame([], $read->invoice->extensions()->get(PolishInvoice::class)?->descriptions);
+        self::assertSame($xml, self::write($read->invoice));
+    }
+
+    public function test_single_allowance_carries_no_amount_key(): void
+    {
+        $line = new InvoiceLine(
+            id: '1',
+            quantity: '1',
+            unit: UnitCode::H87,
+            price: new Price('100.00'),
+            item: new Item('X'),
+            vat: new LineVat(VatCategory::StandardRate, '23'),
+            allowances: [new LineAllowance(amount: '10.00', reason: 'Rabat A')],
+        );
+        $xml = self::write(TotalsCalculator::complete(PolishInvoices::domestic()->withLines([$line])->withVatBreakdown([])));
+
+        self::assertSame([], self::descriptionValues($xml, Fa3Format::DESCRIPTION_KEYS['BT-136']));
+    }
+
+    public function test_allowance_amounts_that_do_not_sum_to_p_10_fall_back_to_one_allowance(): void
+    {
+        $line = new InvoiceLine(
+            id: '1',
+            quantity: '1',
+            unit: UnitCode::H87,
+            price: new Price('100.00'),
+            item: new Item('X'),
+            vat: new LineVat(VatCategory::StandardRate, '23'),
+            allowances: [new LineAllowance(amount: '10.00', reason: 'Rabat A'), new LineAllowance(amount: '5.00', reason: 'Rabat B')],
+        );
+        $xml = self::write(TotalsCalculator::complete(PolishInvoices::domestic()->withLines([$line])->withVatBreakdown([])));
+        $xml = str_replace('<P_10>15.00</P_10>', '<P_10>16.00</P_10>', $xml);
+
+        $read = (new Fa3Reader)->read($xml)->invoice;
+        self::assertCount(1, $read->lines[0]->allowances);
+        self::assertSame('16.00', (string) $read->lines[0]->allowances[0]->amount);
+        $kept = array_map(static fn (KeyValue $d): string => $d->key.'='.$d->value, $read->extensions()->get(PolishInvoice::class)->descriptions ?? []);
+        self::assertContains(Fa3Format::DESCRIPTION_KEYS['BT-136'].'=10.00', $kept);
+        self::assertContains(Fa3Format::DESCRIPTION_KEYS['BT-136'].'=5.00', $kept);
+    }
+
+    public function test_state_before_row_keeps_several_allowances(): void
+    {
+        $invoice = PolishInvoices::correctionBeforeAfter();
+        $lines = $invoice->lines;
+        $lines[0] = $lines[0]
+            ->withAllowance(new LineAllowance(amount: '-1.00', reason: 'Rabat A'))
+            ->withAllowance(new LineAllowance(amount: '-2.00', reason: 'Rabat B'))
+            ->withNetAmount(null);
+        $invoice = TotalsCalculator::complete($invoice->withLines($lines)->withVatBreakdown([]));
+        $xml = self::write($invoice);
+
+        $read = (new Fa3Reader)->read($xml);
+        self::assertSame(['-1.00', '-2.00'], array_map(static fn (LineAllowance $a): string => (string) $a->amount, $read->invoice->lines[0]->allowances));
+        self::assertSame($xml, self::write($read->invoice));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function descriptionValues(string $xml, string $key): array
+    {
+        $values = [];
+        preg_match_all('#<Klucz>([^<]*)</Klucz><Wartosc>([^<]*)</Wartosc>#', (string) preg_replace('#>\s+<#', '><', $xml), $matches, PREG_SET_ORDER);
+        foreach ($matches as $match) {
+            if ($match[1] === $key) {
+                $values[] = $match[2];
+            }
+        }
+
+        return $values;
     }
 
     private static function refusal(Invoice $invoice): string

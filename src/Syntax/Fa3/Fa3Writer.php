@@ -55,7 +55,9 @@ use InvalidArgumentException;
  * - EN 16931 text terms without an FA(3) element are written as additional descriptions
  *   (DodatkowyOpis) with the fixed keys of Fa3Format::DESCRIPTION_KEYS, after the extension's
  *   own descriptions. A line allowance reason equal to Fa3Format::ALLOWANCE_REASON, the reason
- *   the reader gives an allowance read from P_10 alone, is not repeated.
+ *   the reader gives an allowance read from P_10 alone, is not repeated. On a line with several
+ *   allowances, each allowance starts with its amount (BT-136) before its other terms, so the
+ *   reader can rebuild them; P_10 holds their sum.
  * - The contract reference (BT-12) and the purchase order reference (BT-13) are written in
  *   WarunkiTransakcji as Umowy/NrUmowy and Zamowienia/NrZamowienia, unless the transaction
  *   terms of the extension list contracts or orders, one of which then carries the reference.
@@ -346,7 +348,9 @@ final class Fa3Writer
             $add('BT-156', $line->item->buyersIdentifier, $position);
             $add('BT-159', $line->item->originCountry?->value, $position);
             $add('BT-130', Fa3LineWriter::unitCodeBesideLabel($line), $position);
+            $several = count($line->allowances) > 1;
             foreach ($line->allowances as $allowance) {
+                $add('BT-136', $several ? $allowance->amount->__toString() : null, $position);
                 $add('BT-139', $allowance->reason === Fa3Format::ALLOWANCE_REASON ? null : $allowance->reason, $position);
                 $add('BT-137', $allowance->baseAmount?->__toString(), $position);
                 $add('BT-138', $allowance->percentage?->__toString(), $position);

@@ -44,7 +44,8 @@ use InvalidArgumentException;
  *   category O without a rate and no code is guessed. A row with an OSS rate (P_12_XII) and
  *   without P_12 is a one-stop-shop line: category S at that rate.
  * - P_10 is one line allowance with that amount; its reason is the fixed-key description of
- *   the row, else "P_10".
+ *   the row, else "P_10". When the row's descriptions carry the amounts of several allowances
+ *   (BT-136) that add up to P_10, each becomes an allowance with the terms that follow it.
  * - A row without P_8A, P_8B or P_9A is marked with the matching PolishLine omission marker, so
  *   the writer leaves the element out again.
  * - A state-before row (StanPrzed) is held in storno form: P_8B, P_10, P_11, P_11A, P_11Vat and
@@ -63,8 +64,12 @@ final class Fa3LineMapper
      *                                        BT-137, BT-138, BT-140 of the allowance); values are
      *                                        already checked
      * @param  ?VatBucket  $onlyBucket  the summary bucket when the invoice writes exactly one
+     * @param  list<array<string, string>>  $allowances  the terms of each of several allowances
+     *                                                   (BT-136, BT-139, BT-137, BT-138, BT-140),
+     *                                                   already checked against P_10; empty for one
+     *                                                   allowance of P_10
      */
-    public function line(DOMElement $row, array $terms, ?CountryCode $buyerCountry, bool $marginInvoice, ?VatBucket $onlyBucket = null): InvoiceLine
+    public function line(DOMElement $row, array $terms, ?CountryCode $buyerCountry, bool $marginInvoice, ?VatBucket $onlyBucket = null, array $allowances = []): InvoiceLine
     {
         $d = $this->d;
         $before = $d->flag('fa:StanPrzed', $row);
@@ -122,13 +127,9 @@ final class Fa3LineMapper
             objectIdentifier: isset($terms['BT-128']) ? new Identifier($terms['BT-128']) : null,
             orderLineReference: $terms['BT-132'] ?? null,
             buyerAccountingReference: $terms['BT-133'] ?? null,
-            allowances: $allowance === null ? [] : [new LineAllowance(
-                amount: $sign($allowance) ?? $allowance,
-                baseAmount: isset($terms['BT-137']) ? BigDecimal::of($terms['BT-137']) : null,
-                percentage: isset($terms['BT-138']) ? BigDecimal::of($terms['BT-138']) : null,
-                reason: $terms['BT-139'] ?? Fa3Format::ALLOWANCE_REASON,
-                reasonCode: isset($terms['BT-140']) ? AllowanceReasonCode::tryFrom($terms['BT-140']) : null,
-            )],
+            allowances: $allowances !== []
+                ? array_map(static fn (array $group): LineAllowance => self::allowance(BigDecimal::of($group['BT-136']), $group), $allowances)
+                : ($allowance === null ? [] : [self::allowance($sign($allowance) ?? $allowance, $terms)]),
         );
 
         $polish = new PolishLine(
@@ -156,6 +157,20 @@ final class Fa3LineMapper
         );
 
         return $polish == new PolishLine ? $line : $line->withExtension($polish);
+    }
+
+    /**
+     * @param  array<string, string>  $terms
+     */
+    private static function allowance(BigDecimal $amount, array $terms): LineAllowance
+    {
+        return new LineAllowance(
+            amount: $amount,
+            baseAmount: isset($terms['BT-137']) ? BigDecimal::of($terms['BT-137']) : null,
+            percentage: isset($terms['BT-138']) ? BigDecimal::of($terms['BT-138']) : null,
+            reason: $terms['BT-139'] ?? Fa3Format::ALLOWANCE_REASON,
+            reasonCode: isset($terms['BT-140']) ? AllowanceReasonCode::tryFrom($terms['BT-140']) : null,
+        );
     }
 
     /**

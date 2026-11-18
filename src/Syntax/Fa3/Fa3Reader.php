@@ -80,6 +80,9 @@ final class Fa3Reader
     /** Line allowance terms carried as fixed-key descriptions; read for a row with P_10. */
     private const ALLOWANCE_TERMS = ['BT-139', 'BT-137', 'BT-138', 'BT-140'];
 
+    /** Amount of one of several allowances of a row; it starts the terms of that allowance. */
+    private const ALLOWANCE_AMOUNT = 'BT-136';
+
     /**
      * @throws UnsafeXml when the document carries a DOCTYPE declaration
      * @throws UnsupportedDocument when it is not an FA(3) invoice or lacks the invoice number,
@@ -103,7 +106,7 @@ final class Fa3Reader
         try {
             [$createdAt, $systemInfo] = $this->header($d);
             $rows = $d->all('fa:FaWiersz', $fa);
-            [$header, $notes, $lineTerms, $descriptions] = $this->descriptions($d, $fa, $rows);
+            [$header, $notes, $lineTerms, $descriptions, $allowanceGroups] = $this->descriptions($d, $fa, $rows);
 
             [$seller, $sellerExtras] = $parties->seller($sellerElement, $header['BT-28'] ?? null, $header['BT-41'] ?? null);
             $buyerElement = $d->one('fa:Podmiot2');
@@ -124,7 +127,7 @@ final class Fa3Reader
             $onlyBucket = count($buckets) === 1 ? $buckets[0][0] : null;
             $lines = [];
             foreach ($rows as $index => $row) {
-                $lines[] = $lineMapper->line($row, $lineTerms[$index] ?? [], $buyerCountry, $annotations->margin !== null, $onlyBucket);
+                $lines[] = $lineMapper->line($row, $lineTerms[$index] ?? [], $buyerCountry, $annotations->margin !== null, $onlyBucket, $allowanceGroups[$index] ?? []);
             }
             if ($lines === []) {
                 $position = 0;
@@ -236,10 +239,16 @@ final class Fa3Reader
 
     /**
      * The additional descriptions split into header terms, notes (BT-22), line terms per row
-     * index and the remaining pairs, in document order.
+     * index, the remaining pairs in document order, and per row index the terms of each of
+     * several allowances.
+     *
+     * A row whose descriptions carry allowance amounts (BT-136) gets one allowance per amount, each
+     * with the allowance terms that follow its amount, when every allowance term follows an amount,
+     * there are at least two amounts and they add up to P_10. Otherwise the row gets one allowance
+     * of P_10 and the amounts stay descriptions.
      *
      * @param  list<DOMElement>  $rows
-     * @return array{array<string, string>, list<string>, array<int, array<string, string>>, list<KeyValue>}
+     * @return array{array<string, string>, list<string>, array<int, array<string, string>>, list<KeyValue>, array<int, list<array<string, string>>>}
      */
     private function descriptions(Fa3Document $d, DOMElement $fa, array $rows): array
     {
@@ -254,12 +263,26 @@ final class Fa3Reader
             $unit = $d->one('fa:P_8A', $row);
             $labelRows[$index] = $unit !== null && UnitCode::tryFrom(trim($unit->textContent)) === null;
         }
+        $elements = $d->all('fa:DodatkowyOpis', $fa);
+        $amountRows = [];
+        foreach ($elements as $element) {
+            $lineNumber = $d->one('fa:NrWiersza', $element);
+            $key = $d->one('fa:Klucz', $element);
+            if ($lineNumber !== null && $key !== null && trim($key->textContent) === Fa3Format::DESCRIPTION_KEYS[self::ALLOWANCE_AMOUNT]) {
+                $index = $rowIndex[trim($lineNumber->textContent)] ?? null;
+                if ($index !== null && $allowanceRows[$index]) {
+                    $amountRows[$index] = true;
+                }
+            }
+        }
 
         $header = [];
         $notes = [];
         $lines = [];
         $descriptions = [];
-        foreach ($d->all('fa:DodatkowyOpis', $fa) as $element) {
+        /** @var array<int, list<array{string, string, KeyValue}>> $pending */
+        $pending = [];
+        foreach ($elements as $element) {
             $lineNumber = $d->token('fa:NrWiersza', $element);
             $key = $d->text('fa:Klucz', $element);
             $value = $d->text('fa:Wartosc', $element);
@@ -273,6 +296,12 @@ final class Fa3Reader
             }
             $term = $terms[$key] ?? null;
             $index = $lineNumber === null ? null : ($rowIndex[$lineNumber] ?? null);
+            if ($term !== null && $index !== null && isset($amountRows[$index])
+                && ($term === self::ALLOWANCE_AMOUNT || in_array($term, self::ALLOWANCE_TERMS, true))) {
+                $pending[$index][] = [$term, $value, new KeyValue((int) $lineNumber, $key, $value)];
+
+                continue;
+            }
 
             if ($term !== null && $lineNumber === null && $term === 'BT-22') {
                 $notes[] = $value;
@@ -292,7 +321,60 @@ final class Fa3Reader
             $descriptions[] = new KeyValue($lineNumber === null ? null : (int) $lineNumber, $key, $value);
         }
 
-        return [$header, $notes, $lines, $descriptions];
+        $groups = [];
+        foreach ($pending as $index => $entries) {
+            $row = $rows[$index];
+            $p10 = $d->decimal('fa:P_10', $row);
+            $total = $p10 !== null && $d->flag('fa:StanPrzed', $row) ? $p10->negated() : $p10;
+            $rebuilt = $total === null ? null : self::allowanceGroups($entries, $total, $labelRows[$index]);
+            if ($rebuilt !== null) {
+                $groups[$index] = $rebuilt;
+
+                continue;
+            }
+            foreach ($entries as [$term, $value, $pair]) {
+                if ($term !== self::ALLOWANCE_AMOUNT && ! isset($lines[$index][$term]) && self::lineTermFits($term, $value, true, $labelRows[$index])) {
+                    $lines[$index][$term] = $value;
+                } else {
+                    $descriptions[] = $pair;
+                }
+            }
+        }
+
+        return [$header, $notes, $lines, $descriptions, $groups];
+    }
+
+    /**
+     * The terms of each of several allowances of a row, each group starting with its amount
+     * (BT-136); null when an allowance term precedes the first amount, a term repeats within one
+     * allowance, a value does not fit its term, there are fewer than two amounts, or the amounts do
+     * not add up to the row's allowance total.
+     *
+     * @param  list<array{string, string, KeyValue}>  $entries
+     * @return list<array<string, string>>|null
+     */
+    private static function allowanceGroups(array $entries, BigDecimal $total, bool $hasUnitLabel): ?array
+    {
+        $groups = [];
+        $sum = BigDecimal::zero();
+        foreach ($entries as [$term, $value]) {
+            if ($term === self::ALLOWANCE_AMOUNT) {
+                if (! self::isNumber($value)) {
+                    return null;
+                }
+                $groups[] = [$term => $value];
+                $sum = $sum->plus(BigDecimal::of($value));
+
+                continue;
+            }
+            $last = count($groups) - 1;
+            if ($last < 0 || isset($groups[$last][$term]) || ! self::lineTermFits($term, $value, true, $hasUnitLabel)) {
+                return null;
+            }
+            $groups[$last][$term] = $value;
+        }
+
+        return count($groups) >= 2 && $sum->isEqualTo($total) ? $groups : null;
     }
 
     /**

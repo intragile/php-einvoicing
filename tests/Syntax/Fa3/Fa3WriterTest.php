@@ -410,7 +410,9 @@ final class Fa3WriterTest extends TestCase
             '1|Konto księgowe pozycji (BT-133)|402-01',
             '1|Indeks nabywcy (BT-156)|NAB-77',
             '1|Kraj pochodzenia (BT-159)|DE',
+            '1|Kwota rabatu (BT-136)|5.00',
             '1|Powód rabatu (BT-139)|Rabat ilościowy',
+            '1|Kwota rabatu (BT-136)|1.00',
             '1|Powód rabatu (BT-139)|Promocja',
         ], self::descriptions($xml));
         self::assertSame([], self::values($xml, '//fa:DaneKontaktowe[not(fa:Email)]/fa:Telefon'));
@@ -426,10 +428,12 @@ final class Fa3WriterTest extends TestCase
 
         self::assertSchemaValid($xml);
         self::assertSame([
+            '2|Kwota rabatu (BT-136)|2.50',
             '2|Powód rabatu (BT-139)|Rabat',
             '2|Podstawa rabatu (BT-137)|50.00',
             '2|Procent rabatu (BT-138)|5',
             '2|Kod powodu rabatu (BT-140)|95',
+            '2|Kwota rabatu (BT-136)|1.00',
             '2|Procent rabatu (BT-138)|2',
         ], self::descriptions($xml));
         self::assertSame(['3.50'], self::values($xml, '//fa:FaWiersz[2]/fa:P_10'));
