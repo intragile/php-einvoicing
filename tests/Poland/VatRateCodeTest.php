@@ -68,6 +68,13 @@ final class VatRateCodeTest extends TestCase
         } catch (InvalidArgumentException $e) {
             self::assertStringContainsString($category->value, $e->getMessage());
             self::assertStringContainsString($rate ?? 'no rate', $e->getMessage());
+            if ($category === VatCategory::StandardRate && in_array($rate, ['4', '3'], true)) {
+                self::assertStringContainsString('P_12 code "'.$rate.'"', $e->getMessage());
+                self::assertStringContainsString('no P_13 summary bucket', $e->getMessage());
+                self::assertStringNotContainsString('explicitly', $e->getMessage());
+            } else {
+                self::assertStringContainsString('has no FA(3) P_12 rate code', $e->getMessage());
+            }
         }
     }
 

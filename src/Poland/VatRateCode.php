@@ -31,7 +31,10 @@ enum VatRateCode: string
     case Exempt = 'zw';
     /** Domestic reverse charge. */
     case ReverseCharge = 'oo';
-    /** Not taxable in Poland: supplies outside the country other than np II. */
+    /**
+     * Not taxable: supplies of goods and services outside the country, excluding services under
+     * art. 100(1)(4) of the VAT Act and OSS.
+     */
     case OutsideTerritory = 'np I';
     /** Not taxable in Poland: services under art. 100(1)(4) of the VAT Act (EU B2B services). */
     case EuServicesArticle100 = 'np II';
@@ -62,10 +65,20 @@ enum VatRateCode: string
      * Reverse charge maps to "oo" when the buyer is Polish or the buyer country is unknown,
      * otherwise to "np II".
      *
-     * @throws InvalidArgumentException When the category or rate has no FA(3) code with a summary bucket.
+     * @throws InvalidArgumentException When the category or rate has no FA(3) code, or its code has no summary bucket.
      */
     public static function fromModel(VatCategory $category, ?BigDecimal $rate, ?CountryCode $buyerCountry): self
     {
+        foreach ([self::Rate4, self::Rate3] as $bucketless) {
+            if ($category === VatCategory::StandardRate && $rate?->isEqualTo($bucketless->value)) {
+                throw new InvalidArgumentException(sprintf(
+                    'VAT category S with rate %s maps to P_12 code "%s", but FA(3) has no P_13 summary bucket for it, so it cannot be written.',
+                    $rate->__toString(),
+                    $bucketless->value,
+                ));
+            }
+        }
+
         $code = match ($category) {
             VatCategory::StandardRate => self::standardRate($rate),
             VatCategory::ZeroRated => self::ZeroDomestic,

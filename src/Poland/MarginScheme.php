@@ -12,5 +12,6 @@ enum MarginScheme: string
     case TravelAgency = 'P_PMarzy_2';
     case UsedGoods = 'P_PMarzy_3_1';
     case WorksOfArt = 'P_PMarzy_3_2';
+    /** Collectors' items and antiques. */
     case CollectorsItems = 'P_PMarzy_3_3';
 }
