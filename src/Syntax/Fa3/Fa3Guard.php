@@ -8,6 +8,8 @@ use Brick\Math\BigDecimal;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
 use IntrAgile\EInvoicing\CodeList\IdentifierScheme;
+use IntrAgile\EInvoicing\CodeList\UnitCode;
+use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Model\Contact;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\Party;
@@ -19,6 +21,7 @@ use IntrAgile\EInvoicing\Poland\PolishInvoice;
 use IntrAgile\EInvoicing\Poland\PolishLine;
 use IntrAgile\EInvoicing\Poland\PolishParty;
 use IntrAgile\EInvoicing\Poland\VatBucket;
+use IntrAgile\EInvoicing\Poland\VatRateCode;
 use InvalidArgumentException;
 
 /**
@@ -101,6 +104,7 @@ final class Fa3Guard
             ...self::parties($invoice, $polish),
             ...self::kind($invoice, $polish),
             ...self::kindSpecific($invoice, $polish),
+            ...self::bucketLines($invoice),
             ...self::precedingInvoices($invoice, $polish),
             ...self::correctionParties($polish),
             ...self::currency($invoice, $polish),
@@ -237,6 +241,9 @@ final class Fa3Guard
         if ($polish->buyer?->vatPrefix !== null) {
             $violations[] = 'Podmiot2: FA(3) has no buyer VAT prefix; the EU prefix is taken from the buyer VAT identifier (BT-48)';
         }
+        if ($polish->buyer?->gln !== null && $buyer->address === null) {
+            $violations[] = 'Podmiot2 GLN: FA(3) writes the GLN in the address (Adres/GLN), and the buyer has no address';
+        }
         if ($polish->buyer?->status !== null) {
             $violations[] = 'Podmiot2: the taxpayer status (StatusInfoPodatnika) exists only for the seller';
         }
@@ -254,6 +261,12 @@ final class Fa3Guard
             }
             if ($thirdParty->internalId !== null && $thirdParty->party->vatIdentifier !== null) {
                 $violations[] = $at.': FA(3) identifies a third party by its internal identifier (IDWew) or its VAT identifier, not both';
+            }
+            if ($thirdParty->internalId !== null && $thirdParty->party->legalRegistration !== null) {
+                $violations[] = $at.': FA(3) identifies a third party by its internal identifier (IDWew) or its legal registration as tax number (NrID), not both';
+            }
+            if ($thirdParty->extras?->gln !== null && $thirdParty->party->address === null) {
+                $violations[] = $at.' GLN: FA(3) writes the GLN in the address (Adres/GLN), and the party has no address';
             }
             if ($thirdParty->extras?->vatPrefix !== null || $thirdParty->extras?->status !== null) {
                 $violations[] = $at.': a third party has no VAT prefix or taxpayer status in FA(3)';
@@ -657,6 +670,18 @@ final class Fa3Guard
 
                 continue;
             }
+            if ($override !== null && ! self::overrideFits($override, $line->vat->category, $line->vat->rate, $buyerCountry)) {
+                [$category, $rate] = $override->toModel();
+                $violations[] = sprintf(
+                    'P_12 (line "%s"): the rate code override "%s" stands for VAT category %s%s, but the line is %s%s, and an override only refines the code of the line category and rate (23 or 22, 8 or 7, oo or np II)',
+                    $line->id,
+                    $override->value,
+                    $category->value,
+                    $rate === null ? '' : ' '.$rate,
+                    $line->vat->category->value,
+                    $line->vat->rate === null ? '' : ' '.$line->vat->rate,
+                );
+            }
             if (Fa3LineWriter::isWritten($line) && ! in_array($bucket, $written, true)) {
                 $violations[] = sprintf(
                     '%s (line "%s"): the line feeds %s, which no VAT breakdown row (BG-23) writes; every row needs its summary bucket',
@@ -672,6 +697,92 @@ final class Fa3Guard
         }
 
         return [...$violations, ...Fa3Buckets::problems($invoice)];
+    }
+
+    /**
+     * Whether a rate code override stands for the line's VAT category: the same category, and for
+     * the standard rate a code of the same summary bucket as the line rate (23 or 22, 8 or 7).
+     */
+    private static function overrideFits(VatRateCode $override, VatCategory $category, ?BigDecimal $rate, ?CountryCode $buyerCountry): bool
+    {
+        if ($override->toModel()[0] !== $category) {
+            return false;
+        }
+        if ($category !== VatCategory::StandardRate) {
+            return true;
+        }
+        try {
+            $derived = VatRateCode::fromModel($category, $rate, $buyerCountry);
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+
+        return $override->bucket() !== null && $derived->bucket() === $override->bucket();
+    }
+
+    /**
+     * A bucket line stands for one P_13 amount and is never written as a row (FaWiersz), so it
+     * carries nothing beyond its identifier, quantity 1, price, net amount and VAT; its item name
+     * is the bucket's net amount element or empty.
+     *
+     * @return list<string>
+     */
+    private static function bucketLines(Invoice $invoice): array
+    {
+        $buyerCountry = $invoice->buyer->address?->country;
+        $violations = [];
+        foreach ($invoice->lines as $line) {
+            $polish = $line->extensions()->get(PolishLine::class);
+            if ($polish?->bucketLine !== true) {
+                continue;
+            }
+            try {
+                $element = Fa3LineWriter::bucket($line, $buyerCountry)->netElement();
+            } catch (InvalidArgumentException) {
+                $element = null;
+            }
+            $item = $line->item;
+            $present = [
+                'BT-129' => ! $line->quantity->isEqualTo(1),
+                'BT-130' => $line->unit !== UnitCode::C62,
+                'BT-153' => $item->name !== '' && $item->name !== $element,
+                'BT-154' => $item->description !== null,
+                'BT-155' => $item->sellersIdentifier !== null,
+                'BT-156' => $item->buyersIdentifier !== null,
+                'BT-157' => $item->standardIdentifier !== null,
+                'BT-159' => $item->originCountry !== null,
+                'BT-127' => $line->note !== null,
+                'BT-128' => $line->objectIdentifier !== null,
+                'BT-132' => $line->orderLineReference !== null,
+                'BT-133' => $line->buyerAccountingReference !== null,
+                'BG-27' => $line->allowances !== [],
+                'P_8A' => $polish->unitLabel !== null,
+                'P_6A' => $polish->supplyDate !== null,
+                'P_9B' => $polish->grossUnitPrice !== null,
+                'P_11A' => $polish->grossAmount !== null,
+                'P_11Vat' => $polish->vatAmount !== null,
+                'P_12_Zal_15' => $polish->annex15,
+                'KwotaAkcyzy' => $polish->excise !== null,
+                'GTU' => $polish->gtu !== null,
+                'Procedura' => $polish->procedure !== null,
+                'KursWaluty' => $polish->exchangeRate !== null,
+                'PKWiU' => $polish->pkwiu !== null,
+                'CN' => $polish->cn !== null,
+                'PKOB' => $polish->pkob !== null,
+            ];
+            foreach ($present as $term => $set) {
+                if ($set) {
+                    $violations[] = sprintf(
+                        '%s (bucket line "%s"): a bucket line stands for a summary amount (P_13_x) and is not written as a row (FaWiersz), so it carries only its identifier, quantity 1, price, net amount and VAT%s',
+                        $term,
+                        $line->id,
+                        $term === 'BT-153' ? sprintf('; its item name is %s or empty', $element ?? 'the bucket element name') : '',
+                    );
+                }
+            }
+        }
+
+        return $violations;
     }
 
     /**

@@ -104,6 +104,16 @@ final class Fa3Buckets
                 continue;
             }
             $bucket = reset($codes);
+            if ($bucket->vatElement() === null && ! $row->taxAmount->isZero()) {
+                $problems[] = sprintf(
+                    '%s: BT-117 %s is not zero, but %s has no VAT amount element in FA(3), so the VAT would be lost',
+                    self::label($row),
+                    $row->taxAmount,
+                    $bucket->netElement(),
+                );
+
+                continue;
+            }
             [$net, $vat] = $sums[$bucket->value] ?? [BigDecimal::zero(), BigDecimal::zero()];
             $sums[$bucket->value] = [$net->plus($row->taxableAmount), $vat->plus($row->taxAmount)];
         }
