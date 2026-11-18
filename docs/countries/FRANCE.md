@@ -595,8 +595,44 @@ invoice's payment by VAT rate with `Collection::allocate()`, the same split as s
 euros; an invoice in another currency is refused. A payment date is a calendar date taken in its
 own time zone, not converted to Paris time as CDAR status times are: pass the French local date.
 
-The PA matricule comes from your PA account. The file goes to the DGFiP through the PA; this
-package builds and validates it but does not send it.
+The PA matricule comes from your PA account. The file goes to the DGFiP through the PA.
+
+**Depositing through B2Brouter.** `B2BrouterFrance::depositReport($report)` writes the e-report
+and deposits it with the B2Brouter account as a ledger; `depositEReport($xml)` deposits a Flux 10
+file you wrote yourself (its document element must be `Report` without namespace).
+`eReportStatus($ledgerId)` reads the ledger state as the DGFiP processes the file (`LedgerState`:
+new, sent, acknowledged, deposited, then registered, refused with the DGFiP error code, or error),
+and B2Brouter announces each change with the `ledger.state_change` webhook, which
+`B2BrouterWebhook` reads as an event of kind `Other` whose document id is the ledger id.
+
+- **Own file or native pipeline, not both.** Depositing your own Flux 10 files and B2Brouter's
+  native e-reporting pipeline (B2Brouter building the e-reports from the invoices and payments it
+  handles) are exclusive per account. Choose one per B2Brouter account.
+- **Idempotent per key.** Each deposit carries an `Idempotency-Key`: the one you pass, or by
+  default the SHA-256 hash of the file. Depositing the same file under the same key again returns
+  the ledger already imported (`alreadyExisted` true); a different file under a used key is
+  refused (`DocumentRejected`, HTTP 409). After `OutcomeUnknown` (no answer, or a server error),
+  resending the same file with the same key is safe.
+- **B2Brouter rewrites two fields.** It replaces `ReportDocument/Id` with the ledger id and the
+  sender with its own platform matricule, so the `LifecycleParty::platform()` values in the file
+  may be placeholders.
+- **Plan permission.** The account needs a DGFiP tax report setting and the ledger permission on
+  its B2Brouter plan; without the permission the deposit fails with `AuthenticationFailed`
+  (HTTP 403).
+
+```php
+use IntrAgile\EInvoicing\Transport\B2Brouter\France\B2BrouterFrance;
+use IntrAgile\EInvoicing\Transport\B2Brouter\France\LedgerState;
+
+/** @var B2BrouterFrance $france */
+$deposit = $france->depositReport($report);
+
+// Later, or when the ledger.state_change webhook arrives:
+$status = $france->eReportStatus($deposit->ledgerId);
+if ($status->state === LedgerState::Refused) {
+    // $status->errorCode is the DGFiP error code, for example "303".
+}
+```
 
 ## Routing
 

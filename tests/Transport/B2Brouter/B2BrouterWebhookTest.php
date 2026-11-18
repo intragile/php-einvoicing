@@ -376,6 +376,62 @@ final class B2BrouterWebhookTest extends TestCase
         self::assertStringContainsString('B2Brouter webhook notification', $exception->getMessage());
     }
 
+    public function test_ledger_state_change_is_other_with_ledger_id(): void
+    {
+        $webhook = new B2BrouterWebhook(self::SECRET);
+        // The documented ledger notification: no event code, the ledger at the top level.
+        $body = '{"account_id":42,"object":{"object":"ledger","id":68916,"state":"registered"}}';
+
+        $event = $webhook->parse($body, self::headers($body, ['X-B2Brouter-Delivery-Id' => 'dlv_ledger_1']));
+
+        self::assertSame(WebhookKind::Other, $event->kind);
+        self::assertSame('ledger.state_change', $event->type);
+        self::assertSame('68916', $event->documentId);
+        self::assertSame('42', $event->accountId);
+        self::assertSame('dlv_ledger_1', $event->deduplicationKey);
+        self::assertNull($event->deliveryState);
+        self::assertNull($event->failure);
+        self::assertNull($event->lifecycleStatus);
+
+        self::assertSame('ledger.state_change:68916:registered', $webhook->parse($body, self::headers($body))->deduplicationKey);
+    }
+
+    public function test_ledger_state_change_with_code_and_data_is_read(): void
+    {
+        $webhook = new B2BrouterWebhook(self::SECRET);
+        $body = self::body(['code' => 'ledger.state_change', 'data' => ['account_id' => 78234, 'event_id' => 99, 'object' => ['object' => 'ledger', 'id' => 68917, 'state' => 'refused']]]);
+
+        $event = $webhook->parse($body, self::headers($body));
+
+        self::assertSame(WebhookKind::Other, $event->kind);
+        self::assertSame('ledger.state_change', $event->type);
+        self::assertSame('68917', $event->documentId);
+        self::assertSame('78234', $event->accountId);
+        self::assertSame('ledger.state_change:68917:99', $event->deduplicationKey);
+        self::assertNull($event->deliveryState);
+        self::assertNull($event->lifecycleStatus);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function malformedLedgerBodies(): iterable
+    {
+        yield 'no ledger object' => [self::body(['code' => 'ledger.state_change', 'data' => ['account_id' => 1]])];
+        yield 'no ledger id' => [self::body(['code' => 'ledger.state_change', 'data' => ['object' => ['object' => 'ledger', 'state' => 'sent']]])];
+        yield 'zero ledger id' => [self::body(['account_id' => 42, 'object' => ['object' => 'ledger', 'id' => 0]])];
+        yield 'top-level object of another kind' => [self::body(['account_id' => 42, 'object' => ['object' => 'invoice', 'id' => 5]])];
+    }
+
+    #[DataProvider('malformedLedgerBodies')]
+    public function test_ledger_notification_without_ledger_id_is_unexpected(string $body): void
+    {
+        $exception = self::capture(fn () => (new B2BrouterWebhook(self::SECRET))->parse($body, self::headers($body)));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString('B2Brouter webhook notification', $exception->getMessage());
+    }
+
     public function test_invoice_id_given_as_digits_is_accepted(): void
     {
         $body = self::body(['code' => 'received_invoice.created', 'data' => ['invoice_id' => '99120']]);

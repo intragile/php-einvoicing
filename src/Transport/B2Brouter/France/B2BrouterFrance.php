@@ -7,10 +7,16 @@ namespace IntrAgile\EInvoicing\Transport\B2Brouter\France;
 use Brick\Math\BigDecimal;
 use DateTimeImmutable;
 use DateTimeZone;
+use DOMElement;
+use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+use IntrAgile\EInvoicing\France\EReporting\EReport;
+use IntrAgile\EInvoicing\Syntax\Flux10\Flux10Writer;
+use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
 use IntrAgile\EInvoicing\Transport\B2Brouter\ResponseMapper;
 use IntrAgile\EInvoicing\Transport\B2Brouter\SameOriginRedirect;
+use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
@@ -22,7 +28,8 @@ use InvalidArgumentException;
 use Psr\Http\Message\ResponseInterface;
 
 /**
- * Sends French invoices through B2Brouter acting as the sender's plateforme agréée.
+ * Sends French invoices and Flux 10 e-reporting files through B2Brouter acting as the sender's
+ * plateforme agréée.
  *
  * A document is imported into the configured account and sent in one request. Every document,
  * XML or Factur-X PDF, is uploaded as application/octet-stream with its B2Brouter document type
@@ -30,12 +37,22 @@ use Psr\Http\Message\ResponseInterface;
  * that fails them is refused with HTTP 422 and the invoice stays in B2Brouter in error state,
  * where it must be corrected or deleted before the same number can be imported again.
  *
+ * Depositing an own Flux 10 file and B2Brouter's native e-reporting pipeline, which builds the
+ * e-reports from the invoices and payments B2Brouter handles, are exclusive per account: an
+ * account uses one or the other, never both.
+ *
  * Requests are sent through an HttpClient whose PSR-18 client must not follow redirects.
  */
 final class B2BrouterFrance
 {
     /** The media type of JSON request bodies. */
     private const JSON = 'application/json';
+
+    /** The document element of a Flux 10 e-reporting file, which has no namespace. */
+    private const FLUX10_ROOT = 'Report';
+
+    /** An idempotency key B2Brouter uses as given: 1 to 64 visible ASCII characters. */
+    private const IDEMPOTENCY_KEY_PATTERN = '/\A[\x21-\x7E]{1,64}\z/';
 
     /** Payment dates are the dates in France. */
     private const TIME_ZONE = 'Europe/Paris';
@@ -254,12 +271,122 @@ final class B2BrouterFrance
     }
 
     /**
+     * Deposits an own Flux 10 e-reporting file with the configured account, as a B2Brouter
+     * ledger that B2Brouter sends to the DGFiP.
+     *
+     * Use this only for an account that does not use B2Brouter's native e-reporting pipeline:
+     * the two are exclusive per account. B2Brouter replaces the file's ReportDocument/Id with the
+     * ledger id and its Sender with its own platform matricule, so both may hold placeholders.
+     *
+     * The deposit is idempotent per key: a resend of the same file with the same key returns the
+     * ledger already imported (alreadyExisted true) instead of creating another, and a resend of a
+     * different file with the same key is refused. Without a key, the SHA-256 hash of the file in
+     * hexadecimal is sent, so depositing the same bytes again is always safe. Read the state as
+     * the DGFiP processes the file with eReportStatus() or the ledger.state_change webhook.
+     *
+     * @param  string|null  $idempotencyKey  1 to 64 visible ASCII characters; null for the hash of the file
+     *
+     * @throws UnsupportedDocument when the XML is not well-formed or its document element is not
+     *                             a Report without namespace
+     * @throws UnsafeXml when the XML carries a DOCTYPE declaration or declares entities
+     * @throws OutcomeUnknown when the request failed without an answer, B2Brouter answered a 5xx
+     *                        status or a successful answer cannot be read; a resend of the same
+     *                        file with the same key is safe
+     * @throws DocumentRejected when B2Brouter refused the file (HTTP 400, 406, 422), for example
+     *                          for a schema error, an issuer SIREN other than the account's or an
+     *                          account without a DGFiP tax report setting, or when the key was
+     *                          used with a different file (HTTP 409)
+     * @throws AuthenticationFailed when the account's B2Brouter plan lacks the ledger permission
+     *                              (HTTP 403) or B2Brouter refused the key (HTTP 401)
+     * @throws TransportException when B2Brouter refused the request otherwise, for example
+     *                            RateLimited for HTTP 429
+     * @throws InvalidArgumentException when the idempotency key is not 1 to 64 visible ASCII characters
+     */
+    public function depositEReport(string $flux10Xml, ?string $idempotencyKey = null): EReportDeposit
+    {
+        if ($idempotencyKey !== null && preg_match(self::IDEMPOTENCY_KEY_PATTERN, $idempotencyKey) !== 1) {
+            throw new InvalidArgumentException('A B2Brouter Idempotency-Key consists of 1 to 64 visible ASCII characters.');
+        }
+        $root = SafeXml::load($flux10Xml)->documentElement;
+        if (! $root instanceof DOMElement || $root->namespaceURI !== null || $root->localName !== self::FLUX10_ROOT) {
+            throw new UnsupportedDocument(sprintf(
+                'The document element %s is not the Report element without namespace of a Flux 10 e-reporting file.',
+                $root instanceof DOMElement ? sprintf('{%s}%s', $root->namespaceURI ?? '', $root->localName) : '(none)',
+            ));
+        }
+        $key = $idempotencyKey ?? hash('sha256', $flux10Xml);
+
+        try {
+            $response = $this->http->send(
+                'POST',
+                sprintf('%s/accounts/%d/ledgers/import', $this->config->baseUrl, $this->config->accountId),
+                $this->config->headers() + ['Content-Type' => FranceResponseMapper::IMPORT_CONTENT_TYPE, 'Idempotency-Key' => $key],
+                $flux10Xml,
+            );
+        } catch (OutcomeUnknown $exception) {
+            throw new OutcomeUnknown(
+                sprintf(
+                    'Depositing the e-reporting file with B2Brouter failed without an answer, so B2Brouter may or may not have imported it. %s',
+                    FranceResponseMapper::resendWithSameKey($key),
+                ),
+                $exception,
+            );
+        } catch (UnexpectedResponse $exception) {
+            throw $this->config->redactor()->sanitize($exception);
+        }
+
+        return $this->mapper->deposit($response, $key);
+    }
+
+    /**
+     * Writes the e-report as a Flux 10 file and deposits it with the configured account; see
+     * depositEReport().
+     *
+     * @param  string|null  $idempotencyKey  1 to 64 visible ASCII characters; null for the hash of the written file
+     *
+     * @throws InvalidArgumentException when the writer refuses the e-report or the key is not accepted
+     * @throws OutcomeUnknown when the deposit failed without an answer; a resend with the same key is safe
+     * @throws TransportException when B2Brouter refused the file or the request
+     */
+    public function depositReport(EReport $report, ?string $idempotencyKey = null): EReportDeposit
+    {
+        return $this->depositEReport((new Flux10Writer)->write($report), $idempotencyKey);
+    }
+
+    /**
+     * The state of a deposited e-reporting file. A state this version does not know reads as
+     * LedgerState::Unknown; the result's alreadyExisted is always true.
+     *
+     * @throws UnexpectedResponse when the ledger is unknown, B2Brouter answered with a redirect or
+     *                            the body is not a ledger with an id
+     * @throws TransportUnavailable when the request failed without an answer; it is safe to retry
+     * @throws TransportException when B2Brouter refused the request
+     * @throws InvalidArgumentException when the id is not a B2Brouter ledger id (digits)
+     */
+    public function eReportStatus(string $ledgerId): EReportDeposit
+    {
+        self::checkId($ledgerId, 'ledger');
+
+        return $this->mapper->ledgerStatus($this->get(sprintf('%s/ledgers/%s', $this->config->baseUrl, $ledgerId)), $ledgerId);
+    }
+
+    /**
      * @throws InvalidArgumentException when the id is not a B2Brouter invoice id (digits)
      */
     private static function checkInvoiceId(string $invoiceId): void
     {
-        if (preg_match('/^[0-9]{1,20}\z/', $invoiceId) !== 1) {
-            throw new InvalidArgumentException('A B2Brouter invoice id consists of digits only.');
+        self::checkId($invoiceId, 'invoice');
+    }
+
+    /**
+     * @param  string  $kind  the object the id names, for example "invoice"
+     *
+     * @throws InvalidArgumentException when the id is not digits
+     */
+    private static function checkId(string $id, string $kind): void
+    {
+        if (preg_match('/^[0-9]{1,20}\z/', $id) !== 1) {
+            throw new InvalidArgumentException(sprintf('A B2Brouter %s id consists of digits only.', $kind));
         }
     }
 

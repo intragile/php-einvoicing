@@ -202,6 +202,103 @@ final class FranceResponseMapper
     }
 
     /**
+     * The ledger an import of an e-reporting file created (HTTP 201) or found under the same
+     * idempotency key (HTTP 200), or the exception its response stands for.
+     *
+     * @throws OutcomeUnknown when B2Brouter answered a 5xx status or a successful answer cannot be
+     *                        read; the file may have been imported
+     * @throws DocumentRejected when B2Brouter refused the file (HTTP 400, 406, 422) or the key was
+     *                          used with another file (HTTP 409)
+     * @throws AuthenticationFailed when the account's plan lacks the ledger permission (HTTP 403)
+     * @throws TransportException when B2Brouter refused the request
+     */
+    public function deposit(ResponseInterface $response, string $idempotencyKey): EReportDeposit
+    {
+        $status = $response->getStatusCode();
+        $operation = 'Depositing the e-reporting file with B2Brouter';
+        if ($status >= 500 && $status <= 599) {
+            throw new OutcomeUnknown(sprintf(
+                '%s failed with a B2Brouter server error (HTTP %d), which can come after the import, so B2Brouter may or may not have imported the file. %s',
+                $operation,
+                $status,
+                self::resendWithSameKey($idempotencyKey),
+            ));
+        }
+        if ($status === 403) {
+            throw new AuthenticationFailed(sprintf(
+                '%s failed: B2Brouter refused the request (HTTP 403): %s The ledger permission must be enabled on the B2Brouter plan of the account to deposit Flux 10 files; ask B2Brouter to enable it.',
+                $operation,
+                $this->errors->quote($this->errors->error($response)),
+            ));
+        }
+        if ($status === 409) {
+            throw new DocumentRejected(
+                sprintf(
+                    'B2Brouter refused the e-reporting file (HTTP 409): the Idempotency-Key "%s" was already used with a different file. The file deposited under this key stands; deposit a changed file under a new key.',
+                    $idempotencyKey,
+                ),
+                self::errorsOf($response, $this->redactor),
+            );
+        }
+        if ($status === 400 || $status === 406 || $status === 422) {
+            throw new DocumentRejected(
+                sprintf(
+                    'B2Brouter rejected the e-reporting file (HTTP %d%s): %s',
+                    $status,
+                    $this->errors->codeAndParam($this->errors->error($response)),
+                    $this->errors->quoteRefusal($response),
+                ),
+                self::errorsOf($response, $this->redactor),
+            );
+        }
+        if ($status !== 200 && $status !== 201) {
+            throw $this->errors->readFailure($response, $operation);
+        }
+
+        // The import went through, so a body that cannot be read leaves only the ledger id open;
+        // a resend under the same key returns the ledger.
+        try {
+            return $this->ledgerOf($response, $status === 200);
+        } catch (UnexpectedResponse $exception) {
+            throw new OutcomeUnknown(
+                sprintf(
+                    'B2Brouter answered the deposit of the e-reporting file with HTTP %d, but the response cannot be read, so the ledger id is unknown: %s %s',
+                    $status,
+                    $exception->getMessage(),
+                    self::resendWithSameKey($idempotencyKey),
+                ),
+                $exception,
+            );
+        }
+    }
+
+    /**
+     * The ledger of a ledger response.
+     *
+     * @throws UnexpectedResponse when the ledger is unknown or the body is not a ledger with an id
+     * @throws TransportException when B2Brouter refused the request
+     */
+    public function ledgerStatus(ResponseInterface $response, string $ledgerId): EReportDeposit
+    {
+        if ($response->getStatusCode() !== 200) {
+            throw $this->errors->readFailure($response, sprintf('Querying B2Brouter ledger "%s"', $ledgerId));
+        }
+
+        return $this->ledgerOf($response, true);
+    }
+
+    /**
+     * The sentence that tells that an e-reporting file may be deposited again.
+     */
+    public static function resendWithSameKey(string $idempotencyKey): string
+    {
+        return sprintf(
+            'A resend of the same file with the same Idempotency-Key "%s" is safe: B2Brouter returns the ledger it already imported (HTTP 200) instead of creating a duplicate.',
+            $idempotencyKey,
+        );
+    }
+
+    /**
      * The sentence that tells how to find out whether a buyer's response changed the invoice state.
      */
     public static function checkStateBeforeRepeating(string $invoiceId): string
@@ -304,6 +401,41 @@ final class FranceResponseMapper
             self::taxReportIds($invoice['tax_report_ids'] ?? null),
             $received,
         );
+    }
+
+    /**
+     * The deposit a ledger object stands for. A missing state, or one this version does not know,
+     * reads as Unknown.
+     *
+     * @throws UnexpectedResponse when the body is not JSON or has no ledger with an id
+     */
+    private function ledgerOf(ResponseInterface $response, bool $alreadyExisted): EReportDeposit
+    {
+        $ledger = $this->errors->body($response)['ledger'] ?? null;
+        if (! is_array($ledger) || array_is_list($ledger)) {
+            throw $this->redactor->unexpected($response, 'The B2Brouter response has no ledger');
+        }
+        $id = B2BrouterErrors::id($ledger['id'] ?? null)
+            ?? throw $this->redactor->unexpected($response, 'The B2Brouter ledger has no id');
+        $state = B2BrouterErrors::text($ledger['state'] ?? null);
+
+        return new EReportDeposit(
+            $id,
+            ($state === null ? null : LedgerState::tryFrom($state)) ?? LedgerState::Unknown,
+            $alreadyExisted,
+            $this->redactedText($ledger['error_code'] ?? null),
+            $this->redactedText($ledger['error_description'] ?? null),
+        );
+    }
+
+    /**
+     * A non-blank string or an integer as redacted text, or null for anything else.
+     */
+    private function redactedText(mixed $value): ?string
+    {
+        $text = is_int($value) ? (string) $value : B2BrouterErrors::text($value);
+
+        return $text === null ? null : $this->redactor->redact($text);
     }
 
     /**

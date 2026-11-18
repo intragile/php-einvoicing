@@ -39,6 +39,9 @@ final class B2BrouterWebhook implements WebhookParser
 
     private const DELIVERY_ID_HEADER = 'X-B2Brouter-Delivery-Id';
 
+    /** The event of a ledger (e-reporting transmission) changing state. */
+    private const LEDGER_STATE_CHANGE = 'ledger.state_change';
+
     private const SIGNATURE_PATTERN = '/\At=([0-9]{1,12}),s=([0-9a-fA-F]{64})\z/';
 
     /** @var Closure(): string */
@@ -110,14 +113,25 @@ final class B2BrouterWebhook implements WebhookParser
      * "<code>:<invoice id>:<data.event_id>", or "<code>:<invoice id>:<data.state>" (empty without
      * a state) when the notification has no event id either.
      *
-     * Only invoice events are supported: a notification without a data.invoice_id raises
-     * UnexpectedResponse even when its signature is valid. Catch it and still answer the delivery
-     * with 2xx when such events should be ignored rather than retried.
+     * "ledger.state_change" reports a deposited Flux 10 e-reporting file (a B2Brouter ledger)
+     * changing state. It is Other, its document id is the ledger id and it carries no delivery
+     * state, failure or lifecycle status: read the state with B2BrouterFrance::eReportStatus().
+     * Two shapes are read: {"code":"ledger.state_change","data":{"object":{"object":"ledger",
+     * "id":…}}} with the account id in data.account_id, and the documented
+     * {"account_id":…,"object":{"object":"ledger","id":…,"state":…}} without an event code, which
+     * counts as "ledger.state_change" because its object is a ledger. Without a usable delivery id
+     * header its deduplication key is "ledger.state_change:<ledger id>:<event id>", or
+     * "ledger.state_change:<ledger id>:<ledger state>" (empty without a state).
+     *
+     * Apart from ledger events, only invoice events are supported: a notification without a
+     * data.invoice_id raises UnexpectedResponse even when its signature is valid. Catch it and
+     * still answer the delivery with 2xx when such events should be ignored rather than retried.
      *
      * @param  array<string, string|list<string>>  $headers
      *
      * @throws AuthenticationFailed when the signature is missing or does not match the body
-     * @throws UnexpectedResponse when the signed body is not a notification with an event code and an invoice id
+     * @throws UnexpectedResponse when the signed body is not a notification with an event code and
+     *                            an invoice id, nor a ledger notification with a ledger id
      */
     public function parse(string $rawBody, array $headers): WebhookEvent
     {
@@ -132,7 +146,13 @@ final class B2BrouterWebhook implements WebhookParser
 
         $code = $notification['code'] ?? null;
         if (! is_string($code) || trim($code) === '') {
-            throw WebhookInput::malformed(self::PROVIDER, 'has no event code', $rawBody);
+            if (! self::isLedger($notification['object'] ?? null)) {
+                throw WebhookInput::malformed(self::PROVIDER, 'has no event code', $rawBody);
+            }
+            $code = self::LEDGER_STATE_CHANGE;
+        }
+        if ($code === self::LEDGER_STATE_CHANGE) {
+            return self::ledgerEvent($notification, $headers, $rawBody);
         }
         $data = $notification['data'] ?? null;
         if (! is_array($data) || ($data !== [] && array_is_list($data))) {
@@ -171,10 +191,51 @@ final class B2BrouterWebhook implements WebhookParser
     }
 
     /**
+     * The event of a ledger notification: the ledger is data.object, or the top-level object of
+     * a notification without data.object; the account id is account_id, or data.account_id.
+     *
+     * @param  array<mixed>  $notification
+     * @param  array<string, string|list<string>>  $headers
+     *
+     * @throws UnexpectedResponse when the notification has no ledger with an id
+     */
+    private static function ledgerEvent(array $notification, array $headers, string $rawBody): WebhookEvent
+    {
+        $data = $notification['data'] ?? null;
+        $data = is_array($data) ? $data : [];
+        $ledger = $data['object'] ?? $notification['object'] ?? null;
+        if (! is_array($ledger) || array_is_list($ledger)) {
+            throw WebhookInput::malformed(self::PROVIDER, 'is a ledger event without a ledger object', $rawBody);
+        }
+        $ledgerId = self::positiveId($ledger['id'] ?? null)
+            ?? throw WebhookInput::malformed(self::PROVIDER, 'has no ledger id (object.id)', $rawBody);
+
+        $deduplicationData = ['event_id' => $data['event_id'] ?? $notification['event_id'] ?? null, 'state' => $ledger['state'] ?? null];
+
+        return new WebhookEvent(
+            WebhookKind::Other,
+            self::LEDGER_STATE_CHANGE,
+            $ledgerId,
+            self::accountId($notification['account_id'] ?? $data['account_id'] ?? null),
+            self::deduplicationKey($headers, self::LEDGER_STATE_CHANGE, $ledgerId, $deduplicationData),
+            null,
+            null,
+        );
+    }
+
+    /**
+     * Whether the value is a B2Brouter object whose "object" member names a ledger.
+     */
+    private static function isLedger(mixed $object): bool
+    {
+        return is_array($object) && ($object['object'] ?? null) === 'ledger';
+    }
+
+    /**
      * @param  array<string, string|list<string>>  $headers
      * @param  array<mixed>  $data
      */
-    private static function deduplicationKey(array $headers, string $code, string $invoiceId, array $data): string
+    private static function deduplicationKey(array $headers, string $code, string $documentId, array $data): string
     {
         $deliveryId = trim(WebhookInput::header($headers, self::DELIVERY_ID_HEADER) ?? '');
         if ($deliveryId !== '') {
@@ -182,10 +243,10 @@ final class B2BrouterWebhook implements WebhookParser
         }
         $eventId = self::scalarText($data['event_id'] ?? null);
         if ($eventId !== null) {
-            return $code.':'.$invoiceId.':'.$eventId;
+            return $code.':'.$documentId.':'.$eventId;
         }
 
-        return $code.':'.$invoiceId.':'.(self::scalarText($data['state'] ?? null) ?? '');
+        return $code.':'.$documentId.':'.(self::scalarText($data['state'] ?? null) ?? '');
     }
 
     /**
