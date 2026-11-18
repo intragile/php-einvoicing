@@ -20,6 +20,7 @@ use IntrAgile\EInvoicing\Tests\Support\PdfBuilder;
 use IntrAgile\EInvoicing\Transport\B2Brouter\France\FrenchDocument;
 use IntrAgile\EInvoicing\Transport\B2Brouter\France\FrenchDocumentType;
 use IntrAgile\EInvoicing\Transport\Peppol\PeppolBis3;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class FrenchDocumentTest extends TestCase
@@ -91,6 +92,35 @@ final class FrenchDocumentTest extends TestCase
         self::assertSame('xml.cii.cross_industry_invoice.facturx.fr.all_profiles.v1', $document->type->value);
         self::assertSame($invoice->number, $document->number);
         self::assertSame($pdf, $document->bytes);
+    }
+
+    /**
+     * @return iterable<string, array{FacturXProfile}>
+     */
+    public static function profilesWithoutLines(): iterable
+    {
+        yield 'MINIMUM' => [FacturXProfile::Minimum];
+        yield 'BASIC WL' => [FacturXProfile::BasicWl];
+    }
+
+    #[DataProvider('profilesWithoutLines')]
+    public function test_factur_x_profiles_without_lines_are_refused(FacturXProfile $profile): void
+    {
+        $xml = str_replace(
+            '>'.FacturXProfile::En16931->guidelineId().'<',
+            '>'.$profile->guidelineId().'<',
+            (new FacturXXmlWriter)->write(FrenchInvoices::domesticB2b(), FacturXProfile::En16931)->xml,
+        );
+        self::assertStringContainsString($profile->guidelineId(), $xml);
+        $pdf = (new FacturXPdfWriter)->embed(self::basePdf(), $xml, $profile, modified: new DateTimeImmutable('2026-11-18T00:00:00Z'))->pdf;
+
+        try {
+            FrenchDocument::fromFacturX($pdf);
+            self::fail(sprintf('A Factur-X %s document was accepted.', $profile->value));
+        } catch (UnsupportedDocument $e) {
+            self::assertStringContainsString($profile->value, $e->getMessage());
+            self::assertStringContainsString('not an invoice under the French reform', $e->getMessage());
+        }
     }
 
     public function test_peppol_bis_document_is_refused_with_hint(): void

@@ -158,11 +158,11 @@ final class B2BrouterFrance
      * approval and a partial approval, so a partial approval reads back as Approved (205).
      *
      * @throws OutcomeUnknown when the request failed without an answer or B2Brouter answered a 5xx
-     *                        status; read the state with lifecycle() before answering again
+     *                        status, a redirect or a 2xx status other than 200; read the state
+     *                        with lifecycle() before answering again
      * @throws DocumentRejected when B2Brouter refused the answer (HTTP 400, 422), for example a
      *                          state change the invoice does not allow
-     * @throws UnexpectedResponse when the invoice is unknown, B2Brouter answered with a redirect
-     *                            or the body is not an invoice with a state
+     * @throws UnexpectedResponse when the invoice is unknown or the body is not an invoice with a state
      * @throws TransportException when B2Brouter refused the request
      * @throws InvalidArgumentException when the id is not a B2Brouter invoice id (digits)
      */
@@ -209,8 +209,9 @@ final class B2BrouterFrance
      *                                          Paris; B2Brouter takes today without it
      *
      * @throws OutcomeUnknown when the request failed without an answer or B2Brouter answered a 5xx
-     *                        status; a payment is not idempotent, so list the invoice's payments
-     *                        before recording it again
+     *                        status, a redirect or a 2xx status other than 200 and 201; a payment
+     *                        is not idempotent, so list the invoice's payments before recording
+     *                        it again
      * @throws DocumentRejected when B2Brouter refused the payment (HTTP 400, 422)
      * @throws UnexpectedResponse when reading the invoice after the payment was recorded failed;
      *                            the payment must not be recorded again
@@ -245,7 +246,7 @@ final class B2BrouterFrance
                 sprintf(
                     'Recording a payment on B2Brouter invoice "%s" failed without an answer, so B2Brouter may or may not have recorded it. %s',
                     $issuedInvoiceId,
-                    FranceResponseMapper::checkPaymentsBeforeRepeating($this->config->accountId, $issuedInvoiceId),
+                    FranceResponseMapper::checkPaymentsBeforeRepeating($issuedInvoiceId),
                 ),
                 $exception,
             );
@@ -253,7 +254,7 @@ final class B2BrouterFrance
             throw $this->config->redactor()->sanitize($exception);
         }
 
-        $paymentId = $this->mapper->recordedPayment($answer, $this->config->accountId, $issuedInvoiceId);
+        $paymentId = $this->mapper->recordedPayment($answer, $issuedInvoiceId);
 
         try {
             return $this->lifecycle($issuedInvoiceId);
@@ -286,13 +287,15 @@ final class B2BrouterFrance
      *
      * @param  string|null  $idempotencyKey  1 to 64 visible ASCII characters; null for the hash of the file
      *
-     * @throws UnsupportedDocument when the XML is not well-formed or its document element is not
-     *                             a Report without namespace
+     * @throws UnsupportedDocument when the XML is not well-formed, its document element is not a
+     *                             Report without namespace or B2Brouter does not accept the file's
+     *                             content type (HTTP 406)
      * @throws UnsafeXml when the XML carries a DOCTYPE declaration or declares entities
      * @throws OutcomeUnknown when the request failed without an answer, B2Brouter answered a 5xx
-     *                        status or a successful answer cannot be read; a resend of the same
-     *                        file with the same key is safe
-     * @throws DocumentRejected when B2Brouter refused the file (HTTP 400, 406, 422), for example
+     *                        status, a redirect or a 2xx status other than 200 and 201, or a
+     *                        successful answer cannot be read; a resend of the same file with the
+     *                        same key is safe
+     * @throws DocumentRejected when B2Brouter refused the file (HTTP 400, 422), for example
      *                          for a schema error, an issuer SIREN other than the account's or an
      *                          account without a DGFiP tax report setting, or when the key was
      *                          used with a different file (HTTP 409)

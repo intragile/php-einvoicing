@@ -223,12 +223,39 @@ final class B2BrouterFranceResponseTest extends TestCase
         $exception = self::capture(fn () => self::france($recorder)->recordPayment('590101', '10'));
 
         self::assertInstanceOf(OutcomeUnknown::class, $exception);
-        self::assertStringContainsString('GET /accounts/4711/payments?invoice_id=590101', $exception->getMessage());
+        self::assertStringContainsString('GET /accounts/{account}/payments?invoice_id=590101', $exception->getMessage());
+        self::assertStringNotContainsString((string) self::ACCOUNT, $exception->getMessage());
         self::assertCount(1, $recorder->requests());
 
         $exception = self::capture(fn () => self::france(new RecordingHttpClient(new Response(502)))->recordPayment('590101'));
         self::assertInstanceOf(OutcomeUnknown::class, $exception);
-        self::assertStringContainsString('GET /accounts/4711/payments?invoice_id=590101', $exception->getMessage());
+        self::assertStringContainsString('GET /accounts/{account}/payments?invoice_id=590101', $exception->getMessage());
+        self::assertStringNotContainsString((string) self::ACCOUNT, $exception->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{Response}>
+     */
+    public static function unexpectedPaymentAnswers(): iterable
+    {
+        yield 'redirect' => [new Response(302, ['Location' => self::BASE.'/accounts/4711/payments/981'])];
+        yield 'accepted' => [new Response(202)];
+        yield 'no content' => [new Response(204)];
+    }
+
+    #[DataProvider('unexpectedPaymentAnswers')]
+    public function test_unexpected_payment_answer_is_outcome_unknown_with_advice(Response $answer): void
+    {
+        $recorder = new RecordingHttpClient($answer);
+
+        $exception = self::capture(fn () => self::france($recorder)->recordPayment('590101'));
+
+        self::assertInstanceOf(OutcomeUnknown::class, $exception);
+        self::assertFalse($exception->isRetryable());
+        self::assertStringContainsString('HTTP '.$answer->getStatusCode(), $exception->getMessage());
+        self::assertStringContainsString('GET /accounts/{account}/payments?invoice_id=590101', $exception->getMessage());
+        self::assertStringNotContainsString((string) self::ACCOUNT, $exception->getMessage());
+        self::assertCount(1, $recorder->requests());
     }
 
     public function test_refused_payment_quotes_b2brouter(): void
@@ -258,6 +285,27 @@ final class B2BrouterFranceResponseTest extends TestCase
 
         self::assertInstanceOf(OutcomeUnknown::class, $exception);
         self::assertStringContainsString('lifecycle()', $exception->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{Response}>
+     */
+    public static function unexpectedResponseAnswers(): iterable
+    {
+        yield 'server error' => [new Response(500)];
+        yield 'bad gateway' => [new Response(502)];
+        yield 'redirect' => [new Response(302, ['Location' => self::BASE.'/invoices/900101'])];
+    }
+
+    #[DataProvider('unexpectedResponseAnswers')]
+    public function test_unexpected_response_answer_is_outcome_unknown(Response $answer): void
+    {
+        $exception = self::capture(fn () => self::france(new RecordingHttpClient($answer))->respond('900101', BuyerResponse::approved()));
+
+        self::assertInstanceOf(OutcomeUnknown::class, $exception);
+        self::assertFalse($exception->isRetryable());
+        self::assertStringContainsString('HTTP '.$answer->getStatusCode(), $exception->getMessage());
+        self::assertStringContainsString('lifecycle() for invoice "900101"', $exception->getMessage());
     }
 
     public function test_failed_read_after_recorded_payment_says_not_to_repeat(): void

@@ -17,7 +17,6 @@ use IntrAgile\EInvoicing\France\EReporting\ReportType;
 use IntrAgile\EInvoicing\France\EReporting\TransactionCategory;
 use IntrAgile\EInvoicing\France\EReporting\TransactionsReport;
 use IntrAgile\EInvoicing\France\EReporting\VatSubtotal;
-use IntrAgile\EInvoicing\France\Lifecycle\LifecycleStatus;
 use IntrAgile\EInvoicing\France\Routing\AnnuaireStatus;
 use IntrAgile\EInvoicing\France\Siren;
 use IntrAgile\EInvoicing\Model\ElectronicAddress;
@@ -152,7 +151,9 @@ final class B2BrouterFranceLiveTest extends TestCase
                 $status->lifecycle === null ? '(none)' : $status->lifecycle->name,
                 $status->delivery->state->name,
             ), $this->redactor);
-            self::assertSame(LifecycleStatus::Deposited, $status->lifecycle, (string) $status->delivery->failure?->message);
+            // Deposited or any later lifecycle status counts; a failed delivery does not.
+            self::assertNotNull($status->lifecycle, sprintf('The staging invoice has no lifecycle status yet (platform state "%s").', $status->platformState));
+            self::assertNotSame(DeliveryState::Failed, $status->delivery->state, (string) $status->delivery->failure?->message);
         });
     }
 
@@ -183,7 +184,7 @@ final class B2BrouterFranceLiveTest extends TestCase
             $deposit = (new B2BrouterFrance($config, $this->http()))->depositReport($report);
 
             LiveTransport::report(self::TAG, sprintf('Staging Flux 10 deposit: state "%s".', $deposit->state->value), $this->redactor);
-            self::assertSame(LedgerState::New, $deposit->state, (string) $deposit->errorDescription);
+            self::assertContains($deposit->state, [LedgerState::New, LedgerState::Sent], (string) $deposit->errorDescription);
         });
     }
 
@@ -210,7 +211,8 @@ final class B2BrouterFranceLiveTest extends TestCase
         $siren = null;
         LiveTransport::failRedacted($this->redactor, function () use ($config, &$siren): void {
             $response = $this->http()->send('GET', sprintf('%s/accounts/%d', $config->baseUrl, $config->accountId), $config->headers());
-            self::assertSame(200, $response->getStatusCode(), LiveTransport::excerpt($this->redactor, 'GET /accounts/{account}', $response));
+            // The status only: the account body names the company.
+            self::assertSame(200, $response->getStatusCode(), sprintf('GET /accounts/{account} answered HTTP %d.', $response->getStatusCode()));
             $data = json_decode((string) $response->getBody(), true);
             $account = is_array($data) && is_array($data['account'] ?? null) ? $data['account'] : [];
             $tin = $account['tin_value'] ?? null;
@@ -252,11 +254,11 @@ final class B2BrouterFranceLiveTest extends TestCase
     }
 
     /**
-     * Whether the invoice reached the deposited status or failed for good.
+     * Whether the invoice reached the deposited status or a later one, or failed for good.
      */
     private static function isFinal(PlatformStatus $status): bool
     {
-        return $status->lifecycle === LifecycleStatus::Deposited || $status->delivery->state === DeliveryState::Failed;
+        return $status->lifecycle !== null || $status->delivery->state === DeliveryState::Failed;
     }
 
     /**

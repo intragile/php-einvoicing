@@ -99,7 +99,12 @@ final readonly class FrenchDocument
     /**
      * Wraps a Factur-X hybrid PDF, taking the document number from its embedded XML.
      *
-     * @throws UnsupportedDocument when the PDF carries no Factur-X invoice
+     * The MINIMUM and BASIC WL profiles carry no invoice lines and are not invoices under the
+     * French reform, so they are refused; the profile is read from the guideline identifier
+     * (BT-24) of the embedded XML.
+     *
+     * @throws UnsupportedDocument when the PDF carries no Factur-X invoice or its profile is
+     *                             MINIMUM or BASIC WL
      * @throws UnsafeXml when the embedded XML carries a DOCTYPE declaration
      * @throws UnreadablePdf when the PDF cannot be read or breaches a safety limit
      * @throws EncryptedPdf when the PDF is encrypted
@@ -108,6 +113,12 @@ final readonly class FrenchDocument
     public static function fromFacturX(string $pdf): self
     {
         $document = (new FacturXPdfReader)->read($pdf);
+        if ($document->profile?->hasLines() === false) {
+            throw new UnsupportedDocument(sprintf(
+                'A Factur-X %s profile document carries no invoice lines and is not an invoice under the French reform; send the EN 16931, EXTENDED or BASIC profile.',
+                $document->profile->value,
+            ));
+        }
 
         return new self($pdf, FrenchDocumentType::FacturX, DocumentNumber::of($document->xml));
     }

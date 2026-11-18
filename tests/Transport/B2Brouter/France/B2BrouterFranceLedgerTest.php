@@ -162,6 +162,38 @@ final class B2BrouterFranceLedgerTest extends TestCase
         self::assertStringContainsString('same Idempotency-Key "F10-1"', $exception->getMessage());
     }
 
+    /**
+     * @return iterable<string, array{Response}>
+     */
+    public static function unexpectedDepositAnswers(): iterable
+    {
+        yield 'accepted' => [new Response(202)];
+        yield 'redirect' => [new Response(302, ['Location' => self::BASE.'/accounts/4711/ledgers/68916'])];
+    }
+
+    #[DataProvider('unexpectedDepositAnswers')]
+    public function test_unexpected_deposit_answer_is_outcome_unknown_with_same_key_advice(Response $answer): void
+    {
+        $exception = self::capture(fn () => self::france(new RecordingHttpClient($answer))->depositEReport(self::XML, 'F10-2026-11-0002'));
+
+        self::assertInstanceOf(OutcomeUnknown::class, $exception);
+        self::assertFalse($exception->isRetryable());
+        self::assertStringContainsString('HTTP '.$answer->getStatusCode(), $exception->getMessage());
+        self::assertStringContainsString('same Idempotency-Key "F10-2026-11-0002"', $exception->getMessage());
+    }
+
+    public function test_406_is_unsupported_document_naming_the_content_type(): void
+    {
+        $refused = new Response(406, ['Content-Type' => 'application/json'], '{"error":{"code":"not_acceptable","message":"The file type cannot be imported."}}');
+
+        $exception = self::capture(fn () => self::france(new RecordingHttpClient($refused))->depositEReport(self::XML));
+
+        self::assertInstanceOf(UnsupportedDocument::class, $exception);
+        self::assertStringContainsString('HTTP 406', $exception->getMessage());
+        self::assertStringContainsString('application/octet-stream', $exception->getMessage());
+        self::assertStringContainsString('"The file type cannot be imported."', $exception->getMessage());
+    }
+
     public function test_unreadable_created_answer_is_outcome_unknown(): void
     {
         $exception = self::capture(fn () => self::france(new RecordingHttpClient(new Response(201, [], 'not json')))->depositEReport(self::XML));

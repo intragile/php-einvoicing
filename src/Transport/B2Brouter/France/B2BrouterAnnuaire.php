@@ -24,18 +24,19 @@ use Psr\Http\Message\ResponseInterface;
  * (GET /directory/fr/{scheme}/{value}).
  *
  * B2Brouter answers a lookup it has not resolved yet with HTTP 202; the same request is then
- * repeated, by default up to four attempts three seconds apart, so a cold lookup may block for
- * about nine seconds. The polling URL of a 202 answer is not followed: the request is repeated
- * against the configured base URL.
+ * repeated, by default up to four attempts three seconds apart, so a cold lookup that keeps
+ * answering 202 may block for about nine seconds; a lookup that hangs costs one HTTP timeout
+ * before it reads as Unknown. The polling URL of a 202 answer is not followed: the request is
+ * repeated against the configured base URL.
  *
  * Statuses:
  * - FR_ASSUJETTI_ACTIVE is Active, FR_ASSUJETTI_INACTIVE is Inactive;
- * - FR_ASSUJETTI_UNKNOWN (known to B2Brouter, absent from the Annuaire) and a 404 resource_missing
- *   answer are NotListed;
- * - anything that is not a definite answer is Unknown: still processing after the last attempt,
- *   HTTP 424 (an upstream directory unavailable), no answer, an unreadable body, a missing,
- *   unknown or conflicting flag, or any other status. The router then keeps the e-invoice and
- *   asks for a directory check instead of e-reporting a B2B sale as B2C.
+ * - a 404 resource_missing answer is NotListed;
+ * - anything that is not a definite answer is Unknown: FR_ASSUJETTI_UNKNOWN (B2Brouter cannot
+ *   tell whether the company is in the Annuaire), still processing after the last attempt,
+ *   HTTP 424 (an upstream directory unavailable), no answer, an unreadable body, no flag, an
+ *   unknown flag or conflicting flags, or any other status. The router then keeps the e-invoice
+ *   and asks for a directory check instead of e-reporting a B2B sale as B2C.
  *
  * A refused API key (HTTP 401 or 403) is thrown as AuthenticationFailed rather than hidden as
  * Unknown, and an identifier B2Brouter refuses (HTTP 422) as an InvalidArgumentException.
@@ -50,7 +51,7 @@ final class B2BrouterAnnuaire implements Annuaire
     private const FLAG_STATUSES = [
         'FR_ASSUJETTI_ACTIVE' => AnnuaireStatus::Active,
         'FR_ASSUJETTI_INACTIVE' => AnnuaireStatus::Inactive,
-        'FR_ASSUJETTI_UNKNOWN' => AnnuaireStatus::NotListed,
+        'FR_ASSUJETTI_UNKNOWN' => AnnuaireStatus::Unknown,
     ];
 
     /** A routing code or address suffix of a 0225 electronic address. */
@@ -94,15 +95,17 @@ final class B2BrouterAnnuaire implements Annuaire
     /**
      * The directory status of the legal entity with the given SIREN.
      *
-     * A SIREN that fails the local check (nine digits with a valid check digit), for example one
-     * written with spaces, is Unknown without a request, as the Annuaire contract asks for a
-     * lookup that is not possible; lookup() refuses it instead.
+     * ASCII spaces and no-break spaces (U+00A0) are removed first, so "380 129 866" is looked up
+     * as 380129866. A SIREN that then fails the local check (nine digits with a valid check digit)
+     * is Unknown without a request, as the Annuaire contract asks for a lookup that is not
+     * possible; lookup() refuses both instead.
      *
      * @throws InvalidArgumentException when B2Brouter refuses the SIREN (HTTP 422)
      * @throws AuthenticationFailed when B2Brouter refuses the API key
      */
     public function status(string $siren): AnnuaireStatus
     {
+        $siren = str_replace([' ', "\u{00A0}"], '', $siren);
         if (! self::isSiren($siren)) {
             return AnnuaireStatus::Unknown;
         }

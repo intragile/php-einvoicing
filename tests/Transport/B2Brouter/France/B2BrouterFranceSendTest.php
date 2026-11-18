@@ -221,11 +221,12 @@ final class B2BrouterFranceSendTest extends TestCase
         self::assertStringContainsString('"The file type cannot be imported."', $exception->getMessage());
     }
 
-    public function test_403_is_transport_exception(): void
+    public function test_403_is_authentication_failed(): void
     {
         $exception = self::capture(fn () => self::france(new RecordingHttpClient(self::fixture(403, 'import-403.json')))->send(self::document()));
 
         self::assertInstanceOf(TransportException::class, $exception);
+        self::assertInstanceOf(AuthenticationFailed::class, $exception);
         self::assertFalse($exception->isRetryable());
         self::assertStringContainsString('HTTP 403', $exception->getMessage());
         self::assertStringContainsString('permission', $exception->getMessage());

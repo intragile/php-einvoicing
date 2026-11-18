@@ -129,10 +129,10 @@ final class FranceResponseMapper
      *
      * The answer counts as a received invoice unless its type says IssuedInvoice.
      *
-     * @throws OutcomeUnknown when B2Brouter answered a 5xx status; the state may have changed
+     * @throws OutcomeUnknown when B2Brouter answered a 5xx status, a redirect or a 2xx status other
+     *                        than 200; the state may have changed
      * @throws DocumentRejected when B2Brouter refused the state change (HTTP 400, 422)
-     * @throws UnexpectedResponse when the body is not an invoice with a state, the invoice is
-     *                            unknown or B2Brouter answered with a redirect
+     * @throws UnexpectedResponse when the body is not an invoice with a state or the invoice is unknown
      * @throws TransportException when B2Brouter refused the request
      */
     public function respondedStatus(ResponseInterface $response, string $invoiceId, BuyerResponse $answer): PlatformStatus
@@ -142,6 +142,14 @@ final class FranceResponseMapper
         if ($status >= 500 && $status <= 599) {
             throw new OutcomeUnknown(sprintf(
                 '%s failed with a B2Brouter server error (HTTP %d), which can come after the state change, so the invoice may or may not have changed state. %s',
+                $operation,
+                $status,
+                self::checkStateBeforeRepeating($invoiceId),
+            ));
+        }
+        if (self::isUnexpectedSuccessOrRedirect($status, [200])) {
+            throw new OutcomeUnknown(sprintf(
+                '%s got an unexpected answer (HTTP %d) instead of the invoice, so the invoice may or may not have changed state. %s',
                 $operation,
                 $status,
                 self::checkStateBeforeRepeating($invoiceId),
@@ -164,12 +172,13 @@ final class FranceResponseMapper
      * The id of the payment a payments answer recorded, or null when a successful answer does not
      * name it.
      *
-     * @throws OutcomeUnknown when B2Brouter answered a 5xx status; the payment may have been recorded
+     * @throws OutcomeUnknown when B2Brouter answered a 5xx status, a redirect or a 2xx status other
+     *                        than 200 and 201; the payment may have been recorded
      * @throws DocumentRejected when B2Brouter refused the payment (HTTP 400, 422)
      * @throws TransportException when B2Brouter refused the request, for example an invoice
      *                            outside the account (HTTP 404)
      */
-    public function recordedPayment(ResponseInterface $response, int $accountId, string $invoiceId): ?string
+    public function recordedPayment(ResponseInterface $response, string $invoiceId): ?string
     {
         $status = $response->getStatusCode();
         $operation = sprintf('Recording a payment on B2Brouter invoice "%s"', $invoiceId);
@@ -178,7 +187,15 @@ final class FranceResponseMapper
                 '%s failed with a B2Brouter server error (HTTP %d), which can come after the payment was recorded, so it may or may not have been recorded. %s',
                 $operation,
                 $status,
-                self::checkPaymentsBeforeRepeating($accountId, $invoiceId),
+                self::checkPaymentsBeforeRepeating($invoiceId),
+            ));
+        }
+        if (self::isUnexpectedSuccessOrRedirect($status, [200, 201])) {
+            throw new OutcomeUnknown(sprintf(
+                '%s got an unexpected answer (HTTP %d) instead of the payment, so it may or may not have been recorded. %s',
+                $operation,
+                $status,
+                self::checkPaymentsBeforeRepeating($invoiceId),
             ));
         }
         if ($status === 400 || $status === 422) {
@@ -205,10 +222,12 @@ final class FranceResponseMapper
      * The ledger an import of an e-reporting file created (HTTP 201) or found under the same
      * idempotency key (HTTP 200), or the exception its response stands for.
      *
-     * @throws OutcomeUnknown when B2Brouter answered a 5xx status or a successful answer cannot be
-     *                        read; the file may have been imported
-     * @throws DocumentRejected when B2Brouter refused the file (HTTP 400, 406, 422) or the key was
-     *                          used with another file (HTTP 409)
+     * @throws OutcomeUnknown when B2Brouter answered a 5xx status, a redirect or a 2xx status other
+     *                        than 200 and 201, or a successful answer cannot be read; the file may
+     *                        have been imported
+     * @throws UnsupportedDocument when B2Brouter does not accept the file's content type (HTTP 406)
+     * @throws DocumentRejected when B2Brouter refused the file (HTTP 400, 422) or the key was used
+     *                          with another file (HTTP 409)
      * @throws AuthenticationFailed when the account's plan lacks the ledger permission (HTTP 403)
      * @throws TransportException when B2Brouter refused the request
      */
@@ -222,6 +241,21 @@ final class FranceResponseMapper
                 $operation,
                 $status,
                 self::resendWithSameKey($idempotencyKey),
+            ));
+        }
+        if (self::isUnexpectedSuccessOrRedirect($status, [200, 201])) {
+            throw new OutcomeUnknown(sprintf(
+                '%s got an unexpected answer (HTTP %d) instead of the ledger, so B2Brouter may or may not have imported the file. %s',
+                $operation,
+                $status,
+                self::resendWithSameKey($idempotencyKey),
+            ));
+        }
+        if ($status === 406) {
+            throw new UnsupportedDocument(sprintf(
+                'B2Brouter did not accept the e-reporting file sent as %s (HTTP 406): %s',
+                self::IMPORT_CONTENT_TYPE,
+                $this->errors->quote($this->errors->error($response)),
             ));
         }
         if ($status === 403) {
@@ -240,7 +274,7 @@ final class FranceResponseMapper
                 self::errorsOf($response, $this->redactor),
             );
         }
-        if ($status === 400 || $status === 406 || $status === 422) {
+        if ($status === 400 || $status === 422) {
             throw new DocumentRejected(
                 sprintf(
                     'B2Brouter rejected the e-reporting file (HTTP %d%s): %s',
@@ -312,13 +346,23 @@ final class FranceResponseMapper
     /**
      * The sentence that tells how to find out whether a payment was recorded.
      */
-    public static function checkPaymentsBeforeRepeating(int $accountId, string $invoiceId): string
+    public static function checkPaymentsBeforeRepeating(string $invoiceId): string
     {
         return sprintf(
-            'A payment is not idempotent: list the invoice\'s payments with GET /accounts/%d/payments?invoice_id=%s before recording it again.',
-            $accountId,
+            'A payment is not idempotent: list the invoice\'s payments with GET /accounts/{account}/payments?invoice_id=%s before recording it again.',
             $invoiceId,
         );
+    }
+
+    /**
+     * Whether a status is a redirect or a success other than the expected ones: an answer a
+     * state-changing request may have taken effect behind.
+     *
+     * @param  list<int>  $expected
+     */
+    private static function isUnexpectedSuccessOrRedirect(int $status, array $expected): bool
+    {
+        return $status >= 200 && $status <= 399 && ! in_array($status, $expected, true);
     }
 
     /**

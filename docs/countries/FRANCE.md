@@ -729,10 +729,11 @@ type is detected from the document element and the specification identifier (BT-
 | UBL Invoice | EXTENDED-CTC-FR | `UblInvoiceExtended` | `xml.ubl.invoice.fr.extension.v1` |
 | UBL CreditNote | EXTENDED-CTC-FR | `UblCreditNoteExtended` | `xml.ubl.credit_note.fr.extension.v1` |
 | CII CrossIndustryInvoice | French CIUS | `CiiInvoice` | `xml.cii.cross_industry_invoice.frcius.v1` |
-| Factur-X PDF, any profile | | `FacturX` | `xml.cii.cross_industry_invoice.facturx.fr.all_profiles.v1` |
+| Factur-X PDF, BASIC, EN 16931 or EXTENDED | | `FacturX` | `xml.cii.cross_industry_invoice.facturx.fr.all_profiles.v1` |
 
 `FrenchDocument::fromXml($xml)` reads UBL or CII, `fromFacturX($pdf)` a Factur-X PDF (the number
-comes from its embedded XML) and `fromInvoice($invoice, Syntax::Ubl)` writes the model first (CII
+comes from its embedded XML; a MINIMUM or BASIC WL profile, read from the embedded BT-24, is refused
+with `UnsupportedDocument` as not an invoice under the French reform) and `fromInvoice($invoice, Syntax::Ubl)` writes the model first (CII
 as D22B). A CII EXTENDED-CTC-FR document is refused (`UnsupportedDocument`), since B2Brouter has
 no document type for it: write the invoice as UBL. A BT-24 that is not a French profile, such as
 Peppol BIS Billing 3.0 or XRechnung, is refused with a pointer to `B2BrouterTransport`.
@@ -860,8 +861,9 @@ B2Brouter emits the CDV for it to the seller. `BuyerResponse` builds the answer:
   number written from the decimal string, never through a float. A blank reason or comment is
   refused.
 - B2Brouter does not report Payment sent (211) to the DGFiP.
-- A refused state change (HTTP 400, 422) throws `DocumentRejected`. After `OutcomeUnknown`, read
-  the state with `lifecycle()` before answering again.
+- A refused state change (HTTP 400, 422) throws `DocumentRejected`. No answer, a 5xx answer, a
+  redirect or a 2xx answer other than 200 throws `OutcomeUnknown`, since the state may have
+  changed; read the state with `lifecycle()` before answering again.
 
 <!-- sample: run -->
 ```php
@@ -909,8 +911,9 @@ DGFiP itself: Collected (212) for a domestic invoice for services, an e-reportin
 otherwise. Once the payments cover the total the invoice turns `paid`, which reads back as
 `Collected`.
 
-A payment is not idempotent. After `OutcomeUnknown`, list the invoice's payments in the account
-before recording it again. When the payment was recorded but reading the invoice afterwards
+A payment is not idempotent. No answer, a 5xx answer, a redirect or a 2xx answer other than 200 and
+201 throws `OutcomeUnknown`; list the invoice's payments in the account
+(`GET /accounts/{account}/payments?invoice_id=…`) before recording it again. When the payment was recorded but reading the invoice afterwards
 failed, an `UnexpectedResponse` says so: do not record it again.
 
 ### Flux 10 deposit
@@ -923,7 +926,7 @@ the ledger already existed.
 
 - **Own file or native pipeline, not both.** Depositing your own Flux 10 files and B2Brouter's
   native e-reporting pipeline (B2Brouter building the e-reports from the invoices and payments it
-  handles) are exclusive per account. Use the deposit only for an account, or a scope, whose
+  handles) are exclusive per account. Use the deposit only for an account whose
   invoices never go through `send()` or `recordPayment()`. The library does not check which one
   an account uses.
 - **B2Brouter rewrites two fields.** It replaces `ReportDocument/Id` with the ledger id and the
@@ -932,8 +935,12 @@ the ledger already existed.
 - **Idempotent per key.** Each deposit carries an `Idempotency-Key`: the one you pass (1 to 64
   visible ASCII characters), or by default the SHA-256 hash of the file. Depositing the same file
   under the same key again returns the ledger already imported (`alreadyExisted` true); a
-  different file under a used key is refused (`DocumentRejected`, HTTP 409). After
-  `OutcomeUnknown`, resending the same file with the same key is safe.
+  different file under a used key is refused (`DocumentRejected`, HTTP 409). No answer, a 5xx
+  answer, a redirect, a 2xx answer other than 200 and 201, or an unreadable success answer throws
+  `OutcomeUnknown`. After an `OutcomeUnknown` on deposit, resend the same bytes or pass the key
+  from the message; a rebuilt report gets a new default key.
+- **Content type.** The file is uploaded as `application/octet-stream`; a 406 answer throws
+  `UnsupportedDocument` naming that content type, as for `send()`.
 - **Account setup.** The account needs a DGFiP tax report setting, and the issuer SIREN in the
   file must be the account's; otherwise B2Brouter refuses the file (`DocumentRejected`, HTTP 422).
   The ledger permission must be on the account's B2Brouter plan; without it the deposit fails with
@@ -1021,19 +1028,26 @@ returns it flat; both shapes are read.
 |---|---|
 | 200 with `FR_ASSUJETTI_ACTIVE` | `Active` |
 | 200 with `FR_ASSUJETTI_INACTIVE` | `Inactive` |
-| 200 with `FR_ASSUJETTI_UNKNOWN` (known to B2Brouter, absent from the Annuaire) | `NotListed` |
 | 404 `resource_missing` | `NotListed` |
-| 202 still after the last attempt, 424 (upstream directory unavailable), no answer, an unreadable body, no, an unknown or conflicting flag, any other status | `Unknown` |
+| 200 with `FR_ASSUJETTI_UNKNOWN` (B2Brouter cannot tell whether the company is in the Annuaire) | `Unknown` |
+| 202 still after the last attempt, 424 (upstream directory unavailable), no answer, an unreadable body, no flag, an unknown flag or conflicting flags, any other status | `Unknown` |
 | 401, 403 | thrown: `AuthenticationFailed` |
 | 422 (identifier refused) | thrown: `InvalidArgumentException` |
 
+- **`FR_ASSUJETTI_UNKNOWN` keeps the e-invoice.** It reads as `Unknown`, not `NotListed`, so
+  `Router` keeps the e-invoice with `needsDirectoryCheck` rather than e-reporting a possible B2B
+  sale as B2C while the Annuaire fills up.
 - **A cold lookup may block for about 9 seconds.** B2Brouter answers a lookup it has not resolved
   yet with 202. The request is repeated, by default 4 attempts 3 seconds apart
   (`new B2BrouterAnnuaire($config, $http, attempts: 4, retryDelaySeconds: 3)`); the polling URL is
-  not followed. A sleeper closure can be injected as the fifth argument.
-- **A malformed SIREN is `Unknown` without a request.** `status()` returns `Unknown` for a SIREN
-  that fails the local check (nine digits with a valid check digit, so no spaces); `lookup()`
-  throws `InvalidArgumentException` for a malformed identifier instead, also without a request.
+  not followed. A sleeper closure can be injected as the fifth argument. The 9 seconds are the
+  202 polling case only; a lookup that hangs costs one HTTP timeout of your client before it reads
+  as `Unknown`.
+- **Spaces in a SIREN are ignored; a malformed SIREN is `Unknown` without a request.** `status()`
+  removes ASCII spaces and no-break spaces first, so `380 129 866` is looked up as `380129866`,
+  and returns `Unknown` for a SIREN that then fails the local check (nine digits with a valid
+  check digit); `lookup()` stays strict and throws `InvalidArgumentException` for a malformed
+  identifier, spaces included, also without a request.
 - **`Router::route()` can throw with it.** A misconfiguration must not hide as `Unknown`, so a
   refused key (401, 403) throws `AuthenticationFailed` and an identifier B2Brouter refuses (422)
   throws `InvalidArgumentException` out of `route()`.
@@ -1050,7 +1064,12 @@ offline only; their live cases in the same group run only with a French B2Broute
 not available. See [VERIFICATION.md](../VERIFICATION.md).
 
 ```bash
+# Directory lookup (sandbox):
 B2BROUTER_API_KEY=test_… B2BROUTER_ACCOUNT_ID=… vendor/bin/phpunit --group b2brouter-france-live
+
+# Plus the staging cases (send, deposit) with a French staging account:
+B2BROUTER_API_KEY=stag_… B2BROUTER_ACCOUNT_ID=… B2BROUTER_FR_ACCOUNT_ID=… \
+  B2BROUTER_BASE_URL=https://api-staging.b2brouter.net vendor/bin/phpunit --group b2brouter-france-live
 ```
 
 ## How it is verified

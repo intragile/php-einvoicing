@@ -55,7 +55,8 @@ All notable changes to this project are documented here. The format follows
   fixed `StaticAnnuaire`.
 - **France, transport:** `B2BrouterFrance` sends French invoices through B2Brouter as
   *plateforme agréée* (`send()` of a `FrenchDocument`: UBL and CII under the French CIUS, UBL
-  EXTENDED-CTC-FR, Factur-X, with the type detected from BT-24 as `FrenchDocumentType`), reads
+  EXTENDED-CTC-FR, Factur-X BASIC, EN 16931 and EXTENDED, with the type detected from BT-24 as
+  `FrenchDocumentType`), reads
   their state as a `PlatformStatus` with the French `LifecycleStatus` (`lifecycle()`), answers
   received invoices with a `BuyerResponse` (`respond()`: 204, 205, 206, 207, 210, 211) and records
   payments (`recordPayment()`). B2Brouter emits the lifecycle messages (CDV) itself; the library
@@ -67,8 +68,9 @@ All notable changes to this project are documented here. The format follows
   e-reporting are exclusive per account.
 - **France, routing:** `B2BrouterAnnuaire`, a live `Annuaire` through B2Brouter's French directory
   (`status()`, and `lookup()` by SIREN, SIRET or electronic address returning an `AnnuaireEntry`).
-  A cold lookup may block for about 9 s; a refused key or identifier throws instead of reading as
-  `Unknown`. Live-tested on the B2Brouter sandbox; the rest of the French flow is tested offline
+  `FR_ASSUJETTI_UNKNOWN` reads as `Unknown`, so the router keeps the e-invoice; `status()` ignores
+  spaces in the SIREN. A cold lookup answered 202 may block for about 9 s, and a hanging one for
+  one HTTP timeout; a refused key or identifier throws instead of reading as `Unknown`. Live-tested on the B2Brouter sandbox; the rest of the French flow is tested offline
   only.
 - **Peppol transport, webhooks:** `WebhookEvent::$lifecycleStatus` (default `null`).
   `B2BrouterWebhook` sets it from `data.state` for `issued_invoice.state_change` and
