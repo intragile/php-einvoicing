@@ -14,6 +14,11 @@
 # The ISO Schematron skeleton is kept byte-for-byte as pinned in its SOURCE.md.
 /tests/fixtures/iso-schematron/*.xsl -text -eol
 /tests/fixtures/iso-schematron/LICENSE -text -eol
+# The FA(3) schemas are byte-identical to the Ministry of Finance files (hashes in SOURCE.md),
+# some with CR line endings.
+/resources/poland/** -text -eol
+# The official FA(3) templates are hashed byte for byte in their SOURCE.md.
+/tests/fixtures/poland/official/** -text -eol
 
 # Development files are left out of the Composer dist archive.
 /.github            export-ignore

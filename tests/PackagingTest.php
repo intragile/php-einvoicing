@@ -126,6 +126,10 @@ final class PackagingTest extends TestCase
             self::assertContains($path, $ignored);
         }
         self::assertNotContains('/bin/einvoicing-rules', $ignored);
+        // The bundled FA(3) schemas are used at run time, so the dist archive keeps them.
+        foreach (['/resources', '/resources/poland', '/resources/poland/**'] as $path) {
+            self::assertNotContains($path, $ignored);
+        }
 
         // A rule package ships everything it contains; only its own attributes file stays out.
         foreach (array_keys(self::RULE_PACKAGES) as $dir) {

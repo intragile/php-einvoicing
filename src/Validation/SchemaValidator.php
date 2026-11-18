@@ -17,7 +17,8 @@ use LibXMLError;
  * resolves only local file paths and file:// URIs on this machine (no host, or "localhost") and
  * refuses remote file hosts and every other scheme; the schema and the files it imports or
  * includes must be available locally, and a refused import raises UnusableSchema naming the URI
- * (see FileOnlyEntityLoader).
+ * (see FileOnlyEntityLoader). A schema set that imports by absolute http location can be used
+ * offline by mapping that location's prefix onto the local folder that holds the files.
  *
  * A schema that cannot be read, parsed or compiled raises UnusableSchema, so a broken schema
  * installation can never be reported as an invalid document. libxml compiles the schema before
@@ -34,13 +35,16 @@ use LibXMLError;
 final class SchemaValidator
 {
     /**
+     * @param  array<string, string>  $localPrefixes  absolute URI prefix => local folder, for imports
+     *                                                and includes by absolute location; any other
+     *                                                remote reference is still refused
      * @return list<SchemaError> the violations in the order libxml reported them; empty when
      *                           the document is valid
      *
      * @throws UnusableSchema when the schema file is missing or unreadable, or cannot be parsed
      *                        or compiled
      */
-    public function validate(DOMDocument $document, string $xsdPath): array
+    public function validate(DOMDocument $document, string $xsdPath, array $localPrefixes = []): array
     {
         if (! is_file($xsdPath) || ! is_readable($xsdPath)) {
             throw new UnusableSchema("The XML Schema {$xsdPath} does not exist or is not readable.");
@@ -65,7 +69,7 @@ final class SchemaValidator
 
         try {
             try {
-                $valid = FileOnlyEntityLoader::run(static fn (): bool => $document->schemaValidate($xsdPath, LIBXML_NONET), $refused);
+                $valid = FileOnlyEntityLoader::run(static fn (): bool => $document->schemaValidate($xsdPath, LIBXML_NONET), $refused, $localPrefixes);
             } finally {
                 restore_error_handler();
             }

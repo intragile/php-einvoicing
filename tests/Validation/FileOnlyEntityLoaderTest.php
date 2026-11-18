@@ -115,6 +115,46 @@ final class FileOnlyEntityLoaderTest extends TestCase
         }
     }
 
+    /**
+     * @return iterable<string, array{string, ?string}>
+     */
+    public static function prefixedUris(): iterable
+    {
+        yield 'file below the prefix' => ['http://schemas.example/base/imported.xsd', '/imported.xsd'];
+        yield 'nested file below the prefix' => ['http://schemas.example/base/sub/imported.xsd', '/sub/imported.xsd'];
+        yield 'parent segment' => ['http://schemas.example/base/../imported.xsd', null];
+        yield 'nested parent segment' => ['http://schemas.example/base/sub/../../imported.xsd', null];
+        yield 'trailing parent segment' => ['http://schemas.example/base/sub/..', null];
+        yield 'backslash parent segment' => ['http://schemas.example/base/..\\imported.xsd', null];
+        yield 'leading slash' => ['http://schemas.example/base//etc/hosts', null];
+        yield 'outside the prefix' => ['http://schemas.example/other/imported.xsd', null];
+    }
+
+    /**
+     * The loader is called directly, so the check does not depend on how libxml normalises a
+     * schemaLocation before it asks for it.
+     */
+    #[DataProvider('prefixedUris')]
+    public function test_prefix_resolves_only_below_its_folder(string $uri, ?string $relative): void
+    {
+        $prefixes = ['http://schemas.example/base/' => $this->scratch];
+
+        $resolved = FileOnlyEntityLoader::run(static function () use ($uri): mixed {
+            $loader = libxml_get_external_entity_loader();
+            self::assertNotNull($loader);
+
+            return $loader(null, $uri, []);
+        }, $refused, $prefixes);
+
+        if ($relative === null) {
+            self::assertNull($resolved);
+            self::assertSame([$uri], $refused);
+        } else {
+            self::assertSame($this->scratch.$relative, $resolved);
+            self::assertSame([], $refused);
+        }
+    }
+
     private static function fails(string $message): bool
     {
         throw new RuntimeException($message);

@@ -206,6 +206,77 @@ final class SchemaValidatorTest extends TestCase
     }
 
     /**
+     * A local prefix maps an absolute schemaLocation onto a local folder, and the relative include
+     * inside the mapped file resolves in that folder as well; the imported type is really applied.
+     */
+    public function test_prefix_maps_an_absolute_import_to_a_local_file(): void
+    {
+        $this->writeImportedSchemas();
+        $xsd = $this->scratch.'/main.xsd';
+        file_put_contents($xsd, self::importing('http://schemas.example/base/imported.xsd'));
+        $prefixes = ['http://schemas.example/base/' => $this->scratch];
+
+        $valid = new DOMDocument;
+        $valid->loadXML('<a xmlns:i="urn:imported">ok</a>');
+        self::assertSame([], (new SchemaValidator)->validate($valid, $xsd, $prefixes));
+
+        $invalid = new DOMDocument;
+        $invalid->loadXML('<a>not ok</a>');
+        $errors = (new SchemaValidator)->validate($invalid, $xsd, $prefixes);
+        self::assertCount(1, $errors);
+        self::assertStringContainsString('not ok', $errors[0]->message);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function escapingRemainders(): iterable
+    {
+        yield 'parent segment' => ['http://schemas.example/base/../imported.xsd'];
+        yield 'nested parent segment' => ['http://schemas.example/base/sub/../../imported.xsd'];
+    }
+
+    /**
+     * A mapped URI cannot climb out of its folder: a remainder with a ".." segment is refused like
+     * a remote reference, even when the target exists.
+     */
+    #[DataProvider('escapingRemainders')]
+    public function test_prefix_remainder_with_parent_segment_is_refused(string $uri): void
+    {
+        $this->writeImportedSchemas();
+        $xsd = $this->scratch.'/main.xsd';
+        file_put_contents($xsd, self::importing($uri));
+        $document = new DOMDocument;
+        $document->loadXML('<a>ok</a>');
+
+        try {
+            (new SchemaValidator)->validate($document, $xsd, ['http://schemas.example/base/' => $this->scratch]);
+            self::fail('A remainder with a parent segment must be refused.');
+        } catch (UnusableSchema $e) {
+            self::assertStringContainsString('network access is refused', $e->getMessage());
+            self::assertStringContainsString($uri, $e->getMessage());
+        }
+    }
+
+    public function test_import_outside_every_prefix_is_still_refused(): void
+    {
+        $this->writeImportedSchemas();
+        $uri = 'http://schemas.example/other/imported.xsd';
+        $xsd = $this->scratch.'/main.xsd';
+        file_put_contents($xsd, self::importing($uri));
+        $document = new DOMDocument;
+        $document->loadXML('<a>ok</a>');
+
+        try {
+            (new SchemaValidator)->validate($document, $xsd, ['http://schemas.example/base/' => $this->scratch]);
+            self::fail('An import outside every prefix must be refused.');
+        } catch (UnusableSchema $e) {
+            self::assertStringContainsString('network access is refused', $e->getMessage());
+            self::assertStringContainsString($uri, $e->getMessage());
+        }
+    }
+
+    /**
      * Only the warnings that signal an unusable schema are taken over; any other warning raised
      * while validating reaches the error handler that was active before.
      */
@@ -335,6 +406,25 @@ final class SchemaValidatorTest extends TestCase
             libxml_clear_errors();
             libxml_use_internal_errors($original);
         }
+    }
+
+    /**
+     * imported.xsd (namespace urn:imported) includes types.xsd relatively; type T accepts only "ok".
+     */
+    private function writeImportedSchemas(): void
+    {
+        file_put_contents($this->scratch.'/imported.xsd', '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:imported">'
+            .'<xs:include schemaLocation="types.xsd"/></xs:schema>');
+        file_put_contents($this->scratch.'/types.xsd', '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:imported">'
+            .'<xs:simpleType name="T"><xs:restriction base="xs:string"><xs:enumeration value="ok"/></xs:restriction></xs:simpleType>'
+            .'</xs:schema>');
+    }
+
+    private static function importing(string $uri): string
+    {
+        return '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:i="urn:imported">'
+            .'<xs:import namespace="urn:imported" schemaLocation="'.$uri.'"/>'
+            .'<xs:element name="a" type="i:T"/></xs:schema>';
     }
 
     private static function xsd(string $relative): string
