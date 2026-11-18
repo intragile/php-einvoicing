@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Syntax\Fa3;
 
+use Brick\Math\BigDecimal;
 use Closure;
 use DateTimeImmutable;
 use DateTimeZone;
@@ -25,8 +26,8 @@ use InvalidArgumentException;
  *
  * The Polish data EN 16931 does not carry comes from the PolishInvoice and PolishLine
  * extensions; an invoice without them is written as a plain VAT invoice with every annotation
- * negative. Elements follow the schema sequence: Naglowek, Podmiot1, Podmiot2, Podmiot3, Fa,
- * Stopka.
+ * negative. Elements follow the schema sequence: Naglowek, Podmiot1, Podmiot2, Podmiot3,
+ * PodmiotUpowazniony, Fa, Stopka, Zalacznik.
  *
  * Mapping highlights:
  * - DataWytworzeniaFa is the extension's creation time, else the writer clock, in UTC.
@@ -34,12 +35,26 @@ use InvalidArgumentException;
  * - P_6 is the actual delivery date (BT-72), else the tax point date (BT-7), written only when
  *   it differs from the issue date (BT-2); otherwise the invoicing period (BG-14) is OkresFa.
  * - The summary buckets P_13_x and P_14_x sum the VAT breakdown rows (BT-116, BT-117) by the
- *   rate code of their lines; P_15 is the invoice total with VAT (BT-112).
+ *   rate code of their lines; P_15 is the invoice total with VAT (BT-112), on a settlement
+ *   invoice (ROZ) the amount due (BT-115). On an invoice in a foreign currency, P_14_1W to
+ *   P_14_4W are the VAT amounts in PLN the issuer supplies (PolishInvoice::$vatInPln); they are
+ *   never computed.
+ * - The invoice kind (RodzajFaktury) is the extension's, else derived from the type code (BT-3).
+ *   The correction block is the extension's correction data, else, on a corrective invoice, the
+ *   preceding invoice references (BG-3) as corrected invoices issued outside KSeF (NrKSeFN).
+ *   State-before rows (StanPrzed) are held in storno form and written with their sign restored.
+ *   Synthetic bucket lines of invoices without FaWiersz rows are not written.
+ * - Partial advances (ZaliczkaCzesciowa), settled advance invoices (FakturaZaliczkowa), the
+ *   charges and deductions (Rozliczenie, with DoZaplaty or DoRozliczenia computed from P_15), the
+ *   transaction terms and the order of an advance invoice (Zamowienie) come from the extension.
+ *   The transport blocks, the authorised party (PodmiotUpowazniony) and the attachment
+ *   (Zalacznik) are verbatim fragments re-emitted in their schema position.
  * - EN 16931 text terms without an FA(3) element are written as additional descriptions
  *   (DodatkowyOpis) with the fixed keys of Fa3Format::DESCRIPTION_KEYS, after the extension's
  *   own descriptions.
  * - The contract reference (BT-12) and the purchase order reference (BT-13) are written in
- *   WarunkiTransakcji as Umowy/NrUmowy and Zamowienia/NrZamowienia.
+ *   WarunkiTransakcji as Umowy/NrUmowy and Zamowienia/NrZamowienia, unless the transaction
+ *   terms of the extension list contracts or orders, one of which then carries the reference.
  * - VAT exemption reasons (BT-120, BT-121) are superseded by the exemption annotation
  *   (Annotations::$exemption, P_19 with its legal basis) and not written; without that
  *   annotation the guard refuses them.
@@ -80,8 +95,14 @@ final class Fa3Writer
         foreach ($polish->thirdParties as $thirdParty) {
             Fa3PartyWriter::thirdParty($output, $thirdParty);
         }
+        if ($polish->authorizedParty !== null) {
+            $output->fragment($output->root, $polish->authorizedParty);
+        }
         $this->invoice($output, $invoice, $polish);
         $this->footer($output, $polish);
+        if ($polish->attachment !== null) {
+            $output->fragment($output->root, $polish->attachment);
+        }
 
         return $output->xml();
     }
@@ -110,21 +131,39 @@ final class Fa3Writer
         $output->text($header, 'SystemInfo', $polish->systemInfo);
     }
 
+    /**
+     * The amount written as P_15: the amount due (BT-115) on a settlement invoice (ROZ), else the
+     * invoice total with VAT (BT-112).
+     */
+    public static function totalAmount(Invoice $invoice, InvoiceKind $kind): ?BigDecimal
+    {
+        return $kind === InvoiceKind::Roz ? $invoice->totals?->amountDue : $invoice->totals?->totalWithVat;
+    }
+
     private function invoice(Fa3Output $output, Invoice $invoice, PolishInvoice $polish): void
     {
+        $kind = Fa3Guard::kindOf($invoice, $polish)
+            ?? throw new InvalidArgumentException(sprintf('Invoice type code %s implies no FA(3) invoice kind.', $invoice->type->value));
         $fa = $output->add($output->root, 'Fa');
 
         $output->text($fa, 'KodWaluty', $invoice->currency->value);
         $output->date($fa, 'P_1', $invoice->issueDate);
         $output->text($fa, 'P_1M', $polish->placeOfIssue);
         $output->text($fa, 'P_2', $invoice->number);
-        foreach ($this->warehouseDocuments($invoice, $polish) as $document) {
+        foreach (self::warehouseDocuments($invoice, $polish) as $document) {
             $output->text($fa, 'WZ', $document);
         }
         $this->supply($output, $fa, $invoice);
-        $this->buckets($output, $fa, $invoice);
+        $this->buckets($output, $fa, $invoice, $polish);
+        $output->decimal($fa, 'P_15', self::totalAmount($invoice, $kind));
+        $output->decimal($fa, 'KursWalutyZ', $polish->exchangeRate);
         $this->annotations($output, $fa, $polish->annotations);
-        $output->text($fa, 'RodzajFaktury', self::kind($invoice, $polish)->value);
+        $output->text($fa, 'RodzajFaktury', $kind->value);
+        $correction = Fa3BlockWriter::correction($invoice, $polish, $kind);
+        if ($correction !== null) {
+            Fa3BlockWriter::correctionBlock($output, $fa, $correction);
+        }
+        Fa3BlockWriter::partialAdvances($output, $fa, $polish->partialAdvances);
         if ($polish->article109Invoice) {
             $output->marker($fa, 'FP');
         }
@@ -137,6 +176,7 @@ final class Fa3Writer
             $output->text($element, 'Klucz', $description->key);
             $output->text($element, 'Wartosc', $description->value);
         }
+        Fa3BlockWriter::advanceInvoices($output, $fa, $polish->advanceInvoices);
         if ($polish->exciseRefund) {
             $output->marker($fa, 'ZwrotAkcyzy');
         }
@@ -144,34 +184,24 @@ final class Fa3Writer
         foreach ($this->writtenLines($invoice) as $position => $line) {
             Fa3LineWriter::write($output, $fa, $line, $position, $buyerCountry);
         }
+        $total = self::totalAmount($invoice, $kind);
+        if ($polish->settlement !== null && $total !== null) {
+            Fa3BlockWriter::settlement($output, $fa, $polish->settlement, $total);
+        }
         $this->payment($output, $fa, $invoice, $polish);
-        $this->transactionTerms($output, $fa, $invoice);
-    }
-
-    /**
-     * WarunkiTransakcji with the contract reference (BT-12) as Umowy/NrUmowy and the purchase
-     * order reference (BT-13) as Zamowienia/NrZamowienia.
-     */
-    private function transactionTerms(Fa3Output $output, DOMElement $fa, Invoice $invoice): void
-    {
-        if ($invoice->contractReference === null && $invoice->purchaseOrderReference === null) {
-            return;
-        }
-        $element = $output->add($fa, 'WarunkiTransakcji');
-        if ($invoice->contractReference !== null) {
-            $output->text($output->add($element, 'Umowy'), 'NrUmowy', $invoice->contractReference);
-        }
-        if ($invoice->purchaseOrderReference !== null) {
-            $output->text($output->add($element, 'Zamowienia'), 'NrZamowienia', $invoice->purchaseOrderReference);
+        Fa3BlockWriter::transactionTerms($output, $fa, $invoice, $polish);
+        if ($polish->order !== null) {
+            Fa3BlockWriter::order($output, $fa, $polish->order);
         }
     }
 
     /**
-     * The despatch advice reference (BT-16) first, then the extension's warehouse documents.
+     * The warehouse documents written as WZ: the despatch advice reference (BT-16) first, then
+     * the extension's warehouse documents.
      *
      * @return list<string>
      */
-    private function warehouseDocuments(Invoice $invoice, PolishInvoice $polish): array
+    public static function warehouseDocuments(Invoice $invoice, PolishInvoice $polish): array
     {
         $despatch = $invoice->despatchAdviceReference;
         if ($despatch === null) {
@@ -197,7 +227,7 @@ final class Fa3Writer
         }
     }
 
-    private function buckets(Fa3Output $output, DOMElement $fa, Invoice $invoice): void
+    private function buckets(Fa3Output $output, DOMElement $fa, Invoice $invoice, PolishInvoice $polish): void
     {
         foreach (Fa3Buckets::of($invoice) as [$bucket, $net, $vat]) {
             $output->decimal($fa, $bucket->netElement(), $net);
@@ -205,8 +235,11 @@ final class Fa3Writer
             if ($vatElement !== null) {
                 $output->decimal($fa, $vatElement, $vat);
             }
+            $plnElement = $bucket->plnVatElement();
+            if ($plnElement !== null) {
+                $output->decimal($fa, $plnElement, $polish->vatInPlnFor($bucket));
+            }
         }
-        $output->decimal($fa, 'P_15', $invoice->totals?->totalWithVat);
     }
 
     private function annotations(Fa3Output $output, DOMElement $fa, Annotations $annotations): void
@@ -295,14 +328,7 @@ final class Fa3Writer
     {
         $payment = $invoice->payment;
         $form = $polish->paymentForm ?? ($payment === null ? null : PaymentForm::fromMeansCode($payment->meansCode));
-        $accounts = $polish->bankAccounts !== [] ? $polish->bankAccounts : array_map(
-            static fn (CreditTransfer $transfer): BankAccount => new BankAccount(
-                number: $transfer->accountIdentifier,
-                swift: $transfer->serviceProviderIdentifier,
-                description: $transfer->accountName,
-            ),
-            $payment->creditTransfers ?? [],
-        );
+        $accounts = self::bankAccounts($invoice, $polish);
         if ($invoice->dueDate === null && $payment === null && $form === null && $accounts === [] && $polish->factorBankAccounts === []) {
             return;
         }
@@ -323,6 +349,24 @@ final class Fa3Writer
         foreach ($polish->factorBankAccounts as $account) {
             $this->bankAccount($output, $element, 'RachunekBankowyFaktora', $account);
         }
+    }
+
+    /**
+     * The accounts written as RachunekBankowy: the extension's bank accounts, else the credit
+     * transfers (BG-17).
+     *
+     * @return list<BankAccount>
+     */
+    public static function bankAccounts(Invoice $invoice, PolishInvoice $polish): array
+    {
+        return $polish->bankAccounts !== [] ? $polish->bankAccounts : array_map(
+            static fn (CreditTransfer $transfer): BankAccount => new BankAccount(
+                number: $transfer->accountIdentifier,
+                swift: $transfer->serviceProviderIdentifier,
+                description: $transfer->accountName,
+            ),
+            $invoice->payment->creditTransfers ?? [],
+        );
     }
 
     private function bankAccount(Fa3Output $output, DOMElement $parent, string $name, BankAccount $account): void
@@ -370,14 +414,5 @@ final class Fa3Writer
         }
 
         return $lines;
-    }
-
-    /**
-     * @throws InvalidArgumentException when the type code implies no kind (refused by the guard)
-     */
-    private static function kind(Invoice $invoice, PolishInvoice $polish): InvoiceKind
-    {
-        return $polish->kind ?? InvoiceKind::fromTypeCode($invoice->type)
-            ?? throw new InvalidArgumentException(sprintf('Invoice type code %s implies no FA(3) invoice kind.', $invoice->type->value));
     }
 }

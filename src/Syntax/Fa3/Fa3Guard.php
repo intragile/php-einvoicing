@@ -8,6 +8,7 @@ use Brick\Math\BigDecimal;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
 use IntrAgile\EInvoicing\CodeList\IdentifierScheme;
+use IntrAgile\EInvoicing\Model\Contact;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Poland\DocumentReference;
@@ -16,6 +17,8 @@ use IntrAgile\EInvoicing\Poland\Nip;
 use IntrAgile\EInvoicing\Poland\PaymentForm;
 use IntrAgile\EInvoicing\Poland\PolishInvoice;
 use IntrAgile\EInvoicing\Poland\PolishLine;
+use IntrAgile\EInvoicing\Poland\PolishParty;
+use IntrAgile\EInvoicing\Poland\VatBucket;
 use InvalidArgumentException;
 
 /**
@@ -42,17 +45,35 @@ use InvalidArgumentException;
  * has no field for (BT-128-1, BT-47-1 and the third-party legal registration scheme), a price
  * base quantity unit (BT-150) other than the line unit, the payment means text (BT-82) when a
  * payment form is written, the tax registration and additional legal information of the buyer
- * or a third party, and the trading name and contact name of a third party. A contract or purchase order
- * reference (BT-12, BT-13) that differs from the contracts or orders of the transaction terms
- * is refused.
+ * or a third party, and the trading name and contact name of a third party. A contract or
+ * purchase order reference (BT-12, BT-13) that differs from the contracts or orders of the
+ * transaction terms is refused.
  *
  * Also refused: a seller VAT identifier (BT-31) that is not "PL" with a NIP of the schema
  * pattern, missing document totals, VAT categories and rates without an FA(3) rate code or
  * summary bucket, VAT breakdown rows whose lines map to different rate codes, decimals beyond
  * the schema (amounts 2, quantities and rates 6, unit prices and P_10 8), a half-open invoicing
  * period (BG-14), an actual delivery date (BT-72) that differs from the tax point date (BT-7),
- * a supply date (P_6) next to an invoicing period, which FA(3) offers as alternatives, and a
- * verbatim fragment that is not the element of its schema position.
+ * a supply date (P_6) next to an invoicing period, which FA(3) offers as alternatives, a
+ * verbatim fragment that is not the element of its schema position, and lists longer than the
+ * schema allows (WZ, RachunekBankowy, Podmiot3, DaneKontaktowe, Umowy, Zamowienia,
+ * NrPartiiTowaru).
+ *
+ * Kind-specific data is checked against the effective kind (the extension's, else the one
+ * derived from BT-3): correction data only on KOR, KOR_ZAL and KOR_ROZ; state-before rows only on
+ * corrections; partial advances only on ZAL, KOR_ZAL and ROZ; settled advance invoices only on
+ * ROZ and KOR_ROZ; the order and the advance exchange rate (KursWalutyZ) only on ZAL and KOR_ZAL,
+ * and an advance invoice (ZAL) needs the order; state-before order lines only on KOR_ZAL; bucket
+ * lines only on ZAL, KOR_ZAL and KOR; a margin scheme line needs the margin annotation. On a
+ * corrective invoice the preceding invoice references (BG-3) need an issue date (BT-26) when they
+ * stand in for the correction data, and must name a corrected invoice when correction data is
+ * given. The seller and buyers before the correction are refused like the parties, and the
+ * exchange rate before the correction needs the amount before it (P_15ZK).
+ *
+ * An invoice in a foreign currency needs the VAT in PLN of each bucket 1 to 4 it uses, and none
+ * for other buckets; VAT in PLN and the advance exchange rate are refused on an invoice in PLN.
+ * The VAT total in accounting currency (BT-111) must equal the sum of the VAT in PLN, or on an
+ * invoice in PLN the VAT total.
  */
 final class Fa3Guard
 {
@@ -61,6 +82,12 @@ final class Fa3Guard
     private const QUANTITY = 6;
 
     private const UNIT_PRICE = 8;
+
+    private const MAX_BANK_ACCOUNTS = 100;
+
+    private const MAX_TERMS_DOCUMENTS = 100;
+
+    private const MAX_BATCH_NUMBERS = 1000;
 
     /**
      * @throws InvalidArgumentException listing every violation
@@ -72,6 +99,11 @@ final class Fa3Guard
             ...self::unmapped($invoice, $polish),
             ...self::parties($invoice, $polish),
             ...self::kind($invoice, $polish),
+            ...self::kindSpecific($invoice, $polish),
+            ...self::precedingInvoices($invoice, $polish),
+            ...self::correctionParties($polish),
+            ...self::currency($invoice, $polish),
+            ...self::limits($invoice, $polish),
             ...self::fragments($polish),
             ...self::dates($invoice),
             ...self::rates($invoice),
@@ -119,18 +151,12 @@ final class Fa3Guard
         foreach ($invoice->notes as $index => $note) {
             $refuse($note->subjectCode !== null, sprintf('BT-21 (note %d)', $index + 1), 'FA(3) has no note subject code');
         }
-        $kind = self::kindOf($invoice, $polish);
-        $refuse(
-            $invoice->precedingInvoices !== [] && $kind?->isCorrection() !== true,
-            'BG-3',
-            'FA(3) references a preceding invoice only on a corrective invoice (KOR, KOR_ZAL, KOR_ROZ)',
-        );
         $exempted = $polish->annotations->exemption !== null;
         foreach ($invoice->vatBreakdown as $row) {
-            $label = sprintf(' (%s %s)', $row->category->value, $row->rate === null ? 'no rate' : $row->rate->__toString());
+            $label = substr(Fa3Buckets::label($row), strlen('BG-23 '));
             $hint = 'FA(3) states the exemption as P_19 with its legal basis; set Annotations::$exemption of the Polish invoice extension';
-            $refuse(! $exempted && $row->exemptionReason !== null, 'BT-120'.$label, $hint);
-            $refuse(! $exempted && $row->exemptionReasonCode !== null, 'BT-121'.$label, $hint);
+            $refuse(! $exempted && $row->exemptionReason !== null, 'BT-120 '.$label, $hint);
+            $refuse(! $exempted && $row->exemptionReasonCode !== null, 'BT-121 '.$label, $hint);
         }
         foreach ([[$invoice->seller->address, 'BT-39'], [$invoice->buyer->address, 'BT-54'], [$polish->seller?->correspondenceAddress, 'Podmiot1/AdresKoresp subdivision'], [$polish->buyer?->correspondenceAddress, 'Podmiot2/AdresKoresp subdivision']] as [$address, $term]) {
             $refuse($address?->subdivision !== null, $term, 'FA(3) addresses have no country subdivision');
@@ -331,12 +357,256 @@ final class Fa3Guard
      */
     private static function fragments(PolishInvoice $polish): array
     {
+        $expected = [
+            ['NoweSrodkiTransportu', $polish->annotations->newTransport],
+            ['PodmiotUpowazniony', $polish->authorizedParty],
+            ['Zalacznik', $polish->attachment],
+        ];
+        foreach ($polish->transactionTerms->transports ?? [] as $transport) {
+            $expected[] = ['Transport', $transport];
+        }
         $violations = [];
-        $expected = ['NoweSrodkiTransportu' => $polish->annotations->newTransport];
-        foreach ($expected as $name => $fragment) {
+        foreach ($expected as [$name, $fragment]) {
             if ($fragment !== null && $fragment->name !== $name) {
                 $violations[] = sprintf('%s: the fragment must be a %s element, got %s', $name, $name, $fragment->name);
             }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Data FA(3) carries only on some invoice kinds, checked against the effective kind (the
+     * extension's, else the one derived from BT-3).
+     *
+     * @return list<string>
+     */
+    private static function kindSpecific(Invoice $invoice, PolishInvoice $polish): array
+    {
+        $kind = self::kindOf($invoice, $polish);
+        if ($kind === null) {
+            return [];
+        }
+        $violations = [];
+        $refuse = static function (bool $present, string $term, string $reason) use (&$violations, $kind): void {
+            if ($present) {
+                $violations[] = sprintf('%s: %s, not %s', $term, $reason, $kind->value);
+            }
+        };
+        $in = static fn (InvoiceKind ...$kinds): bool => in_array($kind, $kinds, true);
+
+        $refuse($polish->correction !== null && ! $kind->isCorrection(), 'DaneFaKorygowanej', 'correction data is written only on a corrective invoice (KOR, KOR_ZAL, KOR_ROZ)');
+        $refuse($polish->partialAdvances !== [] && ! $in(InvoiceKind::Zal, InvoiceKind::KorZal, InvoiceKind::Roz), 'ZaliczkaCzesciowa', 'partial advance payments are written only on ZAL, KOR_ZAL and ROZ');
+        $refuse($polish->advanceInvoices !== [] && ! $in(InvoiceKind::Roz, InvoiceKind::KorRoz), 'FakturaZaliczkowa', 'settled advance invoices are written only on a settlement invoice or its correction (ROZ, KOR_ROZ)');
+        $refuse($polish->order !== null && ! $in(InvoiceKind::Zal, InvoiceKind::KorZal), 'Zamowienie', 'the order is written only on an advance invoice or its correction (ZAL, KOR_ZAL)');
+        $refuse($polish->exchangeRate !== null && ! $in(InvoiceKind::Zal, InvoiceKind::KorZal), 'KursWalutyZ', 'the exchange rate of an advance invoice is written only on ZAL and KOR_ZAL');
+        if ($kind === InvoiceKind::Zal && $polish->order === null) {
+            $violations[] = 'Zamowienie: an advance invoice (ZAL) needs the order or contract it refers to (art. 106f ust. 1 pkt 4 of the VAT Act)';
+        }
+        foreach ($polish->order->lines ?? [] as $index => $line) {
+            $refuse($line->stateBefore && $kind !== InvoiceKind::KorZal, sprintf('StanPrzedZ (order line %d)', $index + 1), 'a state-before order line is written only on a correction of an advance invoice (KOR_ZAL)');
+        }
+        foreach ($invoice->lines as $line) {
+            $polishLine = $line->extensions()->get(PolishLine::class);
+            $at = sprintf(' (line "%s")', $line->id);
+            $refuse($polishLine?->stateBefore === true && ! $kind->isCorrection(), 'StanPrzed'.$at, 'a state-before row is written only on a corrective invoice (KOR, KOR_ZAL, KOR_ROZ)');
+            $refuse($polishLine?->bucketLine === true && ! $in(InvoiceKind::Zal, InvoiceKind::KorZal, InvoiceKind::Kor), 'FaWiersz'.$at, 'a bucket line stands for an invoice without FaWiersz rows, which only ZAL, KOR_ZAL and KOR may be');
+            if ($polishLine?->margin === true && $polish->annotations->margin === null) {
+                $violations[] = sprintf('PMarzy: line "%s" is a margin scheme line, which needs the margin scheme annotation (Annotations::$margin)', $line->id);
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Preceding invoice references (BG-3) are carried by the correction block: on a corrective
+     * invoice without correction data they become the corrected invoices, otherwise each must
+     * name one of the corrected invoices.
+     *
+     * @return list<string>
+     */
+    private static function precedingInvoices(Invoice $invoice, PolishInvoice $polish): array
+    {
+        $kind = self::kindOf($invoice, $polish);
+        if ($invoice->precedingInvoices === [] || $kind === null) {
+            return [];
+        }
+        if (! $kind->isCorrection()) {
+            return ['BG-3: FA(3) references a preceding invoice only on a corrective invoice (KOR, KOR_ZAL, KOR_ROZ)'];
+        }
+        $violations = [];
+        foreach ($invoice->precedingInvoices as $reference) {
+            if ($polish->correction === null && $reference->issueDate === null) {
+                $violations[] = sprintf('BT-26 (BG-3 "%s"): FA(3) needs the issue date of the corrected invoice (DataWystFaKorygowanej)', $reference->number);
+            }
+            if ($polish->correction !== null && ! Fa3BlockWriter::references($reference, $polish->correction)) {
+                $violations[] = sprintf(
+                    'BG-3: "%s"%s conflicts with the corrected invoices of the correction data (DaneFaKorygowanej); give the reference in one place',
+                    $reference->number,
+                    $reference->issueDate === null ? '' : ' of '.$reference->issueDate->format('Y-m-d'),
+                );
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * The seller and buyers before the correction (Podmiot1K, Podmiot2K) and the amount before it.
+     *
+     * @return list<string>
+     */
+    private static function correctionParties(PolishInvoice $polish): array
+    {
+        $correction = $polish->correction;
+        if ($correction === null) {
+            return [];
+        }
+        $violations = [];
+        if ($correction->exchangeRateBefore !== null && $correction->amountBefore === null) {
+            $violations[] = 'KursWalutyZK: FA(3) writes the exchange rate before the correction only with the amount before it (P_15ZK)';
+        }
+        $seller = $correction->sellerBefore;
+        if ($seller !== null) {
+            $nip = Fa3PartyWriter::nip($seller->vatIdentifier);
+            if ($nip === null || ! Nip::isWellFormed($nip)) {
+                $violations[] = 'Podmiot1K: FA(3) needs the seller VAT identifier before the correction as "PL" followed by a 10 digit NIP';
+            }
+            if ($seller->address === null || Fa3PartyWriter::addressLine1($seller->address) === null) {
+                $violations[] = 'Podmiot1K: FA(3) requires the seller address before the correction with at least one address line (Adres/AdresL1)';
+            }
+            foreach (['identifiers' => $seller->identifiers !== [], 'legal registration' => $seller->legalRegistration !== null, 'tax registration' => $seller->taxRegistration !== null, 'additional legal information' => $seller->additionalLegalInformation !== null] as $field => $present) {
+                if ($present) {
+                    $violations[] = sprintf('Podmiot1K %s: FA(3) has no element for it', $field);
+                }
+            }
+            $violations = [...$violations, ...self::unmappedPartyDetails($seller, 'Podmiot1K')];
+        }
+        foreach ($correction->buyersBefore as $index => $buyer) {
+            $at = sprintf('Podmiot2K[%d]', $index + 1);
+            $violations = [
+                ...$violations,
+                ...self::identification($buyer, $at, $at.' VAT identifier', $at.' identifiers', $at.' legal registration', $at.' legal registration scheme', $at.' electronic address'),
+                ...self::unmappedPartyDetails($buyer, $at),
+            ];
+            if ($buyer->address !== null && Fa3PartyWriter::addressLine1($buyer->address) === null) {
+                $violations[] = $at.': FA(3) requires at least one address line (AdresL1)';
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Party details a party before the correction has no element for.
+     *
+     * @return list<string>
+     */
+    private static function unmappedPartyDetails(Party $party, string $label): array
+    {
+        $violations = [];
+        if ($party->tradingName !== null) {
+            $violations[] = $label.' trading name: FA(3) has no element for it';
+        }
+        if ($party->contact !== null) {
+            $violations[] = $label.' contact: FA(3) has no contact data for a party before the correction';
+        }
+        if ($party->address?->subdivision !== null) {
+            $violations[] = $label.' subdivision: FA(3) addresses have no country subdivision';
+        }
+        if ($label === 'Podmiot1K' && $party->electronicAddress !== null) {
+            $violations[] = $label.' electronic address: FA(3) has no element for it';
+        }
+
+        return $violations;
+    }
+
+    /**
+     * VAT in PLN (P_14_1W to P_14_4W) is supplied for each bucket 1 to 4 of an invoice in a
+     * foreign currency, and only there; the VAT total in accounting currency (BT-111) must agree.
+     *
+     * @return list<string>
+     */
+    private static function currency(Invoice $invoice, PolishInvoice $polish): array
+    {
+        $violations = [];
+        $foreign = $invoice->currency !== CurrencyCode::PLN;
+        if (! $foreign) {
+            foreach (array_keys($polish->vatInPln) as $key) {
+                $violations[] = sprintf('P_14_%dW: VAT in PLN is written only on an invoice in a foreign currency, this one is in PLN', $key);
+            }
+            if ($polish->exchangeRate !== null) {
+                $violations[] = 'KursWalutyZ: the exchange rate is written only on an invoice in a foreign currency, this one is in PLN';
+            }
+            $accounting = $invoice->totals?->totalVatInAccountingCurrency;
+            $total = $invoice->totals->totalVat ?? BigDecimal::zero();
+            if ($accounting !== null && ! $accounting->isEqualTo($total)) {
+                $violations[] = sprintf('BT-111: %s differs from the VAT total %s of an invoice in PLN', $accounting, $total);
+            }
+
+            return $violations;
+        }
+
+        try {
+            $buckets = array_map(static fn (array $entry): VatBucket => $entry[0], Fa3Buckets::of($invoice));
+        } catch (InvalidArgumentException) {
+            return [];
+        }
+        foreach ($buckets as $bucket) {
+            if ($bucket->plnVatElement() !== null && $polish->vatInPlnFor($bucket) === null) {
+                $violations[] = sprintf(
+                    '%s: an invoice in %s needs the VAT in PLN of bucket %s (PolishInvoice::$vatInPln); it is supplied by the issuer, never computed',
+                    $bucket->plnVatElement(),
+                    $invoice->currency->value,
+                    $bucket->value,
+                );
+            }
+        }
+        foreach (array_keys($polish->vatInPln) as $key) {
+            if (! in_array(VatBucket::from((string) $key), $buckets, true)) {
+                $violations[] = sprintf('P_14_%dW: VAT in PLN is supplied for bucket %d, which the invoice does not use (no P_13_%d)', $key, $key, $key);
+            }
+        }
+        $accounting = $invoice->totals?->totalVatInAccountingCurrency;
+        $supplied = array_reduce($polish->vatInPln, static fn (BigDecimal $sum, BigDecimal $amount): BigDecimal => $sum->plus($amount), BigDecimal::zero());
+        if ($accounting !== null && ! $accounting->isEqualTo($supplied)) {
+            $violations[] = sprintf('BT-111: %s differs from the sum %s of the VAT in PLN (P_14_xW); FA(3) carries the VAT in PLN per bucket only', $accounting, $supplied);
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Occurrence limits of the schema that the model does not enforce on its own.
+     *
+     * @return list<string>
+     */
+    private static function limits(Invoice $invoice, PolishInvoice $polish): array
+    {
+        $violations = [];
+        $limit = static function (int $count, string $element, int $max) use (&$violations): void {
+            if ($count > $max) {
+                $violations[] = sprintf('%s: occurs %d times; FA(3) allows at most %d', $element, $count, $max);
+            }
+        };
+
+        $limit(count(Fa3Writer::warehouseDocuments($invoice, $polish)), 'WZ', PolishInvoice::MAX_WAREHOUSE_DOCUMENTS);
+        $limit(count(Fa3Writer::bankAccounts($invoice, $polish)), 'RachunekBankowy', self::MAX_BANK_ACCOUNTS);
+        $limit(count($polish->thirdParties), 'Podmiot3', PolishInvoice::MAX_THIRD_PARTIES);
+        $contacts = static fn (?Contact $contact, ?PolishParty $extras): int => $extras !== null && $extras->contacts !== []
+            ? count($extras->contacts)
+            : ($contact?->email !== null || $contact?->phone !== null ? 1 : 0);
+        $limit($contacts($invoice->seller->contact, $polish->seller), 'Podmiot1/DaneKontaktowe', PolishParty::MAX_CONTACTS);
+        $limit($contacts($invoice->buyer->contact, $polish->buyer), 'Podmiot2/DaneKontaktowe', PolishParty::MAX_CONTACTS);
+        foreach ($polish->thirdParties as $index => $thirdParty) {
+            $limit($contacts($thirdParty->party->contact, $thirdParty->extras), sprintf('Podmiot3[%d]/DaneKontaktowe', $index + 1), PolishParty::MAX_CONTACTS);
+        }
+        $terms = $polish->transactionTerms;
+        if ($terms !== null) {
+            $limit(count($terms->contracts), 'WarunkiTransakcji/Umowy', self::MAX_TERMS_DOCUMENTS);
+            $limit(count($terms->orders), 'WarunkiTransakcji/Zamowienia', self::MAX_TERMS_DOCUMENTS);
+            $limit(count($terms->batchNumbers), 'WarunkiTransakcji/NrPartiiTowaru', self::MAX_BATCH_NUMBERS);
         }
 
         return $violations;
@@ -425,10 +695,58 @@ final class Fa3Guard
             $check('KursWaluty'.$at, $polish?->exchangeRate, self::QUANTITY);
         }
 
+        return [...$violations, ...self::extensionDecimals($invoice->extensions()->get(PolishInvoice::class) ?? new PolishInvoice)];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function extensionDecimals(PolishInvoice $polish): array
+    {
+        $violations = [];
+        $check = static function (string $term, ?BigDecimal $value, int $max) use (&$violations): void {
+            if ($value !== null && $value->getScale() > $max) {
+                $violations[] = sprintf('%s: %s has more than %d decimals', $term, (string) $value, $max);
+            }
+        };
+
+        foreach ($polish->vatInPln as $key => $amount) {
+            $check(sprintf('P_14_%dW', $key), $amount, self::AMOUNT);
+        }
+        $check('KursWalutyZ', $polish->exchangeRate, self::QUANTITY);
+        foreach ($polish->thirdParties as $index => $thirdParty) {
+            $check(sprintf('Podmiot3[%d] Udzial', $index + 1), $thirdParty->share, self::QUANTITY);
+        }
+        foreach ($polish->partialAdvances as $index => $advance) {
+            $at = sprintf(' (ZaliczkaCzesciowa %d)', $index + 1);
+            $check('P_15Z'.$at, $advance->amount, self::AMOUNT);
+            $check('KursWalutyZW'.$at, $advance->exchangeRate, self::QUANTITY);
+        }
+        $check('P_15ZK', $polish->correction?->amountBefore, self::AMOUNT);
+        $check('KursWalutyZK', $polish->correction?->exchangeRateBefore, self::QUANTITY);
+        foreach ([...$polish->settlement->charges ?? [], ...$polish->settlement->deductions ?? []] as $entry) {
+            $check(sprintf('Rozliczenie Kwota ("%s")', $entry->reason), $entry->amount, self::AMOUNT);
+        }
+        $check('KursUmowny', $polish->transactionTerms?->contractRate, self::QUANTITY);
+        $check('WartoscZamowienia', $polish->order?->value, self::AMOUNT);
+        foreach ($polish->order->lines ?? [] as $index => $line) {
+            $at = sprintf(' (order line %d)', $index + 1);
+            $check('P_8BZ'.$at, $line->quantity, self::QUANTITY);
+            $check('P_9AZ'.$at, $line->unitNetPrice, self::UNIT_PRICE);
+            $check('P_11NettoZ'.$at, $line->netAmount, self::AMOUNT);
+            $check('P_11VatZ'.$at, $line->vatAmount, self::AMOUNT);
+            $check('P_12Z_XII'.$at, $line->ossRate, self::QUANTITY);
+            $check('KwotaAkcyzyZ'.$at, $line->excise, self::AMOUNT);
+        }
+
         return $violations;
     }
 
-    private static function kindOf(Invoice $invoice, PolishInvoice $polish): ?InvoiceKind
+    /**
+     * The effective invoice kind: the extension's kind, else the kind implied by the invoice type
+     * code (BT-3); null when neither gives one.
+     */
+    public static function kindOf(Invoice $invoice, PolishInvoice $polish): ?InvoiceKind
     {
         return $polish->kind ?? InvoiceKind::fromTypeCode($invoice->type);
     }

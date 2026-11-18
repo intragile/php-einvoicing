@@ -15,8 +15,9 @@ use IntrAgile\EInvoicing\Poland\PolishParty;
 use IntrAgile\EInvoicing\Poland\ThirdParty;
 
 /**
- * Writes the FA(3) parties: the seller (Podmiot1), the buyer (Podmiot2) and the third parties
- * (Podmiot3).
+ * Writes the FA(3) parties: the seller (Podmiot1), the buyer (Podmiot2), the third parties
+ * (Podmiot3), and the seller and buyers as shown on a corrected invoice (Podmiot1K,
+ * Podmiot2K).
  *
  * Addresses: AdresL1 joins the address lines with ", ", AdresL2 is "post code city" and is left
  * out when empty. Contacts (DaneKontaktowe) are the Polish contact entries, else the e-mail
@@ -84,6 +85,28 @@ final class Fa3PartyWriter
         }
         $output->decimal($element, 'Udzial', $thirdParty->share);
         $output->text($element, 'NrKlienta', $extras?->customerNumber);
+    }
+
+    /**
+     * The seller as shown on the corrected invoice (Podmiot1K): NIP, name and address.
+     */
+    public static function sellerBefore(Fa3Output $output, DOMElement $fa, Party $seller): void
+    {
+        $element = $output->add($fa, 'Podmiot1K');
+        $identification = $output->add($element, 'DaneIdentyfikacyjne');
+        $output->text($identification, 'NIP', self::nip($seller->vatIdentifier));
+        $output->text($identification, 'Nazwa', $seller->name);
+        self::address($output, $element, 'Adres', $seller->address);
+    }
+
+    /**
+     * A buyer as shown on the corrected invoice (Podmiot2K): identification and address.
+     */
+    public static function buyerBefore(Fa3Output $output, DOMElement $fa, Party $buyer): void
+    {
+        $element = $output->add($fa, 'Podmiot2K');
+        self::identification($output, $element, $buyer, null);
+        self::address($output, $element, 'Adres', $buyer->address);
     }
 
     /**

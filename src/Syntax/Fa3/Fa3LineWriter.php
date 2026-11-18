@@ -22,6 +22,11 @@ use InvalidArgumentException;
  * UU_ID when it differs from that number. The unit (P_8A) is the Polish unit label, else the
  * UN/ECE code of BT-130. P_10 is the sum of the line allowances (BT-136).
  *
+ * A state-before row of a correction (PolishLine::$stateBefore) is held in storno form, so the
+ * invoice totals give the difference; it is written with StanPrzed = 1 and the sign of its
+ * quantity and amounts (P_8B, P_10, P_11, P_11A, P_11Vat, KwotaAkcyzy) restored. Unit prices are
+ * written as held.
+ *
  * @internal
  */
 final class Fa3LineWriter
@@ -75,6 +80,8 @@ final class Fa3LineWriter
     public static function write(Fa3Output $output, DOMElement $fa, InvoiceLine $line, int $position, ?CountryCode $buyerCountry): void
     {
         $polish = $line->extensions()->get(PolishLine::class);
+        $before = $polish?->stateBefore === true;
+        $sign = static fn (?BigDecimal $value): ?BigDecimal => $before ? $value?->negated() : $value;
         $item = $line->item;
         $row = $output->add($fa, 'FaWiersz');
 
@@ -88,22 +95,25 @@ final class Fa3LineWriter
         $output->text($row, 'CN', $polish?->cn);
         $output->text($row, 'PKOB', $polish?->pkob);
         $output->text($row, 'P_8A', $polish->unitLabel ?? $line->unit->value);
-        $output->decimal($row, 'P_8B', $line->quantity);
+        $output->decimal($row, 'P_8B', $sign($line->quantity));
         $output->decimal($row, 'P_9A', $line->price->netPrice);
         $output->decimal($row, 'P_9B', $polish?->grossUnitPrice);
-        $output->decimal($row, 'P_10', self::allowanceTotal($line));
-        $output->decimal($row, 'P_11', $line->netAmount);
-        $output->decimal($row, 'P_11A', $polish?->grossAmount);
-        $output->decimal($row, 'P_11Vat', $polish?->vatAmount);
+        $output->decimal($row, 'P_10', $sign(self::allowanceTotal($line)));
+        $output->decimal($row, 'P_11', $sign($line->netAmount));
+        $output->decimal($row, 'P_11A', $sign($polish?->grossAmount));
+        $output->decimal($row, 'P_11Vat', $sign($polish?->vatAmount));
         $output->text($row, 'P_12', self::rateCode($line, $buyerCountry)?->value);
         $output->decimal($row, 'P_12_XII', $polish?->ossRate);
         if ($polish?->annex15 === true) {
             $output->marker($row, 'P_12_Zal_15');
         }
-        $output->decimal($row, 'KwotaAkcyzy', $polish?->excise);
+        $output->decimal($row, 'KwotaAkcyzy', $sign($polish?->excise));
         $output->text($row, 'GTU', $polish?->gtu?->value);
         $output->text($row, 'Procedura', $polish?->procedure?->value);
         $output->decimal($row, 'KursWaluty', $polish?->exchangeRate);
+        if ($before) {
+            $output->marker($row, 'StanPrzed');
+        }
     }
 
     /**

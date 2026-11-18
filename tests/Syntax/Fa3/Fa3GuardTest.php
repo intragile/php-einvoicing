@@ -15,8 +15,10 @@ use IntrAgile\EInvoicing\CodeList\TextSubjectCode;
 use IntrAgile\EInvoicing\CodeList\UnitCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Model\Contact;
+use IntrAgile\EInvoicing\Model\CreditTransfer;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\DocumentAllowance;
+use IntrAgile\EInvoicing\Model\DocumentTotals;
 use IntrAgile\EInvoicing\Model\ElectronicAddress;
 use IntrAgile\EInvoicing\Model\Identifier;
 use IntrAgile\EInvoicing\Model\Invoice;
@@ -34,9 +36,11 @@ use IntrAgile\EInvoicing\Model\PrecedingInvoiceReference;
 use IntrAgile\EInvoicing\Model\Price;
 use IntrAgile\EInvoicing\Model\TaxRegistration;
 use IntrAgile\EInvoicing\Poland\Annotations;
+use IntrAgile\EInvoicing\Poland\ContactDetails;
 use IntrAgile\EInvoicing\Poland\DocumentReference;
 use IntrAgile\EInvoicing\Poland\PolishInvoice;
 use IntrAgile\EInvoicing\Poland\PolishLine;
+use IntrAgile\EInvoicing\Poland\PolishParty;
 use IntrAgile\EInvoicing\Poland\RawFragment;
 use IntrAgile\EInvoicing\Poland\ThirdParty;
 use IntrAgile\EInvoicing\Poland\ThirdPartyRole;
@@ -50,6 +54,7 @@ use IntrAgile\EInvoicing\Tests\Support\PolishInvoices;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 
 final class Fa3GuardTest extends TestCase
 {
@@ -57,7 +62,7 @@ final class Fa3GuardTest extends TestCase
 
     public function test_factories_pass_the_guard(): void
     {
-        foreach (PolishInvoices::all() as $invoice) {
+        foreach ([...PolishInvoices::all(), ...PolishInvoices::kinds()] as $invoice) {
             Fa3Guard::check($invoice);
         }
         $this->addToAssertionCount(1);
@@ -292,12 +297,135 @@ final class Fa3GuardTest extends TestCase
         self::assertStringContainsString('NoweSrodkiTransportu: ', self::refusal($invoice));
     }
 
+    public function test_misnamed_pass_through_fragments_are_refused(): void
+    {
+        $wrong = new RawFragment('<Stopka xmlns="'.Fa3Format::NS.'"/>');
+        $invoice = PolishInvoices::domestic()->withExtension(new PolishInvoice(
+            transactionTerms: new TransactionTerms(transports: [$wrong]),
+            authorizedParty: $wrong,
+            attachment: $wrong,
+        ));
+        $message = self::refusal($invoice);
+
+        foreach (['Transport: ', 'PodmiotUpowazniony: ', 'Zalacznik: '] as $expected) {
+            self::assertStringContainsString($expected, $message);
+        }
+    }
+
+    public function test_occurrence_limits_are_refused_by_name(): void
+    {
+        $invoice = PolishInvoices::domestic()
+            ->withDespatchAdviceReference('WZ/0')
+            ->withPayment(new PaymentInstructions(
+                PaymentMeansCode::C_30,
+                creditTransfers: array_map(static fn (int $i): CreditTransfer => new CreditTransfer(PolishInvoices::ACCOUNT), range(1, 101)),
+            ))
+            ->withExtension(new PolishInvoice(
+                warehouseDocuments: array_map(static fn (int $i): string => 'WZ/'.$i, range(1, 1000)),
+                transactionTerms: new TransactionTerms(
+                    contracts: array_map(static fn (int $i): DocumentReference => new DocumentReference(number: 'U/'.$i), range(1, 101)),
+                    orders: array_map(static fn (int $i): DocumentReference => new DocumentReference(number: 'Z/'.$i), range(1, 101)),
+                    batchNumbers: array_map(static fn (int $i): string => 'P/'.$i, range(1, 1001)),
+                ),
+            ));
+        $message = self::refusal($invoice);
+
+        foreach ([
+            'WZ: occurs 1001 times; FA(3) allows at most 1000',
+            'RachunekBankowy: occurs 101 times; FA(3) allows at most 100',
+            'WarunkiTransakcji/Umowy: occurs 101 times',
+            'WarunkiTransakcji/Zamowienia: occurs 101 times',
+            'WarunkiTransakcji/NrPartiiTowaru: occurs 1001 times',
+        ] as $expected) {
+            self::assertStringContainsString($expected, $message);
+        }
+    }
+
+    public function test_third_party_and_contact_limits_are_refused_by_name(): void
+    {
+        $base = PolishInvoices::jstBuyer();
+        $polish = $base->extensions()->get(PolishInvoice::class);
+        self::assertInstanceOf(PolishInvoice::class, $polish);
+        $contacts = array_map(static fn (int $i): ContactDetails => new ContactDetails(phone: '22000000'.$i), range(1, 4));
+        $invoice = $base->withExtension(self::forge($polish, [
+            'thirdParties' => array_fill(0, 101, $polish->thirdParties[0]),
+            'seller' => self::forge(new PolishParty, ['contacts' => $contacts]),
+        ]));
+        $message = self::refusal($invoice);
+
+        self::assertStringContainsString('Podmiot3: occurs 101 times; FA(3) allows at most 100', $message);
+        self::assertStringContainsString('Podmiot1/DaneKontaktowe: occurs 4 times; FA(3) allows at most 3', $message);
+    }
+
+    public function test_share_beyond_six_decimals_is_refused(): void
+    {
+        $base = PolishInvoices::jstBuyer();
+        $thirdParty = $base->extensions()->get(PolishInvoice::class)?->thirdParties[0];
+        self::assertInstanceOf(ThirdParty::class, $thirdParty);
+        $invoice = $base->withExtension(new PolishInvoice(
+            buyerIsJstUnit: true,
+            thirdParties: [new ThirdParty($thirdParty->party, ThirdPartyRole::JstRecipient, share: '12.1234567')],
+        ));
+
+        self::assertStringContainsString('Podmiot3[1] Udzial: 12.1234567 has more than 6 decimals', self::refusal($invoice));
+    }
+
+    public function test_vat_total_in_accounting_currency_must_match(): void
+    {
+        $invoice = PolishInvoices::advanceInEuro();
+        self::assertNotNull($invoice->totals);
+        $totals = $invoice->totals;
+        $conflict = $invoice->withTotals(new DocumentTotals(
+            $totals->sumOfLineNetAmounts,
+            $totals->totalWithoutVat,
+            $totals->totalWithVat,
+            $totals->amountDue,
+            totalVat: $totals->totalVat,
+            totalVatInAccountingCurrency: '3351.16',
+        ));
+        self::assertStringContainsString('BT-111: 3351.16 differs from the sum 3351.17', self::refusal($conflict));
+
+        $domestic = PolishInvoices::domestic();
+        self::assertNotNull($domestic->totals);
+        $pln = $domestic->withTotals(new DocumentTotals(
+            $domestic->totals->sumOfLineNetAmounts,
+            $domestic->totals->totalWithoutVat,
+            $domestic->totals->totalWithVat,
+            $domestic->totals->amountDue,
+            totalVat: $domestic->totals->totalVat,
+            totalVatInAccountingCurrency: '1.00',
+        ));
+        self::assertStringContainsString('BT-111: 1.00 differs', self::refusal($pln));
+    }
+
     public function test_writer_runs_the_guard(): void
     {
         $exception = self::capture(static fn () => (new Fa3Writer)->write(PolishInvoices::domestic()->withTotals(null)));
 
         self::assertInstanceOf(InvalidArgumentException::class, $exception);
         self::assertStringContainsString('TotalsCalculator', $exception->getMessage());
+    }
+
+    /**
+     * A copy of a readonly value object with some properties replaced, bypassing its constructor,
+     * to reach the guard with values the constructor would refuse.
+     *
+     * @template T of object
+     *
+     * @param  T  $object
+     * @param  array<string, mixed>  $overrides
+     * @return T
+     */
+    private static function forge(object $object, array $overrides): object
+    {
+        $class = new ReflectionClass($object);
+        $copy = $class->newInstanceWithoutConstructor();
+        foreach ($class->getProperties() as $property) {
+            $name = $property->getName();
+            $property->setValue($copy, array_key_exists($name, $overrides) ? $overrides[$name] : $property->getValue($object));
+        }
+
+        return $copy;
     }
 
     private static function refusal(Invoice $invoice): string

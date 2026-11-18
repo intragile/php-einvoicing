@@ -24,7 +24,8 @@ use InvalidArgumentException;
 final class Fa3Buckets
 {
     /**
-     * The net and VAT amount per bucket, in schema order.
+     * The net and VAT amount per bucket, in schema order. Callers run Fa3Guard first, which
+     * reports every row and line this method would refuse, with its term.
      *
      * @return list<array{VatBucket, BigDecimal, BigDecimal}>
      *
@@ -119,7 +120,10 @@ final class Fa3Buckets
         return $row->rate->isEqualTo($line->vat->rate);
     }
 
-    private static function label(VatBreakdown $row): string
+    /**
+     * The label of a VAT breakdown row in guard messages, "BG-23 (<category> <rate>)".
+     */
+    public static function label(VatBreakdown $row): string
     {
         return sprintf('BG-23 (%s %s)', $row->category->value, $row->rate === null ? 'no rate' : $row->rate->__toString());
     }

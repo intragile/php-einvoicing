@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Support;
 
 use DateTimeImmutable;
+use DOMDocument;
 use IntrAgile\EInvoicing\Calculation\TotalsCalculator;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
@@ -22,13 +23,32 @@ use IntrAgile\EInvoicing\Model\Party;
 use IntrAgile\EInvoicing\Model\PaymentInstructions;
 use IntrAgile\EInvoicing\Model\PostalAddress;
 use IntrAgile\EInvoicing\Model\Price;
+use IntrAgile\EInvoicing\Poland\AdvanceInvoiceReference;
 use IntrAgile\EInvoicing\Poland\Annotations;
+use IntrAgile\EInvoicing\Poland\CorrectedInvoice;
+use IntrAgile\EInvoicing\Poland\Correction;
+use IntrAgile\EInvoicing\Poland\CorrectionEffect;
+use IntrAgile\EInvoicing\Poland\DocumentReference;
 use IntrAgile\EInvoicing\Poland\Exemption;
 use IntrAgile\EInvoicing\Poland\ExemptionBasis;
+use IntrAgile\EInvoicing\Poland\InvoiceKind;
+use IntrAgile\EInvoicing\Poland\KsefNumber;
+use IntrAgile\EInvoicing\Poland\MarginScheme;
+use IntrAgile\EInvoicing\Poland\Order;
+use IntrAgile\EInvoicing\Poland\OrderLine;
+use IntrAgile\EInvoicing\Poland\PartialAdvance;
 use IntrAgile\EInvoicing\Poland\PolishInvoice;
+use IntrAgile\EInvoicing\Poland\PolishLine;
 use IntrAgile\EInvoicing\Poland\PolishParty;
+use IntrAgile\EInvoicing\Poland\RawFragment;
+use IntrAgile\EInvoicing\Poland\Settlement;
+use IntrAgile\EInvoicing\Poland\SettlementEntry;
 use IntrAgile\EInvoicing\Poland\ThirdParty;
 use IntrAgile\EInvoicing\Poland\ThirdPartyRole;
+use IntrAgile\EInvoicing\Poland\TransactionTerms;
+use IntrAgile\EInvoicing\Poland\VatRateCode;
+use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Format;
+use LogicException;
 
 /**
  * Polish FA(3) invoices for tests, with synthetic parties and checksum-valid synthetic NIPs.
@@ -45,6 +65,9 @@ final class PolishInvoices
     public const JST_UNIT_NIP = '3333333333';
 
     public const ACCOUNT = 'PL61109010140000071219812874';
+
+    /** KSeF number of the corrected invoice of brochure example 14, with its checksum recomputed. */
+    public const CORRECTED_KSEF_NUMBER = '9999999999-20260714-D5FB0C9ED490-19';
 
     /**
      * Domestic B2B invoice in PLN: two lines at 23 %, one at 8 %, due date and credit transfer.
@@ -179,6 +202,204 @@ final class PolishInvoices
     }
 
     /**
+     * Corrective invoice (KOR, derived from type code 384) for goods returned under invoice
+     * FV/110/07/2026, written as state-before and state-after rows. The before rows are held in
+     * storno form, so the totals are the differences.
+     */
+    public static function correctionBeforeAfter(): Invoice
+    {
+        $before = static fn (InvoiceLine $line): InvoiceLine => $line
+            ->withQuantity($line->quantity->negated())
+            ->withExtension(new PolishLine(unitLabel: 'szt.', stateBefore: true));
+        $after = static fn (InvoiceLine $line): InvoiceLine => $line->withExtension(new PolishLine(unitLabel: 'szt.'));
+
+        return self::complete(self::draft(
+            buyer: self::polishBuyer(),
+            lines: [
+                $before(self::line('1', 'Koc polarowy', '3', UnitCode::H87, '90.00', VatCategory::StandardRate, '23')),
+                $after(self::line('2', 'Koc polarowy', '2', UnitCode::H87, '90.00', VatCategory::StandardRate, '23')),
+                $before(self::line('3', 'Pościel bawełniana', '5', UnitCode::H87, '120.00', VatCategory::StandardRate, '23')),
+                $after(self::line('4', 'Pościel bawełniana', '3', UnitCode::H87, '120.00', VatCategory::StandardRate, '23')),
+            ],
+            polish: new PolishInvoice(correction: new Correction(
+                invoices: [new CorrectedInvoice('FV/110/07/2026', new DateTimeImmutable('2026-07-14'), KsefNumber::parse(self::CORRECTED_KSEF_NUMBER))],
+                reason: 'Zwrot towaru',
+                effect: CorrectionEffect::CorrectionDate,
+            )),
+            number: 'FK/1/09/2026',
+            issueDate: '2026-09-10',
+            type: InvoiceTypeCode::C_384,
+        ));
+    }
+
+    /**
+     * Advance invoice (ZAL) in euro documenting three partial advance payments with their
+     * exchange rates; no FaWiersz, the 23 % bucket is carried by one bucket line, and the VAT in
+     * PLN is supplied.
+     */
+    public static function advanceInEuro(): Invoice
+    {
+        return self::complete(self::draft(
+            buyer: self::polishBuyer(),
+            lines: [self::bucketLine('3252.03', '23')],
+            polish: new PolishInvoice(
+                kind: InvoiceKind::Zal,
+                partialAdvances: [
+                    new PartialAdvance(new DateTimeImmutable('2026-09-10'), '500', '4.4512'),
+                    new PartialAdvance(new DateTimeImmutable('2026-09-15'), '2500', '4.4724'),
+                    new PartialAdvance(new DateTimeImmutable('2026-09-20'), '1000', '4.5148'),
+                ],
+                order: new Order('10000.00', [new OrderLine(
+                    name: 'Linia do pakowania',
+                    unitLabel: 'szt.',
+                    quantity: '1',
+                    unitNetPrice: '8130.08',
+                    netAmount: '8130.08',
+                    vatAmount: '1869.92',
+                    rateCode: VatRateCode::Rate23,
+                )]),
+                vatInPln: [1 => '3351.17'],
+            ),
+            number: 'FZ/7/09/2026',
+            issueDate: '2026-09-20',
+            type: InvoiceTypeCode::C_386,
+            currency: CurrencyCode::EUR,
+        ));
+    }
+
+    /**
+     * Settlement invoice (ROZ) closing two advance invoices issued outside KSeF; P_15 is the
+     * amount still due after the advances (BT-115).
+     */
+    public static function settlementOfAdvances(): Invoice
+    {
+        return self::complete(self::draft(
+            buyer: self::polishBuyer(),
+            lines: [self::line('1', 'Regał magazynowy', '10', UnitCode::H87, '1000.00', VatCategory::StandardRate, '23')],
+            polish: new PolishInvoice(
+                kind: InvoiceKind::Roz,
+                advanceInvoices: [
+                    new AdvanceInvoiceReference(number: 'FZ/123/07/2025'),
+                    new AdvanceInvoiceReference(number: 'FZ/133/08/2025'),
+                ],
+            ),
+            number: 'FR/1/09/2026',
+            issueDate: '2026-09-10',
+        ), '8610.00');
+    }
+
+    /**
+     * Supply of a used car under the margin scheme (P_PMarzy_3_1): the line carries no VAT rate
+     * and feeds P_13_11.
+     */
+    public static function usedCarMargin(): Invoice
+    {
+        return self::complete(self::draft(
+            buyer: self::polishBuyer(),
+            lines: [self::line('1', 'Samochód osobowy używany', '1', UnitCode::H87, '50000.00', VatCategory::NotSubjectToVat, null)
+                ->withExtension(new PolishLine(margin: true))],
+            polish: new PolishInvoice(annotations: new Annotations(margin: MarginScheme::UsedGoods)),
+        ));
+    }
+
+    /**
+     * Legal service of 200.00 net at 23 % with a charge of 17 and a deduction of 300 in
+     * Rozliczenie: 246 + 17 - 300 leaves 37 to settle (DoRozliczenia).
+     */
+    public static function withSettlement(): Invoice
+    {
+        return self::complete(self::draft(
+            buyer: self::polishBuyer(),
+            lines: [self::line('1', 'Stała obsługa prawna i biurowa', '1', UnitCode::C62, '200.00', VatCategory::StandardRate, '23')],
+            polish: new PolishInvoice(settlement: new Settlement(
+                charges: [new SettlementEntry('17.00', 'Zwrot kosztów - opłata skarbowa')],
+                deductions: [new SettlementEntry('300.00', 'Rozliczenie salda klienta')],
+            )),
+        ));
+    }
+
+    /**
+     * Split payment (P_18A) for annex 15 goods (P_12_Zal_15) with a gross total above 15000 PLN.
+     */
+    public static function splitPayment(): Invoice
+    {
+        return self::complete(self::draft(
+            buyer: self::polishBuyer(),
+            lines: [self::line('1', 'Komputer przenośny', '5', UnitCode::H87, '2500.00', VatCategory::StandardRate, '23')
+                ->withExtension(new PolishLine(annex15: true))],
+            polish: new PolishInvoice(annotations: new Annotations(splitPayment: true)),
+        ));
+    }
+
+    /**
+     * Transaction terms with the transport block and the attachment (Zalacznik) of the official
+     * templates, carried verbatim.
+     */
+    public static function withTransportAndAttachment(): Invoice
+    {
+        return self::complete(self::draft(
+            buyer: self::polishBuyer(),
+            lines: [self::line('1', 'Energia elektryczna czynna', '20', UnitCode::KWH, '0.90', VatCategory::StandardRate, '23')],
+            polish: new PolishInvoice(
+                transactionTerms: new TransactionTerms(
+                    orders: [new DocumentReference(new DateTimeImmutable('2026-01-26'), '4354343')],
+                    batchNumbers: ['2312323/2026'],
+                    deliveryTerms: 'CIP',
+                    transports: [self::officialFragment('invoice-template-fa-3-with-custom-Subject3.xml', 'Transport')],
+                ),
+                attachment: self::officialFragment('invoice-template-fa-3-with-attachment.xml', 'Zalacznik'),
+            ),
+        ));
+    }
+
+    /**
+     * The invoices of every FA(3) invoice kind and special block.
+     *
+     * @return array<string, Invoice>
+     */
+    public static function kinds(): array
+    {
+        return [
+            'correctionBeforeAfter' => self::correctionBeforeAfter(),
+            'advanceInEuro' => self::advanceInEuro(),
+            'settlementOfAdvances' => self::settlementOfAdvances(),
+            'usedCarMargin' => self::usedCarMargin(),
+            'withSettlement' => self::withSettlement(),
+            'splitPayment' => self::splitPayment(),
+            'withTransportAndAttachment' => self::withTransportAndAttachment(),
+        ];
+    }
+
+    /**
+     * A synthetic line standing for one P_13 bucket of an invoice without FaWiersz rows.
+     *
+     * @param  numeric-string  $net
+     * @param  numeric-string  $rate
+     */
+    public static function bucketLine(string $net, string $rate): InvoiceLine
+    {
+        return self::line('1', 'P_13_1', '1', UnitCode::C62, $net, VatCategory::StandardRate, $rate)
+            ->withExtension(new PolishLine(bucketLine: true));
+    }
+
+    /**
+     * One element of an official template, as a verbatim fragment in the FA(3) namespace.
+     */
+    public static function officialFragment(string $template, string $name): RawFragment
+    {
+        $source = new DOMDocument;
+        $source->loadXML(PolishSamples::official($template));
+        $element = $source->getElementsByTagNameNS(Fa3Format::NS, $name)->item(0);
+        if ($element === null) {
+            throw new LogicException(sprintf('The template %s has no %s element.', $template, $name));
+        }
+        $fragment = new DOMDocument;
+        $fragment->appendChild($fragment->importNode($element, true));
+
+        return new RawFragment((string) $fragment->saveXML($fragment->documentElement));
+    }
+
+    /**
      * @param  numeric-string  $quantity
      * @param  numeric-string  $price
      * @param  numeric-string|null  $rate
@@ -224,13 +445,20 @@ final class PolishInvoices
     /**
      * @param  list<InvoiceLine>  $lines
      */
-    private static function draft(Party $buyer, array $lines, PolishInvoice $polish): Invoice
-    {
+    private static function draft(
+        Party $buyer,
+        array $lines,
+        PolishInvoice $polish,
+        string $number = 'FV/2026/11/001',
+        string $issueDate = '2026-11-18',
+        InvoiceTypeCode $type = InvoiceTypeCode::C_380,
+        CurrencyCode $currency = CurrencyCode::PLN,
+    ): Invoice {
         return (new Invoice(
-            number: 'FV/2026/11/001',
-            issueDate: new DateTimeImmutable('2026-11-18'),
-            type: InvoiceTypeCode::C_380,
-            currency: CurrencyCode::PLN,
+            number: $number,
+            issueDate: new DateTimeImmutable($issueDate),
+            type: $type,
+            currency: $currency,
             seller: self::seller(),
             buyer: $buyer,
             lines: $lines,
@@ -242,9 +470,12 @@ final class PolishInvoices
         ))->withExtension($polish);
     }
 
-    private static function complete(Invoice $invoice): Invoice
+    /**
+     * @param  numeric-string|null  $paidAmount
+     */
+    private static function complete(Invoice $invoice, ?string $paidAmount = null): Invoice
     {
-        return TotalsCalculator::complete($invoice);
+        return TotalsCalculator::complete($invoice, $paidAmount);
     }
 
     private function __construct() {}
