@@ -70,9 +70,9 @@ All notable changes to this project are documented here. The format follows
   (`status()`, and `lookup()` by SIREN, SIRET or electronic address returning an `AnnuaireEntry`).
   `FR_ASSUJETTI_UNKNOWN` reads as `Unknown`, so the router keeps the e-invoice; `status()` ignores
   spaces in the SIREN. A cold lookup answered 202 may block for about 9 s, and a hanging one for
-  one HTTP timeout; a refused key or identifier throws instead of reading as `Unknown`. Live-tested on the B2Brouter sandbox, as are sending and the lifecycle up to
-  `Deposited` (with a French sandbox account); buyer answers, payments and an accepted Flux 10
-  deposit are tested offline only.
+  one HTTP timeout; a refused key or identifier throws instead of reading as `Unknown`. Live-tested on the B2Brouter sandbox, as are sending, the lifecycle, a buyer
+  approval and a payment (with a French sandbox account); an accepted Flux 10 deposit is tested
+  offline only.
 - **Peppol transport, webhooks:** `WebhookEvent::$lifecycleStatus` (default `null`).
   `B2BrouterWebhook` sets it from `data.state` for `issued_invoice.state_change` and
   `received_invoice.state_change`, and reads `ledger.state_change` as an event of kind `Other`

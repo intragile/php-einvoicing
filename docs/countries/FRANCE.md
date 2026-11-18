@@ -713,8 +713,8 @@ channel, not for B2Brouter.
 `B2BrouterFrance` is not a `Transport`: it does not plug into `ValidatingTransport`, and Peppol
 documents still go through `B2BrouterTransport`. Every call is a synchronous request.
 
-> **Live-tested in the sandbox: directory lookup, sending and lifecycle up to `Deposited`.** Buyer
-> answers, payments and an accepted Flux 10 deposit are tested offline only (see
+> **Live-tested in the sandbox: directory lookup, sending, lifecycle, buyer approval and
+> payment.** An accepted Flux 10 deposit is tested offline only (see
 > [What is verified live](#what-is-verified-live)).
 
 ### Send
@@ -1061,7 +1061,8 @@ the flat shape. The live group `b2brouter-france-live` repeats the fictitious lo
 on that run). With a French sandbox account of a fictitious company (`B2BROUTER_FR_ACCOUNT_ID`,
 reachable with the configured key) the same group sent a domestic B2B invoice that reached
 `Deposited` with delivery `Delivered`; its Flux 10 deposit was refused with 422 because the
-account has no DGFiP e-reporting configuration. Buyer answers, payments and an accepted deposit are
+account has no DGFiP e-reporting configuration. A full payment of a services invoice read back as
+`Collected`, and approving a received invoice read back as `Approved`. An accepted deposit is
 tested offline only. See [VERIFICATION.md](../VERIFICATION.md).
 
 ```bash
@@ -1116,8 +1117,8 @@ and guides, and only its directory lookup is live-tested (see
 - **Other plateformes agréées.** B2Brouter is the only PA supported, through its own API. The
   standard PA API (AFNOR XP Z12-013) is not implemented. e-invoice.be and Recommand are Peppol
   access points, not PAs, and do not satisfy a French sender's obligation.
-- **Live tests of the rest of the B2Brouter flow.** Buyer answers, payments and an accepted Flux
-  10 deposit (which needs a DGFiP e-reporting configuration on the account) are not yet run live.
+- **Live test of an accepted Flux 10 deposit.** It needs a DGFiP e-reporting configuration on the
+  account and is not yet run live; answers other than an approval are tested offline only.
 - **Queued French sends in the Laravel bridge.** The bridge's queued sending pipeline stays
   Peppol-only; French sends are synchronous calls.
 - **Received Factur-X PDFs.** French invoices are received with

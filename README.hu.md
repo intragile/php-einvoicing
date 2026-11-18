@@ -56,7 +56,7 @@ Jelenleg tartalmazza:
   agréée*-n keresztül: számlák, vevői válaszok, kifizetések és Flux 10 beadások (az
   életciklus-üzeneteket a B2Brouter állítja elő, a könyvtár az állapotait státuszokra képezi le),
   valamint élő címtár- (*annuaire*) lekérdezés. Hálózat nélkül tesztelve; élesben (sandboxban) a
-  címtár-lekérdezést, a küldést és az életciklust a `Deposited` állapotig teszteltük.
+  címtár-lekérdezést, a küldést, az életciklust, a vevői jóváhagyást és a fizetést teszteltük.
 
 Országjegyzetek: [Németország](docs/countries/DE.md) (jogalap, formátumok, csatornák és az ellenőrzés, angolul),
 [Franciaország](docs/countries/FRANCE.md) (a reform, a profilok, a francia szabályok telepítése és

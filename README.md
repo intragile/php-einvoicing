@@ -54,7 +54,7 @@ Included today:
   ([France](docs/countries/FRANCE.md)). Sending through B2Brouter as *plateforme agréée*:
   invoices, buyer answers, payments and Flux 10 deposits (B2Brouter emits the lifecycle messages;
   the library maps its states to statuses), and a live directory lookup. Tested offline;
-  live-tested in the sandbox: directory lookup, sending and lifecycle up to `Deposited`.
+  live-tested in the sandbox: directory lookup, sending, lifecycle, buyer approval and payment.
 
 Country notes: [Germany](docs/countries/DE.md) (legal basis, formats, channels and what is
 verified), [France](docs/countries/FRANCE.md) (the reform, profiles, installing and running the

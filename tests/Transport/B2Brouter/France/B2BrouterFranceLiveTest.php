@@ -17,6 +17,7 @@ use IntrAgile\EInvoicing\France\EReporting\ReportType;
 use IntrAgile\EInvoicing\France\EReporting\TransactionCategory;
 use IntrAgile\EInvoicing\France\EReporting\TransactionsReport;
 use IntrAgile\EInvoicing\France\EReporting\VatSubtotal;
+use IntrAgile\EInvoicing\France\Lifecycle\LifecycleStatus;
 use IntrAgile\EInvoicing\France\Routing\AnnuaireStatus;
 use IntrAgile\EInvoicing\France\Siren;
 use IntrAgile\EInvoicing\Model\ElectronicAddress;
@@ -29,6 +30,8 @@ use IntrAgile\EInvoicing\Tests\Support\StreamHttpClient;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
 use IntrAgile\EInvoicing\Transport\B2Brouter\France\B2BrouterAnnuaire;
 use IntrAgile\EInvoicing\Transport\B2Brouter\France\B2BrouterFrance;
+use IntrAgile\EInvoicing\Transport\B2Brouter\France\BuyerResponse;
+use IntrAgile\EInvoicing\Transport\B2Brouter\France\FranceResponseMapper;
 use IntrAgile\EInvoicing\Transport\B2Brouter\France\FrenchDocument;
 use IntrAgile\EInvoicing\Transport\B2Brouter\France\LedgerState;
 use IntrAgile\EInvoicing\Transport\B2Brouter\France\PlatformStatus;
@@ -135,14 +138,7 @@ final class B2BrouterFranceLiveTest extends TestCase
 
         LiveTransport::failRedacted($this->redactor, function () use ($config, $siren): void {
             $france = new B2BrouterFrance($config, $this->http());
-            $result = $france->send(FrenchDocument::fromInvoice(self::fromSeller(FrenchInvoices::domesticB2b(), $siren)));
-            self::assertNotSame('', $result->documentId);
-
-            $status = $france->lifecycle($result->documentId);
-            for ($attempt = 2; $attempt <= LiveTransport::STATUS_ATTEMPTS && ! self::isFinal($status); $attempt++) {
-                sleep(LiveTransport::STATUS_WAIT_SECONDS);
-                $status = $france->lifecycle($result->documentId);
-            }
+            [, $status] = self::sendAndWait($france, self::fromSeller(FrenchInvoices::domesticB2b(), $siren));
 
             LiveTransport::report(self::TAG, sprintf(
                 'French invoice: platform state "%s", lifecycle %s, delivery %s.',
@@ -153,6 +149,65 @@ final class B2BrouterFranceLiveTest extends TestCase
             // Deposited or any later lifecycle status counts; a failed delivery does not.
             self::assertNotNull($status->lifecycle, sprintf('The French invoice has no lifecycle status yet (platform state "%s").', $status->platformState));
             self::assertNotSame(DeliveryState::Failed, $status->delivery->state, (string) $status->delivery->failure?->message);
+        });
+    }
+
+    public function test_full_payment_of_services_invoice_reads_collected(): void
+    {
+        [$config, $siren] = $this->frenchAccount();
+
+        LiveTransport::failRedacted($this->redactor, function () use ($config, $siren): void {
+            $france = new B2BrouterFrance($config, $this->http());
+            [$id, $sent] = self::sendAndWait($france, self::fromSeller(FrenchInvoices::services(), $siren));
+            self::assertNotNull($sent->lifecycle, sprintf('The services invoice has no lifecycle status yet (platform state "%s").', $sent->platformState));
+
+            $status = $france->recordPayment($id);
+            for ($attempt = 2; $attempt <= LiveTransport::STATUS_ATTEMPTS && $status->lifecycle !== LifecycleStatus::Collected; $attempt++) {
+                sleep(LiveTransport::STATUS_WAIT_SECONDS);
+                $status = $france->lifecycle($id);
+            }
+
+            LiveTransport::report(self::TAG, sprintf(
+                'Full payment of a services invoice: platform state "%s", lifecycle %s.',
+                $status->platformState,
+                $status->lifecycle === null ? '(none)' : $status->lifecycle->name,
+            ), $this->redactor);
+            self::assertSame(LifecycleStatus::Collected, $status->lifecycle);
+        });
+    }
+
+    public function test_buyer_approves_received_invoice(): void
+    {
+        [$config, $siren] = $this->frenchAccount();
+
+        LiveTransport::failRedacted($this->redactor, function () use ($config, $siren): void {
+            // The sandbox does not simulate inbound traffic; importing with issued=false creates a
+            // received invoice, bought by the account company.
+            $document = FrenchDocument::fromInvoice(self::toBuyer(self::fromSeller(FrenchInvoices::domesticB2b(), self::FICTITIOUS_SIREN), $siren));
+            $import = $this->http()->send(
+                'POST',
+                sprintf('%s/accounts/%d/invoices/import?issued=false', $config->baseUrl, $config->accountId),
+                $config->headers() + ['Content-Type' => FranceResponseMapper::IMPORT_CONTENT_TYPE],
+                $document->bytes,
+            );
+            self::assertSame(201, $import->getStatusCode(), LiveTransport::excerpt($this->redactor, 'The import of the received invoice', $import));
+            $imported = json_decode((string) $import->getBody(), true);
+            $id = is_array($imported) && is_array($imported['invoice'] ?? null) ? ($imported['invoice']['id'] ?? null) : null;
+            self::assertIsInt($id, LiveTransport::excerpt($this->redactor, 'The import answer has no invoice id', $import));
+            $id = (string) $id;
+
+            $france = new B2BrouterFrance($config, $this->http());
+            $received = $france->lifecycle($id);
+            $answered = $france->respond($id, BuyerResponse::approved());
+
+            LiveTransport::report(self::TAG, sprintf(
+                'Received invoice: platform state "%s", lifecycle %s; after approving: platform state "%s", lifecycle %s.',
+                $received->platformState,
+                $received->lifecycle === null ? '(none)' : $received->lifecycle->name,
+                $answered->platformState,
+                $answered->lifecycle === null ? '(none)' : $answered->lifecycle->name,
+            ), $this->redactor);
+            self::assertSame(LifecycleStatus::Approved, $answered->lifecycle);
         });
     }
 
@@ -251,6 +306,46 @@ final class B2BrouterFranceLiveTest extends TestCase
                 address: $seller->address,
                 contact: $seller->contact,
             ));
+    }
+
+    /**
+     * Sends the invoice and polls its status until it is deposited or later, or failed for good.
+     *
+     * @return array{string, PlatformStatus} the B2Brouter invoice id and its last status
+     */
+    private static function sendAndWait(B2BrouterFrance $france, Invoice $invoice): array
+    {
+        $result = $france->send(FrenchDocument::fromInvoice($invoice));
+        self::assertNotSame('', $result->documentId);
+
+        $status = $france->lifecycle($result->documentId);
+        for ($attempt = 2; $attempt <= LiveTransport::STATUS_ATTEMPTS && ! self::isFinal($status); $attempt++) {
+            sleep(LiveTransport::STATUS_WAIT_SECONDS);
+            $status = $france->lifecycle($result->documentId);
+        }
+
+        return [$result->documentId, $status];
+    }
+
+    /**
+     * The invoice bought by the company with the given SIREN.
+     */
+    private static function toBuyer(Invoice $invoice, string $siren): Invoice
+    {
+        $buyer = $invoice->buyer;
+
+        return $invoice->withBuyer(new Party(
+            name: $buyer->name,
+            tradingName: $buyer->tradingName,
+            identifiers: [],
+            legalRegistration: Siren::identifier($siren),
+            vatIdentifier: self::frenchVat($siren),
+            taxRegistration: $buyer->taxRegistration,
+            additionalLegalInformation: $buyer->additionalLegalInformation,
+            electronicAddress: new ElectronicAddress($siren, ElectronicAddressScheme::C_0225),
+            address: $buyer->address,
+            contact: $buyer->contact,
+        ));
     }
 
     /**
