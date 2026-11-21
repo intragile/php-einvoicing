@@ -458,9 +458,11 @@ final class KsefTransport implements InboundSource
 
     /**
      * Exports the invoices matching the filters as files, continuing while KSeF truncates the
-     * package; see KsefExport::run().
+     * package; see KsefExport::run(). The HttpClient given to create() must read at least
+     * KsefExport::MAX_PART_BYTES (maxResponseBytes), as KSeF parts reach 50 MB.
      *
-     * @throws LogicException when the zip extension is not loaded
+     * @throws LogicException when the zip extension is not loaded, or a part exceeds the
+     *                        HttpClient's maxResponseBytes
      * @throws TransportException when an export fails, does not finish within the polling bounds,
      *                            or a part cannot be checked, decrypted or unzipped
      */

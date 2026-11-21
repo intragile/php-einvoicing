@@ -186,6 +186,15 @@ final class HttpClientTest extends TestCase
         self::assertStringNotContainsString(self::SECRET, print_r($client, true));
     }
 
+    public function test_max_response_bytes_reports_the_cap_and_survives_with_secrets(): void
+    {
+        self::assertSame(20_000_000, (new HttpClient(new RecordingHttpClient, new Psr17Factory, new Psr17Factory))->maxResponseBytes());
+        $client = new HttpClient(new RecordingHttpClient, new Psr17Factory, new Psr17Factory, 52_428_816);
+
+        self::assertSame(52_428_816, $client->maxResponseBytes());
+        self::assertSame(52_428_816, $client->withSecrets([self::SECRET])->maxResponseBytes());
+    }
+
     public function test_per_request_cap_lowers_but_never_raises_the_client_cap(): void
     {
         $lowered = self::capture(fn () => (new HttpClient(new RecordingHttpClient(new Response(200, [], str_repeat('a', 101))), new Psr17Factory, new Psr17Factory, 1_000))

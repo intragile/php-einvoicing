@@ -31,6 +31,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use LogicException;
 use RuntimeException;
 use ZipArchive;
 
@@ -118,6 +119,40 @@ final class KsefExportTest extends TestCase
             self::assertStringContainsString(self::EXPORT_REF, $exception->getMessage());
             self::assertStringNotContainsString('sig=', $exception->getMessage());
         }
+    }
+
+    public function test_part_over_the_response_cap_is_refused_before_any_download(): void
+    {
+        $this->queue = [
+            ...self::opening(),
+            self::json(201, ['referenceNumber' => self::EXPORT_REF]),
+            // KSeF parts reach 50 MB; the default HttpClient reads 20,000,000 bytes at most.
+            $this->finished([self::number('010080DD2B5E').'.xml' => '<Faktura/>'], 1, declaredSize: 22_425_072),
+        ];
+
+        $exception = self::capture(fn () => $this->export()->run(InvoiceQueryFilters::incoming(new DateTimeImmutable(self::FROM))));
+
+        self::assertInstanceOf(LogicException::class, $exception);
+        self::assertStringContainsString('22425072', $exception->getMessage());
+        self::assertStringContainsString('20000000', $exception->getMessage());
+        self::assertStringContainsString('maxResponseBytes', $exception->getMessage());
+        self::assertStringContainsString('52428816', $exception->getMessage());
+        self::assertStringNotContainsString('sig=', $exception->getMessage());
+        self::assertSame([], $this->partRequests());
+    }
+
+    public function test_part_within_a_raised_response_cap_is_downloaded(): void
+    {
+        $this->queue = [
+            ...self::opening(),
+            self::json(201, ['referenceNumber' => self::EXPORT_REF]),
+            $this->finished([self::number('010080DD2B5E').'.xml' => '<Faktura/>'], 1),
+            ...$this->parts(1),
+        ];
+
+        $result = $this->export(maxResponseBytes: KsefExport::MAX_PART_BYTES)->run(InvoiceQueryFilters::incoming(new DateTimeImmutable(self::FROM)));
+
+        self::assertSame([self::number('010080DD2B5E') => '<Faktura/>'], $result->invoices);
     }
 
     public function test_export_continues_when_truncated_at_most_10_rounds(): void
@@ -274,7 +309,7 @@ final class KsefExportTest extends TestCase
         self::assertStringContainsString(self::EXPORT_REF, $exception->getMessage());
     }
 
-    private function export(int $pollAttempts = 60, int $pollWaitMs = 2000): KsefExport
+    private function export(int $pollAttempts = 60, int $pollWaitMs = 2000, int $maxResponseBytes = 20_000_000): KsefExport
     {
         $config = new KsefConfig(
             KsefEnvironment::Test,
@@ -297,7 +332,7 @@ final class KsefExportTest extends TestCase
                 return ($this->responder)($request);
             }
         };
-        $api = new KsefApi($config, new HttpClient($client, $factory, $factory));
+        $api = new KsefApi($config, new HttpClient($client, $factory, $factory, $maxResponseBytes));
         $keys = new PublicKeyRegistry($api, $this->now());
         $authenticator = new Authenticator($api, $config, $keys, now: $this->now());
 
@@ -336,9 +371,9 @@ final class KsefExportTest extends TestCase
      *
      * @param  array<string, string>  $files
      */
-    private function finished(array $files, int $partCount, ?string $truncated = null, ?string $corrupt = null, string $lastField = 'lastPermanentStorageDate'): Closure
+    private function finished(array $files, int $partCount, ?string $truncated = null, ?string $corrupt = null, string $lastField = 'lastPermanentStorageDate', ?int $declaredSize = null): Closure
     {
-        return function () use ($files, $partCount, $truncated, $corrupt, $lastField): Response {
+        return function () use ($files, $partCount, $truncated, $corrupt, $lastField, $declaredSize): Response {
             $this->prepare($files, $partCount);
             $parts = [];
             foreach ($this->pending ?? [] as $ordinal => [$plain, $encrypted]) {
@@ -349,7 +384,7 @@ final class KsefExportTest extends TestCase
                     'url' => sprintf(self::PART_URL, $ordinal),
                     'partSize' => strlen($plain),
                     'partHash' => base64_encode(hash('sha256', $corrupt === 'partHash' ? $plain.'x' : $plain, true)),
-                    'encryptedPartSize' => strlen($encrypted),
+                    'encryptedPartSize' => $declaredSize ?? strlen($encrypted),
                     'encryptedPartHash' => base64_encode(hash('sha256', $corrupt === 'encryptedPartHash' ? $encrypted.'x' : $encrypted, true)),
                     'expirationDate' => '2025-09-16T17:09:40.901091+00:00',
                 ];

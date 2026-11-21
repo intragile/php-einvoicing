@@ -36,7 +36,8 @@ use ZipArchive;
  * holds one {ksefNumber}.xml file per invoice and a _metadata.json file.
  *
  * Memory: while a package is downloaded, one encrypted part and its plaintext (KSeF parts are at
- * most 50 MB) are held at a time; the joined archive lives only in the temporary file. The
+ * most 50 MB, MAX_PART_BYTES encrypted, so the HttpClient's maxResponseBytes must be at least
+ * that) are held at a time; the joined archive lives only in the temporary file. The
  * extracted XML files of all rounds are held in the ExportResult, so a run over a large inbox
  * needs memory for every invoice it returns: narrow the date range for very large exports.
  *
@@ -54,6 +55,12 @@ final class KsefExport
 {
     /** Export rounds of one run() at most. */
     public const MAX_ROUNDS = 10;
+
+    /**
+     * The largest encrypted part KSeF sends, in bytes: 50 MiB of data plus AES padding. An
+     * HttpClient that reads at least this much downloads every part.
+     */
+    public const MAX_PART_BYTES = 52_428_816;
 
     /** The name of the metadata file in an export package. */
     public const METADATA_FILE = '_metadata.json';
@@ -87,7 +94,11 @@ final class KsefExport
     /**
      * Exports the invoices matching the filters, continuing while the package is truncated.
      *
-     * @throws LogicException when the zip extension is not loaded
+     * Parts go up to MAX_PART_BYTES; the HttpClient must be created with maxResponseBytes of at
+     * least that (its default is 20,000,000 bytes), or a larger part is refused before any download.
+     *
+     * @throws LogicException when the zip extension is not loaded, or a part is larger than the
+     *                        HttpClient's maxResponseBytes; nothing of that package is downloaded
      * @throws TransportUnavailable when an export is still in progress after the polling bounds,
      *                              or KSeF cancelled it (status 550); run it again
      * @throws UnexpectedResponse when an export fails, or a part does not match its digest or
@@ -261,6 +272,17 @@ final class KsefExport
             }
             if (isset($parts[$ordinal])) {
                 throw $unusable(sprintf('two entries for part %d', $ordinal));
+            }
+            $size = $part['encryptedPartSize'] ?? null;
+            if (is_int($size) && $size > $this->api->maxResponseBytes()) {
+                throw new LogicException(sprintf(
+                    'Part %d of the KSeF export %s is %d bytes, more than the %d bytes the HttpClient reads; create the HttpClient with maxResponseBytes of at least %d (KsefExport::MAX_PART_BYTES), the largest part KSeF sends.',
+                    $ordinal,
+                    $reference,
+                    $size,
+                    $this->api->maxResponseBytes(),
+                    self::MAX_PART_BYTES,
+                ));
             }
             $parts[$ordinal] = [strtoupper($method), $url, $hash, $encryptedHash];
         }

@@ -97,6 +97,14 @@ final class HttpClient
     }
 
     /**
+     * The largest response body, in bytes, this client reads.
+     */
+    public function maxResponseBytes(): int
+    {
+        return $this->maxResponseBytes;
+    }
+
+    /**
      * @return array<string, string>
      */
     public function __debugInfo(): array

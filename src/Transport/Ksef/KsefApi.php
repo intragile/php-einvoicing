@@ -166,6 +166,14 @@ final class KsefApi
     }
 
     /**
+     * The largest response body, in bytes, the underlying HttpClient reads.
+     */
+    public function maxResponseBytes(): int
+    {
+        return $this->http->maxResponseBytes();
+    }
+
+    /**
      * @param  array<string, string|list<string>>  $headers
      *
      * @throws OutcomeUnknown|TransportUnavailable when the request fails without an answer
