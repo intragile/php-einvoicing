@@ -70,7 +70,8 @@ final class KsefTokensTest extends TestCase
     {
         $tokens = new KsefTokens($this->authorizedApi(new RecordingHttpClient));
 
-        foreach (['Opis', str_repeat('a', 257), '    ', 'ąćęł'] as $description) {
+        // Invalid UTF-8 is refused here, not left to the JSON encoder.
+        foreach (['Opis', str_repeat('a', 257), '    ', 'ąćęł', "Opis \xFF tokena"] as $description) {
             $exception = self::capture(fn () => $tokens->generate([TokenPermission::InvoiceRead], $description));
             self::assertInstanceOf(InvalidArgumentException::class, $exception, $description);
         }

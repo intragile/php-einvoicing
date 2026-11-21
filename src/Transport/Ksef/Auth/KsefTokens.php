@@ -17,8 +17,8 @@ use LogicException;
  *
  * Generation uses POST /tokens/rev2, available on KSeF TE since API 2.10; PROD runs API 2.9 and
  * offers only the deprecated POST /tokens, which is not implemented, so generation through the API
- * fails there until 2.10 reaches it. Tokens created in the KSeF web application authenticate on
- * every environment. A token generated after KSeF-token authentication must be approved, with a
+ * fails there until 2.10 reaches it. Tokens created in the KSeF web application still
+ * authenticate, as token login does not use rev2 (verified on TE only). A token generated after KSeF-token authentication must be approved, with a
  * certificate authentication, before it can be used.
  */
 final class KsefTokens
@@ -46,7 +46,8 @@ final class KsefTokens
      * @param  DateTimeImmutable|null  $validTo  the end of validity, at most 365 days after the
      *                                           start; 90 days after the start when null
      *
-     * @throws InvalidArgumentException when there is no permission, or the description or the period is invalid
+     * @throws InvalidArgumentException when there is no permission, or the description (length,
+     *                                  UTF-8) or the period is invalid
      * @throws LogicException when the client has no Authenticator
      * @throws TransportException when the request fails or KSeF refuses it
      */
@@ -58,6 +59,9 @@ final class KsefTokens
         $values = [];
         foreach ($permissions as $permission) {
             $values[] = $permission->value;
+        }
+        if (! mb_check_encoding($description, 'UTF-8')) {
+            throw new InvalidArgumentException('A KSeF token description must be valid UTF-8.');
         }
         $length = mb_strlen($description, 'UTF-8');
         if ($length < self::DESCRIPTION_MIN_LENGTH || $length > self::DESCRIPTION_MAX_LENGTH) {
