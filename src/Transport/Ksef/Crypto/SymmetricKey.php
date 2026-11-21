@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Transport\Ksef\Crypto;
 
 use IntrAgile\EInvoicing\Transport\Http\Redactor;
 use InvalidArgumentException;
+use LogicException;
 use SensitiveParameter;
 
 /**
@@ -53,5 +54,23 @@ final readonly class SymmetricKey
             'key' => Redactor::REDACTED,
             'iv' => base64_encode($this->iv),
         ];
+    }
+
+    /**
+     * @throws LogicException Always: a session key must not be written to a cache, queue or session
+     */
+    public function __serialize(): never
+    {
+        throw new LogicException('The KSeF symmetric key cannot be serialized.');
+    }
+
+    /**
+     * @param  array<mixed>  $data
+     *
+     * @throws LogicException Always
+     */
+    public function __unserialize(array $data): never
+    {
+        throw new LogicException('The KSeF symmetric key cannot be serialized.');
     }
 }

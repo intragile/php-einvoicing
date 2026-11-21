@@ -1,0 +1,8 @@
+# Minimal OpenSSL configuration for the self-signed KSeF test certificates.
+# It has no default distinguished name values, so the subject holds exactly the given attributes,
+# and no certificate extensions.
+[ req ]
+default_bits = 2048
+distinguished_name = req_distinguished_name
+
+[ req_distinguished_name ]
