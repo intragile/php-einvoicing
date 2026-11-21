@@ -14,7 +14,6 @@ use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
 use IntrAgile\EInvoicing\Transport\FailureCategory;
-use IntrAgile\EInvoicing\Transport\Http\Redactor;
 use IntrAgile\EInvoicing\Transport\Ksef\Auth\TokenCredentials;
 use IntrAgile\EInvoicing\Transport\Ksef\Auth\TokenPermission;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InvoiceQueryFilters;
@@ -33,6 +32,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Throwable;
 
 /**
  * Proves the KSeF transport against the real KSeF TEST environment (TE) with synthetic data.
@@ -63,6 +63,9 @@ final class KsefLiveTest extends TestCase
     private const INBOX_ATTEMPTS = 40;
 
     private const INBOX_WAIT_SECONDS = 6;
+
+    /** @var list<string> secrets a running test learned, kept out of its failure message */
+    private array $secrets = [];
 
     protected function setUp(): void
     {
@@ -108,7 +111,7 @@ final class KsefLiveTest extends TestCase
             $authenticator->authenticate();
             $method = self::authenticationMethod($api);
             KsefLive::report('person (TINPL): authentication method '.$method);
-            self::assertStringStartsWith('xades.', $method);
+            self::assertSame('xades.qualified-certificate', $method);
         });
     }
 
@@ -135,6 +138,7 @@ final class KsefLiveTest extends TestCase
 
         $this->live($config, function () use ($nip, $tap, $sealed, $sealedApi): void {
             $generated = $sealed->tokens()->generate([TokenPermission::InvoiceRead, TokenPermission::InvoiceWrite], 'Synthetic live test token');
+            $this->secrets[] = $generated->token();
             $generateAnswer = $tap->lastJson('POST', '#^/tokens/rev2$#');
             KsefLive::report('POST /tokens/rev2 answer members: '.implode(', ', array_keys($generateAnswer ?? [])).'; HTTP '.($tap->last('POST', '#^/tokens/rev2$#')['status'] ?? 0));
 
@@ -149,7 +153,7 @@ final class KsefLiveTest extends TestCase
             // Authenticate with the token.
             $tokenTap = new KsefTap;
             $tokenConfig = KsefLive::config($nip, new TokenCredentials($generated->token()));
-            $redactor = new Redactor([...$tokenConfig->secrets()]);
+            $redactor = KsefLive::redactor($tokenConfig, $generated->token());
             $byToken = KsefTransport::create($tokenConfig, KsefLive::http($tokenTap));
             [$tokenApi] = KsefLive::api($tokenConfig, KsefLive::http($tokenTap));
             $method = self::authenticationMethod($tokenApi);
@@ -160,6 +164,8 @@ final class KsefLiveTest extends TestCase
 
             // A token generated after KSeF-token authentication needs approval.
             $second = $byToken->tokens()->generate([TokenPermission::InvoiceRead], 'Synthetic second live token');
+            $this->secrets[] = $second->token();
+            $redactor = KsefLive::redactor($tokenConfig, $generated->token(), $second->token());
             $secondStatus = self::awaitTokenStatus($byToken, $tokenApi, $second->referenceNumber, ['Active', 'AwaitingApproval', 'Failed']);
             KsefLive::report(sprintf('token generated after token authentication: legacy status %s, rev2 status %s', $secondStatus['legacy'], $secondStatus['rev2']));
             self::assertSame('AwaitingApproval', $secondStatus['rev2']);
@@ -180,8 +186,10 @@ final class KsefLiveTest extends TestCase
             $sealed->tokens()->revoke($second->referenceNumber);
             $sealed->tokens()->revoke($generated->referenceNumber);
             $revoked = self::awaitTokenStatus($sealed, $sealedApi, $generated->referenceNumber, ['Revoked']);
-            KsefLive::report(sprintf('after revoke: legacy status %s, rev2 status %s', $revoked['legacy'], $revoked['rev2']));
+            $secondRevoked = self::awaitTokenStatus($sealed, $sealedApi, $second->referenceNumber, ['Revoked']);
+            KsefLive::report(sprintf('after revoke: first token legacy %s, rev2 %s; second token legacy %s, rev2 %s', $revoked['legacy'], $revoked['rev2'], $secondRevoked['legacy'], $secondRevoked['rev2']));
             self::assertContains($revoked['rev2'], ['Revoking', 'Revoked']);
+            self::assertContains($secondRevoked['rev2'], ['Revoking', 'Revoked']);
         });
     }
 
@@ -198,9 +206,11 @@ final class KsefLiveTest extends TestCase
         $config = KsefLive::config($nip, SelfSignedCertificate::seal($nip));
         [$api, $authenticator] = KsefLive::api($config, KsefLive::http($tap));
 
-        $this->live($config, function () use ($api, $authenticator, $tap): void {
+        $this->live($config, function () use ($config, $api, $authenticator, $tap): void {
             $tokens = $authenticator->authenticate();
             $refreshed = $authenticator->refresh($tokens);
+            $redactor = KsefLive::redactor($config, $tokens->accessToken(), $tokens->refreshToken(), $refreshed->accessToken());
+            array_push($this->secrets, $tokens->accessToken(), $tokens->refreshToken(), $refreshed->accessToken());
             self::assertNotSame(hash('sha256', $tokens->accessToken()), hash('sha256', $refreshed->accessToken()));
             self::assertGreaterThan(new DateTimeImmutable, $refreshed->accessValidUntil);
             KsefLive::report('refresh: new access token valid until '.$refreshed->accessValidUntil->format(DATE_ATOM));
@@ -215,7 +225,7 @@ final class KsefLiveTest extends TestCase
                 KsefLive::report('refresh after DELETE /auth/sessions/current: still accepted');
             } catch (TransportException $exception) {
                 $answer = $tap->last('POST', '#^/auth/token/refresh$#');
-                KsefLive::report(sprintf('refresh after DELETE /auth/sessions/current: %s, HTTP %d, code %s: %s', $exception::class, $answer['status'] ?? 0, KsefErrors::codeOf($exception) ?? '-', $exception->getMessage()));
+                KsefLive::report(sprintf('refresh after DELETE /auth/sessions/current: %s, HTTP %d, code %s: %s', $exception::class, $answer['status'] ?? 0, KsefErrors::codeOf($exception) ?? '-', $exception->getMessage()), $redactor);
             }
         });
     }
@@ -262,10 +272,11 @@ final class KsefLiveTest extends TestCase
 
     /**
      * Records whether the UPO of an invoice is available before its online session is closed
-     * (P7), asserts it is available after close, and records the answer to a send into the closed
-     * session (R15).
+     * (P7) and asserts it is available after close. Then closes an OnlineSession's session
+     * behind its back: the next send is refused with 21180 and the session forgotten, and the
+     * send after it opens a new session and is accepted.
      *
-     * Observed: the UPO is available before close. After close a send into the session is
+     * Observed: the UPO is available before close. A send into a session KSeF has closed is
      * refused with HTTP 400, code 21180 "Status sesji nie pozwala na wykonanie operacji" (session
      * status 200), mapped to UnexpectedResponse.
      */
@@ -275,13 +286,13 @@ final class KsefLiveTest extends TestCase
         $tap = new KsefTap;
         $config = KsefLive::config($seller, SelfSignedCertificate::seal($seller));
         $transport = KsefTransport::create($config, KsefLive::http($tap));
-        [$api] = KsefLive::api($config, KsefLive::http($tap));
+        [$api, , $keys] = KsefLive::api($config, KsefLive::http($tap));
+        $session = new OnlineSession($api, $keys, $config);
 
-        $this->live($config, function () use ($seller, $tap, $transport, $api): void {
+        $this->live($config, function () use ($seller, $tap, $transport, $api, $session): void {
             $sent = $transport->send(KsefLive::fa3(KsefLive::invoice($seller, SelfSignedCertificate::randomNip())));
             $status = $transport->awaitFinal($sent->documentId);
             self::assertSame(200, $status->code, $status->description);
-            [$sessionRef] = explode('/', $sent->documentId);
 
             try {
                 $transport->upo($sent->documentId);
@@ -294,23 +305,30 @@ final class KsefLiveTest extends TestCase
             $transport->close();
             self::assertContains($status->ksefNumber, self::awaitUpo($transport, $sent->documentId)->ksefNumbers);
 
-            // A send into the closed session; the content is never decrypted, KSeF checks the
-            // session state first.
-            $fake = random_bytes(48);
+            // KSeF ends the session of an OnlineSession on its own (here: closed through the API
+            // behind its back).
+            $first = $session->send(KsefLive::fa3(KsefLive::invoice($seller, SelfSignedCertificate::randomNip())));
+            self::assertSame(200, $session->awaitFinal($first->sessionReference, $first->invoiceReference)->code);
+            $api->authorized(fn (string $bearer): array => $api->json('POST', '/sessions/online/'.$first->sessionReference.'/close', null, $bearer));
+
+            $refused = null;
             try {
-                $api->authorized(fn (string $bearer): array => $api->json('POST', '/sessions/online/'.$sessionRef.'/invoices', [
-                    'invoiceHash' => base64_encode(hash('sha256', 'x', true)),
-                    'invoiceSize' => 1,
-                    'encryptedInvoiceHash' => base64_encode(hash('sha256', $fake, true)),
-                    'encryptedInvoiceSize' => strlen($fake),
-                    'encryptedInvoiceContent' => base64_encode($fake),
-                    'offlineMode' => false,
-                ], $bearer));
-                KsefLive::report('send to a closed session: accepted');
+                $session->send(KsefLive::fa3(KsefLive::invoice($seller, SelfSignedCertificate::randomNip())));
             } catch (TransportException $exception) {
-                $answer = $tap->last('POST', '#^/sessions/online/[^/]+/invoices$#');
-                KsefLive::report(sprintf('send to a closed session: %s, HTTP %d, code %s: %s', $exception::class, $answer['status'] ?? 0, KsefErrors::codeOf($exception) ?? '-', $exception->getMessage()));
+                $refused = $exception;
             }
+            self::assertNotNull($refused, 'A send into a session KSeF closed must be refused.');
+            $answer = $tap->last('POST', '#^/sessions/online/[^/]+/invoices$#');
+            KsefLive::report(sprintf('send to a closed session: %s, HTTP %d, code %s: %s', $refused::class, $answer['status'] ?? 0, KsefErrors::codeOf($refused) ?? '-', $refused->getMessage()));
+            self::assertSame(OnlineSession::SESSION_CLOSED, KsefErrors::codeOf($refused));
+            self::assertNull($session->referenceNumber());
+
+            $again = $session->send(KsefLive::fa3(KsefLive::invoice($seller, SelfSignedCertificate::randomNip())));
+            self::assertNotSame($first->sessionReference, $again->sessionReference);
+            $final = $session->awaitFinal($again->sessionReference, $again->invoiceReference);
+            $session->close();
+            KsefLive::report(sprintf('send after 21180: new session %s, status %d', $again->sessionReference, $final->code));
+            self::assertSame(200, $final->code, $final->description);
         });
     }
 
@@ -625,13 +643,23 @@ final class KsefLiveTest extends TestCase
     }
 
     /**
-     * Runs a live body with every failure message redacted of the configuration's credentials.
+     * Runs a live body with every failure message redacted of the configuration's credentials
+     * and of the secrets the body added to $secrets on the way (generated tokens).
      *
      * @param  \Closure(): void  $body
      */
     private function live(KsefConfig $config, \Closure $body): void
     {
-        LiveTransport::failRedacted(KsefLive::redactor($config), $body);
+        $this->secrets = [];
+        try {
+            $body();
+        } catch (Throwable $failure) {
+            LiveTransport::failRedacted(KsefLive::redactor($config, ...$this->secrets), static function () use ($failure): never {
+                throw $failure;
+            });
+        } finally {
+            $this->secrets = [];
+        }
     }
 
     /**

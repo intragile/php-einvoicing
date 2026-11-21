@@ -59,15 +59,26 @@ final class KsefLive
 
     private const ZONE = 'Europe/Warsaw';
 
+    /** Minutes before the window in which no live test starts, so none runs into it. */
+    public const MAINTENANCE_MARGIN_MINUTES = 5;
+
     /**
-     * Why a live call must not be made now, or null outside the TE maintenance window.
+     * Why a live test must not start now, or null: during the TE maintenance window, and in the
+     * minutes before it.
      */
     public static function maintenanceReason(?DateTimeImmutable $now = null): ?string
     {
         $warsaw = ($now ?? new DateTimeImmutable)->setTimezone(new DateTimeZone(self::ZONE));
-        $hour = (int) $warsaw->format('G');
-        if ($hour >= self::MAINTENANCE_FROM_HOUR && $hour < self::MAINTENANCE_TO_HOUR) {
-            return sprintf('KSeF TE is in its daily maintenance window (%d:00-%d:00 Europe/Warsaw, now %s).', self::MAINTENANCE_FROM_HOUR, self::MAINTENANCE_TO_HOUR, $warsaw->format('H:i'));
+        $minutes = (int) $warsaw->format('G') * 60 + (int) $warsaw->format('i');
+        $from = self::MAINTENANCE_FROM_HOUR * 60 - self::MAINTENANCE_MARGIN_MINUTES;
+        if ($minutes >= $from && $minutes < self::MAINTENANCE_TO_HOUR * 60) {
+            return sprintf(
+                'KSeF TE is in or within %d minutes of its daily maintenance window (%d:00-%d:00 Europe/Warsaw, now %s).',
+                self::MAINTENANCE_MARGIN_MINUTES,
+                self::MAINTENANCE_FROM_HOUR,
+                self::MAINTENANCE_TO_HOUR,
+                $warsaw->format('H:i'),
+            );
         }
 
         return null;
@@ -128,11 +139,11 @@ final class KsefLive
     }
 
     /**
-     * A redactor for the configuration's credentials.
+     * A redactor for the configuration's credentials and any further secrets, such as tokens.
      */
-    public static function redactor(KsefConfig $config): Redactor
+    public static function redactor(KsefConfig $config, string ...$secrets): Redactor
     {
-        return new Redactor($config->secrets());
+        return new Redactor([...$config->secrets(), ...array_values($secrets)]);
     }
 
     public static function today(): DateTimeImmutable
