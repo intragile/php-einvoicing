@@ -73,8 +73,11 @@ final class KsefExportTest extends TestCase
             ...$this->parts(2),
         ];
 
+        $temporary = glob(sys_get_temp_dir().'/ksef-export-*') ?: [];
+
         $result = $this->export()->run(InvoiceQueryFilters::incoming(new DateTimeImmutable(self::FROM)));
 
+        self::assertSame($temporary, glob(sys_get_temp_dir().'/ksef-export-*') ?: [], 'The temporary archive file is removed.');
         self::assertSame([$first => '<Faktura>1</Faktura>', $second => '<Faktura>2</Faktura>'], $result->invoices);
         self::assertSame(['invoices' => [['ksefNumber' => $first], ['ksefNumber' => $second]]], $result->metadata);
         self::assertEquals(new DateTimeImmutable(self::HWM), $result->hwm);
@@ -177,6 +180,48 @@ final class KsefExportTest extends TestCase
         self::assertSame([$first => '<a/>', $second => '<b/>'], $result->invoices);
         self::assertSame(['invoices' => [['ksefNumber' => $first], ['ksefNumber' => $second]]], $result->metadata);
         self::assertEquals(new DateTimeImmutable(self::HWM), $result->hwm);
+    }
+
+    public function test_truncated_export_without_progress_stops(): void
+    {
+        $this->queue = [
+            ...self::opening(),
+            self::json(201, ['referenceNumber' => self::EXPORT_REF]),
+            $this->finished([self::number('010080DD2B5E').'.xml' => '<a/>'], 1, truncated: self::FROM),
+            ...$this->parts(1),
+        ];
+
+        $exception = self::capture(fn () => $this->export()->run(InvoiceQueryFilters::incoming(new DateTimeImmutable(self::FROM))));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString(self::EXPORT_REF, $exception->getMessage());
+        self::assertStringContainsString('cannot continue', $exception->getMessage());
+        self::assertCount(1, $this->requestsTo('POST', '/v2/invoices/exports'));
+        self::assertSame([], $this->queue);
+    }
+
+    public function test_issue_date_export_stuck_on_one_day_stops_after_the_repeat(): void
+    {
+        $this->queue = self::opening();
+        foreach ([1, 2] as $round) {
+            array_push(
+                $this->queue,
+                self::json(201, ['referenceNumber' => self::EXPORT_REF]),
+                $this->finished([self::number(sprintf('0100800000%02d', $round)).'.xml' => '<a/>'], 1, truncated: '2025-09-01', lastField: 'lastIssueDate'),
+                ...$this->parts(1),
+            );
+        }
+
+        $exception = self::capture(fn () => $this->export()->run(new InvoiceQueryFilters('Subject2', 'Issue', new DateTimeImmutable('2025-08-28T00:00:00+00:00'))));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString('Issue', $exception->getMessage());
+        $starts = $this->requestsTo('POST', '/v2/invoices/exports');
+        self::assertCount(2, $starts);
+        $filters = self::body($starts[1])['filters'];
+        self::assertIsArray($filters);
+        self::assertIsArray($filters['dateRange']);
+        self::assertSame('2025-09-01T00:00:00.000000+00:00', $filters['dateRange']['from']);
     }
 
     public function test_export_poll_is_bounded(): void
@@ -291,9 +336,9 @@ final class KsefExportTest extends TestCase
      *
      * @param  array<string, string>  $files
      */
-    private function finished(array $files, int $partCount, ?string $truncated = null, ?string $corrupt = null): Closure
+    private function finished(array $files, int $partCount, ?string $truncated = null, ?string $corrupt = null, string $lastField = 'lastPermanentStorageDate'): Closure
     {
-        return function () use ($files, $partCount, $truncated, $corrupt): Response {
+        return function () use ($files, $partCount, $truncated, $corrupt, $lastField): Response {
             $this->prepare($files, $partCount);
             $parts = [];
             foreach ($this->pending ?? [] as $ordinal => [$plain, $encrypted]) {
@@ -321,7 +366,7 @@ final class KsefExportTest extends TestCase
                 'compressionType' => 'Zip',
             ];
             if ($truncated !== null) {
-                $package['lastPermanentStorageDate'] = $truncated;
+                $package[$lastField] = $truncated;
             }
 
             return self::json(200, [

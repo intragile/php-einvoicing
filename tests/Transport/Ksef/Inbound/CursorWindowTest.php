@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Transport\Ksef\Inbound;
 
 use DateTimeImmutable;
+use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\CursorWindow;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InMemoryCursorStore;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InvoiceMetadata;
@@ -54,6 +55,19 @@ final class CursorWindowTest extends TestCase
         self::assertEquals(new DateTimeImmutable('2025-08-28T10:30:00.654321+00:00'), $window->hwm);
         $next = $window->acknowledge('A')->acknowledge('B')->next();
         self::assertEquals(new DateTimeImmutable('2025-08-28T10:30:00.654321+00:00'), $next->from);
+    }
+
+    public function test_truncated_window_without_progress_is_refused(): void
+    {
+        $window = CursorWindow::start(new DateTimeImmutable(self::FROM));
+
+        try {
+            $window->withResults([self::invoice('A', self::FROM), self::invoice('B', self::FROM)], new DateTimeImmutable(self::HWM), true);
+            self::fail('A truncated window that does not pass its start was accepted.');
+        } catch (UnexpectedResponse $exception) {
+            self::assertStringContainsString('10,000', $exception->getMessage());
+            self::assertStringContainsString('2025-08-28T00:00:00.000000+00:00', $exception->getMessage());
+        }
     }
 
     public function test_repeated_results_keep_acknowledgements_and_add_new_ids(): void

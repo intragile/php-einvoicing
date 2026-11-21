@@ -32,12 +32,19 @@ use ZipArchive;
  * configuration. The finished package is a zip archive split into parts; each part is downloaded
  * from the URL KSeF returns (without the access token; the URL is signed and never quoted in an
  * exception), checked against its encryptedPartHash, decrypted, checked against its partHash,
- * and the parts are joined in ordinal order and unzipped. The archive holds one
- * {ksefNumber}.xml file per invoice and a _metadata.json file.
+ * and appended in ordinal order to a temporary archive file, which is then unzipped. The archive
+ * holds one {ksefNumber}.xml file per invoice and a _metadata.json file.
+ *
+ * Memory: while a package is downloaded, one encrypted part and its plaintext (KSeF parts are at
+ * most 50 MB) are held at a time; the joined archive lives only in the temporary file. The
+ * extracted XML files of all rounds are held in the ExportResult, so a run over a large inbox
+ * needs memory for every invoice it returns: narrow the date range for very large exports.
  *
  * A package is truncated when it reached KSeF's limits (10,000 invoices or 1 GB compressed);
  * the export then continues from the date of the last exported invoice, at most MAX_ROUNDS
- * rounds per run(). Status 420 (the start is beyond the high water mark with
+ * rounds per run(). A truncated package whose last date does not pass the start of its round
+ * (more invoices sharing one date than an export holds) ends the run with UnexpectedResponse
+ * instead of repeating the same export. Status 420 (the start is beyond the high water mark with
  * restrictToPermanentStorageHwmDate) means there is nothing to export yet.
  *
  * Needs the PHP zip extension. Every request to the KSeF API uses the access token of the
@@ -129,6 +136,15 @@ final class KsefExport
             }
 
             $continueFrom = self::lastDate($package, $filters->dateType, $reference);
+            if ($continueFrom <= $filters->from) {
+                // Repeating the export from the same point would return the same package.
+                throw new UnexpectedResponse(sprintf(
+                    'The KSeF export %s was truncated without passing its start %s: more invoices share that %s date than one export holds, so KSeF cannot continue past it. Narrow the filters (for example by seller NIP or a PermanentStorage date range).',
+                    $reference,
+                    $filters->from->format('Y-m-d\\TH:i:s.uP'),
+                    $filters->dateType,
+                ));
+            }
             if ($round >= self::MAX_ROUNDS) {
                 return new ExportResult($invoices, self::metadata($metadata, $metadataInvoices), $continueFrom, $round, true);
             }
@@ -253,71 +269,93 @@ final class KsefExport
         }
         ksort($parts);
 
-        $zip = '';
-        foreach ($parts as $ordinal => [$method, $url, $hash, $encryptedHash]) {
-            try {
-                $encrypted = (string) $this->api->raw($method, $url)->getBody();
-            } catch (InvalidArgumentException $exception) {
-                throw new UnexpectedResponse(sprintf('%s for the export %s returned an unusable download URL for part %d.', self::STATUS_OPERATION, $reference, $ordinal), 0, '', $exception);
-            }
-            if (! hash_equals($encryptedHash, base64_encode(hash('sha256', $encrypted, true)))) {
-                throw new UnexpectedResponse(sprintf('Part %d of the KSeF export %s does not match its encryptedPartHash; the download is incomplete or corrupted.', $ordinal, $reference));
-            }
-            try {
-                $plain = InvoiceCipher::decrypt($encrypted, $key);
-            } catch (InvalidArgumentException $exception) {
-                throw new UnexpectedResponse(sprintf('Part %d of the KSeF export %s could not be decrypted with the export key.', $ordinal, $reference), 0, '', $exception);
-            }
-            if (! hash_equals($hash, base64_encode(hash('sha256', $plain, true)))) {
-                throw new UnexpectedResponse(sprintf('Part %d of the KSeF export %s does not match its partHash after decryption.', $ordinal, $reference));
-            }
-            $zip .= $plain;
-        }
-
-        return self::unzip($zip, $reference);
-    }
-
-    /**
-     * @return array<string, string>
-     *
-     * @throws UnexpectedResponse
-     */
-    private static function unzip(string $zip, string $reference): array
-    {
         $path = tempnam(sys_get_temp_dir(), 'ksef-export-');
         if ($path === false) {
             throw new RuntimeException('The KSeF export package could not be unpacked: no temporary file is available.');
         }
         try {
-            if (file_put_contents($path, $zip) !== strlen($zip)) {
+            $archive = fopen($path, 'wb');
+            if ($archive === false) {
                 throw new RuntimeException('The KSeF export package could not be written to a temporary file.');
             }
-            $archive = new ZipArchive;
-            if ($archive->open($path) !== true) {
-                throw new UnexpectedResponse(sprintf('The package of the KSeF export %s is not a readable zip archive.', $reference));
-            }
             try {
-                $files = [];
-                for ($index = 0; $index < $archive->numFiles; $index++) {
-                    $name = $archive->getNameIndex($index);
-                    if ($name === false || str_ends_with($name, '/')) {
-                        continue;
+                foreach ($parts as $ordinal => [$method, $url, $hash, $encryptedHash]) {
+                    $plain = $this->part($ordinal, $method, $url, $hash, $encryptedHash, $key, $reference);
+                    if (fwrite($archive, $plain) !== strlen($plain)) {
+                        throw new RuntimeException('The KSeF export package could not be written to a temporary file.');
                     }
-                    $contents = $archive->getFromIndex($index);
-                    if ($contents === false) {
-                        throw new UnexpectedResponse(sprintf('The file %s of the KSeF export %s could not be unzipped.', $name, $reference));
-                    }
-                    $files[$name] = $contents;
+                    // Only one part is held in memory at a time.
+                    unset($plain);
                 }
-
-                return $files;
             } finally {
-                $archive->close();
+                fclose($archive);
             }
+
+            return self::unzip($path, $reference);
         } finally {
             if (is_file($path)) {
                 unlink($path);
             }
+        }
+    }
+
+    /**
+     * One part downloaded, checked against both digests and decrypted.
+     *
+     * @throws TransportException
+     */
+    private function part(int $ordinal, string $method, string $url, string $hash, string $encryptedHash, SymmetricKey $key, string $reference): string
+    {
+        try {
+            $encrypted = (string) $this->api->raw($method, $url)->getBody();
+        } catch (InvalidArgumentException $exception) {
+            throw new UnexpectedResponse(sprintf('%s for the export %s returned an unusable download URL for part %d.', self::STATUS_OPERATION, $reference, $ordinal), 0, '', $exception);
+        }
+        if (! hash_equals($encryptedHash, base64_encode(hash('sha256', $encrypted, true)))) {
+            throw new UnexpectedResponse(sprintf('Part %d of the KSeF export %s does not match its encryptedPartHash; the download is incomplete or corrupted.', $ordinal, $reference));
+        }
+        try {
+            $plain = InvoiceCipher::decrypt($encrypted, $key);
+        } catch (InvalidArgumentException $exception) {
+            throw new UnexpectedResponse(sprintf('Part %d of the KSeF export %s could not be decrypted with the export key.', $ordinal, $reference), 0, '', $exception);
+        }
+        if (! hash_equals($hash, base64_encode(hash('sha256', $plain, true)))) {
+            throw new UnexpectedResponse(sprintf('Part %d of the KSeF export %s does not match its partHash after decryption.', $ordinal, $reference));
+        }
+
+        return $plain;
+    }
+
+    /**
+     * The files of the zip archive at the path, by name.
+     *
+     * @return array<string, string>
+     *
+     * @throws UnexpectedResponse
+     */
+    private static function unzip(string $path, string $reference): array
+    {
+        $archive = new ZipArchive;
+        if ($archive->open($path) !== true) {
+            throw new UnexpectedResponse(sprintf('The package of the KSeF export %s is not a readable zip archive.', $reference));
+        }
+        try {
+            $files = [];
+            for ($index = 0; $index < $archive->numFiles; $index++) {
+                $name = $archive->getNameIndex($index);
+                if ($name === false || str_ends_with($name, '/')) {
+                    continue;
+                }
+                $contents = $archive->getFromIndex($index);
+                if ($contents === false) {
+                    throw new UnexpectedResponse(sprintf('The file %s of the KSeF export %s could not be unzipped.', $name, $reference));
+                }
+                $files[$name] = $contents;
+            }
+
+            return $files;
+        } finally {
+            $archive->close();
         }
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Transport\Ksef\Inbound;
 
 use DateTimeImmutable;
+use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 
 /**
  * One window of incremental inbox reading: the invoices with a PermanentStorage date from $from
@@ -46,6 +47,10 @@ final readonly class CursorWindow
      * the next window continues where this result stopped.
      *
      * @param  list<InvoiceMetadata>  $invoices
+     *
+     * @throws UnexpectedResponse when a truncated result does not pass the start of the window:
+     *                            more invoices share that PermanentStorage date than KSeF returns
+     *                            for one filter set, so the window could never advance
      */
     public function withResults(array $invoices, ?DateTimeImmutable $hwm, bool $isTruncated): self
     {
@@ -60,6 +65,12 @@ final readonly class CursorWindow
 
         $end = $hwm ?? $this->hwm;
         if ($isTruncated && $last !== null) {
+            if ($last <= $this->from) {
+                throw new UnexpectedResponse(sprintf(
+                    'More than 10,000 KSeF invoices share the PermanentStorage date %s; KSeF cannot page past it, so the inbox window cannot advance.',
+                    $this->from->format('Y-m-d\\TH:i:s.uP'),
+                ));
+            }
             $end = $last;
         }
 
