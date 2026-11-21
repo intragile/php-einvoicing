@@ -18,8 +18,9 @@ use LogicException;
  * Generation uses POST /tokens/rev2, available on KSeF TE since API 2.10; PROD runs API 2.9 and
  * offers only the deprecated POST /tokens, which is not implemented, so generation through the API
  * fails there until 2.10 reaches it. Tokens created in the KSeF web application still
- * authenticate, as token login does not use rev2 (verified on TE only). A token generated after KSeF-token authentication must be approved, with a
- * certificate authentication, before it can be used.
+ * authenticate, as token login does not use rev2 (verified on TE only). A token generated after
+ * KSeF-token authentication must be approved, with a certificate authentication, before it can
+ * be used.
  */
 final class KsefTokens
 {

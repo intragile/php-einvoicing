@@ -155,8 +155,8 @@ All notable changes to this project are documented here. The format follows
 - **Poland:** test helpers for KSeF TE: `SelfSignedCertificate` (seal and personal certificates for
   synthetic NIPs) and `KsefTestData` (the `/testdata` endpoints, refused outside TE), and the live
   test group `ksef-live`, which needs no secrets. Live-verified on KSeF TE (API 2.10 RC): the full
-  group passed on PHP 8.3; on PHP 8.5 a full run passed 13 of 14 tests and the corrected refresh
-  test passed in a separate run. DEMO and PRODUCTION not verified.
+  group passed (14 of 14 tests in one run) on PHP 8.5 and on PHP 8.3. DEMO and PRODUCTION not
+  verified.
 - **Documentation:** [docs/countries/POLAND.md](docs/countries/POLAND.md), including sending
   and receiving through KSeF.
 

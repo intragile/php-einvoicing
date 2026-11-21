@@ -1185,10 +1185,10 @@ $testData->resetRateLimits();
 ## What is verified for the KSeF transport
 
 **Live-verified on KSeF TE (API 2.10 RC), 2026-11-21; DEMO and PRODUCTION not verified.** The
-live group `ksef-live` passed in full on PHP 8.3 (14 of 14 tests). On PHP 8.5, 13 of 14 passed in
-a full run; the refresh test failed on a wrong test assumption (KSeF may return the identical access
-token for a refresh right after authentication), and after that test was corrected it passed on PHP
-8.5 and PHP 8.3 in a separate run. RSA-OAEP runs through phpseclib on every PHP version.
+live group `ksef-live` passed in full, 14 of 14 tests in one run each, on PHP 8.5 (13:52–13:56
+Europe/Warsaw) and on PHP 8.3 (13:56–14:00). In both runs the buyer inbox test listed the invoice
+after 6 `pending()` calls (130 s) and spent 7 metadata queries in total. RSA-OAEP runs through
+phpseclib on every PHP version.
 
 | Flow | Status |
 |---|---|

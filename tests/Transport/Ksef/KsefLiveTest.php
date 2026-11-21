@@ -461,7 +461,8 @@ final class KsefLiveTest extends TestCase
      * test spends at most INBOX_QUERY_BUDGET metadata queries, within KSeF's 20 per hour.
      *
      * Observed: the chunked queries are answered 200; the invoice was listed about two minutes
-     * after acceptance, as the PermanentStorage high water mark lags behind.
+     * after acceptance, as the PermanentStorage high water mark lags behind (6 pending() calls
+     * 25 s apart, 7 metadata queries in total).
      */
     public function test_buyer_sees_invoice_in_pending_and_fetches_it(): void
     {
