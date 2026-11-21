@@ -22,7 +22,8 @@ use SensitiveParameter;
  * them through HttpClient and maps unsuccessful answers with KsefErrors.
  *
  * A GET answered with 429 is repeated after the Retry-After delay, at most three times and with at
- * most 60 seconds of waiting in total; the last refusal is then thrown as RateLimited. Requests
+ * most 60 seconds of waiting in total; a refusal whose delay does not fit the time left, or the
+ * refusal after the third repeat, is thrown as RateLimited without waiting. Requests
  * with any other method are never repeated, because a repeat could duplicate their effect.
  *
  * The configured credentials and the bearer token of each call are kept out of every exception
@@ -135,11 +136,9 @@ final class KsefApi
             if ($status >= 200 && $status <= 299) {
                 return $response;
             }
-            if ($status === 429 && $method === 'GET' && $retries < self::MAX_RETRIES && $waitedMs < self::RETRY_BUDGET_MS) {
-                $waitMs = min(
-                    (KsefErrors::retryAfter($response) ?? self::DEFAULT_RETRY_AFTER_SECONDS) * 1000,
-                    self::RETRY_BUDGET_MS - $waitedMs,
-                );
+            $waitMs = (KsefErrors::retryAfter($response) ?? self::DEFAULT_RETRY_AFTER_SECONDS) * 1000;
+            // A delay longer than the budget left is not waited out: the refusal is thrown at once.
+            if ($status === 429 && $method === 'GET' && $retries < self::MAX_RETRIES && $waitMs <= self::RETRY_BUDGET_MS - $waitedMs) {
                 $this->config->sleep($waitMs);
                 $waitedMs += $waitMs;
                 $retries++;

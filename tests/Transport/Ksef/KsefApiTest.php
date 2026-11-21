@@ -158,15 +158,27 @@ final class KsefApiTest extends TestCase
         $recorder = new RecordingHttpClient(
             new Response(429, ['Retry-After' => '50']),
             new Response(429, ['Retry-After' => '50']),
-            new Response(429, ['Retry-After' => '50']),
         );
 
         $exception = self::capture(fn () => $this->api($recorder)->raw('GET', '/invoices/ksef/x'));
 
+        // The second delay exceeds the 10 s left of the budget, so it is thrown without waiting.
         self::assertInstanceOf(RateLimited::class, $exception);
         self::assertSame(50, $exception->retryAfterSeconds);
-        self::assertCount(3, $recorder->requests());
-        self::assertSame([50_000, 10_000], $this->sleeps);
+        self::assertCount(2, $recorder->requests());
+        self::assertSame([50_000], $this->sleeps);
+    }
+
+    public function test_429_with_retry_after_beyond_the_budget_is_thrown_at_once(): void
+    {
+        $recorder = new RecordingHttpClient(new Response(429, ['Retry-After' => '120']));
+
+        $exception = self::capture(fn () => $this->api($recorder)->json('GET', '/sessions'));
+
+        self::assertInstanceOf(RateLimited::class, $exception);
+        self::assertSame(120, $exception->retryAfterSeconds);
+        self::assertCount(1, $recorder->requests());
+        self::assertSame([], $this->sleeps);
     }
 
     public function test_429_without_retry_after_waits_the_default(): void
