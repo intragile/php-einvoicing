@@ -68,7 +68,7 @@ Jelenleg tartalmazza:
   (azonosítás XAdES-tanúsítvánnyal vagy KSeF-tokennel, online és kötegelt munkamenetek, státusz,
   KSeF-szám és UPO-nyugta), a beérkezett számlák olvasása nyugtázásos kurzorral és számlaexport,
   KSeF-tokenek kezelése, valamint önaláírt tanúsítványok és tesztadatok a KSeF TE környezethez.
-  Élesben ellenőrizve a KSeF TE környezetben (API 2.10 RC); a DEMO és a PRODUCTION nincs
+  Élő hívásokkal ellenőrizve a KSeF TE tesztkörnyezetben (API 2.10 RC); a DEMO és a PRODUCTION nincs
   ellenőrizve, az UPO aláírását a csomag nem ellenőrzi
   ([Lengyelország](docs/countries/POLAND.md#send-to-ksef), angolul).
 

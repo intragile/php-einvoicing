@@ -194,7 +194,9 @@ final class KsefLiveTest extends TestCase
     }
 
     /**
-     * Observed: POST /auth/token/refresh returns a new access token valid another 15 minutes.
+     * Observed: POST /auth/token/refresh returns an access token valid another 15 minutes. A refresh
+     * issued within the second of the authentication may return the identical token (same JWT), so
+     * only its validity and its use are asserted.
      * After DELETE /auth/sessions/current the refresh is refused with HTTP 400, code 21301
      * ("Status uwierzytelnienia (425) nie pozwala na odświeżenie tokenu dostępowego"), which maps
      * to the AuthenticationFailed that Authenticator::renew() answers with a full authentication.
@@ -211,11 +213,15 @@ final class KsefLiveTest extends TestCase
             $refreshed = $authenticator->refresh($tokens);
             $redactor = KsefLive::redactor($config, $tokens->accessToken(), $tokens->refreshToken(), $refreshed->accessToken());
             array_push($this->secrets, $tokens->accessToken(), $tokens->refreshToken(), $refreshed->accessToken());
-            self::assertNotSame(hash('sha256', $tokens->accessToken()), hash('sha256', $refreshed->accessToken()));
             self::assertGreaterThan(new DateTimeImmutable, $refreshed->accessValidUntil);
-            KsefLive::report('refresh: new access token valid until '.$refreshed->accessValidUntil->format(DATE_ATOM));
+            self::assertGreaterThanOrEqual($tokens->accessValidUntil, $refreshed->accessValidUntil);
+            KsefLive::report(sprintf(
+                'refresh: access token valid until %s, %s the token of the authentication',
+                $refreshed->accessValidUntil->format(DATE_ATOM),
+                hash_equals($tokens->accessToken(), $refreshed->accessToken()) ? 'identical to' : 'different from',
+            ));
 
-            // The refreshed token works.
+            // The refreshed token works for an authorized call; a refusal throws.
             $api->json('GET', '/auth/sessions', null, $refreshed->accessToken());
 
             // End the authentication session, then try the refresh token again.

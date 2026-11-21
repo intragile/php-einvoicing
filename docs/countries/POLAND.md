@@ -971,11 +971,12 @@ echo $ksef->tokens()->status($generated->referenceNumber), "\n"; // Pending, Act
 
 - The token API is the rev2 one (`/tokens/rev2`), available on TE since API 2.10. **PRODUCTION ran
   API 2.9 when this was written, without rev2, so `generate()`, `status()` and `approve()` fail
-  there until 2.10 reaches it.** Tokens created in the KSeF web application authenticate on every
-  environment.
+  there until 2.10 reaches it.** Tokens created in the KSeF web application still authenticate:
+  token login does not use rev2 (verified on TE only).
 - A token generated in a context that logged in with a KSeF token is `AwaitingApproval`. It must be
-  approved with `approve()` from a context authenticated with a certificate, within 24 hours;
-  approving from the token-authenticated context is refused with error 26005.
+  approved with `approve()` from a context authenticated with a certificate (within 24 hours,
+  according to the KSeF documentation; not observed live); approving from the token-authenticated
+  context is refused with error 26005 (observed on TE).
 - `status()` reads the rev2 status. The legacy status endpoint reports a token awaiting approval as
   Active, so it is not used.
 
@@ -1085,7 +1086,7 @@ Every failure is a `TransportException` subclass ([TRANSPORT.md](../TRANSPORT.md
 | Situation | Exception |
 |---|---|
 | HTTP 401, or KSeF code 21301 or 21304 (including a refused token refresh); HTTP 403 | `AuthenticationFailed` |
-| HTTP 429 | `RateLimited` (`retryAfterSeconds` from `Retry-After`) |
+| HTTP 429 | `RateLimited` (`retryAfterSeconds` from `Retry-After`, null when the header is missing or unreadable) |
 | HTTP 400 with a refused-body code (21401, 21402, 21403, 21405, 21217, 9101, 9102, 9103, 9105); an FA(3) file that fails local validation | `DocumentRejected` |
 | Network failure or HTTP 5xx on a GET | `TransportUnavailable` (safe to retry; not repeated automatically) |
 | Network failure or HTTP 5xx on a POST | `OutcomeUnknown` |
@@ -1095,7 +1096,7 @@ Retries:
 
 | Request | Automatic retry |
 |---|---|
-| GET answered with 429 | Repeated after `Retry-After`, at most 3 times and at most 60 seconds of waiting in total. A 429 whose delay does not fit the time left is thrown at once, without waiting. |
+| GET answered with 429 | Repeated after `Retry-After` (5 seconds when the header is missing or unreadable), at most 3 times and at most 60 seconds of waiting in total. A 429 whose delay does not fit the time left is thrown at once, without waiting. |
 | GET failing otherwise | Never; `TransportUnavailable` is safe to retry yourself. |
 | Any POST (sending, opening sessions, authentication) | Never. |
 
@@ -1112,7 +1113,8 @@ flow can be tried without a real certificate:
   method `xades.qualified-seal`) and `SelfSignedCertificate::person($nipOrPesel)` (serialNumber
   `TINPL-<NIP>` or `PNOPL-<PESEL>`, method `xades.qualified-certificate`) generate a fresh RSA-2048
   key in memory and a certificate valid for 30 days. `randomNip()` gives a NIP with a valid check
-  digit. KSeF refuses self-signed certificates outside TE.
+  digit. According to the KSeF documentation, KSeF refuses self-signed certificates outside TE
+  (not verified: DEMO and PRODUCTION were not tried).
 - `KsefTestData` calls the `/testdata` endpoints (subjects, attachments, permissions, rate limits).
   It refuses every environment but TEST. The rate-limit calls authenticate with the
   configuration's credentials themselves.
@@ -1137,8 +1139,10 @@ $testData->resetRateLimits();
 ## What is verified for the KSeF transport
 
 **Live-verified on KSeF TE (API 2.10 RC), 2026-11-21; DEMO and PRODUCTION not verified.** The
-live group `ksef-live` passed on PHP 8.3, where RSA-OAEP runs through phpseclib, as on every PHP
-version.
+live group `ksef-live` passed in full on PHP 8.3 (14 of 14 tests). On PHP 8.5, 13 of 14 passed in
+a full run; the refresh test failed on a wrong test assumption (KSeF may return the identical access
+token for a refresh right after authentication), and after that test was corrected it passed on PHP
+8.5 and PHP 8.3 in a separate run. RSA-OAEP runs through phpseclib on every PHP version.
 
 | Flow | Status |
 |---|---|
@@ -1167,7 +1171,8 @@ a literal `$`. The bundled copy is kept byte-identical and the defect is documen
   invoice; `KsefTransport` does not offer the flow yet).
 - **QR images.** Only the KOD I URL is produced.
 - **Laravel bridge** (configuration per environment, queued sending, scheduled inbound polling, a
-  persistent cursor store, events, an adapter to the generic `Transport` if needed).
+  persistent cursor store, events, an adapter to the generic `Transport` if needed), and the entry
+  package `laravel-ksef`.
 - **Reading FA_PEF(3) and FA_KOR_PEF(3) downloads** (the Peppol-based invoices KSeF serves): they
   download like any other invoice, but `Fa3Reader` does not map them.
 - **Typed builders** for the transport blocks, the new means of transport, the authorised party and
