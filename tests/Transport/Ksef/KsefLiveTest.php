@@ -59,10 +59,16 @@ use Throwable;
 #[Group('ksef-live')]
 final class KsefLiveTest extends TestCase
 {
-    /** Status reads of a buyer inbox before giving up. */
-    private const INBOX_ATTEMPTS = 40;
+    /**
+     * Reads of a buyer inbox before giving up. KSeF allows 20 metadata queries per hour and
+     * subject, so the test polls at most ten times, 25 s apart.
+     */
+    private const INBOX_ATTEMPTS = 10;
 
-    private const INBOX_WAIT_SECONDS = 6;
+    private const INBOX_WAIT_SECONDS = 25;
+
+    /** Metadata queries the buyer test may spend, below the hourly quota of 20. */
+    private const INBOX_QUERY_BUDGET = 15;
 
     /** @var list<string> secrets a running test learned, kept out of its failure message */
     private array $secrets = [];
@@ -201,7 +207,7 @@ final class KsefLiveTest extends TestCase
      * ("Status uwierzytelnienia (425) nie pozwala na odświeżenie tokenu dostępowego"), which maps
      * to the AuthenticationFailed that Authenticator::renew() answers with a full authentication.
      */
-    public function test_refresh_returns_new_access_token(): void
+    public function test_refresh_returns_a_valid_access_token(): void
     {
         $nip = SelfSignedCertificate::randomNip();
         $tap = new KsefTap;
@@ -451,9 +457,11 @@ final class KsefLiveTest extends TestCase
      * polling and fetches the same bytes. The inbox starts 100 days back, so the first query is a
      * bounded 90-day chunk.
      *
+     * Polls at most INBOX_ATTEMPTS times INBOX_WAIT_SECONDS apart and asserts that the whole
+     * test spends at most INBOX_QUERY_BUDGET metadata queries, within KSeF's 20 per hour.
+     *
      * Observed: the chunked queries are answered 200; the invoice was listed about two minutes
-     * after acceptance (19 pending() calls 6 s apart), as the PermanentStorage high water mark
-     * lags behind.
+     * after acceptance, as the PermanentStorage high water mark lags behind.
      */
     public function test_buyer_sees_invoice_in_pending_and_fetches_it(): void
     {
@@ -493,6 +501,9 @@ final class KsefLiveTest extends TestCase
             self::assertSame($xml, $document->xml);
             $buyerTransport->acknowledge($ksefNumber);
             self::assertSame([], array_filter($buyerTransport->pending(), static fn ($r): bool => $r->documentId === $ksefNumber));
+            $spent = count($buyerTap->all('POST', '#^/invoices/query/metadata$#'));
+            KsefLive::report(sprintf('buyer inbox: %d metadata queries in total', $spent));
+            self::assertLessThanOrEqual(self::INBOX_QUERY_BUDGET, $spent);
         });
     }
 

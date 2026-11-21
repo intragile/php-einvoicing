@@ -15,6 +15,7 @@ use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\DeliveryStatus;
 use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
+use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\Http\HttpClient;
@@ -82,8 +83,12 @@ final class KsefTransport implements InboundSource
     /** A KSeF session or invoice reference number: letters, digits and hyphens. */
     private const REFERENCE_PATTERN = '/\A[A-Za-z0-9-]{1,64}\z/';
 
-    /** Pages of one inbox query: KSeF returns at most 10,000 records per filter set. */
-    private const MAX_INBOX_PAGES = 40;
+    /**
+     * Metadata pages one pending() call reads at most. KSeF allows 20 metadata queries per hour
+     * and subject, so one call leaves room for a retry and fetch() lookups within the hour; a
+     * longer result ends the window at its last record, as a truncated one does.
+     */
+    private const MAX_INBOX_PAGES = 10;
 
     /** Days one inbox query spans at most; KSeF refuses date ranges over 100 days. */
     public const INBOX_CHUNK_DAYS = 90;
@@ -314,8 +319,16 @@ final class KsefTransport implements InboundSource
      * invoice that is never acknowledged holds it at that window for good; resetInbox() is the
      * way out.
      *
+     * Every call spends at least one metadata query, and one per further page (at most
+     * MAX_INBOX_PAGES); KSeF allows 20 per hour and subject, and the Ministry of Finance
+     * recommends polling one subject no more often than every 15 minutes in production. A result
+     * longer than the page limit ends the window at its last record. When KSeF refuses a later
+     * page with 429, the window is saved ending at the last record already listed and the
+     * RateLimited is thrown; the next call after the Retry-After delay lists those invoices again.
+     *
      * @return list<InboundReference>
      *
+     * @throws RateLimited when KSeF refuses a metadata query with 429 (a POST is never repeated)
      * @throws TransportException when the query fails or its answer cannot be read
      */
     public function pending(): array
@@ -339,8 +352,20 @@ final class KsefTransport implements InboundSource
             $to,
             restrictToHwm: true,
         );
+        $previous = null;
         for ($offset = 0; $offset < self::MAX_INBOX_PAGES; $offset++) {
-            $page = $this->query->page($filters, $offset, MetadataQuery::MAX_PAGE_SIZE);
+            try {
+                $page = $this->query->page($filters, $offset, MetadataQuery::MAX_PAGE_SIZE);
+            } catch (RateLimited $exception) {
+                // Keep what the earlier pages listed: the window ends at their last record, so
+                // that the cursor progresses once they are acknowledged instead of reading the
+                // same pages again on every call.
+                if ($previous !== null) {
+                    $this->saveInterrupted($key, $window, $previous, $to);
+                }
+
+                throw $exception;
+            }
             foreach ($page['invoices'] as $invoice) {
                 $this->inbox[$invoice->ksefNumber] = $invoice;
             }
@@ -352,6 +377,7 @@ final class KsefTransport implements InboundSource
             if (! $page['hasMore'] || $truncated) {
                 break;
             }
+            $previous = $page;
         }
         $this->cursor->save($key, $window->isComplete() ? $window->next() : $window);
         // Keep only the metadata of invoices still pending, so a long-running worker does not
@@ -540,6 +566,24 @@ final class KsefTransport implements InboundSource
         }
 
         throw new UnexpectedResponse(sprintf('KSeF lists no invoice with the KSeF number %s addressed to the context %s.', $ksefNumber, $this->config->context->value));
+    }
+
+    /**
+     * Saves a window whose reading was interrupted after the given page, narrowed to the last
+     * record listed as a truncated result is. When that record does not pass the window start the
+     * stored window is left as it was.
+     *
+     * @param  array{invoices: list<InvoiceMetadata>, hwm: ?DateTimeImmutable, hasMore: bool, isTruncated: bool}  $page
+     */
+    private function saveInterrupted(string $key, CursorWindow $window, array $page, ?DateTimeImmutable $to): void
+    {
+        try {
+            $narrowed = $window->withResults($page['invoices'], $page['hwm'], true, $to);
+        } catch (UnexpectedResponse) {
+            return;
+        }
+        $this->cursor->save($key, $narrowed);
+        $this->inbox = array_intersect_key($this->inbox, array_fill_keys($narrowed->pending(), true));
     }
 
     private function defaultInboxStart(): DateTimeImmutable

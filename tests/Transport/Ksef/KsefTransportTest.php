@@ -14,6 +14,7 @@ use IntrAgile\EInvoicing\Tests\Transport\Ksef\Session\SessionFixtures;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
+use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\FailureCategory;
 use IntrAgile\EInvoicing\Transport\Http\HttpClient;
@@ -323,31 +324,75 @@ final class KsefTransportTest extends TestCase
     public function test_page_limit_with_more_pages_narrows_the_window_like_truncation(): void
     {
         $store = new InMemoryCursorStore;
-        $pages = [];
-        $numbers = [];
-        for ($i = 0; $i < 40; $i++) {
-            $first32 = sprintf('5555555555-20261101-0100806157%02X', $i);
-            $numbers[] = $number = $first32.'-'.KsefNumber::checksum($first32);
-            $pages[] = self::json(200, [
-                'hasMore' => true,
-                'isTruncated' => false,
-                'permanentStorageHwmDate' => self::INBOX_HWM,
-                'invoices' => [self::metadataEntry($number, sprintf('2026-11-01T00:%02d:00.000+00:00', $i))],
-            ]);
-        }
+        [$pages, $numbers] = self::inboxPages(10);
         $recorder = new RecordingHttpClient(...[...self::tokenAuthResponses(), ...$pages]);
         $transport = $this->transport($recorder, $store);
 
         $pending = $transport->pending();
 
-        self::assertCount(40, $pending);
-        self::assertCount(40, self::requestsTo($recorder, 'POST', '/invoices/query/metadata'));
-        self::assertEquals(new DateTimeImmutable('2026-11-01T00:39:00+00:00'), $store->window(self::INBOX_KEY)?->hwm);
+        self::assertCount(10, $pending);
+        self::assertCount(10, self::requestsTo($recorder, 'POST', '/invoices/query/metadata'));
+        self::assertEquals(new DateTimeImmutable('2026-11-01T00:09:00+00:00'), $store->window(self::INBOX_KEY)?->hwm);
         foreach ($numbers as $number) {
             $transport->acknowledge($number);
         }
         // The cursor stops at the last listed invoice, not at the high water mark beyond it.
-        self::assertEquals(new DateTimeImmutable('2026-11-01T00:39:00+00:00'), $store->window(self::INBOX_KEY)?->from);
+        self::assertEquals(new DateTimeImmutable('2026-11-01T00:09:00+00:00'), $store->window(self::INBOX_KEY)?->from);
+    }
+
+    public function test_one_inbox_read_stays_within_the_hourly_metadata_quota(): void
+    {
+        $store = new InMemoryCursorStore;
+        [$pages] = self::inboxPages(12);
+        $recorder = new RecordingHttpClient(...[...self::tokenAuthResponses(), ...$pages]);
+
+        self::assertCount(10, $this->transport($recorder, $store)->pending());
+        // KSeF allows 20 metadata queries per hour and subject; one read spends at most ten.
+        self::assertCount(10, self::requestsTo($recorder, 'POST', '/invoices/query/metadata'));
+        self::assertEquals(new DateTimeImmutable('2026-11-01T00:09:00+00:00'), $store->window(self::INBOX_KEY)?->hwm);
+    }
+
+    public function test_rate_limit_after_a_page_narrows_the_stored_window_so_the_cursor_progresses(): void
+    {
+        $store = new InMemoryCursorStore;
+        [$pages, $numbers] = self::inboxPages(2);
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            ...$pages,
+            self::fixture(429, 'too-many-requests-problem-details.json', ['Retry-After' => '3600']),
+            self::metadataPage([], '2026-11-21T09:59:30.000+00:00'),
+        ]);
+        $transport = $this->transport($recorder, $store);
+
+        $exception = self::capture(static fn () => $transport->pending());
+
+        self::assertInstanceOf(RateLimited::class, $exception);
+        $window = $store->window(self::INBOX_KEY);
+        self::assertNotNull($window);
+        self::assertSame($numbers, $window->pending(), 'The invoices listed before the refusal are kept.');
+        self::assertEquals(new DateTimeImmutable('2026-11-01T00:01:00+00:00'), $window->hwm, 'The window ends at the last listed invoice.');
+
+        foreach ($numbers as $number) {
+            $transport->acknowledge($number);
+        }
+        self::assertSame([], $transport->pending());
+        $queries = self::requestsTo($recorder, 'POST', '/invoices/query/metadata');
+        self::assertCount(4, $queries);
+        self::assertSame('2026-11-01T00:01:00.000000+00:00', self::dateRange(self::body($queries[3]))['from']);
+    }
+
+    public function test_rate_limit_on_the_first_page_leaves_the_stored_window_unchanged(): void
+    {
+        $store = new InMemoryCursorStore;
+        $start = CursorWindow::start(new DateTimeImmutable('2026-11-20T00:00:00+00:00'));
+        $store->save(self::INBOX_KEY, $start);
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            self::fixture(429, 'too-many-requests-problem-details.json', ['Retry-After' => '3600']),
+        ]);
+
+        self::assertInstanceOf(RateLimited::class, self::capture(fn () => $this->transport($recorder, $store)->pending()));
+        self::assertEquals($start, $store->window(self::INBOX_KEY));
     }
 
     public function test_reset_inbox_restarts_the_cursor_and_prunes_listed_metadata(): void
@@ -531,6 +576,30 @@ final class KsefTransportTest extends TestCase
             'invoiceHash' => base64_encode(hash('sha256', self::RECEIVED_XML, true)),
             'thirdSubjects' => [],
         ];
+    }
+
+    /**
+     * Metadata pages of one invoice each, every page announcing more, a minute apart from
+     * 2026-11-01T00:00.
+     *
+     * @return array{list<Response>, list<string>}
+     */
+    private static function inboxPages(int $count): array
+    {
+        $pages = [];
+        $numbers = [];
+        for ($i = 0; $i < $count; $i++) {
+            $first32 = sprintf('5555555555-20261101-0100806157%02X', $i);
+            $numbers[] = $number = $first32.'-'.KsefNumber::checksum($first32);
+            $pages[] = self::json(200, [
+                'hasMore' => true,
+                'isTruncated' => false,
+                'permanentStorageHwmDate' => self::INBOX_HWM,
+                'invoices' => [self::metadataEntry($number, sprintf('2026-11-01T00:%02d:00.000+00:00', $i))],
+            ]);
+        }
+
+        return [$pages, $numbers];
     }
 
     /**
