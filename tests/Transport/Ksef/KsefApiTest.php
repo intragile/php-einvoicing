@@ -119,6 +119,45 @@ final class KsefApiTest extends TestCase
         }
     }
 
+    public function test_part_url_signature_never_appears_in_exceptions(): void
+    {
+        $url = 'https://x.blob.core.windows.net/p/1?sv=2025&sig=SECRETSIGNATURE123';
+        $network = new class('cURL error 28: timed out for '.$url) extends RuntimeException implements NetworkExceptionInterface
+        {
+            public function getRequest(): RequestInterface
+            {
+                throw new RuntimeException('not needed');
+            }
+        };
+        $recorder = new RecordingHttpClient(
+            $network,
+            new Response(409, [], 'Conflict on '.$url.' (sig=SECRETSIGNATURE123)'),
+            new Response(503, [], 'Unavailable: '.$url),
+        );
+        $api = $this->api($recorder);
+
+        $failures = [
+            self::capture(fn () => $api->raw('PUT', $url, 'part')),
+            self::capture(fn () => $api->raw('PUT', $url, 'part')),
+            self::capture(fn () => $api->raw('GET', $url)),
+        ];
+
+        self::assertInstanceOf(OutcomeUnknown::class, $failures[0]);
+        self::assertNotNull($failures[0]->getPrevious());
+        self::assertInstanceOf(UnexpectedResponse::class, $failures[1]);
+        self::assertSame(409, $failures[1]->status);
+        self::assertInstanceOf(TransportUnavailable::class, $failures[2]);
+        foreach ($failures as $exception) {
+            for ($current = $exception; $current !== null; $current = $current->getPrevious()) {
+                $text = $current->getMessage().($current instanceof UnexpectedResponse ? $current->bodyExcerpt : '');
+                self::assertStringNotContainsString('SECRETSIGNATURE123', $text, $current::class);
+                self::assertStringNotContainsString('sv=2025', $text, $current::class);
+            }
+        }
+        // The path stays readable for diagnosis.
+        self::assertStringContainsString('https://x.blob.core.windows.net/p/1', $failures[1]->getMessage());
+    }
+
     public function test_429_on_get_retries_within_budget(): void
     {
         $recorder = new RecordingHttpClient(

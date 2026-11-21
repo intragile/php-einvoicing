@@ -41,6 +41,9 @@ final class KsefApi
     /** Seconds waited after a 429 that has no readable Retry-After header. */
     private const DEFAULT_RETRY_AFTER_SECONDS = 5;
 
+    /** Query parameter values of a part URL shorter than this are not redacted on their own. */
+    private const MIN_PARAMETER_SECRET_LENGTH = 8;
+
     private readonly HttpClient $http;
 
     public function __construct(private readonly KsefConfig $config, HttpClient $http)
@@ -83,7 +86,7 @@ final class KsefApi
             $data = null;
         }
         if (! is_array($data)) {
-            throw $this->redactor($bearer)->unexpected($response, sprintf('The KSeF request %s %s was answered with a body that is not a JSON object or array', strtoupper($method), $this->describe($path)));
+            throw $this->redactor($this->callSecrets($path, $bearer))->unexpected($response, sprintf('The KSeF request %s %s was answered with a body that is not a JSON object or array', strtoupper($method), $this->describe($path)));
         }
 
         return $data;
@@ -120,8 +123,12 @@ final class KsefApi
         $http = $this->http;
         if ($bearer !== null) {
             $headers['Authorization'] = 'Bearer '.$bearer;
-            $http = $http->withSecrets([$bearer]);
         }
+        $callSecrets = $this->callSecrets($url, $bearer);
+        if ($callSecrets !== []) {
+            $http = $http->withSecrets($callSecrets);
+        }
+        $redactor = $this->redactor($callSecrets);
         $operation = sprintf('The KSeF request %s %s', $method, $this->describe($url));
 
         $retries = 0;
@@ -130,7 +137,7 @@ final class KsefApi
             try {
                 $response = $http->send($method, $url, $headers, $body);
             } catch (OutcomeUnknown|TransportUnavailable $exception) {
-                throw $this->scrubbed($exception, $bearer);
+                throw self::scrubbed($exception, $redactor);
             }
             $status = $response->getStatusCode();
             if ($status >= 200 && $status <= 299) {
@@ -146,7 +153,7 @@ final class KsefApi
                 continue;
             }
 
-            throw (new KsefErrors($this->redactor($bearer)))->exception($response, $operation, $method);
+            throw (new KsefErrors($redactor))->exception($response, $operation, $method);
         }
     }
 
@@ -195,11 +202,11 @@ final class KsefApi
     /**
      * The failure with its message as HttpClient redacted it, and its chain of previous
      * exceptions replaced by copies whose messages are redacted too: a PSR-18 client may quote
-     * request headers, and with them the bearer token, in its own exception messages.
+     * request headers or the URL, and with them the bearer token or a signed query, in its own
+     * exception messages.
      */
-    private function scrubbed(OutcomeUnknown|TransportUnavailable $exception, #[SensitiveParameter] ?string $bearer): OutcomeUnknown|TransportUnavailable
+    private static function scrubbed(OutcomeUnknown|TransportUnavailable $exception, Redactor $redactor): OutcomeUnknown|TransportUnavailable
     {
-        $redactor = $this->redactor($bearer);
         $chain = [];
         for ($previous = $exception->getPrevious(); $previous !== null; $previous = $previous->getPrevious()) {
             $chain[] = $previous;
@@ -207,7 +214,8 @@ final class KsefApi
         $copy = null;
         foreach (array_reverse($chain) as $previous) {
             $copy = new RuntimeException(
-                sprintf('[%s] %s', $previous::class, $redactor->redact($previous->getMessage())),
+                // An anonymous class name carries a NUL byte and the file path after it.
+                sprintf('[%s] %s', explode("\0", $previous::class)[0], $redactor->redact($previous->getMessage())),
                 (int) $previous->getCode(),
                 $copy,
             );
@@ -217,13 +225,38 @@ final class KsefApi
         return $exception instanceof OutcomeUnknown ? new OutcomeUnknown($message, $copy) : new TransportUnavailable($message, $copy);
     }
 
-    private function redactor(#[SensitiveParameter] ?string $bearer): Redactor
+    /**
+     * The secrets of one call beyond the configured ones: the bearer token, and for an absolute
+     * URL with a query (a signed part URL) the whole URL and its query, which are credentials.
+     *
+     * @return list<string>
+     */
+    private function callSecrets(string $url, #[SensitiveParameter] ?string $bearer): array
     {
-        $secrets = $this->config->secrets();
-        if ($bearer !== null) {
-            $secrets[] = $bearer;
+        $secrets = $bearer === null ? [] : [$bearer];
+        if (! str_starts_with($url, $this->config->baseUrl.'/') && ! str_starts_with($url, '/')) {
+            $query = parse_url($url, PHP_URL_QUERY);
+            if (is_string($query) && $query !== '') {
+                array_push($secrets, $url, $query);
+                // Each long parameter value too, such as a SAS "sig" quoted on its own; short
+                // values (versions, flags) are left alone so that ordinary text is not garbled.
+                foreach (explode('&', $query) as $pair) {
+                    $value = rawurldecode(explode('=', $pair, 2)[1] ?? '');
+                    if (strlen($value) >= self::MIN_PARAMETER_SECRET_LENGTH) {
+                        $secrets[] = $value;
+                    }
+                }
+            }
         }
 
-        return new Redactor($secrets);
+        return $secrets;
+    }
+
+    /**
+     * @param  list<string>  $callSecrets
+     */
+    private function redactor(#[SensitiveParameter] array $callSecrets): Redactor
+    {
+        return new Redactor([...$this->config->secrets(), ...$callSecrets]);
     }
 }
