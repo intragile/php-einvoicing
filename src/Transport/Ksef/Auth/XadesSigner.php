@@ -91,9 +91,10 @@ final class XadesSigner
             throw new InvalidArgumentException('The certificate cannot be parsed.');
         }
 
-        // The enveloped-signature transform removes the signature again, so the document digest
-        // is the digest of the document as it is before the signature is added.
-        $documentDigest = self::digest(self::canonicalize($root));
+        // URI="" selects the whole document without comments, including processing instructions
+        // outside the root element. The enveloped-signature transform removes the signature again,
+        // so the digest is that of the document as it is before the signature is added.
+        $documentDigest = self::digest(self::canonicalize($document));
 
         $signature = self::ds($document, 'Signature');
         $signature->setAttribute('Id', self::SIGNATURE_ID);
@@ -339,6 +340,11 @@ final class XadesSigner
     }
 
     /**
+     * The issuer attributes as openssl_x509_parse() returns them. That array groups every
+     * attribute type under one key in the order of its first occurrence, so a DN that repeats a
+     * type non-adjacently (OU=a, O=b, OU=c) or uses multi-valued RDNs cannot be reproduced in its
+     * exact certificate order; such an issuer name may not match the certificate.
+     *
      * @param  array<array-key, mixed>  $certificate
      * @return array<string, string|list<string>>
      */

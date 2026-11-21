@@ -12,6 +12,9 @@ use SensitiveParameter;
 /**
  * A KSeF token, as generated in the KSeF web application or through the API.
  *
+ * Surrounding whitespace, as left by a copied environment variable or file, is removed, and the
+ * trimmed value is the one stored and sent.
+ *
  * The token stays out of var_export(), print_r(), var_dump(), json_encode() and array-cast
  * output, and the object refuses to be serialized.
  */

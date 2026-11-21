@@ -14,7 +14,9 @@ use SensitiveParameter;
  *
  * The value lives in a closure, which var_export() and json_encode() render empty, and the
  * object's own __debugInfo() hides that closure from var_dump() and print_r(), also when the
- * holder is cast to an array. It refuses to be serialized.
+ * holder is cast to an array. It refuses to be serialized. This protects against first-level
+ * dumps and casts only: code that deliberately casts this object itself to an array, or reflects
+ * on the closure, can still reach the value.
  *
  * @internal
  */

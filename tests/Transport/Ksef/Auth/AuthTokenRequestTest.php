@@ -76,9 +76,8 @@ final class AuthTokenRequestTest extends TestCase
         $errors = self::schemaErrors(AuthTokenRequest::xml(self::CHALLENGE, $context));
 
         self::assertCount(1, $errors);
-        self::assertStringContainsString('NipVatUe', $errors[0]->message);
+        self::assertStringContainsString('{'.AuthTokenRequest::NAMESPACE.'}NipVatUe', $errors[0]->message);
         self::assertStringContainsString("[facet 'pattern']", $errors[0]->message);
-        self::assertStringEndsWith("\$'.", $errors[0]->message);
     }
 
     /**

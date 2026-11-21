@@ -170,6 +170,26 @@ final class XadesSignerTest extends TestCase
         self::assertSame('2026-11-21T08:59:00Z', self::element($xpath, '//xades:SigningTime')->textContent);
     }
 
+    /**
+     * URI="" covers the whole document: a processing instruction before the root element is
+     * part of the digest, and the signature still verifies.
+     */
+    public function test_top_level_processing_instruction_is_covered_by_the_document_digest(): void
+    {
+        $credentials = self::seal();
+        $xpath = self::xpath((new XadesSigner)->sign('<?pi x?><root>a</root>', $credentials));
+        $digest = self::digestValue($xpath, self::element($xpath, '//ds:Reference[@URI=""]'));
+
+        self::assertSame(self::documentDigest($xpath->document), $digest);
+        self::assertNotSame(base64_encode(hash('sha256', '<root>a</root>', true)), $digest);
+        self::assertSame(base64_encode(hash('sha256', "<?pi x?>\n<root>a</root>", true)), $digest);
+
+        $signedInfo = (string) self::element($xpath, '//ds:SignedInfo')->C14N(true, false);
+        $signature = base64_decode(self::element($xpath, '//ds:SignatureValue')->textContent, true);
+        self::assertIsString($signature);
+        self::assertSame(1, openssl_verify($signedInfo, $signature, $credentials->certificatePem, OPENSSL_ALGO_SHA256));
+    }
+
     public function test_unparseable_xml_is_refused(): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -263,8 +283,8 @@ final class XadesSignerTest extends TestCase
     }
 
     /**
-     * The digest of the whole document after the enveloped-signature and exclusive C14N
-     * transforms, recomputed independently of the signer.
+     * The digest of the whole document (URI="", comments excluded) after the enveloped-signature
+     * and exclusive C14N transforms, recomputed independently of the signer.
      */
     private static function documentDigest(DOMDocument $document): string
     {
@@ -274,10 +294,8 @@ final class XadesSignerTest extends TestCase
         $xpath->registerNamespace('ds', self::DS);
         $signature = self::element($xpath, '/*/ds:Signature');
         $signature->parentNode?->removeChild($signature);
-        $root = $copy->documentElement;
-        self::assertInstanceOf(DOMElement::class, $root);
 
-        return base64_encode(hash('sha256', (string) $root->C14N(true, false), true));
+        return base64_encode(hash('sha256', (string) $copy->C14N(true, false), true));
     }
 
     private static function der(string $pem): string

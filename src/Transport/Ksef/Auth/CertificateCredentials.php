@@ -85,7 +85,7 @@ final readonly class CertificateCredentials implements Credentials
      */
     public function privateKey(): OpenSSLAsymmetricKey
     {
-        $key = openssl_pkey_get_private($this->privateKeyPem(), $this->passphrase());
+        $key = @openssl_pkey_get_private($this->privateKeyPem(), $this->passphrase());
         if ($key === false) {
             self::clearOpenSslErrors();
 
