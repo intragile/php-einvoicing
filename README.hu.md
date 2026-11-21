@@ -63,15 +63,22 @@ Jelenleg tartalmazza:
   ellenőrzés a csomagban szállított hivatalos FA(3) XSD-vel és a lengyel Pénzügyminisztérium
   tájékoztató füzetéből vett 21 szabállyal, hálózat nélkül; segédosztályok a NIP-hez, a KSeF-számhoz
   és a KOD I ellenőrző linkhez. A formátumot hálózat nélkül ellenőriztük a hivatalos FA(3) XSD és a
-  közzétett szabályok alapján, hivatalos futtatható referencia nélkül; a KSeF-be küldés még nincs
-  benne ([Lengyelország](docs/countries/POLAND.md), angolul).
+  közzétett szabályok alapján, hivatalos futtatható referencia nélkül.
+- Lengyel FA(3) és KSeF-átvitel: FA(3)-számlák küldése a KSeF-be a KSeF API 2.0-n keresztül
+  (azonosítás XAdES-tanúsítvánnyal vagy KSeF-tokennel, online és kötegelt munkamenetek, státusz,
+  KSeF-szám és UPO-nyugta), a beérkezett számlák olvasása nyugtázásos kurzorral és számlaexport,
+  KSeF-tokenek kezelése, valamint önaláírt tanúsítványok és tesztadatok a KSeF TE környezethez.
+  Élesben ellenőrizve a KSeF TE környezetben (API 2.10 RC); a DEMO és a PRODUCTION nincs
+  ellenőrizve, az UPO aláírását a csomag nem ellenőrzi
+  ([Lengyelország](docs/countries/POLAND.md#send-to-ksef), angolul).
 
 Országjegyzetek: [Németország](docs/countries/DE.md) (jogalap, formátumok, csatornák és az ellenőrzés, angolul),
 [Franciaország](docs/countries/FRANCE.md) (a reform, a profilok, a francia szabályok telepítése és
 futtatása, életciklus-státuszok, e-riportolás, útválasztás, küldés a B2Brouteren keresztül, ami
-még hiányzik; angolul), [Lengyelország](docs/countries/POLAND.md) (a KSeF és az FA(3), lengyel
-számlák készítése, olvasása és ellenőrzése, a leképezés, a KSeF-szám és az ellenőrző link, ami még
-hiányzik; angolul).
+még hiányzik; angolul), [Lengyelország](docs/countries/POLAND.md) (az FA(3) és a KSeF-átvitel: lengyel
+számlák készítése, olvasása és ellenőrzése, a leképezés, a KSeF-szám és az ellenőrző link, küldés,
+kötegelt küldés, fogadás és export a KSeF-en keresztül, hibák és újrapróbálás, tesztelés a KSeF TE
+környezetben, mit ellenőriztünk, és ami még hiányzik; angolul).
 
 Nincs benne: önszámlázó (self-billing) számlák küldése Peppolon, valamint CII a Peppol BIS
 Billing 3.0 szerint (CII Peppolon csak XRechnungként megy). A számla PDF-jének megjelenítése
@@ -80,7 +87,8 @@ Billing 3.0 szerint (CII Peppolon csak XRechnungként megy). A számla PDF-jéne
 
 ## Telepítés
 
-PHP 8.3 vagy újabb, valamint `ext-dom`, `ext-libxml`, `ext-mbstring` és `ext-zlib` szükséges.
+PHP 8.3 vagy újabb, valamint `ext-dom`, `ext-libxml`, `ext-mbstring`, `ext-openssl` és `ext-zlib`
+szükséges. A KSeF kötegelt munkamenetekhez és a számlaexporthoz az `ext-zip` is kell.
 
 A csomag még nincs publikálva. Publikálás után a telepítés:
 

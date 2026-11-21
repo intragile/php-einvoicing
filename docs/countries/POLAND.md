@@ -3,7 +3,8 @@
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
 How this package builds, reads and validates Polish structured invoices in the FA(3) format of
-KSeF, how the shared EN 16931 model maps onto FA(3), and what is not covered yet. This page is a
+KSeF, how the shared EN 16931 model maps onto FA(3), how it sends and receives them through the
+KSeF API 2.0, and what is not covered yet. This page is a
 technical guide, not legal or tax advice.
 
 ## KSeF and FA(3)
@@ -31,7 +32,9 @@ to the end of 2027 had not been enacted when this page was written.
 ## What this release verifies
 
 The FA(3) format is **verified offline against the official FA(3) XSD and the published brochure
-rules, no official executable reference; live transmission not yet verified.**
+rules, no official executable reference.** The KSeF transport is **live-verified on KSeF TE (API
+2.10 RC); DEMO and PRODUCTION are not verified** (see
+[What is verified for the KSeF transport](#what-is-verified-for-the-ksef-transport)).
 
 - The four Ministry of Finance schema files (FA(3) 1-0E and its three base schemas) ship in
   `resources/poland/fa3-1-0E/`, byte-identical to the Ministry's documentation repository
@@ -46,7 +49,8 @@ rules, no official executable reference; live transmission not yet verified.**
   16, 21 and 24, and 14 invoices written by `Fa3Writer` from the test factories (one per kind and
   special block). The samples and the re-creations read into the model and write back with the
   same field values; each of the 21 rules has negative cases that fire it alone.
-- Nothing is sent to KSeF yet (see [Not covered yet](#not-covered-yet)).
+- FA(3) invoices written by `Fa3Writer` were accepted by KSeF TE with a KSeF number, including a
+  correction that references the KSeF number of the corrected invoice.
 
 ## Build a Polish invoice
 
@@ -796,21 +800,382 @@ legal source was not verified offline**, so neither the writer nor the validator
 both rely on the schema pattern alone. A NIP with a wrong check digit passes this package and may
 be refused only by KSeF.
 
+## Send to KSeF
+
+`KsefTransport` talks to the KSeF API 2.0: it authenticates, encrypts and sends FA(3) invoices in
+online and batch sessions, reads their status and receipt (UPO), and reads the invoices addressed
+to you. It is not a `Transport` like the Peppol drivers: KSeF takes FA(3) files, which an
+`OutboundDocument` cannot carry, so it has its own `send()` and `status()` and implements
+`InboundSource` for receiving.
+
+> **Live-verified on KSeF TE (API 2.10 RC) on 2026-11-21; DEMO and PRODUCTION are not verified.**
+> See [What is verified for the KSeF transport](#what-is-verified-for-the-ksef-transport).
+
+The transport needs `ext-openssl` and `phpseclib/phpseclib` (both required by this package: RSA-OAEP
+with SHA-256 goes through phpseclib on every PHP version), a PSR-18 client wrapped in `HttpClient`
+([TRANSPORT.md](../TRANSPORT.md#http-client)), and `ext-zip` for batch sessions and exports.
+
+### Credentials
+
+A `KsefConfig` names the environment, the context you act for and the credentials:
+
+- **`CertificateCredentials`**: a certificate and its private key, PEM-encoded (the key optionally
+  encrypted, with its passphrase). The library signs KSeF's authentication challenge with XAdES-BES
+  (enveloped, exclusive canonicalisation, RSA-SHA256 or ECDSA-SHA256). A qualified seal, a
+  qualified signature or a KSeF certificate; KSeF reads the identity from the certificate subject.
+  On TE, self-signed certificates from `SelfSignedCertificate` stand in for them (see
+  [Testing on KSeF TE](#testing-on-ksef-te)).
+- **`TokenCredentials`**: a KSeF token, as generated in the KSeF web application or with
+  `tokens()->generate()`. The token is encrypted with the Ministry of Finance public key together
+  with the challenge's server timestamp, never the local clock.
+
+`ContextIdentifier::nip()`, `internalId()` (a NIP, a hyphen and five digits) and `nipVatUe()` name
+the context. Access tokens are refreshed when they expire; when KSeF refuses the refresh (for
+example after the authentication session was ended), the transport authenticates again from the
+credentials. The Ministry of Finance public keys are fetched once per instance and fetched again
+when the key in use expires or KSeF reports an unknown key id (error 21470).
+
+Credentials, private keys, passphrases and every access, refresh and authentication token are kept
+out of exception messages and of `var_dump()`, `print_r()` and `var_export()` output, and the
+objects that hold them refuse to be serialized, so they cannot end up in a queue or a cache.
+
+<!-- sample: run -->
+```php
+use IntrAgile\EInvoicing\Poland\KsefEnvironment;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\ContextIdentifier;
+use IntrAgile\EInvoicing\Transport\Ksef\KsefConfig;
+use IntrAgile\EInvoicing\Transport\Ksef\Testing\SelfSignedCertificate;
+
+// TE only: a self-signed company seal for a random, synthetic NIP.
+$nip = SelfSignedCertificate::randomNip();
+$seal = SelfSignedCertificate::seal($nip, 'Test Organization');
+
+$config = new KsefConfig(KsefEnvironment::Test, ContextIdentifier::nip($nip), $seal);
+
+echo $config->baseUrl, "\n"; // https://api-test.ksef.mf.gov.pl/v2
+
+// The private key never shows up in debug output.
+$debug = print_r($seal, true);
+echo str_contains($debug, 'PRIVATE KEY') ? "leaked\n" : "redacted\n"; // redacted
+```
+
+With a real certificate on DEMO or PRODUCTION, and with a KSeF token:
+
+```php
+use IntrAgile\EInvoicing\Poland\KsefEnvironment;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\CertificateCredentials;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\ContextIdentifier;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\TokenCredentials;
+use IntrAgile\EInvoicing\Transport\Ksef\KsefConfig;
+
+$seal = new CertificateCredentials(
+    (string) file_get_contents('/run/secrets/ksef-seal.crt.pem'),
+    (string) file_get_contents('/run/secrets/ksef-seal.key.pem'),
+    (string) getenv('KSEF_KEY_PASSPHRASE'),
+);
+$config = new KsefConfig(KsefEnvironment::Production, ContextIdentifier::nip('5265877635'), $seal);
+
+$byToken = new KsefConfig(
+    KsefEnvironment::Production,
+    ContextIdentifier::nip('5265877635'),
+    new TokenCredentials((string) getenv('KSEF_TOKEN')),
+);
+```
+
+`KsefConfig` also holds the polling bounds (`authPollAttempts` 30 × `authPollWaitMs` 1000,
+`statusPollAttempts` 30 × `statusPollWaitMs` 2000, `exportPollAttempts` 60 × `exportPollWaitMs`
+2000), the batch part size (`batchPartBytes`, 100 MB before encryption) and an injectable sleep. No
+loop of this package polls without a bound.
+
+### Online send, status and UPO
+
+`send()` takes an FA(3) file or an `Invoice`. A file is checked with `Fa3Validator` first: a schema
+error or a fatal FA(3) rule throws `DocumentRejected` and nothing is sent. An `Invoice` is written
+with `Fa3Writer`, which validates its own output. The invoice is encrypted (AES-256-CBC with a
+fresh key per session, the key wrapped with RSA-OAEP for the Ministry of Finance key) and sent in
+the online session of this transport instance.
+
+The session is opened on the first `send()` and reused until 60 seconds before its `validUntil`
+(about 12 hours on TE) or until 10,000 invoices, then replaced. `close()` closes it. The object
+never makes a network call when it is destroyed, so a long-running process calls `close()` itself.
+
+```php
+use IntrAgile\EInvoicing\Poland\KsefEnvironment;
+use IntrAgile\EInvoicing\Transport\Ksef\KsefTransport;
+
+$ksef = KsefTransport::create($config, $http);
+
+$sent = $ksef->send((string) file_get_contents('faktura.xml'));
+echo $sent->documentId, "\n"; // "<session reference>/<invoice reference>", state Pending
+
+$status = $ksef->awaitFinal($sent->documentId); // bounded polling, KsefInvoiceStatus
+if ($status->ksefNumber !== null) {
+    echo $status->ksefNumber, "\n"; // 3932061639-20261121-5B0B1C000000-B4
+
+    $upo = $ksef->upo($sent->documentId);
+    file_put_contents($status->ksefNumber.'.upo.xml', $upo->xml); // keep the raw bytes as proof
+    $report = $upo->validate(KsefEnvironment::Production);
+} else {
+    echo $status->failure()?->message, "\n";
+}
+
+$ksef->close();
+```
+
+- **Document id.** `SendResult::$documentId` is the opaque string `<session reference>/<invoice
+  reference>`. `status()` reads it once and maps it to a `DeliveryStatus`; `invoiceStatus()` and
+  `awaitFinal()` return the full `KsefInvoiceStatus` with the KSeF number and its acquisition date.
+  `awaitFinal()` returns the last status read when the polling bounds run out, possibly still
+  pending; it never loops forever.
+- **Status mapping** (`KsefInvoiceStatus::deliveryState()` and `failure()`):
+
+  | KSeF invoice status | Delivery state |
+  |---|---|
+  | 100 accepted for processing, 150 processing | Pending |
+  | 200 success, KSeF number assigned | Delivered |
+  | 440 duplicate | Failed / Duplicate; the message names the original KSeF number |
+  | 430 file verification, 450 semantic verification | Failed / Validation |
+  | 410 permission scope, 415 attachments not allowed | Failed / DocumentNotSupported |
+  | 405 cancelled by a session error, 435 decryption error, 550 cancelled by the system | Failed / Transport |
+  | 500 unknown error, any code this version does not know | Failed / Other |
+
+  `providerCode` is the KSeF code as a string; the message joins KSeF's description and details.
+- **UPO.** `upo()` fetches the receipt by the KSeF number the status reports, and throws
+  `LogicException` without a request while the invoice has no KSeF number. On TE the receipt of an
+  invoice was available before the session was closed. `Upo` keeps the raw bytes unchanged and
+  parses the session reference, the context NIP, the KSeF number(s), the document hash and the
+  acceptance date. `Upo::validate()` checks the receipt against the bundled UPO 4-3 schema after
+  removing the enveloped signature, and accepts the receiver name TE writes on TEST only. **The
+  Ministry of Finance signature of the UPO is not verified**; the receipt can be fetched from KSeF
+  again at any time.
+- **A session KSeF closed early.** When KSeF has ended the online session before its expiry, it
+  refuses the next send with error 21180 (`UnexpectedResponse`). The invoice was not accepted; the
+  transport forgets the session, so sending it again opens a new one. `close()` also drops the
+  local session, even when the request fails.
+- **Rotated sessions.** When a session is replaced, the old one is closed best-effort and a close
+  error is ignored (KSeF closes it itself); the UPOs of its invoices may arrive later than usual.
+
+### KSeF tokens
+
+`tokens()` returns `KsefTokens` for the authenticated context: `generate()` (permissions, a 5 to
+256 character description, optional `validFrom` and `validTo`), `status()`, `approve()` and
+`revoke()`. KSeF shows a generated token only once, in `GeneratedToken::token()`.
+
+```php
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\TokenPermission;
+
+$generated = $ksef->tokens()->generate([TokenPermission::InvoiceWrite, TokenPermission::InvoiceRead], 'ERP integration');
+// Store $generated->token() in your secret store; KSeF never shows it again.
+echo $ksef->tokens()->status($generated->referenceNumber), "\n"; // Pending, Active, AwaitingApproval …
+```
+
+- The token API is the rev2 one (`/tokens/rev2`), available on TE since API 2.10. **PRODUCTION ran
+  API 2.9 when this was written, without rev2, so `generate()`, `status()` and `approve()` fail
+  there until 2.10 reaches it.** Tokens created in the KSeF web application authenticate on every
+  environment.
+- A token generated in a context that logged in with a KSeF token is `AwaitingApproval`. It must be
+  approved with `approve()` from a context authenticated with a certificate, within 24 hours;
+  approving from the token-authenticated context is refused with error 26005.
+- `status()` reads the rev2 status. The legacy status endpoint reports a token awaiting approval as
+  Active, so it is not used.
+
+## Batch
+
+`sendBatch()` sends several invoices in a batch session of its own and returns the session
+reference. Each invoice is validated or written as in `send()` before anything is sent. The
+invoices are zipped, the zip is split into parts of at most `batchPartBytes` (100 MB by default),
+each part is encrypted and uploaded, and the session is closed.
+
+```php
+$session = $ksef->sendBatch([
+    'FV-2026-001.xml' => (string) file_get_contents('FV-2026-001.xml'),
+    'FV-2026-002.xml' => $invoice, // an Invoice, written as FA(3)
+]);
+
+$result = $ksef->awaitBatch($session); // bounded polling, BatchResult
+foreach ($result->invoices as $fileName => $status) {
+    echo $fileName, ': ', $status->ksefNumber ?? $status->failure()?->message, "\n";
+}
+```
+
+- Limits checked before sending: at most 10,000 invoices, 1,000,000 bytes per invoice, 50 parts
+  and 5 GB in total; file names of letters, digits, `.`, `_` and `-` ending in `.xml`, no two
+  differing only in case.
+- **The whole package is held in memory** (the zip and its encrypted parts). Size your batches to
+  the memory of the process.
+- TE accepted a 2,976-byte zip split into two parts of 1,488 bytes: no minimum part size was observed.
+- `BatchResult::isSuccessful()` means KSeF processed the session (status 200); single invoices may
+  still have failed, see `$failed` and `$invoices`. Session status 445 (no valid invoice) is
+  Failed / Validation; 405, 415, 430 and 435 are Failed / Transport; 420, 440, 500 and unknown codes
+  are Failed / Other.
+- `sendBatch()` and exports need `ext-zip`; without it they throw `LogicException`.
+
+## Receive
+
+`KsefTransport` implements `InboundSource`: `pending()` lists the invoices addressed to the
+context (the buyer, `Subject2`) that are not acknowledged yet, `fetch()` downloads one exactly as
+KSeF stores it, and `acknowledge()` marks it processed. The document id of a received invoice is
+its KSeF number.
+
+```php
+foreach ($ksef->pending() as $reference) {
+    $document = $ksef->fetch($reference->documentId);
+    // … store $document->xml, then:
+    $ksef->acknowledge($reference->documentId);
+}
+```
+
+**How the cursor works.** `pending()` queries the invoice metadata by PermanentStorage date from
+the cursor, restricted to KSeF's high water mark (HWM), pages through the results, and stores the
+window with the ids it returned. Once every id of the window is acknowledged, the cursor moves to
+the window's HWM. The cursor is kept in a `KsefCursorStore` under
+`<environment>:<context>:Subject2`.
+
+- **First window.** It starts at the `$inboxStart` passed to `KsefTransport::create()`, or 30 days
+  before now when none is given (`DEFAULT_INBOX_LOOKBACK_DAYS`). A first sync does not see older
+  invoices unless you pass an earlier start.
+- **Chunks.** KSeF refuses date ranges over 100 days, so each query spans at most 90 days
+  (`KsefTransport::INBOX_CHUNK_DAYS`) and an older window catches up chunk by chunk.
+- **One unacknowledged invoice holds the cursor.** The cursor moves only when every invoice of the
+  window is acknowledged. `resetInbox($from)` restarts the inbox at a given point; invoices of the
+  old window that were not acknowledged are dropped from the cursor and offered again only if they
+  fall after the new start.
+- **Duplicates.** Invoices at window boundaries can be offered again; deduplicate by KSeF number.
+- **Store.** `InMemoryCursorStore` (the default) keeps nothing across restarts and gives no
+  protection against two consumers of the same inbox. A restarted process reads from the start
+  point again. Implement `KsefCursorStore` (two methods: `window()` and `save()`) on your database
+  for a persistent cursor; a persistent store ships later.
+- **Lag.** On TE an invoice appeared in the buyer's inbox about two minutes after it was accepted.
+  The lag on PRODUCTION is unknown.
+- **Limits.** More than 10,000 invoices with one PermanentStorage timestamp cannot be paged past
+  (KSeF offers no further page) and throw `UnexpectedResponse`.
+- `fetch()` of a KSeF number this instance did not list looks its PermanentStorage date up by a
+  metadata query from the date in the number.
+
+### Export
+
+`export()` runs a KSeF invoice export for any filter: it starts the export with a fresh AES key,
+polls within the configured bounds, downloads every part, checks both the encrypted and the
+decrypted part hash, decrypts each part (KSeF encrypts the parts individually) and unzips the
+package. Decrypted parts are streamed to a temporary file, not joined in memory.
+
+```php
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InvoiceQueryFilters;
+
+$result = $ksef->export(InvoiceQueryFilters::incoming(new DateTimeImmutable('2026-11-01T00:00:00+01:00')));
+foreach ($result->invoices as $ksefNumber => $xml) {
+    file_put_contents($ksefNumber.'.xml', $xml);
+}
+if ($result->isTruncated) {
+    // Ten rounds were not enough: continue from $result->hwm with another export().
+}
+```
+
+- When KSeF truncates the package, the export continues from the date of the last exported
+  invoice, at most 10 rounds. **The extracted XML of all rounds is held in the result**, in memory;
+  a very large export takes several calls. `ExportResult::$isTruncated` is true when the last round
+  was still truncated; continue from `$result->hwm`.
+- A truncated round that makes no progress throws `UnexpectedResponse` instead of looping.
+- `$result->metadata` holds the `_metadata.json` content when the package has one.
+
+## Errors and retries
+
+Every failure is a `TransportException` subclass ([TRANSPORT.md](../TRANSPORT.md#errors)):
+
+| Situation | Exception |
+|---|---|
+| HTTP 401, or KSeF code 21301 or 21304 (including a refused token refresh); HTTP 403 | `AuthenticationFailed` |
+| HTTP 429 | `RateLimited` (`retryAfterSeconds` from `Retry-After`) |
+| HTTP 400 with a refused-body code (21401, 21402, 21403, 21405, 21217, 9101, 9102, 9103, 9105); an FA(3) file that fails local validation | `DocumentRejected` |
+| Network failure or HTTP 5xx on a GET | `TransportUnavailable` (safe to retry; not repeated automatically) |
+| Network failure or HTTP 5xx on a POST | `OutcomeUnknown` |
+| HTTP 404, a not-found code, a redirect, or anything else | `UnexpectedResponse` |
+
+Retries:
+
+| Request | Automatic retry |
+|---|---|
+| GET answered with 429 | Repeated after `Retry-After`, at most 3 times and at most 60 seconds of waiting in total. A 429 whose delay does not fit the time left is thrown at once, without waiting. |
+| GET failing otherwise | Never; `TransportUnavailable` is safe to retry yourself. |
+| Any POST (sending, opening sessions, authentication) | Never. |
+
+**A resend is safe.** After an `OutcomeUnknown` on `send()`, send the same invoice again: KSeF
+reports the second copy as a duplicate (status 440, Failed / Duplicate) naming the KSeF number of
+the first. The library never repeats an invoice send on its own.
+
+## Testing on KSeF TE
+
+KSeF TE (`KsefEnvironment::Test`) accepts self-signed certificates and synthetic NIPs, so the whole
+flow can be tried without a real certificate:
+
+- `SelfSignedCertificate::seal($nip)` (organizationIdentifier `VATPL-<NIP>`, KSeF reports the
+  method `xades.qualified-seal`) and `SelfSignedCertificate::person($nipOrPesel)` (serialNumber
+  `TINPL-<NIP>` or `PNOPL-<PESEL>`, method `xades.qualified-certificate`) generate a fresh RSA-2048
+  key in memory and a certificate valid for 30 days. `randomNip()` gives a NIP with a valid check
+  digit. KSeF refuses self-signed certificates outside TE.
+- `KsefTestData` calls the `/testdata` endpoints (subjects, attachments, permissions, rate limits).
+  It refuses every environment but TEST. The rate-limit calls authenticate with the
+  configuration's credentials themselves.
+
+```php
+use IntrAgile\EInvoicing\Transport\Ksef\Testing\KsefTestData;
+
+$testData = new KsefTestData($config, $http); // TEST only
+$testData->enableAttachments($nip);
+$testData->setRateLimits(['invoiceSend' => ['perMinute' => 5]]);
+$testData->resetRateLimits();
+```
+
+- **TE data is shared and public.** Every TE user can read what is sent there. Use synthetic data
+  only: no real names, NIPs, addresses or amounts.
+- **Maintenance window.** TE is unavailable every day from 16:00 to 18:00 Europe/Warsaw.
+- The live test group `ksef-live` runs the flows on this page against TE. It needs no secrets: each
+  run generates fresh NIPs and certificates. It is excluded by default, refuses any host but TE,
+  skips from 15:55 to 18:00 Europe/Warsaw and never prints a token or key:
+  `vendor/bin/phpunit --group ksef-live`.
+
+## What is verified for the KSeF transport
+
+**Live-verified on KSeF TE (API 2.10 RC), 2026-11-21; DEMO and PRODUCTION not verified.** The
+live group `ksef-live` passed on PHP 8.3, where RSA-OAEP runs through phpseclib, as on every PHP
+version.
+
+| Flow | Status |
+|---|---|
+| XAdES authentication with a self-signed seal and a TINPL personal certificate (request namespace `auth/token/2.1`) | Live-verified on TE |
+| KSeF token: generate (rev2), authenticate, approval of a token generated after token login, revoke | Live-verified on TE; rev2 is missing on PRODUCTION (API 2.9) |
+| Token refresh; a refused refresh leads to a full authentication | Live-verified on TE |
+| Online session: send, status, KSeF number, UPO (also before close), duplicate (440), schema-invalid invoice, a send into a session KSeF closed (21180) | Live-verified on TE |
+| Batch: three invoices in two parts | Live-verified on TE |
+| Inbox: pending, fetch, acknowledge | Live-verified on TE |
+| Export | Live-verified on TE |
+| Correction referencing the KSeF number of the corrected invoice | Live-verified on TE |
+| Unknown public key id (21470) recovery, rate limit (429) | Live-verified on TE |
+| A second 9105, export status 420 | Not observed live; offline tests only |
+| UPO signature of the Ministry of Finance | **Not verified** (by design) |
+| Qualified certificates with multi-valued RDNs in the issuer name | Not verifiable without a real certificate (DEMO/PRODUCTION) |
+
+The published authentication schema has a defect: the `TNipVatUE` and `TPeppolId` patterns end in
+a literal `$`. The bundled copy is kept byte-identical and the defect is documented in its
+`SOURCE.md`.
+
 ## Not covered yet
 
-- **Sending to KSeF.** The KSeF API 2.0 transport (authentication, XAdES signing, invoice
-  encryption, online and batch sessions, status and UPO, download) is planned next. Until then this
-  package builds, reads and validates FA(3) files; you send them.
-- **Reading FA_PEF(3) and FA_KOR_PEF(3) downloads** (the Peppol-based invoices KSeF serves).
-- **Offline mode:** the offline certificate, the signed KOD II link, the offline and outage deadline
-  calculator, and the technical correction.
+- **KSeF offline mode:** enrolment of the KSeF offline certificate (CSR), the signed KOD II link,
+  the offline24 and outage deadlines (fed by the Latarnia availability service), and the technical
+  correction flow (the low-level `OnlineSession::send()` already takes the hash of the corrected
+  invoice; `KsefTransport` does not offer the flow yet).
 - **QR images.** Only the KOD I URL is produced.
-- **Laravel bridge** (configuration per environment, queued sending, inbound polling, events).
+- **Laravel bridge** (configuration per environment, queued sending, scheduled inbound polling, a
+  persistent cursor store, events, an adapter to the generic `Transport` if needed).
+- **Reading FA_PEF(3) and FA_KOR_PEF(3) downloads** (the Peppol-based invoices KSeF serves): they
+  download like any other invoice, but `Fa3Reader` does not map them.
 - **Typed builders** for the transport blocks, the new means of transport, the authorised party and
   the attachment, which are verbatim XML fragments for now.
 - **`Podmiot1K/PrefiksPodatnika` and `Podmiot2K/IDNabywcy`** in correction data.
-- **Not planned:** FA_RR(1) farmers' invoices and FA(2), which KSeF accepts only on TEST and FA(3)
-  replaced.
+- **Not planned:** sending FA_PEF (Peppol providers only); permission and certificate management
+  beyond the TE test data; the Trusted Profile; verifying the Ministry of Finance UPO signature;
+  FA_RR(1) farmers' invoices and FA(2), which KSeF accepts only on TEST and FA(3) replaced.
 
 ---
 

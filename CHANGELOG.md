@@ -118,7 +118,35 @@ All notable changes to this project are documented here. The format follows
 - **Poland:** offline helpers `Nip` (pattern, normalisation and check digit), `KsefNumber` (35
   characters with the CRC-8 checksum), `VerificationLink` (the KOD I verification link from the
   exact invoice bytes) and `KsefEnvironment` (TEST, DEMO, PRODUCTION base URLs).
-- **Documentation:** [docs/countries/POLAND.md](docs/countries/POLAND.md).
+- **Poland:** `KsefTransport` sends FA(3) invoices to KSeF through the KSeF API 2.0 and reads the
+  inbox. Authentication with a certificate (XAdES-BES signature built on DOM and OpenSSL, RSA or
+  ECDSA, `CertificateCredentials`) or a KSeF token (`TokenCredentials`), access-token refresh with
+  a full re-authentication when KSeF refuses it, and the Ministry of Finance public keys fetched
+  once and again after a rotation (`ContextIdentifier`, `KsefConfig` with bounded polling).
+  `send()` validates a raw FA(3) file (or writes an `Invoice`) and sends it encrypted in the
+  instance's online session, opened lazily and replaced before it expires; `status()`,
+  `invoiceStatus()`, `awaitFinal()` (KSeF status and KSeF number, mapped to `DeliveryStatus`),
+  `upo()` (`Upo` keeps the raw receipt, parses it and validates it against the bundled UPO 4-3
+  schema; the Ministry of Finance signature is not verified) and `close()`. A session KSeF closed
+  early (error 21180) is forgotten, so the next send opens a new one.
+- **Poland:** batch sessions: `sendBatch()` zips, splits (`KsefConfig::$batchPartBytes`, 100 MB by
+  default), encrypts and uploads the invoices, with `batchStatus()` and `awaitBatch()`
+  (`BatchResult`). The whole package is held in memory.
+- **Poland:** receiving: `pending()`, `fetch()` and `acknowledge()` (`InboundSource`) over a
+  PermanentStorage high-water-mark cursor kept in a `KsefCursorStore` (`InMemoryCursorStore`), in
+  90-day query chunks, with `resetInbox()`; `export()` (`KsefExport`, `ExportResult`) downloads,
+  checks, decrypts and unzips export packages, continuing a truncated package for up to 10 rounds.
+- **Poland:** `tokens()` (`KsefTokens`): generate, read, approve and revoke KSeF tokens through the
+  rev2 token API (missing on PRODUCTION, API 2.9, until 2.10 reaches it).
+- **Poland:** KSeF errors mapped to the transport exceptions; a GET refused with 429 is repeated
+  at most 3 times within 60 seconds, nothing else is repeated automatically. Credentials, keys
+  and tokens are kept out of exception messages and debug output and refuse serialization.
+- **Poland:** test helpers for KSeF TE: `SelfSignedCertificate` (seal and personal certificates for
+  synthetic NIPs) and `KsefTestData` (the `/testdata` endpoints, refused outside TE), and the live
+  test group `ksef-live`, which needs no secrets. Live-verified on KSeF TE (API 2.10 RC); DEMO and
+  PRODUCTION not verified.
+- **Documentation:** [docs/countries/POLAND.md](docs/countries/POLAND.md), including sending
+  and receiving through KSeF.
 
 ### Changed
 
@@ -139,6 +167,9 @@ All notable changes to this project are documented here. The format follows
   map of absolute URI prefixes to local directories (`$localPrefixes`, default `[]`, behaviour
   unchanged), so a schema with an absolute import resolves to a bundled copy without network
   access. `MessageType` has the new case `Fa3`.
+- **Dependencies:** `phpseclib/phpseclib` (^3.0.47, for RSA-OAEP with SHA-256 on every PHP version)
+  and `ext-openssl` are now required. `ext-zip` moved from the development requirements to
+  `suggest`: KSeF batch sessions and exports need it. `MessageType` has the new case `Upo`.
 
 ## [1.0.2] - 2026-11-17
 
