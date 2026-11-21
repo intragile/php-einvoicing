@@ -1,0 +1,18 @@
+{
+    "exception": {
+        "exceptionDetailList": [
+            {
+                "exceptionCode": 9105,
+                "exceptionDescription": "Nieprawidłowy podpis.",
+                "details": [
+                    "The 'http://www.w3.org/2000/09/xmldsig#:X509SerialNumber' element is invalid - The value '0x6B2F0A1C9D3E4F5A' is invalid according to its datatype 'http://www.w3.org/2001/XMLSchema:integer' - The string '0x6B2F0A1C9D3E4F5A' is not a valid Integer value."
+                ]
+            }
+        ],
+        "referenceNumber": "20251121-AU-2B4F6A8C00-1D3E5F7A9B-5C",
+        "serviceCode": "00-8a1f2c3d4e5f60718293a4b5c6d7e8f9-0a1b2c3d4e5f6071-00",
+        "serviceCtx": "srvTEMFC",
+        "serviceName": "Undefined",
+        "timestamp": "2025-11-21T09:14:07.5312455"
+    }
+}

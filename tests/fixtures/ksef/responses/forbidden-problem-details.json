@@ -1,0 +1,18 @@
+{
+    "title": "Forbidden",
+    "status": 403,
+    "detail": "Brak wymaganych uprawnień do wykonania operacji w bieżącym kontekście.",
+    "instance": "{{uri_path}}",
+    "reasonCode": "missing-permissions",
+    "security": {
+        "requiredAnyOfPermissions": [
+            "InvoiceRead",
+            "InvoiceWrite"
+        ],
+        "presentPermissions": [
+            "CredentialsRead"
+        ]
+    },
+    "traceId": "673843e023c432286660bc0501a3af44",
+    "timestamp": "2025-07-11T12:23:56.0154302+00:00"
+}

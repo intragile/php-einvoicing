@@ -1,0 +1,8 @@
+{
+    "title": "Unauthorized",
+    "status": 401,
+    "detail": "Wymagane jest uwierzytelnienie.",
+    "instance": "{{uri_path}}",
+    "traceId": "673843e023c432286660bc0501a3af44",
+    "timestamp": "2025-07-11T12:23:56.0154302+00:00"
+}

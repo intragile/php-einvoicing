@@ -1,0 +1,8 @@
+{
+    "title": "Too Many Requests",
+    "status": 429,
+    "instance": "{{uri_path}}",
+    "detail": "Przekroczono limit 20 żądań na minutę. Spróbuj ponownie po 30 sekundach.",
+    "timestamp": "2025-07-11T12:23:56.0154302+00:00",
+    "traceId": "673843e023c432286660bc0501a3af44"
+}
