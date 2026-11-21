@@ -813,7 +813,8 @@ to you. It is not a `Transport` like the Peppol drivers: KSeF takes FA(3) files,
 
 The transport needs `ext-openssl` and `phpseclib/phpseclib` (both required by this package: RSA-OAEP
 with SHA-256 goes through phpseclib on every PHP version), a PSR-18 client wrapped in `HttpClient`
-([TRANSPORT.md](../TRANSPORT.md#http-client)), and `ext-zip` for batch sessions and exports.
+([TRANSPORT.md](../TRANSPORT.md#http-client); for exports with `maxResponseBytes` of at least
+`KsefExport::MAX_PART_BYTES`, see [Export](#export)), and `ext-zip` for batch sessions and exports.
 
 ### Credentials
 
@@ -1053,6 +1054,28 @@ the window's HWM. The cursor is kept in a `KsefCursorStore` under
 - `fetch()` of a KSeF number this instance did not list looks its PermanentStorage date up by a
   metadata query from the date in the number.
 
+**Rate limits.** KSeF counts requests per context and IP address in sliding windows; all three
+thresholds apply at once (MF documentation `limity/limity-api.md`, 2026-09-14):
+
+| Request | Per second | Per minute | Per hour |
+|---|---|---|---|
+| `POST /invoices/query/metadata` (`pending()`, the lookup in `fetch()`) | 8 | 16 | 20 |
+| `POST /invoices/exports` (each `export()` round) | 8 | 16 | 20 |
+| `GET /invoices/ksef/{ksefNumber}` (`fetch()`) | 8 | 16 | 64 |
+
+- Each `pending()` call spends at least one metadata query, one more per page of 250 records and
+  per catch-up chunk; it reads at most 10 pages per call (`MAX_INBOX_PAGES`), and a longer result
+  ends the window at its last record, like a truncated one.
+- `fetch()` spends one of the 64 downloads per hour, plus one metadata query for an invoice this
+  instance did not list. `pending()` with `fetch()` therefore handles about 64 invoices an hour;
+  for higher volumes use `export()`, as the Ministry of Finance recommends.
+- The Ministry of Finance recommends polling no more often than **every 15 minutes** for each
+  subject of an invoice on PRODUCTION.
+- A metadata query refused with 429 is a POST, so it is not repeated: `pending()` throws
+  `RateLimited` with the `Retry-After` delay (TE answered 3600 seconds). When earlier pages of the
+  same call were read, the stored window is first narrowed to the last invoice listed, so the
+  cursor still progresses once those invoices are acknowledged.
+
 ### Export
 
 `export()` runs a KSeF invoice export for any filter: it starts the export with a fresh AES key,
@@ -1078,6 +1101,14 @@ if ($result->isTruncated) {
   was still truncated; continue from `$result->hwm`.
 - A truncated round that makes no progress throws `UnexpectedResponse` instead of looping.
 - `$result->metadata` holds the `_metadata.json` content when the package has one.
+- **Part size.** KSeF parts reach 50 MB (52,428,816 bytes encrypted,
+  `KsefExport::MAX_PART_BYTES`), while `HttpClient` reads at most 20,000,000 bytes by default. For
+  exports, build the client with a higher cap, or a larger part is refused with a `LogicException`
+  naming the setting before anything is downloaded:
+
+  ```php
+  $http = new HttpClient($psr18Client, $psr17Factory, $psr17Factory, maxResponseBytes: KsefExport::MAX_PART_BYTES);
+  ```
 
 ## Errors and retries
 
@@ -1085,7 +1116,7 @@ Every failure is a `TransportException` subclass ([TRANSPORT.md](../TRANSPORT.md
 
 | Situation | Exception |
 |---|---|
-| HTTP 401, or KSeF code 21301 or 21304 (including a refused token refresh); HTTP 403 | `AuthenticationFailed` |
+| HTTP 401, or KSeF code 21301 or 21304 in a 4xx answer (including a refused token refresh); HTTP 403 | `AuthenticationFailed` |
 | HTTP 429 | `RateLimited` (`retryAfterSeconds` from `Retry-After`, null when the header is missing or unreadable) |
 | HTTP 400 with a refused-body code (21401, 21402, 21403, 21405, 21217, 9101, 9102, 9103, 9105); an FA(3) file that fails local validation | `DocumentRejected` |
 | Network failure or HTTP 5xx on a GET | `TransportUnavailable` (safe to retry; not repeated automatically) |
@@ -1096,13 +1127,28 @@ Retries:
 
 | Request | Automatic retry |
 |---|---|
-| GET answered with 429 | Repeated after `Retry-After` (5 seconds when the header is missing or unreadable), at most 3 times and at most 60 seconds of waiting in total. A 429 whose delay does not fit the time left is thrown at once, without waiting. |
+| GET answered with 429 | Repeated after `Retry-After` (5 seconds when the header is missing or unreadable), at most 3 times and at most 60 seconds of waiting per HTTP request (not per operation). A 429 whose delay does not fit the time left is thrown at once, without waiting. |
 | GET failing otherwise | Never; `TransportUnavailable` is safe to retry yourself. |
-| Any POST (sending, opening sessions, authentication) | Never. |
+| Any request, POST included, refused with HTTP 401 (or 21301/21304 in a 4xx answer) | Repeated once with a renewed access token (a refresh, or a new authentication when the refresh is refused). |
+| Opening an online or batch session, starting an export, authenticating with a KSeF token, refused with 21470 (unknown public key id) | Repeated once after the Ministry of Finance key list is fetched again. |
+| Any POST refused with 429, failing without an answer, or answered with 5xx | Never. |
+
+Both repeats follow a refusal, so KSeF did not process the first request; nothing else is
+repeated. An error code counts in any position of the error list.
 
 **A resend is safe.** After an `OutcomeUnknown` on `send()`, send the same invoice again: KSeF
 reports the second copy as a duplicate (status 440, Failed / Duplicate) naming the KSeF number of
-the first. The library never repeats an invoice send on its own.
+the first. The library never repeats an invoice send that failed without an answer. An
+`OutcomeUnknown` whose message names `/auth/token/refresh` (or another `/auth/` request) comes
+from renewing the access token: the invoice was not posted (or KSeF refused it with 401), so
+sending it again is safe as well.
+
+**Other exceptions.** Besides `TransportException`, a method that talks to KSeF may throw
+`InvalidArgumentException` when an authentication on the way cannot use the certificate or private
+key (unreadable, or not RSA of at least 2048 bits or EC on P-256) or a Ministry of Finance key
+cannot be loaded, and `RuntimeException` when OpenSSL fails while signing or an export finds no
+usable temporary file. Both point to the configuration or the PHP environment. Arguments are
+checked before any request and refused with `InvalidArgumentException`.
 
 ## Testing on KSeF TE
 

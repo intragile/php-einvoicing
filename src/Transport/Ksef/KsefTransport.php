@@ -44,6 +44,7 @@ use IntrAgile\EInvoicing\Validation\Poland\Fa3Validator;
 use IntrAgile\EInvoicing\Validation\SchemaError;
 use InvalidArgumentException;
 use LogicException;
+use RuntimeException;
 
 /**
  * Sends FA(3) invoices to KSeF and reads the context's inbox through the KSeF API 2.0.
@@ -69,8 +70,23 @@ use LogicException;
  *
  * Every component shares one authenticator and one public-key registry, so the context
  * authenticates once and the Ministry of Finance keys are fetched once per instance. Polling is
- * bounded by the KsefConfig. No method repeats an invoice send automatically, and the object
- * never makes a network call on destruction.
+ * bounded by the KsefConfig. The object never makes a network call on destruction.
+ *
+ * Repeats: a GET refused with 429 is repeated within a 60-second budget per HTTP request. Any
+ * request, POST included, is repeated once with a renewed access token after KSeF refused the
+ * authentication (HTTP 401, or code 21301/21304 in a 4xx answer), and the requests that carry a
+ * key encrypted for the Ministry of Finance (opening an online or batch session, starting an
+ * export, authenticating with a KSeF token) are repeated once with a fresh key list after error
+ * 21470. Both repeats follow a refusal, so KSeF did not process the first request. Nothing else is
+ * repeated: an invoice send that failed without an answer is never resent automatically.
+ *
+ * Exceptions other than TransportException: every method that talks to KSeF may authenticate on
+ * the way. A certificate or private key the XAdES signer cannot use (unreadable, or not RSA of at
+ * least 2048 bits or EC on P-256) and a Ministry of Finance key that cannot be loaded throw
+ * InvalidArgumentException; an OpenSSL failure while signing throws RuntimeException, as does an
+ * export that finds no usable temporary file. Both point to the configuration or the PHP
+ * environment and are not worth repeating as such. Arguments are checked before any request and
+ * refused with InvalidArgumentException.
  */
 final class KsefTransport implements InboundSource
 {
@@ -85,8 +101,9 @@ final class KsefTransport implements InboundSource
 
     /**
      * Metadata pages one pending() call reads at most. KSeF allows 20 metadata queries per hour
-     * and subject, so one call leaves room for a retry and fetch() lookups within the hour; a
-     * longer result ends the window at its last record, as a truncated one does.
+     * for each context and IP address, so one call leaves room for a retry and fetch() lookups
+     * within the hour; a longer result ends the window at its last record, as a truncated one
+     * does.
      */
     private const MAX_INBOX_PAGES = 10;
 
@@ -157,9 +174,14 @@ final class KsefTransport implements InboundSource
      * needed. The result is Pending with the document id "<session>/<invoice>"; read the outcome
      * with status() or awaitFinal().
      *
-     * A send is never repeated automatically. After an OutcomeUnknown, sending the same invoice
-     * again is safe: KSeF reports the second copy as a duplicate (Failed / Duplicate) naming the
-     * KSeF number of the first.
+     * A send that failed without an answer is never repeated automatically; only a send KSeF
+     * refused without processing it is (once after HTTP 401 with a renewed access token, and the
+     * session open once after 21470 with a fresh key list). After an OutcomeUnknown, sending the
+     * same invoice again is safe: KSeF reports the second copy as a duplicate (Failed / Duplicate)
+     * naming the KSeF number of the first. An OutcomeUnknown whose message names
+     * /auth/token/refresh (or another /auth/ request) comes from renewing the access token before
+     * the invoice was posted, or after KSeF refused the post with 401: the invoice was not
+     * accepted, so sending it again is safe as well.
      *
      * When KSeF has ended the session on its side before its expiry, it refuses the send with
      * error 21180 (thrown as UnexpectedResponse): the invoice was not accepted and the local
@@ -171,6 +193,9 @@ final class KsefTransport implements InboundSource
      * @throws UnsafeXml|UnsupportedDocument when the file is not well-formed XML or not an FA(3) invoice
      * @throws InvalidArgumentException when the invoice cannot be written as FA(3)
      * @throws OutcomeUnknown when the send failed without an answer
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
      * @throws TransportException when opening the session or sending fails, or KSeF refuses it
      */
     public function send(string|Invoice $invoice): SendResult
@@ -193,6 +218,9 @@ final class KsefTransport implements InboundSource
      * @throws InvalidArgumentException when an invoice cannot be written, or the batch is empty,
      *                                  too large or has unusable file names
      * @throws LogicException when the zip extension is not loaded
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
      * @throws TransportException when opening, uploading or closing fails, or KSeF refuses it
      */
     public function sendBatch(array $invoices): string
@@ -208,6 +236,9 @@ final class KsefTransport implements InboundSource
     /**
      * The state of a batch session and of every invoice in it, read once.
      *
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
      * @throws TransportException when a request fails or an answer cannot be read
      */
     public function batchStatus(string $sessionReference): BatchResult
@@ -219,6 +250,9 @@ final class KsefTransport implements InboundSource
      * Reads the state of a batch session until it is final, within the configured polling bounds,
      * and returns the last state read.
      *
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
      * @throws TransportException when a request fails or an answer cannot be read
      */
     public function awaitBatch(string $sessionReference): BatchResult
@@ -231,6 +265,9 @@ final class KsefTransport implements InboundSource
      * Delivered once it has a KSeF number, Failed with KSeF's reason otherwise.
      *
      * @throws InvalidArgumentException when the document id is not "<session>/<invoice>"; no request is made
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
      * @throws TransportException when the request fails or the answer cannot be read
      */
     public function status(string $documentId): DeliveryStatus
@@ -244,6 +281,9 @@ final class KsefTransport implements InboundSource
      * The KSeF status of a sent invoice, read once, with its KSeF number once assigned.
      *
      * @throws InvalidArgumentException when the document id is not "<session>/<invoice>"; no request is made
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
      * @throws TransportException when the request fails or the answer cannot be read
      */
     public function invoiceStatus(string $documentId): KsefInvoiceStatus
@@ -258,6 +298,9 @@ final class KsefTransport implements InboundSource
      * bounds, and returns the last status read, which is still pending when the attempts ran out.
      *
      * @throws InvalidArgumentException when the document id is not "<session>/<invoice>"; no request is made
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
      * @throws TransportException when a request fails or an answer cannot be read
      */
     public function awaitFinal(string $documentId): KsefInvoiceStatus
@@ -274,6 +317,9 @@ final class KsefTransport implements InboundSource
      * @throws InvalidArgumentException when the document id is not "<session>/<invoice>"; no request is made
      * @throws LogicException when the invoice has no KSeF number: it is still being processed or
      *                        KSeF did not accept it; the receipt is not requested
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
      * @throws TransportException when a request fails or KSeF has no receipt
      * @throws UnsafeXml|UnsupportedDocument when the answer is not a readable UPO
      */
@@ -320,15 +366,22 @@ final class KsefTransport implements InboundSource
      * way out.
      *
      * Every call spends at least one metadata query, and one per further page (at most
-     * MAX_INBOX_PAGES); KSeF allows 20 per hour and subject, and the Ministry of Finance
-     * recommends polling one subject no more often than every 15 minutes in production. A result
-     * longer than the page limit ends the window at its last record. When KSeF refuses a later
-     * page with 429, the window is saved ending at the last record already listed and the
-     * RateLimited is thrown; the next call after the Retry-After delay lists those invoices again.
+     * MAX_INBOX_PAGES); KSeF allows 20 per hour for each context and IP address, and the
+     * Ministry of Finance recommends polling each subject of an invoice no more often than every
+     * 15 minutes in production. A result longer than the page limit ends the window at its last
+     * record. When KSeF refuses a later page with 429, the window is saved ending at the last
+     * record already listed and the RateLimited is thrown; the next call after the Retry-After
+     * delay lists those invoices again, and once they are acknowledged the cursor moves past them.
+     * fetch() spends one of KSeF's 64 invoice downloads per hour, plus a metadata query for an
+     * invoice this instance did not list; for high volumes use export().
      *
      * @return list<InboundReference>
      *
-     * @throws RateLimited when KSeF refuses a metadata query with 429 (a POST is never repeated)
+     * @throws RateLimited when KSeF refuses a metadata query with 429 (a POST refused with 429 is
+     *                     never repeated)
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
      * @throws TransportException when the query fails or its answer cannot be read
      */
     public function pending(): array
@@ -416,8 +469,15 @@ final class KsefTransport implements InboundSource
      * carries the PermanentStorage date from the metadata pending() read, or, for an invoice not
      * listed by this instance, from a metadata query by its KSeF number.
      *
+     * KSeF allows 64 invoice downloads per hour for each context and IP address, and the lookup
+     * of an unlisted invoice spends one of the 20 metadata queries per hour as well; pending()
+     * with fetch() therefore handles about 64 invoices an hour. Use export() for high volumes.
+     *
      * @throws InvalidArgumentException when the id is not a valid KSeF number; no request is made
      * @throws UnexpectedResponse when KSeF lists no invoice with that number addressed to the context
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
      * @throws TransportException when a request fails or KSeF refuses it
      */
     public function fetch(string $documentId): InboundDocument
@@ -463,6 +523,9 @@ final class KsefTransport implements InboundSource
      *
      * @throws LogicException when the zip extension is not loaded, or a part exceeds the
      *                        HttpClient's maxResponseBytes
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
      * @throws TransportException when an export fails, does not finish within the polling bounds,
      *                            or a part cannot be checked, decrypted or unzipped
      */

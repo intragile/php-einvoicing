@@ -347,7 +347,7 @@ final class KsefTransportTest extends TestCase
         $recorder = new RecordingHttpClient(...[...self::tokenAuthResponses(), ...$pages]);
 
         self::assertCount(10, $this->transport($recorder, $store)->pending());
-        // KSeF allows 20 metadata queries per hour and subject; one read spends at most ten.
+        // KSeF allows 20 metadata queries per hour for each context and IP; one read spends at most ten.
         self::assertCount(10, self::requestsTo($recorder, 'POST', '/invoices/query/metadata'));
         self::assertEquals(new DateTimeImmutable('2026-11-01T00:09:00+00:00'), $store->window(self::INBOX_KEY)?->hwm);
     }

@@ -60,8 +60,8 @@ use Throwable;
 final class KsefLiveTest extends TestCase
 {
     /**
-     * Reads of a buyer inbox before giving up. KSeF allows 20 metadata queries per hour and
-     * subject, so the test polls at most ten times, 25 s apart.
+     * Reads of a buyer inbox before giving up. KSeF allows 20 metadata queries per hour for
+     * each context and IP address, so the test polls at most ten times, 25 s apart.
      */
     private const INBOX_ATTEMPTS = 10;
 

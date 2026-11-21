@@ -90,8 +90,10 @@ final class OnlineSession
      * Encrypts an FA(3) invoice with the session key and sends it, opening or replacing the
      * session first when needed. The file is sent as given; it is not validated here.
      *
-     * A send is never repeated automatically. When it fails without an answer (OutcomeUnknown),
-     * sending the same file again is safe: KSeF answers a duplicate with status 440 and the
+     * A send is repeated only after a refusal KSeF did not process: once with a renewed access
+     * token after HTTP 401 (or 21301/21304), and opening the session once with a fresh key list
+     * after 21470. A send that failed without an answer is never repeated. After such an
+     * OutcomeUnknown, sending the same file again is safe: KSeF answers a duplicate with status 440 and the
      * original KSeF number. When KSeF refuses it because it has already ended the session
      * (error 21180), the invoice was not accepted, the refusal is thrown and the session is
      * forgotten, so sending the invoice again opens a new session.

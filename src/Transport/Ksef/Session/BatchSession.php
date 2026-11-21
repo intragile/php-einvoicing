@@ -63,7 +63,9 @@ final class BatchSession
      * Opens a batch session for the package, uploads every part and closes the session, which
      * starts the processing. Returns the session reference to read the result with.
      *
-     * Nothing is repeated automatically. When an upload fails, the session is left open and not
+     * Only refusals KSeF did not process are repeated: a request refused with HTTP 401 (or
+     * 21301/21304) once with a renewed access token, and the session open refused with 21470 once
+     * with a fresh key list. When an upload fails, the session is left open and not
      * closed, and an OutcomeUnknown names the session reference: KSeF cancels a session whose
      * parts were not all uploaded in time (status 440). Sending the package again in a new
      * session is safe; KSeF answers each invoice already accepted with status 440 and its

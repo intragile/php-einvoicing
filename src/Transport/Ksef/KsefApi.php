@@ -26,9 +26,15 @@ use SensitiveParameter;
  * them through HttpClient and maps unsuccessful answers with KsefErrors.
  *
  * A GET answered with 429 is repeated after the Retry-After delay, at most three times and with at
- * most 60 seconds of waiting in total; a refusal whose delay does not fit the time left, or the
- * refusal after the third repeat, is thrown as RateLimited without waiting. Requests
- * with any other method are never repeated, because a repeat could duplicate their effect.
+ * most 60 seconds of waiting per HTTP request; a refusal whose delay does not fit the time left,
+ * or the refusal after the third repeat, is thrown as RateLimited without waiting. A request with
+ * any other method answered with 429 is not repeated, because a repeat could duplicate its effect.
+ *
+ * Two repeats apply to any method, because each follows a refusal, so KSeF did not process the
+ * first request: authorized() repeats its call once with a renewed access token after KSeF refused
+ * the authentication (HTTP 401, or code 21301/21304 in a 4xx answer), and
+ * PublicKeyRegistry::using() repeats a request that carries an encrypted key once with a fresh key
+ * list after error 21470. Nothing else is repeated.
  *
  * The configured credentials and the bearer token of each call are kept out of every exception
  * message, body excerpt and error list. The client itself holds no mutable state. A client made by

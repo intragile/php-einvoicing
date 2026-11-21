@@ -134,13 +134,24 @@ All notable changes to this project are documented here. The format follows
   (`BatchResult`). The whole package is held in memory.
 - **Poland:** receiving: `pending()`, `fetch()` and `acknowledge()` (`InboundSource`) over a
   PermanentStorage high-water-mark cursor kept in a `KsefCursorStore` (`InMemoryCursorStore`), in
-  90-day query chunks, with `resetInbox()`; `export()` (`KsefExport`, `ExportResult`) downloads,
-  checks, decrypts and unzips export packages, continuing a truncated package for up to 10 rounds.
+  90-day query chunks, with `resetInbox()`. One `pending()` call reads at most 10 metadata pages,
+  within KSeF's 20 metadata queries per hour; a 429 after the first page narrows the stored window
+  to the last listed invoice before `RateLimited` is thrown, so the cursor keeps progressing.
+  `export()` (`KsefExport`, `ExportResult`) downloads, checks, decrypts and unzips export packages,
+  continuing a truncated package for up to 10 rounds; a part larger than the `HttpClient` reads is
+  refused before any download (parts reach 50 MB: build the client with `maxResponseBytes` of at
+  least `KsefExport::MAX_PART_BYTES`).
 - **Poland:** `tokens()` (`KsefTokens`): generate, read, approve and revoke KSeF tokens through the
   rev2 token API (missing on PRODUCTION, API 2.9, until 2.10 reaches it).
-- **Poland:** KSeF errors mapped to the transport exceptions; a GET refused with 429 is repeated
-  at most 3 times within 60 seconds, nothing else is repeated automatically. Credentials, keys
-  and tokens are kept out of exception messages and debug output and refuse serialization.
+- **Poland:** KSeF errors mapped to the transport exceptions, reading every error code of an
+  answer. A GET refused with 429 is repeated at most 3 times within 60 seconds per HTTP request;
+  any request refused with HTTP 401 (or 21301/21304 in a 4xx answer) is repeated once with a
+  renewed access token, and a session open, export start or KSeF-token authentication refused with
+  21470 once with a fresh key list. Both follow a refusal KSeF did not process; nothing else is
+  repeated, and an invoice send that failed without an answer is never resent. Credentials, keys
+  and tokens are kept out of exception messages, exception chains and debug output and refuse
+  serialization.
+- **Transport:** `HttpClient::maxResponseBytes()` reports the client's response size cap.
 - **Poland:** test helpers for KSeF TE: `SelfSignedCertificate` (seal and personal certificates for
   synthetic NIPs) and `KsefTestData` (the `/testdata` endpoints, refused outside TE), and the live
   test group `ksef-live`, which needs no secrets. Live-verified on KSeF TE (API 2.10 RC): the full
