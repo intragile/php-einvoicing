@@ -18,8 +18,8 @@ use LogicException;
  * Generation uses POST /tokens/rev2, available on KSeF TE since API 2.10; PROD runs API 2.9 and
  * offers only the deprecated POST /tokens, which is not implemented, so generation through the API
  * fails there until 2.10 reaches it. Tokens created in the KSeF web application authenticate on
- * every environment. A token generated after KSeF-token authentication must be approved before it
- * can be used.
+ * every environment. A token generated after KSeF-token authentication must be approved, with a
+ * certificate authentication, before it can be used.
  */
 final class KsefTokens
 {
@@ -90,21 +90,35 @@ final class KsefTokens
     }
 
     /**
-     * The token's status: Pending, Active, Revoking, Revoked or Failed (AuthenticationTokenStatus).
+     * The token's status from GET /tokens/rev2/{referenceNumber}: Pending, Active, Revoking,
+     * Revoked, Failed, NotYetActive, AwaitingApproval, ApprovalExpired or Expired, or the raw code
+     * of a status newer than this client. The legacy GET /tokens/{referenceNumber} is not used:
+     * it reports a token awaiting approval as Active.
      *
      * @throws InvalidArgumentException when the reference number is malformed
      * @throws TransportException when the request fails or KSeF refuses it
      */
     public function status(string $referenceNumber): string
     {
-        $path = self::path($referenceNumber);
+        $path = '/tokens/rev2/'.substr(self::path($referenceNumber), strlen('/tokens/'));
         $answer = $this->api->authorized(fn (string $bearer): array => $this->api->json('GET', $path, null, $bearer));
+        $operation = 'The KSeF request GET /tokens/rev2/{referenceNumber}';
 
-        return KsefAnswer::string($answer, ['status'], 'The KSeF request GET /tokens/{referenceNumber}');
+        $status = $answer['status'] ?? null;
+        if (is_array($status)) {
+            // rawCode is the stable code, also of a value the API revision calls FutureValue.
+            $raw = $status['rawCode'] ?? null;
+
+            return is_string($raw) && trim($raw) !== '' ? trim($raw) : KsefAnswer::string($answer, ['status', 'code'], $operation);
+        }
+
+        return KsefAnswer::string($answer, ['status'], $operation);
     }
 
     /**
-     * Approves a token generated after KSeF-token authentication, so it can be used.
+     * Approves a token generated after KSeF-token authentication (status AwaitingApproval), so
+     * it can be used. KSeF accepts the approval only from a context authenticated otherwise than
+     * by a KSeF token, with a certificate (error 26005 otherwise), within 24 hours.
      *
      * @throws InvalidArgumentException when the reference number is malformed
      * @throws TransportException when the request fails or KSeF refuses it

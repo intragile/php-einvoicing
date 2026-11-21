@@ -131,28 +131,44 @@ final class KsefTokensTest extends TestCase
                 'authorIdentifier' => ['type' => 'Nip', 'value' => '7762811692'],
                 'contextIdentifier' => ['type' => 'Nip', 'value' => '5265877635'],
                 'description' => 'Wystawianie i przeglądanie faktur.',
-                'requestedPermissions' => ['InvoiceWrite', 'InvoiceRead'],
+                'requestedPermissions' => [['code' => 'InvoiceRead', 'rawCode' => 'InvoiceRead', 'displayName' => 'Przeglądanie faktur']],
                 'dateCreated' => '2025-07-11T12:23:56.0154302+00:00',
-                'status' => 'Pending',
-                'statusDetails' => [],
+                'validFrom' => '2025-07-11T12:23:56.0154302+00:00',
+                'validTo' => '2025-10-09T12:23:56.0154302+00:00',
+                // Observed on TE: the legacy GET /tokens/{ref} reports such a token as "Active".
+                'status' => ['code' => 'AwaitingApproval', 'rawCode' => 'AwaitingApproval', 'displayName' => 'Token oczekuje na zatwierdzenie'],
             ]),
             new Response(204),
             new Response(204),
         ]);
         $tokens = new KsefTokens($this->authorizedApi($recorder));
 
-        self::assertSame('Pending', $tokens->status(self::TOKEN_REFERENCE));
+        self::assertSame('AwaitingApproval', $tokens->status(self::TOKEN_REFERENCE));
         $tokens->approve(self::TOKEN_REFERENCE);
         $tokens->revoke(self::TOKEN_REFERENCE);
 
         $requests = array_slice($recorder->requests(), 5);
         self::assertSame(
-            ['GET /tokens/'.self::TOKEN_REFERENCE, 'POST /tokens/'.self::TOKEN_REFERENCE.'/approve', 'DELETE /tokens/'.self::TOKEN_REFERENCE],
+            ['GET /tokens/rev2/'.self::TOKEN_REFERENCE, 'POST /tokens/'.self::TOKEN_REFERENCE.'/approve', 'DELETE /tokens/'.self::TOKEN_REFERENCE],
             array_map(static fn ($r): string => $r->getMethod().' '.substr((string) $r->getUri(), strlen(self::BASE)), $requests),
         );
         foreach ($requests as $request) {
             self::assertSame('Bearer '.self::ACCESS_TOKEN, $request->getHeaderLine('Authorization'));
         }
+    }
+
+    public function test_status_prefers_the_raw_code_of_a_value_unknown_to_the_revision(): void
+    {
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            self::json(200, ['referenceNumber' => self::TOKEN_REFERENCE, 'status' => ['code' => 'FutureValue', 'rawCode' => 'Suspended', 'displayName' => 'Zawieszony']]),
+            self::json(200, ['referenceNumber' => self::TOKEN_REFERENCE, 'status' => 'Active']),
+        ]);
+        $tokens = new KsefTokens($this->authorizedApi($recorder));
+
+        self::assertSame('Suspended', $tokens->status(self::TOKEN_REFERENCE));
+        // A plain string status, as the legacy answer has it, is read too.
+        self::assertSame('Active', $tokens->status(self::TOKEN_REFERENCE));
     }
 
     public function test_generated_token_is_redacted_and_not_serializable(): void
