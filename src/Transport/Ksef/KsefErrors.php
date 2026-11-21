@@ -46,6 +46,9 @@ final class KsefErrors
     /** Bytes of KSeF error text quoted in an exception message. */
     private const QUOTED_BYTES = 500;
 
+    /** The words of an AuthenticationFailed for a missing or no longer valid authentication. */
+    private const AUTHENTICATION_REFUSED = 'KSeF refused the authentication';
+
     private const HTTP_DATE = 'D, d M Y H:i:s \G\M\T';
 
     public function __construct(private readonly Redactor $redactor) {}
@@ -76,7 +79,7 @@ final class KsefErrors
             return UnexpectedResponse::forResponse($response, sprintf('%s failed: KSeF answered with a redirect, which is not followed', $operation), '');
         }
         if ($status === 401 || array_intersect($codes, self::AUTHENTICATION_CODES) !== []) {
-            return new AuthenticationFailed(sprintf('%s failed: KSeF refused the authentication (HTTP %d)%s.', $operation, $status, $detail));
+            return new AuthenticationFailed(sprintf('%s failed: %s (HTTP %d)%s.', $operation, self::AUTHENTICATION_REFUSED, $status, $detail));
         }
         if ($status === 403) {
             return new AuthenticationFailed(sprintf('%s failed: KSeF refused the request, no permission in context (HTTP 403)%s.', $operation, $detail));
@@ -156,6 +159,23 @@ final class KsefErrors
         }
 
         return null;
+    }
+
+    /**
+     * True when an exception from exception() stands for a missing or no longer valid
+     * authentication (HTTP 401 or KSeF code 21301/21304), which a fresh access token may cure;
+     * false for a refused permission (HTTP 403) and for any other failure.
+     */
+    public static function isAuthenticationRefusal(TransportException $exception): bool
+    {
+        if (! $exception instanceof AuthenticationFailed) {
+            return false;
+        }
+        // Only the words right after the operation count, not text KSeF sent in the detail.
+        $message = $exception->getMessage();
+        $at = strpos($message, ' failed: ');
+
+        return $at !== false && str_starts_with(substr($message, $at + 9), self::AUTHENTICATION_REFUSED.' (HTTP ');
     }
 
     /**

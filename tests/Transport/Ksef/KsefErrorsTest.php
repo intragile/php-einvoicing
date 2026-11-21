@@ -40,6 +40,21 @@ final class KsefErrorsTest extends TestCase
         self::assertSame(9105, KsefErrors::codeOf($exception));
     }
 
+    public function test_authentication_refusal_is_told_apart_from_a_refused_permission(): void
+    {
+        $errors = self::errors();
+        $refusal = $errors->exception(self::fixture(401, 'unauthorized-problem-details.json'), self::OPERATION, 'GET');
+        $coded = $errors->exception(self::json(400, ['errors' => [['code' => 21301, 'description' => 'Brak autoryzacji.']]]), self::OPERATION, 'GET');
+        $forbidden = $errors->exception(self::fixture(403, 'forbidden-problem-details.json'), self::OPERATION, 'GET');
+        $echoed = $errors->exception(self::json(403, ['detail' => 'x failed: KSeF refused the authentication (HTTP 401)']), self::OPERATION, 'GET');
+
+        self::assertTrue(KsefErrors::isAuthenticationRefusal($refusal));
+        self::assertTrue(KsefErrors::isAuthenticationRefusal($coded));
+        self::assertFalse(KsefErrors::isAuthenticationRefusal($forbidden));
+        self::assertFalse(KsefErrors::isAuthenticationRefusal($echoed));
+        self::assertFalse(KsefErrors::isAuthenticationRefusal($errors->exception(self::json(500, []), self::OPERATION, 'GET')));
+    }
+
     public function test_21470_is_detectable(): void
     {
         $body = self::decoded('unknown-key-id-21470.json');

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Transport\Ksef;
 
+use Closure;
+use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
@@ -11,8 +13,10 @@ use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\Http\HttpClient;
 use IntrAgile\EInvoicing\Transport\Http\Redactor;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\Authenticator;
 use InvalidArgumentException;
 use JsonException;
+use LogicException;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
 use SensitiveParameter;
@@ -27,8 +31,9 @@ use SensitiveParameter;
  * with any other method are never repeated, because a repeat could duplicate their effect.
  *
  * The configured credentials and the bearer token of each call are kept out of every exception
- * message, body excerpt and error list. The client holds no mutable state, so a clone is
- * independent of the original.
+ * message, body excerpt and error list. The client itself holds no mutable state. A client made by
+ * withAuthenticator() shares its Authenticator, and with it the current access token, with every
+ * clone of it.
  */
 final class KsefApi
 {
@@ -46,9 +51,59 @@ final class KsefApi
 
     private readonly HttpClient $http;
 
+    private ?Authenticator $authenticator = null;
+
     public function __construct(private readonly KsefConfig $config, HttpClient $http)
     {
         $this->http = $http->withSecrets($config->secrets());
+    }
+
+    /**
+     * A copy of this client that runs authorized() calls with the access tokens of the given
+     * Authenticator. The Authenticator itself keeps using a client without one, because the
+     * authentication endpoints take no access token.
+     */
+    public function withAuthenticator(Authenticator $authenticator): self
+    {
+        $copy = clone $this;
+        $copy->authenticator = $authenticator;
+
+        return $copy;
+    }
+
+    /**
+     * Runs a call that needs an access token, passing it a token valid for at least another
+     * minute. When KSeF answers the call with a refused authentication (HTTP 401), the access
+     * token is renewed (a refresh, or a new authentication when the refresh is refused) and the
+     * call repeated once; a second refusal is thrown. A refused permission (HTTP 403) is thrown
+     * at once.
+     *
+     * The call may run twice, so it must build its request anew from the bearer it is given.
+     *
+     * @template T
+     *
+     * @param  Closure(string $bearer): T  $call
+     * @return T
+     *
+     * @throws LogicException when the client has no Authenticator; see withAuthenticator()
+     * @throws TransportException when the authentication or the call fails
+     */
+    public function authorized(Closure $call): mixed
+    {
+        $authenticator = $this->authenticator
+            ?? throw new LogicException('This KSeF client has no Authenticator; create one with withAuthenticator().');
+
+        // Outside the try: a failed authentication must not lead to a second one.
+        $bearer = $authenticator->accessToken();
+        try {
+            return $call($bearer);
+        } catch (AuthenticationFailed $exception) {
+            if (! KsefErrors::isAuthenticationRefusal($exception)) {
+                throw $exception;
+            }
+        }
+
+        return $call($authenticator->renew());
     }
 
     /**
