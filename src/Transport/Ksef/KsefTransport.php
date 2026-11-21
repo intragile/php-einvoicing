@@ -1,0 +1,557 @@
+<?php
+
+declare(strict_types=1);
+
+namespace IntrAgile\EInvoicing\Transport\Ksef;
+
+use Closure;
+use DateTimeImmutable;
+use IntrAgile\EInvoicing\Exception\UnsafeXml;
+use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Poland\KsefNumber;
+use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Writer;
+use IntrAgile\EInvoicing\Transport\DeliveryState;
+use IntrAgile\EInvoicing\Transport\DeliveryStatus;
+use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
+use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
+use IntrAgile\EInvoicing\Transport\Exception\TransportException;
+use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
+use IntrAgile\EInvoicing\Transport\Http\HttpClient;
+use IntrAgile\EInvoicing\Transport\InboundDocument;
+use IntrAgile\EInvoicing\Transport\InboundReference;
+use IntrAgile\EInvoicing\Transport\InboundSource;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\Authenticator;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\KsefTokens;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\PublicKeyRegistry;
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\CursorWindow;
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\ExportResult;
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InMemoryCursorStore;
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InvoiceMetadata;
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InvoiceQueryFilters;
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\KsefCursorStore;
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\KsefExport;
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\MetadataQuery;
+use IntrAgile\EInvoicing\Transport\Ksef\Session\BatchPackage;
+use IntrAgile\EInvoicing\Transport\Ksef\Session\BatchResult;
+use IntrAgile\EInvoicing\Transport\Ksef\Session\BatchSession;
+use IntrAgile\EInvoicing\Transport\Ksef\Session\KsefInvoiceStatus;
+use IntrAgile\EInvoicing\Transport\Ksef\Session\OnlineSession;
+use IntrAgile\EInvoicing\Transport\Ksef\Session\Upo;
+use IntrAgile\EInvoicing\Transport\SendResult;
+use IntrAgile\EInvoicing\Validation\Poland\Fa3Validator;
+use IntrAgile\EInvoicing\Validation\SchemaError;
+use InvalidArgumentException;
+use LogicException;
+
+/**
+ * Sends FA(3) invoices to KSeF and reads the context's inbox through the KSeF API 2.0.
+ *
+ * This is not a Transport: KSeF takes FA(3) files, which an OutboundDocument cannot carry.
+ * Sending:
+ * - send() sends one invoice in the online session of this instance, opened on the first send
+ *   and replaced before it expires; close() closes it so that KSeF issues the receipts.
+ * - sendBatch() sends several invoices in a batch session of their own.
+ * - A raw FA(3) file is validated before anything is sent; an Invoice is written with Fa3Writer,
+ *   which validates its own output.
+ *
+ * The document id of a sent invoice is "<session reference>/<invoice reference>". status() maps
+ * the KSeF invoice status onto a DeliveryStatus; invoiceStatus() and awaitFinal() return the full
+ * KSeF status with the KSeF number, and upo() the receipt (UPO) of an accepted invoice.
+ *
+ * Receiving (InboundSource): pending() lists the invoices addressed to the context (Subject2) by
+ * PermanentStorage date, in windows bounded by KSeF's high water mark. The window and the
+ * invoices acknowledged in it are kept in the KsefCursorStore under
+ * "<environment>:<context>:Subject2"; once every invoice of a window is acknowledged, the next
+ * window starts at its high water mark. Without a persistent store a restarted process reads its
+ * inbox from the start point again. The document id of a received invoice is its KSeF number.
+ *
+ * Every component shares one authenticator and one public-key registry, so the context
+ * authenticates once and the Ministry of Finance keys are fetched once per instance. Polling is
+ * bounded by the KsefConfig. No method repeats an invoice send automatically, and the object
+ * never makes a network call on destruction.
+ */
+final class KsefTransport implements InboundSource
+{
+    /** Days before now at which the first inbox window starts when no start is given. */
+    public const DEFAULT_INBOX_LOOKBACK_DAYS = 30;
+
+    /** The form code of an inbox entry whose metadata does not name one. */
+    private const DEFAULT_DOCUMENT_TYPE = 'FA (3)';
+
+    /** A KSeF session or invoice reference number: letters, digits and hyphens. */
+    private const REFERENCE_PATTERN = '/\A[A-Za-z0-9-]{1,64}\z/';
+
+    /** Pages of one inbox query: KSeF returns at most 10,000 records per filter set. */
+    private const MAX_INBOX_PAGES = 40;
+
+    /** Days after the date in a KSeF number searched for its PermanentStorage date. */
+    private const LOOKUP_DAYS = 31;
+
+    private ?Fa3Validator $validator = null;
+
+    /** @var array<string, InvoiceMetadata> metadata of listed, not yet acknowledged invoices */
+    private array $inbox = [];
+
+    /**
+     * @param  Closure(): DateTimeImmutable  $now
+     */
+    private function __construct(
+        private readonly KsefConfig $config,
+        private readonly OnlineSession $session,
+        private readonly BatchSession $batch,
+        private readonly MetadataQuery $query,
+        private readonly KsefExport $exporter,
+        private readonly KsefTokens $tokens,
+        private readonly KsefCursorStore $cursor,
+        private readonly Fa3Writer $writer,
+        private readonly ?DateTimeImmutable $inboxStart,
+        private readonly Closure $now,
+    ) {}
+
+    /**
+     * @param  KsefCursorStore|null  $cursor  where the inbox window is kept; in memory when null
+     * @param  DateTimeImmutable|null  $inboxStart  where the first inbox window starts when the
+     *                                              store holds none; DEFAULT_INBOX_LOOKBACK_DAYS
+     *                                              before now when null. KSeF queries at most 100
+     *                                              days at once, so the start must not be older.
+     * @param  (Closure(): DateTimeImmutable)|null  $now  the current time; the system clock when null
+     */
+    public static function create(
+        KsefConfig $config,
+        HttpClient $http,
+        ?KsefCursorStore $cursor = null,
+        ?DateTimeImmutable $inboxStart = null,
+        ?Closure $now = null,
+    ): self {
+        $now ??= static fn (): DateTimeImmutable => new DateTimeImmutable;
+        // The authentication endpoints and the key list take no access token.
+        $plain = new KsefApi($config, $http);
+        $keys = new PublicKeyRegistry($plain, $now);
+        $api = $plain->withAuthenticator(new Authenticator($plain, $config, $keys, now: $now));
+
+        return new self(
+            $config,
+            new OnlineSession($api, $keys, $config, $now),
+            new BatchSession($api, $keys, $config),
+            new MetadataQuery($api),
+            new KsefExport($api, $keys, $config),
+            new KsefTokens($api),
+            $cursor ?? new InMemoryCursorStore,
+            new Fa3Writer($now),
+            $inboxStart,
+            $now,
+        );
+    }
+
+    /**
+     * Sends one FA(3) invoice in the online session, opening or replacing the session first when
+     * needed. The result is Pending with the document id "<session>/<invoice>"; read the outcome
+     * with status() or awaitFinal().
+     *
+     * A send is never repeated automatically. After an OutcomeUnknown, sending the same invoice
+     * again is safe: KSeF reports the second copy as a duplicate (Failed / Duplicate) naming the
+     * KSeF number of the first.
+     *
+     * When KSeF has ended the session on its side before its expiry, sends to it are refused
+     * until close() is called, which drops the local session so that the next send opens a new one.
+     *
+     * @param  string|Invoice  $invoice  an FA(3) file, or an invoice to write as one
+     *
+     * @throws DocumentRejected when the FA(3) file fails its schema or a fatal FA(3) rule; nothing is sent
+     * @throws UnsafeXml|UnsupportedDocument when the file is not well-formed XML or not an FA(3) invoice
+     * @throws InvalidArgumentException when the invoice cannot be written as FA(3)
+     * @throws OutcomeUnknown when the send failed without an answer
+     * @throws TransportException when opening the session or sending fails, or KSeF refuses it
+     */
+    public function send(string|Invoice $invoice): SendResult
+    {
+        $sent = $this->session->send($this->fa3($invoice, null));
+
+        return new SendResult($sent->documentId(), DeliveryState::Pending);
+    }
+
+    /**
+     * Sends invoices in a batch session of their own and returns the session reference; read the
+     * result with batchStatus() or awaitBatch(). Each invoice is validated or written as in send()
+     * before anything is sent.
+     *
+     * @param  array<string, string|Invoice>  $invoices  FA(3) files or invoices by file name
+     *                                                   (letters, digits, ".", "_", "-", ending in ".xml")
+     *
+     * @throws DocumentRejected when an FA(3) file fails validation; nothing is sent
+     * @throws UnsafeXml|UnsupportedDocument when a file is not well-formed XML or not an FA(3) invoice
+     * @throws InvalidArgumentException when an invoice cannot be written, or the batch is empty,
+     *                                  too large or has unusable file names
+     * @throws LogicException when the zip extension is not loaded
+     * @throws TransportException when opening, uploading or closing fails, or KSeF refuses it
+     */
+    public function sendBatch(array $invoices): string
+    {
+        $files = [];
+        foreach ($invoices as $name => $invoice) {
+            $files[$name] = $this->fa3($invoice, (string) $name);
+        }
+
+        return $this->batch->send(BatchPackage::build($files, $this->config->batchPartBytes));
+    }
+
+    /**
+     * The state of a batch session and of every invoice in it, read once.
+     *
+     * @throws TransportException when a request fails or an answer cannot be read
+     */
+    public function batchStatus(string $sessionReference): BatchResult
+    {
+        return $this->batch->status(self::reference($sessionReference, 'batch session reference'));
+    }
+
+    /**
+     * Reads the state of a batch session until it is final, within the configured polling bounds,
+     * and returns the last state read.
+     *
+     * @throws TransportException when a request fails or an answer cannot be read
+     */
+    public function awaitBatch(string $sessionReference): BatchResult
+    {
+        return $this->batch->awaitFinal(self::reference($sessionReference, 'batch session reference'));
+    }
+
+    /**
+     * The delivery state of a sent invoice, read once: Pending while KSeF processes it,
+     * Delivered once it has a KSeF number, Failed with KSeF's reason otherwise.
+     *
+     * @throws InvalidArgumentException when the document id is not "<session>/<invoice>"; no request is made
+     * @throws TransportException when the request fails or the answer cannot be read
+     */
+    public function status(string $documentId): DeliveryStatus
+    {
+        $status = $this->invoiceStatus($documentId);
+
+        return new DeliveryStatus($documentId, $status->deliveryState(), $status->failure(), $status->acquisitionDate);
+    }
+
+    /**
+     * The KSeF status of a sent invoice, read once, with its KSeF number once assigned.
+     *
+     * @throws InvalidArgumentException when the document id is not "<session>/<invoice>"; no request is made
+     * @throws TransportException when the request fails or the answer cannot be read
+     */
+    public function invoiceStatus(string $documentId): KsefInvoiceStatus
+    {
+        [$session, $invoice] = self::documentId($documentId);
+
+        return $this->session->status($session, $invoice);
+    }
+
+    /**
+     * Reads the KSeF status of a sent invoice until it is final, within the configured polling
+     * bounds, and returns the last status read, which is still pending when the attempts ran out.
+     *
+     * @throws InvalidArgumentException when the document id is not "<session>/<invoice>"; no request is made
+     * @throws TransportException when a request fails or an answer cannot be read
+     */
+    public function awaitFinal(string $documentId): KsefInvoiceStatus
+    {
+        [$session, $invoice] = self::documentId($documentId);
+
+        return $this->session->awaitFinal($session, $invoice);
+    }
+
+    /**
+     * The receipt (UPO) of a sent invoice, fetched by the KSeF number its status reports. KSeF
+     * may issue the receipt only after the session is closed; call close() first.
+     *
+     * @throws InvalidArgumentException when the document id is not "<session>/<invoice>"; no request is made
+     * @throws LogicException when the invoice has no KSeF number: it is still being processed or
+     *                        KSeF did not accept it; the receipt is not requested
+     * @throws TransportException when a request fails or KSeF has no receipt
+     * @throws UnsafeXml|UnsupportedDocument when the answer is not a readable UPO
+     */
+    public function upo(string $documentId): Upo
+    {
+        [$session, $invoice] = self::documentId($documentId);
+        $status = $this->session->status($session, $invoice);
+        if ($status->ksefNumber === null) {
+            throw new LogicException(sprintf(
+                'The KSeF invoice %s has no KSeF number (status %d: %s), so it has no receipt (UPO). %s',
+                $documentId,
+                $status->code,
+                rtrim($status->description, '. '),
+                $status->isFinal()
+                    ? 'KSeF did not accept the invoice.'
+                    : 'KSeF is still processing it; wait for the final status with awaitFinal().',
+            ));
+        }
+
+        return $this->session->upo($session, $status->ksefNumber);
+    }
+
+    /**
+     * Closes the online session, if one is open, so that KSeF issues the receipts. The local
+     * session is dropped even when the request fails, so the next send() opens a new one; this
+     * is also the way out after KSeF has ended the session on its side before its expiry.
+     *
+     * @throws TransportException when KSeF refuses to close the session
+     */
+    public function close(): void
+    {
+        $this->session->close();
+    }
+
+    /**
+     * The invoices addressed to the context that are not acknowledged yet, read from the current
+     * inbox window. The first call without a stored window starts it at the configured inbox
+     * start and saves it at once.
+     *
+     * @return list<InboundReference>
+     *
+     * @throws TransportException when the query fails or its answer cannot be read
+     */
+    public function pending(): array
+    {
+        $key = $this->cursorKey();
+        $stored = $this->cursor->window($key);
+        if ($stored === null) {
+            $stored = CursorWindow::start($this->defaultInboxStart());
+            $this->cursor->save($key, $stored);
+        }
+        $window = $stored->next();
+
+        $filters = InvoiceQueryFilters::incoming($window->from);
+        for ($offset = 0; $offset < self::MAX_INBOX_PAGES; $offset++) {
+            $page = $this->query->page($filters, $offset, MetadataQuery::MAX_PAGE_SIZE);
+            foreach ($page['invoices'] as $invoice) {
+                $this->inbox[$invoice->ksefNumber] = $invoice;
+            }
+            // A truncated result ends the window at its last record; the next window continues there.
+            $window = $window->withResults($page['invoices'], $page['hwm'], $page['isTruncated']);
+            if (! $page['hasMore'] || $page['isTruncated']) {
+                break;
+            }
+        }
+        $this->cursor->save($key, $window->isComplete() ? $window->next() : $window);
+
+        $references = [];
+        foreach ($window->pending() as $ksefNumber) {
+            $metadata = $this->inbox[$ksefNumber] ?? null;
+            $references[] = new InboundReference(
+                $ksefNumber,
+                null,
+                null,
+                $metadata === null ? self::DEFAULT_DOCUMENT_TYPE : self::documentType($metadata),
+                $metadata->permanentStorageDate ?? $window->from,
+            );
+        }
+
+        return $references;
+    }
+
+    /**
+     * The invoice file with the given KSeF number, exactly as KSeF stores it. The reference
+     * carries the PermanentStorage date from the metadata pending() read, or, for an invoice not
+     * listed by this instance, from a metadata query by its KSeF number.
+     *
+     * @throws InvalidArgumentException when the id is not a valid KSeF number; no request is made
+     * @throws UnexpectedResponse when KSeF lists no invoice with that number addressed to the context
+     * @throws TransportException when a request fails or KSeF refuses it
+     */
+    public function fetch(string $documentId): InboundDocument
+    {
+        if (! KsefNumber::isValid($documentId)) {
+            throw new InvalidArgumentException('The invoice to fetch needs a valid KSeF number as its document id.');
+        }
+        $metadata = $this->inbox[$documentId] ?? $this->lookUp($documentId);
+        $xml = $this->query->download($documentId);
+
+        return new InboundDocument(
+            new InboundReference($documentId, null, null, self::documentType($metadata), $metadata->permanentStorageDate),
+            $xml,
+        );
+    }
+
+    /**
+     * Marks an invoice of the current inbox window as processed. Once every invoice of the window
+     * is acknowledged, the stored cursor moves to the window's high water mark. An id outside the
+     * current window is ignored.
+     */
+    public function acknowledge(string $documentId): void
+    {
+        $key = $this->cursorKey();
+        $window = $this->cursor->window($key);
+        unset($this->inbox[$documentId]);
+        if ($window === null) {
+            return;
+        }
+        $updated = $window->acknowledge($documentId);
+        if ($updated->isComplete()) {
+            $updated = $updated->next();
+        }
+        if ($updated !== $window) {
+            $this->cursor->save($key, $updated);
+        }
+    }
+
+    /**
+     * Exports the invoices matching the filters as files, continuing while KSeF truncates the
+     * package; see KsefExport::run().
+     *
+     * @throws LogicException when the zip extension is not loaded
+     * @throws TransportException when an export fails, does not finish within the polling bounds,
+     *                            or a part cannot be checked, decrypted or unzipped
+     */
+    public function export(InvoiceQueryFilters $filters): ExportResult
+    {
+        return $this->exporter->run($filters);
+    }
+
+    /**
+     * The KSeF tokens of the context: generate, read, approve and revoke them.
+     */
+    public function tokens(): KsefTokens
+    {
+        return $this->tokens;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function __debugInfo(): array
+    {
+        return [
+            'environment' => $this->config->environment,
+            'context' => $this->config->context,
+            'session' => $this->session,
+            'cursorKey' => $this->cursorKey(),
+        ];
+    }
+
+    /**
+     * @throws LogicException Always: the transport holds credentials and tokens
+     */
+    public function __serialize(): never
+    {
+        throw new LogicException('The KSeF transport cannot be serialized.');
+    }
+
+    /**
+     * @param  array<mixed>  $data
+     *
+     * @throws LogicException Always
+     */
+    public function __unserialize(array $data): never
+    {
+        throw new LogicException('The KSeF transport cannot be serialized.');
+    }
+
+    /**
+     * The FA(3) file to send: an invoice written with Fa3Writer, or a raw file that passed
+     * validation.
+     *
+     * @throws DocumentRejected|UnsafeXml|UnsupportedDocument|InvalidArgumentException
+     */
+    private function fa3(string|Invoice $invoice, ?string $name): string
+    {
+        if ($invoice instanceof Invoice) {
+            return $this->writer->write($invoice);
+        }
+
+        $report = ($this->validator ??= Fa3Validator::create())->validate($invoice);
+        $errors = array_map(
+            static fn (SchemaError $error): string => sprintf('schema (line %d): %s', $error->line, rtrim(trim($error->message), '.')),
+            $report->schemaErrors,
+        );
+        foreach ($report->fatal() as $finding) {
+            $errors[] = $finding->ruleId.': '.rtrim($finding->message, '.');
+        }
+        if ($errors !== []) {
+            throw new DocumentRejected(
+                sprintf(
+                    'The FA(3) invoice%s fails validation, so it was not sent to KSeF: %s',
+                    $name === null ? '' : ' '.$name,
+                    implode('; ', $errors),
+                ),
+                ['errors' => $errors],
+            );
+        }
+
+        return $invoice;
+    }
+
+    /**
+     * The metadata of an invoice addressed to the context, queried by its KSeF number around the
+     * date the number carries.
+     *
+     * @throws UnexpectedResponse|TransportException
+     */
+    private function lookUp(string $ksefNumber): InvoiceMetadata
+    {
+        $from = KsefNumber::parse($ksefNumber)->acceptedOn->modify('-1 day');
+        $to = $from->modify(sprintf('+%d days', self::LOOKUP_DAYS));
+        $filters = new InvoiceQueryFilters(
+            InvoiceQueryFilters::SUBJECT_BUYER,
+            InvoiceQueryFilters::DATE_PERMANENT_STORAGE,
+            $from,
+            $to < ($this->now)() ? $to : null,
+            ksefNumber: $ksefNumber,
+        );
+        foreach ($this->query->page($filters, 0, MetadataQuery::MIN_PAGE_SIZE)['invoices'] as $invoice) {
+            if ($invoice->ksefNumber === $ksefNumber) {
+                return $invoice;
+            }
+        }
+
+        throw new UnexpectedResponse(sprintf('KSeF lists no invoice with the KSeF number %s addressed to the context %s.', $ksefNumber, $this->config->context->value));
+    }
+
+    private function defaultInboxStart(): DateTimeImmutable
+    {
+        return $this->inboxStart ?? ($this->now)()->modify(sprintf('-%d days', self::DEFAULT_INBOX_LOOKBACK_DAYS));
+    }
+
+    private function cursorKey(): string
+    {
+        return sprintf('%s:%s:%s', $this->config->environment->value, $this->config->context->value, InvoiceQueryFilters::SUBJECT_BUYER);
+    }
+
+    private static function documentType(InvoiceMetadata $metadata): string
+    {
+        $formCode = $metadata->raw['formCode'] ?? null;
+        $systemCode = is_array($formCode) ? ($formCode['systemCode'] ?? null) : null;
+
+        return is_string($systemCode) && trim($systemCode) !== '' ? trim($systemCode) : self::DEFAULT_DOCUMENT_TYPE;
+    }
+
+    /**
+     * The session and invoice reference of a document id.
+     *
+     * @return array{string, string}
+     *
+     * @throws InvalidArgumentException
+     */
+    private static function documentId(string $documentId): array
+    {
+        $parts = explode('/', $documentId);
+        if (
+            count($parts) !== 2
+            || preg_match(self::REFERENCE_PATTERN, $parts[0]) !== 1
+            || preg_match(self::REFERENCE_PATTERN, $parts[1]) !== 1
+        ) {
+            throw new InvalidArgumentException('A KSeF document id is "<session reference>/<invoice reference>", as send() returns it.');
+        }
+
+        return [$parts[0], $parts[1]];
+    }
+
+    /**
+     * @throws InvalidArgumentException
+     */
+    private static function reference(string $reference, string $what): string
+    {
+        if (preg_match(self::REFERENCE_PATTERN, $reference) !== 1) {
+            throw new InvalidArgumentException(sprintf('The KSeF %s must be letters, digits and hyphens.', $what));
+        }
+
+        return $reference;
+    }
+}
