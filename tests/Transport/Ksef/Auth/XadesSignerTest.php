@@ -15,6 +15,7 @@ use IntrAgile\EInvoicing\Transport\Ksef\Auth\ContextIdentifier;
 use IntrAgile\EInvoicing\Transport\Ksef\Auth\XadesSigner;
 use IntrAgile\EInvoicing\Transport\Ksef\Testing\SelfSignedCertificate;
 use InvalidArgumentException;
+use LogicException;
 use PHPUnit\Framework\TestCase;
 
 final class XadesSignerTest extends TestCase
@@ -112,8 +113,11 @@ final class XadesSignerTest extends TestCase
         self::assertIsArray($parsed);
 
         self::assertMatchesRegularExpression('/\A\d+\z/', $serial);
-        self::assertIsString($parsed['serialNumberHex']);
-        self::assertSame((string) BigInteger::fromBase($parsed['serialNumberHex'], 16), $serial);
+        $hex = $parsed['serialNumberHex'];
+        if (! is_string($hex) || $hex === '') {
+            self::fail('The certificate has no serial number.');
+        }
+        self::assertSame((string) BigInteger::fromBase($hex, 16), $serial);
     }
 
     public function test_ecdsa_signature_is_raw_64_bytes_and_verifies(): void
@@ -314,10 +318,23 @@ final class XadesSignerTest extends TestCase
                 $bytes = "\x00".$bytes;
             }
 
-            return "\x02".chr(strlen($bytes)).$bytes;
+            return "\x02".self::shortLength($bytes).$bytes;
         };
         $body = $integer(substr($raw, 0, 32)).$integer(substr($raw, 32, 32));
 
-        return "\x30".chr(strlen($body)).$body;
+        return "\x30".self::shortLength($body).$body;
+    }
+
+    /**
+     * Encodes a DER short-form length, which covers every P-256 signature component.
+     */
+    private static function shortLength(string $content): string
+    {
+        $length = strlen($content);
+        if ($length > 0x7F) {
+            throw new LogicException('DER long-form lengths are not needed for P-256 signatures.');
+        }
+
+        return chr($length);
     }
 }

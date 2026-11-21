@@ -616,8 +616,9 @@ final class Fa3WriterTest extends TestCase
         foreach (self::nodes($xml, '//fa:Fa/fa:DodatkowyOpis') as $node) {
             $fields = ['NrWiersza' => '', 'Klucz' => '', 'Wartosc' => ''];
             foreach ($node->childNodes as $child) {
-                if ($child instanceof DOMElement && isset($fields[$child->localName])) {
-                    $fields[$child->localName] = trim($child->textContent);
+                $name = $child instanceof DOMElement ? $child->localName : null;
+                if ($name !== null && isset($fields[$name])) {
+                    $fields[$name] = trim($child->textContent);
                 }
             }
             $pairs[] = implode('|', $fields);
