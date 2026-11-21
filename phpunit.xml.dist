@@ -15,7 +15,8 @@
          group needs Recommand API credentials, the b2brouter-live group needs a B2Brouter sandbox
          API key, the b2brouter-france-live group needs a B2Brouter sandbox key (directory lookup)
          and a French sandbox or staging account for the send and e-reporting cases, the einvoicebe-live
-         group needs an e-invoice.be sandbox API key, the performance group asserts wall-clock bounds that can flake on a loaded machine, the
+         group needs an e-invoice.be sandbox API key, the ksef-live group reaches KSeF TEST (TE) with
+         synthetic data and needs no secrets (it skips 16:00-18:00 Europe/Warsaw), the performance group asserts wall-clock bounds that can flake on a loaded machine, the
          release-artefacts group needs headless Chrome (CHROME_BIN) and writes
          build/release-artefacts, and the release-gate group checks those artefacts against the
          official validators; run them explicitly with the group option of PHPUnit. The
@@ -23,7 +24,7 @@
          option of composer fetch-official) and is skipped without it, so it stays in the default
          run. -->
     <groups>
-        <exclude><group>oracle</group><group>kosit-oracle</group><group>verapdf</group><group>network</group><group>recommand-live</group><group>b2brouter-live</group><group>b2brouter-france-live</group><group>einvoicebe-live</group><group>performance</group><group>release-artefacts</group><group>release-gate</group></exclude>
+        <exclude><group>oracle</group><group>kosit-oracle</group><group>verapdf</group><group>network</group><group>recommand-live</group><group>b2brouter-live</group><group>b2brouter-france-live</group><group>einvoicebe-live</group><group>ksef-live</group><group>performance</group><group>release-artefacts</group><group>release-gate</group></exclude>
     </groups>
     <!-- The suite needs about 250 MB on PHP 8.5, above the stock 128M limit of PHP images. -->
     <php>
