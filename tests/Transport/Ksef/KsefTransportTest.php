@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Transport\Ksef;
 
 use DateTimeImmutable;
+use IntrAgile\EInvoicing\Poland\KsefNumber;
 use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Writer;
 use IntrAgile\EInvoicing\Tests\Support\PolishInvoices;
 use IntrAgile\EInvoicing\Tests\Support\RecordingHttpClient;
@@ -30,6 +31,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Client\NetworkExceptionInterface;
 use Psr\Http\Message\RequestInterface;
+use ReflectionProperty;
 use RuntimeException;
 
 final class KsefTransportTest extends TestCase
@@ -43,6 +45,8 @@ final class KsefTransportTest extends TestCase
     private const INBOX_FIRST = '5555555555-20261120-010080615740-BB';
 
     private const INBOX_SECOND = '7777777777-20261121-0100806157AB-87';
+
+    private const INBOX_KEY = 'test:5265877635:Subject2';
 
     private const INBOX_HWM = '2026-11-21T09:59:00.000000+00:00';
 
@@ -280,6 +284,98 @@ final class KsefTransportTest extends TestCase
         foreach (self::requestsTo($recorder, 'POST', '/invoices/query/metadata') as $query) {
             self::assertSame('2026-11-20T00:00:00.000000+00:00', self::dateRange(self::body($query))['from']);
         }
+    }
+
+    public function test_old_window_is_read_in_bounded_chunks(): void
+    {
+        $store = new InMemoryCursorStore;
+        $store->save(self::INBOX_KEY, CursorWindow::start(new DateTimeImmutable('2026-05-01T00:00:00+00:00')));
+        $june = '5555555555-20260601-010080615740-33';
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            self::metadataPage([self::metadataEntry($june, '2026-06-01T08:00:00.000+00:00')]),
+            self::metadataPage([]),
+            self::metadataPage([]),
+        ]);
+        $transport = $this->transport($recorder, $store);
+
+        self::assertSame([$june], array_map(static fn ($reference): string => $reference->documentId, $transport->pending()));
+        // KSeF's high water mark (today) lies beyond the chunk: the window ends at the chunk end.
+        self::assertEquals(new DateTimeImmutable('2026-07-30T00:00:00+00:00'), $store->window(self::INBOX_KEY)?->hwm);
+        $transport->acknowledge($june);
+        self::assertEquals(new DateTimeImmutable('2026-07-30T00:00:00+00:00'), $store->window(self::INBOX_KEY)?->from);
+
+        self::assertSame([], $transport->pending());
+        self::assertEquals(new DateTimeImmutable('2026-10-28T00:00:00+00:00'), $store->window(self::INBOX_KEY)?->from);
+        self::assertSame([], $transport->pending());
+
+        $ranges = array_map(static fn (RequestInterface $query): array => self::dateRange(self::body($query)), self::requestsTo($recorder, 'POST', '/invoices/query/metadata'));
+        self::assertSame('2026-05-01T00:00:00.000000+00:00', $ranges[0]['from']);
+        self::assertSame('2026-07-30T00:00:00.000000+00:00', $ranges[0]['to']);
+        self::assertTrue($ranges[0]['restrictToPermanentStorageHwmDate']);
+        self::assertSame('2026-07-30T00:00:00.000000+00:00', $ranges[1]['from']);
+        self::assertSame('2026-10-28T00:00:00.000000+00:00', $ranges[1]['to']);
+        // A chunk end after now leaves the last query open-ended, as KSeF bounds it by its mark.
+        self::assertSame('2026-10-28T00:00:00.000000+00:00', $ranges[2]['from']);
+        self::assertArrayNotHasKey('to', $ranges[2]);
+    }
+
+    public function test_page_limit_with_more_pages_narrows_the_window_like_truncation(): void
+    {
+        $store = new InMemoryCursorStore;
+        $pages = [];
+        $numbers = [];
+        for ($i = 0; $i < 40; $i++) {
+            $first32 = sprintf('5555555555-20261101-0100806157%02X', $i);
+            $numbers[] = $number = $first32.'-'.KsefNumber::checksum($first32);
+            $pages[] = self::json(200, [
+                'hasMore' => true,
+                'isTruncated' => false,
+                'permanentStorageHwmDate' => self::INBOX_HWM,
+                'invoices' => [self::metadataEntry($number, sprintf('2026-11-01T00:%02d:00.000+00:00', $i))],
+            ]);
+        }
+        $recorder = new RecordingHttpClient(...[...self::tokenAuthResponses(), ...$pages]);
+        $transport = $this->transport($recorder, $store);
+
+        $pending = $transport->pending();
+
+        self::assertCount(40, $pending);
+        self::assertCount(40, self::requestsTo($recorder, 'POST', '/invoices/query/metadata'));
+        self::assertEquals(new DateTimeImmutable('2026-11-01T00:39:00+00:00'), $store->window(self::INBOX_KEY)?->hwm);
+        foreach ($numbers as $number) {
+            $transport->acknowledge($number);
+        }
+        // The cursor stops at the last listed invoice, not at the high water mark beyond it.
+        self::assertEquals(new DateTimeImmutable('2026-11-01T00:39:00+00:00'), $store->window(self::INBOX_KEY)?->from);
+    }
+
+    public function test_reset_inbox_restarts_the_cursor_and_prunes_listed_metadata(): void
+    {
+        $store = new InMemoryCursorStore;
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            self::metadataPage([
+                self::metadataEntry(self::INBOX_FIRST, '2026-11-21T09:00:00.000+00:00'),
+                self::metadataEntry(self::INBOX_SECOND, '2026-11-21T09:30:00.000+00:00'),
+            ]),
+            self::metadataPage([], '2026-11-21T09:59:50.000+00:00'),
+        ]);
+        $transport = $this->transport($recorder, $store);
+        $cache = new ReflectionProperty(KsefTransport::class, 'inbox');
+
+        self::assertCount(2, $transport->pending());
+        self::assertSame([self::INBOX_FIRST, self::INBOX_SECOND], array_keys((array) $cache->getValue($transport)));
+
+        $transport->resetInbox(new DateTimeImmutable('2026-11-21T09:45:00+00:00'));
+        $window = $store->window(self::INBOX_KEY);
+        self::assertNotNull($window);
+        self::assertEquals(new DateTimeImmutable('2026-11-21T09:45:00+00:00'), $window->from);
+        self::assertSame([], $window->ids, 'The unacknowledged invoices of the old window are dropped.');
+
+        self::assertSame([], $transport->pending());
+        self::assertSame('2026-11-21T09:45:00.000000+00:00', self::dateRange(self::body(self::requestsTo($recorder, 'POST', '/invoices/query/metadata')[1]))['from']);
+        self::assertSame([], $cache->getValue($transport), 'Metadata of invoices no longer pending is not kept.');
     }
 
     public function test_fetch_of_unlisted_invoice_queries_its_metadata(): void

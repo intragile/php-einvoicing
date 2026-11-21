@@ -44,15 +44,18 @@ final readonly class CursorWindow
      * acknowledged, known ones keep their state. The end becomes the reported high water mark;
      * a null mark keeps the current end. When the result was truncated (more than KSeF returns
      * for one filter set), the end narrows to the latest PermanentStorage date returned, so that
-     * the next window continues where this result stopped.
+     * the next window continues where this result stopped. When the query was bounded by an end
+     * date ($queryEnd), the window ends no later than that date, so that a window older than
+     * KSeF's query range moves forward in chunks.
      *
      * @param  list<InvoiceMetadata>  $invoices
+     * @param  DateTimeImmutable|null  $queryEnd  the "to" of the query, or null when it was open-ended
      *
      * @throws UnexpectedResponse when a truncated result does not pass the start of the window:
      *                            more invoices share that PermanentStorage date than KSeF returns
      *                            for one filter set, so the window could never advance
      */
-    public function withResults(array $invoices, ?DateTimeImmutable $hwm, bool $isTruncated): self
+    public function withResults(array $invoices, ?DateTimeImmutable $hwm, bool $isTruncated, ?DateTimeImmutable $queryEnd = null): self
     {
         $ids = $this->ids;
         $last = null;
@@ -64,6 +67,9 @@ final readonly class CursorWindow
         }
 
         $end = $hwm ?? $this->hwm;
+        if ($end !== null && $queryEnd !== null && $queryEnd < $end) {
+            $end = $queryEnd;
+        }
         if ($isTruncated && $last !== null) {
             if ($last <= $this->from) {
                 throw new UnexpectedResponse(sprintf(

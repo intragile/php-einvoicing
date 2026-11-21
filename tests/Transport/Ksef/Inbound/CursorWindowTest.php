@@ -92,6 +92,22 @@ final class CursorWindowTest extends TestCase
         self::assertTrue($empty->isComplete());
     }
 
+    public function test_query_end_caps_the_window_end(): void
+    {
+        $start = CursorWindow::start(new DateTimeImmutable(self::FROM));
+        $queryEnd = new DateTimeImmutable('2025-08-28T10:00:00+00:00');
+
+        $capped = $start->withResults([self::invoice('A', '2025-08-28T09:00:00+00:00')], new DateTimeImmutable(self::HWM), false, $queryEnd);
+        self::assertEquals($queryEnd, $capped->hwm);
+        $next = $capped->acknowledge('A')->next();
+        self::assertEquals($queryEnd, $next->from);
+
+        // A high water mark before the query end stays the end; without one the end stays unknown.
+        $later = new DateTimeImmutable('2025-08-29T00:00:00+00:00');
+        self::assertEquals(new DateTimeImmutable(self::HWM), $start->withResults([], new DateTimeImmutable(self::HWM), false, $later)->hwm);
+        self::assertNull($start->withResults([], null, false, $queryEnd)->hwm);
+    }
+
     public function test_in_memory_store_keeps_windows_per_key(): void
     {
         $store = new InMemoryCursorStore;

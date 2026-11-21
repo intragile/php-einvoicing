@@ -85,6 +85,9 @@ final class KsefTransport implements InboundSource
     /** Pages of one inbox query: KSeF returns at most 10,000 records per filter set. */
     private const MAX_INBOX_PAGES = 40;
 
+    /** Days one inbox query spans at most; KSeF refuses date ranges over 100 days. */
+    public const INBOX_CHUNK_DAYS = 90;
+
     /** Days after the date in a KSeF number searched for its PermanentStorage date. */
     private const LOOKUP_DAYS = 31;
 
@@ -113,8 +116,8 @@ final class KsefTransport implements InboundSource
      * @param  KsefCursorStore|null  $cursor  where the inbox window is kept; in memory when null
      * @param  DateTimeImmutable|null  $inboxStart  where the first inbox window starts when the
      *                                              store holds none; DEFAULT_INBOX_LOOKBACK_DAYS
-     *                                              before now when null. KSeF queries at most 100
-     *                                              days at once, so the start must not be older.
+     *                                              before now when null. An older start is read
+     *                                              in chunks of INBOX_CHUNK_DAYS.
      * @param  (Closure(): DateTimeImmutable)|null  $now  the current time; the system clock when null
      */
     public static function create(
@@ -304,6 +307,12 @@ final class KsefTransport implements InboundSource
      * inbox window. The first call without a stored window starts it at the configured inbox
      * start and saves it at once.
      *
+     * Each query spans at most INBOX_CHUNK_DAYS (KSeF refuses ranges over 100 days): a window that
+     * starts longer ago ends at that chunk's end, and the following windows catch up chunk by
+     * chunk. The cursor moves only when every invoice of the window is acknowledged, so a single
+     * invoice that is never acknowledged holds it at that window for good; resetInbox() is the
+     * way out.
+     *
      * @return list<InboundReference>
      *
      * @throws TransportException when the query fails or its answer cannot be read
@@ -318,19 +327,35 @@ final class KsefTransport implements InboundSource
         }
         $window = $stored->next();
 
-        $filters = InvoiceQueryFilters::incoming($window->from);
+        $to = $window->from->modify(sprintf('+%d days', self::INBOX_CHUNK_DAYS));
+        if ($to >= ($this->now)()) {
+            $to = null;
+        }
+        $filters = new InvoiceQueryFilters(
+            InvoiceQueryFilters::SUBJECT_BUYER,
+            InvoiceQueryFilters::DATE_PERMANENT_STORAGE,
+            $window->from,
+            $to,
+            restrictToHwm: true,
+        );
         for ($offset = 0; $offset < self::MAX_INBOX_PAGES; $offset++) {
             $page = $this->query->page($filters, $offset, MetadataQuery::MAX_PAGE_SIZE);
             foreach ($page['invoices'] as $invoice) {
                 $this->inbox[$invoice->ksefNumber] = $invoice;
             }
-            // A truncated result ends the window at its last record; the next window continues there.
-            $window = $window->withResults($page['invoices'], $page['hwm'], $page['isTruncated']);
-            if (! $page['hasMore'] || $page['isTruncated']) {
+            // A truncated result, or one with more pages than KSeF should ever send for a filter
+            // set, ends the window at its last record; the next window continues there, so no
+            // unlisted invoice is skipped.
+            $truncated = $page['isTruncated'] || ($page['hasMore'] && $offset === self::MAX_INBOX_PAGES - 1);
+            $window = $window->withResults($page['invoices'], $page['hwm'], $truncated, $to);
+            if (! $page['hasMore'] || $truncated) {
                 break;
             }
         }
         $this->cursor->save($key, $window->isComplete() ? $window->next() : $window);
+        // Keep only the metadata of invoices still pending, so a long-running worker does not
+        // accumulate it.
+        $this->inbox = array_intersect_key($this->inbox, array_fill_keys($window->pending(), true));
 
         $references = [];
         foreach ($window->pending() as $ksefNumber) {
@@ -345,6 +370,18 @@ final class KsefTransport implements InboundSource
         }
 
         return $references;
+    }
+
+    /**
+     * Restarts the inbox at the given point: the stored window is replaced by an empty one
+     * starting there. Invoices of the old window that were not acknowledged are dropped from the
+     * cursor and are offered again only if they fall after the new start. Use it when a never
+     * acknowledged invoice holds the cursor, or the stored window is older than KSeF's 100-day
+     * query range allows.
+     */
+    public function resetInbox(DateTimeImmutable $from): void
+    {
+        $this->cursor->save($this->cursorKey(), CursorWindow::start($from));
     }
 
     /**
