@@ -6,10 +6,12 @@ namespace IntrAgile\EInvoicing\Tests\Transport\Ksef\Session;
 
 use IntrAgile\EInvoicing\Tests\Support\RecordingHttpClient;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
+use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\FailureCategory;
 use IntrAgile\EInvoicing\Transport\Ksef\Crypto\InvoiceCipher;
 use IntrAgile\EInvoicing\Transport\Ksef\Crypto\PublicKeyId;
 use IntrAgile\EInvoicing\Transport\Ksef\Crypto\SymmetricKey;
+use IntrAgile\EInvoicing\Transport\Ksef\KsefErrors;
 use IntrAgile\EInvoicing\Transport\Ksef\Session\FormCode;
 use IntrAgile\EInvoicing\Transport\Ksef\Session\OnlineSession;
 use Nyholm\Psr7\Response;
@@ -155,6 +157,53 @@ final class OnlineSessionTest extends TestCase
         self::assertSame(self::SECOND_SESSION_REF, $sent->sessionReference);
         self::assertCount(1, self::requestsTo($recorder, 'POST', '/sessions/online/'.self::SESSION_REF.'/close'));
         self::assertCount(2, self::requestsTo($recorder, 'POST', '/sessions/online'));
+    }
+
+    public function test_send_into_a_session_ksef_closed_forgets_it_and_the_next_send_opens_a_new_one(): void
+    {
+        // The shape TE answers a send into a session it has already closed with.
+        $recorder = new RecordingHttpClient(...[
+            ...self::openingResponses(),
+            self::sendResponse(),
+            self::fixture(400, 'session-closed-21180.json'),
+            self::openResponse(self::SECOND_SESSION_REF),
+            self::sendResponse(self::SECOND_INVOICE_REF),
+        ]);
+        $session = $this->session($recorder);
+        $session->send(self::INVOICE_XML);
+
+        $refusal = self::capture(fn () => $session->send(self::INVOICE_XML));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $refusal);
+        self::assertSame(21180, KsefErrors::codeOf($refusal));
+        self::assertNull($session->referenceNumber());
+        // Not resent automatically: exactly one send went to the closed session.
+        self::assertCount(2, self::requestsTo($recorder, 'POST', '/sessions/online/'.self::SESSION_REF.'/invoices'));
+
+        $sent = $session->send(self::INVOICE_XML);
+
+        self::assertSame(self::SECOND_SESSION_REF, $sent->sessionReference);
+        self::assertSame(self::SECOND_INVOICE_REF, $sent->invoiceReference);
+        // No close request for the session KSeF already closed.
+        self::assertSame([], self::requestsTo($recorder, 'POST', '/close'));
+        self::assertCount(2, self::requestsTo($recorder, 'POST', '/sessions/online'));
+    }
+
+    public function test_other_send_refusals_keep_the_session(): void
+    {
+        $recorder = new RecordingHttpClient(...[
+            ...self::openingResponses(),
+            self::sendResponse(),
+            self::fixture(400, 'unknown-key-id-21470.json'),
+            self::sendResponse(self::SECOND_INVOICE_REF),
+        ]);
+        $session = $this->session($recorder);
+        $session->send(self::INVOICE_XML);
+
+        self::capture(fn () => $session->send(self::INVOICE_XML));
+
+        self::assertSame(self::SESSION_REF, $session->referenceNumber());
+        self::assertSame(self::SESSION_REF, $session->send(self::INVOICE_XML)->sessionReference);
     }
 
     public function test_close_without_open_makes_no_request(): void

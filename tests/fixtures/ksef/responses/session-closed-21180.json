@@ -1,0 +1,17 @@
+{
+    "title": "Bad Request",
+    "status": 400,
+    "detail": "Żądanie jest nieprawidłowe.",
+    "instance": "/v2/sessions/online/20250625-SO-2C3E6C8000-B675CF5D68-07/invoices",
+    "errors": [
+        {
+            "code": 21180,
+            "description": "Status sesji nie pozwala na wykonanie operacji.",
+            "details": [
+                "Status sesji (200) uniemożliwia wysyłkę faktur."
+            ]
+        }
+    ],
+    "traceId": "7d2c1e0f9a8b7c6d5e4f3a2b1c0d9e8f",
+    "timestamp": "2026-11-21T11:37:20.1234567+00:00"
+}

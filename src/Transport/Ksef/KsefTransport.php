@@ -156,8 +156,9 @@ final class KsefTransport implements InboundSource
      * again is safe: KSeF reports the second copy as a duplicate (Failed / Duplicate) naming the
      * KSeF number of the first.
      *
-     * When KSeF has ended the session on its side before its expiry, sends to it are refused
-     * until close() is called, which drops the local session so that the next send opens a new one.
+     * When KSeF has ended the session on its side before its expiry, it refuses the send with
+     * error 21180 (thrown as UnexpectedResponse): the invoice was not accepted and the local
+     * session is dropped, so sending it again opens a new session.
      *
      * @param  string|Invoice  $invoice  an FA(3) file, or an invoice to write as one
      *
@@ -292,8 +293,8 @@ final class KsefTransport implements InboundSource
 
     /**
      * Closes the online session, if one is open, so that KSeF issues the receipts. The local
-     * session is dropped even when the request fails, so the next send() opens a new one; this
-     * is also the way out after KSeF has ended the session on its side before its expiry.
+     * session is dropped even when the request fails, so the next send() opens a new one; it
+     * also clears any other session state KSeF refuses to work with.
      *
      * @throws TransportException when KSeF refuses to close the session
      */

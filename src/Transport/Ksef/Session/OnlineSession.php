@@ -18,6 +18,7 @@ use IntrAgile\EInvoicing\Transport\Ksef\Crypto\SymmetricKey;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefAnswer;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefApi;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefConfig;
+use IntrAgile\EInvoicing\Transport\Ksef\KsefErrors;
 use LogicException;
 
 /**
@@ -31,6 +32,8 @@ use LogicException;
  * itself at validUntil. close() closes the current session; nothing is closed implicitly, and
  * the object never makes a network call on destruction. Long-running processes should call
  * close() when they are done, so that KSeF issues the receipts without waiting for validUntil.
+ * When KSeF refuses a send because it has already ended the session (error 21180), the session
+ * is forgotten, so the next send() opens a new one.
  *
  * status(), awaitFinal() and upo() take the references of any session, open or closed. Every
  * request uses the access token of the KsefApi, which must come from withAuthenticator().
@@ -42,6 +45,9 @@ final class OnlineSession
 
     /** Seconds before validUntil from which the session is no longer used. */
     public const VALIDITY_MARGIN_SECONDS = 60;
+
+    /** The KSeF error code of an operation the session's status does not allow, as a send into a closed session. */
+    public const SESSION_CLOSED = 21180;
 
     /** The lifetime of an online session KSeF documents, assumed when the answer has no validUntil. */
     private const DEFAULT_LIFETIME = '+12 hours';
@@ -86,7 +92,9 @@ final class OnlineSession
      *
      * A send is never repeated automatically. When it fails without an answer (OutcomeUnknown),
      * sending the same file again is safe: KSeF answers a duplicate with status 440 and the
-     * original KSeF number.
+     * original KSeF number. When KSeF refuses it because it has already ended the session
+     * (error 21180), the invoice was not accepted, the refusal is thrown and the session is
+     * forgotten, so sending the invoice again opens a new session.
      *
      * @param  bool  $offlineMode  true for an invoice issued in offline mode
      * @param  string|null  $hashOfCorrectedInvoice  the Base64 SHA-256 digest of the invoice a
@@ -113,7 +121,16 @@ final class OnlineSession
         }
 
         $path = '/sessions/online/'.rawurlencode($reference).'/invoices';
-        $answer = $this->api->authorized(fn (string $bearer): array => $this->api->json('POST', $path, $body, $bearer));
+        try {
+            $answer = $this->api->authorized(fn (string $bearer): array => $this->api->json('POST', $path, $body, $bearer));
+        } catch (TransportException $exception) {
+            if (KsefErrors::codeOf($exception) === self::SESSION_CLOSED) {
+                // KSeF has ended the session on its side; there is nothing left to close.
+                $this->forget();
+            }
+
+            throw $exception;
+        }
         // Counted once KSeF has accepted the invoice into the session.
         $this->sentInSession++;
 
@@ -176,7 +193,8 @@ final class OnlineSession
 
     /**
      * Closes the open session, if any; without one, no request is made. The session is
-     * forgotten even when the request fails, so the next send() opens a new one.
+     * forgotten even when the request fails, so the next send() opens a new one. A session KSeF
+     * ended on its own is forgotten by the send it refused, so close() makes no request for it.
      *
      * @throws TransportException when KSeF refuses to close the session
      */
