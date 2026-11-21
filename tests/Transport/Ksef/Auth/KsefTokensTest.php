@@ -105,6 +105,23 @@ final class KsefTokensTest extends TestCase
         }
     }
 
+    public function test_a_token_passed_as_reference_stays_out_of_the_message(): void
+    {
+        $tokens = new KsefTokens($this->authorizedApi(new RecordingHttpClient));
+        $secretPart = '919f704466624ce29cd5ac7b65ded5e7cccc112eee314f2aaa76e02cd16df7b9';
+
+        foreach ([
+            fn () => $tokens->status(self::NEW_TOKEN),
+            fn () => $tokens->approve(self::NEW_TOKEN),
+            fn () => $tokens->revoke(self::NEW_TOKEN),
+        ] as $call) {
+            $exception = self::capture($call);
+            self::assertInstanceOf(InvalidArgumentException::class, $exception);
+            self::assertStringNotContainsString($secretPart, $exception->getMessage());
+            self::assertStringNotContainsString('internalId-5265877635', $exception->getMessage());
+        }
+    }
+
     public function test_status_approve_and_revoke(): void
     {
         $recorder = new RecordingHttpClient(...[

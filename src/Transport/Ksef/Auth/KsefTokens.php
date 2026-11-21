@@ -133,7 +133,12 @@ final class KsefTokens
     private static function path(string $referenceNumber): string
     {
         if (preg_match(self::REFERENCE_PATTERN, $referenceNumber) !== 1) {
-            throw new InvalidArgumentException(sprintf('"%s" is not a KSeF token reference number.', $referenceNumber));
+            // The value is not quoted: a caller may pass the token itself, which starts with the
+            // reference number and carries the secret after it.
+            throw new InvalidArgumentException(sprintf(
+                'The given value (%d characters) is not a KSeF token reference number, which has only letters, digits and hyphens.',
+                strlen($referenceNumber),
+            ));
         }
 
         return '/tokens/'.$referenceNumber;
