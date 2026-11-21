@@ -124,7 +124,7 @@ final class OnlineSession
         try {
             $answer = $this->api->authorized(fn (string $bearer): array => $this->api->json('POST', $path, $body, $bearer));
         } catch (TransportException $exception) {
-            if (KsefErrors::codeOf($exception) === self::SESSION_CLOSED) {
+            if (KsefErrors::hasCode($exception, self::SESSION_CLOSED)) {
                 // KSeF has ended the session on its side; there is nothing left to close.
                 $this->forget();
             }

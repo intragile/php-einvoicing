@@ -67,6 +67,31 @@ final class KsefErrorsTest extends TestCase
         self::assertSame(21470, KsefErrors::codeOf($exception));
     }
 
+    public function test_every_code_is_read_not_only_the_first(): void
+    {
+        $body = ['errors' => [
+            ['code' => 21999, 'description' => 'Inny błąd.'],
+            ['code' => 21470, 'description' => 'Nieznany identyfikator klucza publicznego.'],
+        ]];
+        self::assertSame([21999, 21470], KsefErrors::codes($body));
+        self::assertSame([], KsefErrors::codes([]));
+
+        $unexpected = self::errors()->exception(self::json(400, $body), 'The KSeF request POST /sessions/online', 'POST');
+        self::assertInstanceOf(UnexpectedResponse::class, $unexpected);
+        self::assertSame([21999, 21470], KsefErrors::codesOf($unexpected));
+        self::assertTrue(KsefErrors::hasCode($unexpected, 21470));
+        self::assertFalse(KsefErrors::hasCode($unexpected, 21180));
+        self::assertSame(21999, KsefErrors::codeOf($unexpected));
+
+        $rejected = self::errors()->exception(self::fixture(400, 'bad-request-problem-details.json'), 'The KSeF request POST /sessions/batch', 'POST');
+        self::assertSame([21405, 21157], KsefErrors::codesOf($rejected));
+
+        // The excerpt may be cut short: the codes are read from the message as well.
+        $cut = new UnexpectedResponse('The KSeF request POST /x failed with an unexpected answer from KSeF: 21999: Inny błąd.; 21180: Status sesji nie pozwala na wykonanie operacji.', 400, '{"errors": [');
+        self::assertSame([21999, 21180], KsefErrors::codesOf($cut));
+        self::assertSame([], KsefErrors::codesOf(new TransportUnavailable('down')));
+    }
+
     public function test_code_is_null_without_a_ksef_error(): void
     {
         self::assertNull(KsefErrors::code([]));
@@ -121,6 +146,9 @@ final class KsefErrorsTest extends TestCase
         yield '429' => [new Response(429, ['Retry-After' => '30']), 'POST', RateLimited::class];
         yield '500 on GET' => [new Response(500), 'GET', TransportUnavailable::class];
         yield '502 on POST' => [new Response(502), 'POST', OutcomeUnknown::class];
+        // An authentication code in a server error keeps the server-error mapping.
+        yield '500 on POST with 21301' => [new Response(500, [], $classic(21301)), 'POST', OutcomeUnknown::class];
+        yield '503 on GET with 21304' => [new Response(503, [], $classic(21304)), 'GET', TransportUnavailable::class];
         yield '400 with an unknown code' => [new Response(400, [], $classic(21999)), 'POST', UnexpectedResponse::class];
         yield '400 with a non-JSON body' => [new Response(400, [], '<html>bad</html>'), 'POST', UnexpectedResponse::class];
         yield '409' => [new Response(409), 'PUT', UnexpectedResponse::class];

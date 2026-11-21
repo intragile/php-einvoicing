@@ -108,6 +108,16 @@ final class CursorWindowTest extends TestCase
         self::assertNull($start->withResults([], null, false, $queryEnd)->hwm);
     }
 
+    public function test_next_window_never_starts_before_the_current_one(): void
+    {
+        // A start after KSeF's high water mark (for example after resetInbox()): the empty
+        // window is complete, and the next one keeps the later start instead of moving back.
+        $window = CursorWindow::start(new DateTimeImmutable(self::HWM))->withResults([], new DateTimeImmutable(self::FROM), false);
+
+        self::assertTrue($window->isComplete());
+        self::assertEquals(new DateTimeImmutable(self::HWM), $window->next()->from);
+    }
+
     public function test_in_memory_store_keeps_windows_per_key(): void
     {
         $store = new InMemoryCursorStore;

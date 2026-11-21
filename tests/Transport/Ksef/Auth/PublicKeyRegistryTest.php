@@ -67,6 +67,25 @@ final class PublicKeyRegistryTest extends TestCase
         self::assertSame(self::der(self::mfKey(1)->certificatePem), self::der($registry->certificatePem(PublicKeyUsage::SymmetricKeyEncryption)));
     }
 
+    public function test_unknown_key_id_as_a_later_error_code_also_refetches(): void
+    {
+        $recorder = new RecordingHttpClient(
+            self::json(200, [self::keyEntry(0, '2025-01-01T00:00:00+00:00', '2027-01-01T00:00:00+00:00', ['SymmetricKeyEncryption'])]),
+            self::json(400, ['errors' => [
+                ['code' => 21999, 'description' => 'Inny błąd.'],
+                ['code' => 21470, 'description' => 'Nieznany identyfikator klucza publicznego.'],
+            ]]),
+            self::json(200, [self::keyEntry(1, '2026-11-20T00:00:00+00:00', '2028-01-01T00:00:00+00:00', ['SymmetricKeyEncryption'])]),
+            self::json(201, ['referenceNumber' => '20251121-SO-1111111111-2222222222-33']),
+        );
+        $api = $this->plainApi($recorder, $this->authConfig());
+
+        $result = (new PublicKeyRegistry($api, $this->now()))->using(PublicKeyUsage::SymmetricKeyEncryption, self::openSession($api));
+
+        self::assertSame(['referenceNumber' => '20251121-SO-1111111111-2222222222-33'], $result);
+        self::assertCount(4, $recorder->requests());
+    }
+
     public function test_second_unknown_key_id_is_unexpected_response_naming_the_key(): void
     {
         $recorder = new RecordingHttpClient(

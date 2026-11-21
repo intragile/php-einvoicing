@@ -193,6 +193,23 @@ final class OnlineSessionTest extends TestCase
         self::assertCount(2, self::requestsTo($recorder, 'POST', '/sessions/online'));
     }
 
+    public function test_session_closed_as_a_later_error_code_also_forgets_the_session(): void
+    {
+        $recorder = new RecordingHttpClient(...[
+            ...self::openingResponses(),
+            self::sendResponse(),
+            self::json(400, ['errors' => [
+                ['code' => 21999, 'description' => 'Inny błąd.'],
+                ['code' => 21180, 'description' => 'Status sesji nie pozwala na wykonanie operacji.'],
+            ]]),
+        ]);
+        $session = $this->session($recorder);
+        $session->send(self::INVOICE_XML);
+
+        self::assertInstanceOf(UnexpectedResponse::class, self::capture(fn () => $session->send(self::INVOICE_XML)));
+        self::assertNull($session->referenceNumber());
+    }
+
     public function test_other_send_refusals_keep_the_session(): void
     {
         $recorder = new RecordingHttpClient(...[

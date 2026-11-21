@@ -117,7 +117,8 @@ final readonly class CursorWindow
 
     /**
      * The following window, starting at this window's high water mark with no invoices, once this
-     * window is complete; this same window while it is not.
+     * window is complete; this same window while it is not. A high water mark before the window
+     * start (a start set ahead of KSeF's mark) keeps the start, so the cursor never moves back.
      */
     public function next(): self
     {
@@ -125,6 +126,6 @@ final readonly class CursorWindow
             return $this;
         }
 
-        return new self($this->hwm);
+        return new self(max($this->hwm, $this->from));
     }
 }

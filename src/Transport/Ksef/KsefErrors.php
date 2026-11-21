@@ -54,8 +54,8 @@ final class KsefErrors
     public function __construct(private readonly Redactor $redactor) {}
 
     /**
-     * The exception an unsuccessful answer stands for: 401 or KSeF code 21301/21304 is
-     * AuthenticationFailed, 403 is AuthenticationFailed (no permission in the context), 429 is
+     * The exception an unsuccessful answer stands for: 401, or a 4xx with KSeF code 21301/21304,
+     * is AuthenticationFailed, 403 is AuthenticationFailed (no permission in the context), 429 is
      * RateLimited, a 5xx status is TransportUnavailable for a safe method and OutcomeUnknown
      * otherwise, 400 with a refused-body code is DocumentRejected, and 404, a not-found code or
      * anything else is UnexpectedResponse.
@@ -78,7 +78,8 @@ final class KsefErrors
             // No body excerpt: a redirect body usually repeats the Location, which may carry a token.
             return UnexpectedResponse::forResponse($response, sprintf('%s failed: KSeF answered with a redirect, which is not followed', $operation), '');
         }
-        if ($status === 401 || array_intersect($codes, self::AUTHENTICATION_CODES) !== []) {
+        // An authentication code counts only in a client error; a 5xx keeps its own mapping.
+        if ($status === 401 || ($status >= 400 && $status <= 499 && array_intersect($codes, self::AUTHENTICATION_CODES) !== [])) {
             return new AuthenticationFailed(sprintf('%s failed: %s (HTTP %d)%s.', $operation, self::AUTHENTICATION_REFUSED, $status, $detail));
         }
         if ($status === 403) {
@@ -119,46 +120,69 @@ final class KsefErrors
      */
     public static function code(array $body): ?int
     {
-        foreach (self::entries($body) as $entry) {
-            if ($entry['code'] !== null) {
-                return $entry['code'];
-            }
-        }
+        return self::codes($body)[0] ?? null;
+    }
 
-        return null;
+    /**
+     * Every KSeF error code of an error body in either shape, in the order listed.
+     *
+     * @param  array<mixed>  $body
+     * @return list<int>
+     */
+    public static function codes(array $body): array
+    {
+        return array_values(array_filter(array_column(self::entries($body), 'code'), is_int(...)));
     }
 
     /**
      * The first KSeF error code behind an exception from exception(), or null when it carries
-     * none: read from the error lines of a DocumentRejected and from the body excerpt or the
-     * message of an UnexpectedResponse.
+     * none; see codesOf().
      */
     public static function codeOf(TransportException $exception): ?int
     {
+        return self::codesOf($exception)[0] ?? null;
+    }
+
+    /**
+     * True when the exception carries the given KSeF error code in any position.
+     */
+    public static function hasCode(TransportException $exception, int $code): bool
+    {
+        return in_array($code, self::codesOf($exception), true);
+    }
+
+    /**
+     * Every KSeF error code behind an exception from exception(), in the order listed: read from
+     * the error lines of a DocumentRejected and from the body excerpt or the message of an
+     * UnexpectedResponse. Empty for any other exception.
+     *
+     * @return list<int>
+     */
+    public static function codesOf(TransportException $exception): array
+    {
         if ($exception instanceof DocumentRejected) {
+            $codes = [];
             $lines = $exception->errors['errors'] ?? null;
             foreach (is_array($lines) ? $lines : [] as $line) {
                 if (is_string($line) && preg_match('/\A(\d{1,9}): /', $line, $match) === 1) {
-                    return (int) $match[1];
+                    $codes[] = (int) $match[1];
                 }
             }
 
-            return null;
+            return $codes;
         }
         if (! $exception instanceof UnexpectedResponse) {
-            return null;
+            return [];
         }
         $data = self::decode($exception->bodyExcerpt);
-        $code = $data === null ? null : self::code($data);
-        if ($code !== null) {
-            return $code;
+        $codes = $data === null ? [] : self::codes($data);
+        if ($codes !== []) {
+            return $codes;
         }
         // The excerpt may be cut short; the message lists the codes as "<code>: <description>".
-        if (preg_match('/(?:: |; )(\d{1,9}): /', $exception->getMessage(), $match) === 1) {
-            return (int) $match[1];
-        }
+        preg_match_all('/(?:: |; )(\d{1,9}): /', $exception->getMessage(), $matches);
 
-        return null;
+        return array_map(intval(...), $matches[1]);
     }
 
     /**

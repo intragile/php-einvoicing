@@ -97,7 +97,7 @@ final class PublicKeyRegistry
         try {
             return $call($this->certificatePem($usage), $this->keyId($usage));
         } catch (TransportException $exception) {
-            if (KsefErrors::codeOf($exception) !== self::UNKNOWN_KEY_ID) {
+            if (! KsefErrors::hasCode($exception, self::UNKNOWN_KEY_ID)) {
                 throw $exception;
             }
         }
@@ -107,7 +107,7 @@ final class PublicKeyRegistry
         try {
             return $call($this->certificatePem($usage), $keyId);
         } catch (TransportException $exception) {
-            if (KsefErrors::codeOf($exception) !== self::UNKNOWN_KEY_ID) {
+            if (! KsefErrors::hasCode($exception, self::UNKNOWN_KEY_ID)) {
                 throw $exception;
             }
 
