@@ -42,15 +42,16 @@
         "ext-dom": "*",
         "ext-libxml": "*",
         "ext-mbstring": "*",
+        "ext-openssl": "*",
         "ext-zlib": "*",
         "brick/math": "^0.14.8 || ^1.0",
         "intragile/einvoicing-rules-en16931": "^1.0",
+        "phpseclib/phpseclib": "^3.0.47",
         "psr/http-client": "^1.0.1",
         "psr/http-factory": "^1.0",
         "psr/http-message": "^1.1|^2.0"
     },
     "require-dev": {
-        "ext-zip": "*",
         "intragile/einvoicing-rules-facturx": "^1.0",
         "intragile/einvoicing-rules-xrechnung": "^1.0",
         "laravel/pint": "^1.0",
@@ -63,6 +64,7 @@
         "intragile/einvoicing-rules-xrechnung": "<1.0 || >=2.0"
     },
     "suggest": {
+        "ext-zip": "Needed for KSeF batch sessions and invoice export packages (ZIP archives)",
         "guzzlehttp/guzzle": "A PSR-18 HTTP client and PSR-17 factories for the Peppol transports",
         "intragile/einvoicing-rules-facturx": "The Factur-X 1.09.2 rules and profile schemas (Apache-2.0), needed for writing and validating Factur-X/ZUGFeRD profiles other than XRECHNUNG",
         "intragile/einvoicing-rules-xrechnung": "The KoSIT XRechnung rules, scenario table and schemas (Apache-2.0), needed for XRechnung validation",

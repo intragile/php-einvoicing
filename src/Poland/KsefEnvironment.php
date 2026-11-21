@@ -14,6 +14,18 @@ enum KsefEnvironment: string
     case Production = 'production';
 
     /**
+     * Base URL of the KSeF API 2.0 of the environment, without a trailing slash.
+     */
+    public function apiBaseUrl(): string
+    {
+        return match ($this) {
+            self::Test => 'https://api-test.ksef.mf.gov.pl/v2',
+            self::Demo => 'https://api-demo.ksef.mf.gov.pl/v2',
+            self::Production => 'https://api.ksef.mf.gov.pl/v2',
+        };
+    }
+
+    /**
      * Base URL of the verification links (QR codes) of the environment, without a trailing slash.
      */
     public function qrBaseUrl(): string

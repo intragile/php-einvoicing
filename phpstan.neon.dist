@@ -10,3 +10,10 @@ parameters:
         - packages/*/rules/*.php
     scanFiles:
         - tests/Oracle/saxonc.stub
+    ignoreErrors:
+        # The OAEP digest argument of openssl_private_decrypt() only exists on PHP 8.5+; the test requires 8.5.
+        -
+            message: '#^Function openssl_private_decrypt invoked with 5 parameters, 3\-4 required\.$#'
+            identifier: arguments.count
+            path: tests/Transport/Ksef/Crypto/RsaOaepTest.php
+            reportUnmatched: false
