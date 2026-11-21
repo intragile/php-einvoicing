@@ -98,7 +98,7 @@ final class BatchSession
                 'fileParts' => $declared,
             ],
             'encryption' => [
-                'encryptedSymmetricKey' => base64_encode(RsaOaep::encrypt($key->key, $certificatePem)),
+                'encryptedSymmetricKey' => base64_encode(RsaOaep::encrypt($key->key(), $certificatePem)),
                 'initializationVector' => base64_encode($key->iv),
                 'publicKeyId' => $keyId,
             ],
@@ -127,8 +127,9 @@ final class BatchSession
                     $reference,
                     $exception->getMessage(),
                 ), $exception);
-            } catch (InvalidArgumentException $exception) {
-                throw new UnexpectedResponse(sprintf('%s for the batch session %s returned an unusable upload URL for part %d.', self::OPEN_OPERATION, $reference, $ordinal), 0, '', $exception);
+            } catch (InvalidArgumentException) {
+                // Not chained: a PSR-7 implementation may quote the whole signed URL.
+                throw new UnexpectedResponse(sprintf('%s for the batch session %s returned an unusable upload URL for part %d.', self::OPEN_OPERATION, $reference, $ordinal));
             }
         }
 

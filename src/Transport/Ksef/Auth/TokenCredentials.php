@@ -36,6 +36,8 @@ final readonly class TokenCredentials implements Credentials
 
     /**
      * The token itself, for the request that carries it.
+     *
+     * @internal returns the raw KSeF token; for the library's own requests and redaction only
      */
     public function token(): string
     {

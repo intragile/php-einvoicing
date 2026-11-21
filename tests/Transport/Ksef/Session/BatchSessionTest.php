@@ -130,6 +130,27 @@ final class BatchSessionTest extends TestCase
         self::assertSame([], self::requestsTo($recorder, 'POST', '/close'));
     }
 
+    public function test_unusable_upload_url_is_reported_without_chaining_the_url(): void
+    {
+        $request = self::uploadRequest(1);
+        // https, but with user info, which the client refuses before any request is built.
+        $request['url'] = str_replace('https://', 'https://user:pass@', self::partUrl(1));
+        $recorder = new RecordingHttpClient(...[
+            self::keysResponse(),
+            ...self::tokenAuthResponses(withKeys: false),
+            self::json(201, ['referenceNumber' => self::BATCH_REF, 'partUploadRequests' => [$request]]),
+        ]);
+
+        $exception = self::capture(fn () => $this->batch($recorder)->send(self::package(1)));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString('unusable upload URL for part 1', $exception->getMessage());
+        // A PSR-7 implementation may quote the whole signed URL in its exception: it is not chained.
+        self::assertNull($exception->getPrevious());
+        self::assertStringNotContainsString(self::SIGNATURE, $exception->getMessage());
+        self::assertSame([], self::uploadRequests($recorder));
+    }
+
     public function test_close_is_sent_after_all_parts(): void
     {
         $recorder = new RecordingHttpClient(...[...self::batchOpening(3), ...self::uploads(3), new Response(204)]);

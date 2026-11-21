@@ -83,6 +83,8 @@ final readonly class KsefConfig
      * The credential values an HttpClient must keep out of exception messages and body
      * excerpts: the KSeF token, or the private key and its passphrase.
      *
+     * @internal returns the raw credentials; for the library's own HTTP redaction only
+     *
      * @return list<string>
      */
     public function secrets(): array

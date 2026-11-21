@@ -18,7 +18,7 @@ final class InvoiceCipher
      */
     public static function encrypt(string $plaintext, SymmetricKey $key): string
     {
-        $ciphertext = openssl_encrypt($plaintext, self::CIPHER, $key->key, OPENSSL_RAW_DATA, $key->iv);
+        $ciphertext = openssl_encrypt($plaintext, self::CIPHER, $key->key(), OPENSSL_RAW_DATA, $key->iv);
 
         if ($ciphertext === false) {
             throw new InvalidArgumentException('The content could not be AES encrypted.');
@@ -36,7 +36,7 @@ final class InvoiceCipher
             throw new InvalidArgumentException('The ciphertext is not a whole number of AES blocks.');
         }
 
-        $plaintext = openssl_decrypt($ciphertext, self::CIPHER, $key->key, OPENSSL_RAW_DATA, $key->iv);
+        $plaintext = openssl_decrypt($ciphertext, self::CIPHER, $key->key(), OPENSSL_RAW_DATA, $key->iv);
 
         if ($plaintext === false) {
             // Drain the OpenSSL error queue so that the failure does not leak into later calls.

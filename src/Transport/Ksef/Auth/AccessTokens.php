@@ -33,11 +33,21 @@ final readonly class AccessTokens
         $this->refreshToken = new Secret($refreshToken);
     }
 
+    /**
+     * The raw access token.
+     *
+     * @internal for the library's own requests and redaction only
+     */
     public function accessToken(): string
     {
         return $this->accessToken->reveal();
     }
 
+    /**
+     * The raw refresh token.
+     *
+     * @internal for the library's own requests and redaction only
+     */
     public function refreshToken(): string
     {
         return $this->refreshToken->reveal();

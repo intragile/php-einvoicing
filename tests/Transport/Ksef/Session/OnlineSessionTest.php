@@ -43,7 +43,11 @@ final class OnlineSessionTest extends TestCase
         $body = self::body($open[0]);
         self::assertSame(['systemCode' => 'FA (3)', 'schemaVersion' => '1-0E', 'value' => 'FA'], $body['formCode']);
         $key = self::sessionKey($open[0]);
-        self::assertSame(32, strlen($key->key));
+        self::assertSame(32, strlen($key->key()));
+        // The session holds the key without exposing it to var_export() or an array cast.
+        foreach ([var_export($session, true), var_export((array) $session, true)] as $dump) {
+            self::assertStringNotContainsString(var_export($key->key(), true), $dump);
+        }
         self::assertSame(16, strlen($key->iv));
         self::assertIsArray($body['encryption']);
         self::assertSame(PublicKeyId::of(self::mfKey(1)->certificatePem), $body['encryption']['publicKeyId']);
@@ -130,7 +134,7 @@ final class OnlineSessionTest extends TestCase
 
         // Each session has its own symmetric key.
         $opens = self::requestsTo($recorder, 'POST', '/sessions/online');
-        self::assertNotSame(self::sessionKey($opens[0])->key, self::sessionKey($opens[1])->key);
+        self::assertNotSame(self::sessionKey($opens[0])->key(), self::sessionKey($opens[1])->key());
         $lastSend = self::requestsTo($recorder, 'POST', '/sessions/online/'.self::SECOND_SESSION_REF.'/invoices')[0];
         $content = self::body($lastSend)['encryptedInvoiceContent'];
         self::assertIsString($content);

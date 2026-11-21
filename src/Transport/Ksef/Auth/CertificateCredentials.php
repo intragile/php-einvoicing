@@ -64,6 +64,8 @@ final readonly class CertificateCredentials implements Credentials
 
     /**
      * The private key as given, for signing.
+     *
+     * @internal returns the raw private key; for the library's own signing and redaction only
      */
     public function privateKeyPem(): string
     {
@@ -72,6 +74,8 @@ final readonly class CertificateCredentials implements Credentials
 
     /**
      * The passphrase of the private key, or null when the key is not encrypted.
+     *
+     * @internal returns the raw passphrase; for the library's own signing and redaction only
      */
     public function passphrase(): ?string
     {
@@ -80,6 +84,8 @@ final readonly class CertificateCredentials implements Credentials
 
     /**
      * The private key, opened for openssl_sign().
+     *
+     * @internal for the library's own signing only
      *
      * @throws InvalidArgumentException When the key can no longer be opened
      */

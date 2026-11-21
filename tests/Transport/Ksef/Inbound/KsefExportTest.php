@@ -23,6 +23,7 @@ use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InvoiceQueryFilters;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\KsefExport;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefApi;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefConfig;
+use LogicException;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\Assert;
@@ -31,7 +32,6 @@ use PHPUnit\Framework\TestCase;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
-use LogicException;
 use RuntimeException;
 use ZipArchive;
 
@@ -153,6 +153,24 @@ final class KsefExportTest extends TestCase
         $result = $this->export(maxResponseBytes: KsefExport::MAX_PART_BYTES)->run(InvoiceQueryFilters::incoming(new DateTimeImmutable(self::FROM)));
 
         self::assertSame([self::number('010080DD2B5E') => '<Faktura/>'], $result->invoices);
+    }
+
+    public function test_unusable_download_url_is_reported_without_chaining_the_url(): void
+    {
+        $this->queue = [
+            ...self::opening(),
+            self::json(201, ['referenceNumber' => self::EXPORT_REF]),
+            // https, but with user info, which the client refuses before any request is built.
+            $this->finished([self::number('010080DD2B5E').'.xml' => '<Faktura/>'], 1, url: str_replace('https://', 'https://user:pass@', self::PART_URL)),
+        ];
+
+        $exception = self::capture(fn () => $this->export()->run(InvoiceQueryFilters::incoming(new DateTimeImmutable(self::FROM))));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString('unusable download URL for part 1', $exception->getMessage());
+        self::assertNull($exception->getPrevious());
+        self::assertStringNotContainsString('sig=', $exception->getMessage());
+        self::assertSame([], $this->partRequests());
     }
 
     public function test_export_continues_when_truncated_at_most_10_rounds(): void
@@ -371,9 +389,9 @@ final class KsefExportTest extends TestCase
      *
      * @param  array<string, string>  $files
      */
-    private function finished(array $files, int $partCount, ?string $truncated = null, ?string $corrupt = null, string $lastField = 'lastPermanentStorageDate', ?int $declaredSize = null): Closure
+    private function finished(array $files, int $partCount, ?string $truncated = null, ?string $corrupt = null, string $lastField = 'lastPermanentStorageDate', ?int $declaredSize = null, string $url = self::PART_URL): Closure
     {
-        return function () use ($files, $partCount, $truncated, $corrupt, $lastField, $declaredSize): Response {
+        return function () use ($files, $partCount, $truncated, $corrupt, $lastField, $declaredSize, $url): Response {
             $this->prepare($files, $partCount);
             $parts = [];
             foreach ($this->pending ?? [] as $ordinal => [$plain, $encrypted]) {
@@ -381,7 +399,7 @@ final class KsefExportTest extends TestCase
                     'ordinalNumber' => $ordinal,
                     'partName' => sprintf('%s-%03d.zip.aes', self::EXPORT_REF, $ordinal),
                     'method' => 'GET',
-                    'url' => sprintf(self::PART_URL, $ordinal),
+                    'url' => sprintf($url, $ordinal),
                     'partSize' => strlen($plain),
                     'partHash' => base64_encode(hash('sha256', $corrupt === 'partHash' ? $plain.'x' : $plain, true)),
                     'encryptedPartSize' => $declaredSize ?? strlen($encrypted),

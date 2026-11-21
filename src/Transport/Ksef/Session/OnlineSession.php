@@ -255,7 +255,7 @@ final class OnlineSession
         $body = fn (string $certificatePem, string $keyId): array => [
             'formCode' => FormCode::fa3()->json(),
             'encryption' => [
-                'encryptedSymmetricKey' => base64_encode(RsaOaep::encrypt($key->key, $certificatePem)),
+                'encryptedSymmetricKey' => base64_encode(RsaOaep::encrypt($key->key(), $certificatePem)),
                 'initializationVector' => base64_encode($key->iv),
                 'publicKeyId' => $keyId,
             ],

@@ -134,6 +134,8 @@ final class Authenticator
      * An access token valid for at least another minute: the kept one, a refreshed one, or one
      * from a new authentication.
      *
+     * @internal returns the raw access token; for the library's own requests only
+     *
      * @throws TransportException when neither a refresh nor an authentication succeeds
      */
     public function accessToken(): string
@@ -149,6 +151,8 @@ final class Authenticator
      * Replaces the access token even when it still looks valid, as after KSeF refused it: by a
      * refresh while the refresh token is valid, and by a new authentication when there is no
      * refresh token or KSeF refuses it.
+     *
+     * @internal returns the raw access token; for the library's own requests only
      *
      * @throws TransportException when neither a refresh nor an authentication succeeds
      */

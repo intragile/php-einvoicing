@@ -20,7 +20,7 @@ final class InvoiceCipherTest extends TestCase
 
         self::assertNotSame($xml, $ciphertext);
         self::assertSame($xml, InvoiceCipher::decrypt($ciphertext, $key));
-        self::assertSame($ciphertext, openssl_encrypt($xml, 'aes-256-cbc', $key->key, OPENSSL_RAW_DATA, $key->iv));
+        self::assertSame($ciphertext, openssl_encrypt($xml, 'aes-256-cbc', $key->key(), OPENSSL_RAW_DATA, $key->iv));
     }
 
     public function test_ciphertext_is_pkcs7_padded(): void
@@ -55,9 +55,9 @@ final class InvoiceCipherTest extends TestCase
     public function test_key_and_iv_lengths_enforced(): void
     {
         $key = SymmetricKey::generate();
-        self::assertSame(32, strlen($key->key));
+        self::assertSame(32, strlen($key->key()));
         self::assertSame(16, strlen($key->iv));
-        self::assertNotSame($key->key, SymmetricKey::generate()->key);
+        self::assertNotSame($key->key(), SymmetricKey::generate()->key());
 
         foreach ([[31, 16], [33, 16], [32, 15], [32, 17], [16, 16]] as [$keyLength, $ivLength]) {
             try {

@@ -99,6 +99,7 @@ final class KsefExport
      *
      * @throws LogicException when the zip extension is not loaded, or a part is larger than the
      *                        HttpClient's maxResponseBytes; nothing of that package is downloaded
+     * @throws RuntimeException when no temporary file can be created or written for the package
      * @throws TransportUnavailable when an export is still in progress after the polling bounds,
      *                              or KSeF cancelled it (status 550); run it again
      * @throws UnexpectedResponse when an export fails, or a part does not match its digest or
@@ -175,7 +176,7 @@ final class KsefExport
             fn (string $certificatePem, string $keyId): array => $this->api->authorized(
                 fn (string $bearer): array => $this->api->json('POST', '/invoices/exports', [
                     'encryption' => [
-                        'encryptedSymmetricKey' => base64_encode(RsaOaep::encrypt($key->key, $certificatePem)),
+                        'encryptedSymmetricKey' => base64_encode(RsaOaep::encrypt($key->key(), $certificatePem)),
                         'initializationVector' => base64_encode($key->iv),
                         'publicKeyId' => $keyId,
                     ],
@@ -330,8 +331,9 @@ final class KsefExport
     {
         try {
             $encrypted = (string) $this->api->raw($method, $url)->getBody();
-        } catch (InvalidArgumentException $exception) {
-            throw new UnexpectedResponse(sprintf('%s for the export %s returned an unusable download URL for part %d.', self::STATUS_OPERATION, $reference, $ordinal), 0, '', $exception);
+        } catch (InvalidArgumentException) {
+            // Not chained: a PSR-7 implementation may quote the whole signed URL.
+            throw new UnexpectedResponse(sprintf('%s for the export %s returned an unusable download URL for part %d.', self::STATUS_OPERATION, $reference, $ordinal));
         }
         if (! hash_equals($encryptedHash, base64_encode(hash('sha256', $encrypted, true)))) {
             throw new UnexpectedResponse(sprintf('Part %d of the KSeF export %s does not match its encryptedPartHash; the download is incomplete or corrupted.', $ordinal, $reference));
