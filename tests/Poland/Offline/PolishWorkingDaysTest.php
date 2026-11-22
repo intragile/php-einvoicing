@@ -57,7 +57,7 @@ final class PolishWorkingDaysTest extends TestCase
     }
 
     #[DataProvider('easterDates')]
-    public function test_easter_dates_2026_2030(int $year, string $easterSunday): void
+    public function test_easter_dates_2025_2030(int $year, string $easterSunday): void
     {
         $dates = array_map(
             static fn (DateTimeImmutable $day): string => $day->format('Y-m-d'),

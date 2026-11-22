@@ -18,6 +18,9 @@ enum DeadlineReason
     /** Failure: the 7th working day after the day the (last) failure ended. */
     case AfterFailure;
 
+    /** An unavailability that has not ended yet: the deadline is not known. */
+    case UnavailabilityOngoing;
+
     /** A failure that has not ended yet: the deadline is not known. */
     case FailureOngoing;
 

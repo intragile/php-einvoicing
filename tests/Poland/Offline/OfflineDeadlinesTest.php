@@ -81,6 +81,58 @@ final class OfflineDeadlinesTest extends TestCase
         self::assertDeadline('2026-11-18', DeadlineReason::AfterFailure, OfflineDeadlines::for(self::at('2026-11-05'), OfflineMode::Unavailability, [$failure], $unavailability));
     }
 
+    public function test_failure_in_unavailability_window_replaces_even_an_earlier_deadline(): void
+    {
+        // The unavailability alone would give Mon 2026-11-23; the failure rule gives Fri 2026-11-13
+        // (7 working days after Tue 3 Nov, skipping 11 Nov) and replaces it.
+        $unavailability = new Outage(OutageCategory::Maintenance, self::at('2026-11-02 08:00'), self::at('2026-11-20 10:00'));
+        $failure = new Outage(OutageCategory::Failure, self::at('2026-11-03 09:00'), self::at('2026-11-03 12:00'));
+
+        self::assertDeadline('2026-11-23', DeadlineReason::AfterUnavailability, OfflineDeadlines::for(self::at('2026-11-02'), OfflineMode::Unavailability, cause: $unavailability));
+        self::assertDeadline('2026-11-13', DeadlineReason::AfterFailure, OfflineDeadlines::for(self::at('2026-11-02'), OfflineMode::Unavailability, [$failure], $unavailability));
+    }
+
+    public function test_overlapping_failure_still_ongoing_leaves_no_deadline(): void
+    {
+        $ongoing = new Outage(OutageCategory::Failure, self::at('2026-11-09 09:00'), null, 'evt-1');
+        $short = new Outage(OutageCategory::Failure, self::at('2026-11-09 12:00'), self::at('2026-11-09 14:00'), 'evt-2');
+
+        $result = OfflineDeadlines::for(self::at('2026-11-09'), OfflineMode::Offline24, [$ongoing, $short]);
+
+        self::assertNull($result->deadline);
+        self::assertSame(DeadlineReason::FailureOngoing, $result->reason);
+    }
+
+    public function test_overlapping_failures_count_from_the_latest_end(): void
+    {
+        // The later-announced failure ends first; the deadline counts from Fri 2026-11-20, when the
+        // earlier one ends, not from the end of the last announced one.
+        $long = new Outage(OutageCategory::Failure, self::at('2026-11-09 09:00'), self::at('2026-11-20 10:00'), 'evt-1');
+        $short = new Outage(OutageCategory::Failure, self::at('2026-11-09 12:00'), self::at('2026-11-09 14:00'), 'evt-2');
+
+        self::assertDeadline('2026-12-01', DeadlineReason::AfterFailure, OfflineDeadlines::for(self::at('2026-11-09'), OfflineMode::Offline24, [$long, $short]));
+        self::assertDeadline('2026-12-01', DeadlineReason::AfterFailure, OfflineDeadlines::for(self::at('2026-11-09'), OfflineMode::Offline24, [$short, $long]));
+    }
+
+    public function test_restart_never_counts_from_before_the_cause_ended(): void
+    {
+        // A second failure announced while the cause is still running but ending before it.
+        $cause = new Outage(OutageCategory::Failure, self::at('2026-11-04 09:00'), self::at('2026-11-05 11:00'), 'evt-1');
+        $inside = new Outage(OutageCategory::Failure, self::at('2026-11-04 10:00'), self::at('2026-11-04 11:00'), 'evt-2');
+
+        self::assertDeadline('2026-11-17', DeadlineReason::AfterFailure, OfflineDeadlines::for(self::at('2026-11-04'), OfflineMode::Failure, [$cause, $inside], $cause));
+    }
+
+    public function test_unavailability_ongoing_has_no_deadline(): void
+    {
+        $ongoing = new Outage(OutageCategory::Maintenance, self::at('2026-11-06 09:00'), null);
+
+        $result = OfflineDeadlines::for(self::at('2026-11-06'), OfflineMode::Unavailability, cause: $ongoing);
+
+        self::assertNull($result->deadline);
+        self::assertSame(DeadlineReason::UnavailabilityOngoing, $result->reason);
+    }
+
     public function test_second_failure_restarts_count(): void
     {
         $first = new Outage(OutageCategory::Failure, self::at('2026-11-04 09:00'), self::at('2026-11-05 11:00'), 'evt-1');
@@ -146,18 +198,18 @@ final class OfflineDeadlinesTest extends TestCase
         self::assertSame('Europe/Warsaw', $deadline->getTimezone()->getName());
     }
 
-    public function test_cause_is_required_and_must_match_the_mode(): void
+    public function test_cause_is_required_and_must_match_the_mode_and_year_is_checked(): void
     {
         $failure = new Outage(OutageCategory::Failure, self::at('2026-11-06 09:00'), self::at('2026-11-06 10:00'));
         $maintenance = new Outage(OutageCategory::Maintenance, self::at('2026-11-06 09:00'), self::at('2026-11-06 10:00'));
-        $ongoingMaintenance = new Outage(OutageCategory::Maintenance, self::at('2026-11-06 09:00'), null);
 
         foreach ([
             static fn (): mixed => OfflineDeadlines::for(self::at('2026-11-06'), OfflineMode::Unavailability),
             static fn (): mixed => OfflineDeadlines::for(self::at('2026-11-06'), OfflineMode::Failure),
             static fn (): mixed => OfflineDeadlines::for(self::at('2026-11-06'), OfflineMode::Unavailability, cause: $failure),
             static fn (): mixed => OfflineDeadlines::for(self::at('2026-11-06'), OfflineMode::Failure, cause: $maintenance),
-            static fn (): mixed => OfflineDeadlines::for(self::at('2026-11-06'), OfflineMode::Unavailability, cause: $ongoingMaintenance),
+            static fn (): mixed => OfflineDeadlines::for(self::at('2024-12-31'), OfflineMode::TotalFailure),
+            static fn (): mixed => OfflineDeadlines::for(self::at('2100-01-04'), OfflineMode::Offline24),
         ] as $index => $call) {
             try {
                 $call();

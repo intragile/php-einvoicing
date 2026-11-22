@@ -159,7 +159,10 @@ final class PolishWorkingDays
         );
     }
 
-    private static function assertSupportedYear(int $year): void
+    /**
+     * @throws InvalidArgumentException when the year is outside 2025-2099
+     */
+    public static function assertSupportedYear(int $year): void
     {
         if ($year < self::FIRST_YEAR || $year > self::LAST_YEAR) {
             throw new InvalidArgumentException(sprintf(

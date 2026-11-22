@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\Poland\Offline;
 use DateTimeImmutable;
 use DateTimeZone;
 use InvalidArgumentException;
+use LogicException;
 
 /**
  * Computes the deadline for sending an offline invoice to KSeF.
@@ -15,16 +16,25 @@ use InvalidArgumentException;
  * days are taken in Europe/Warsaw, and a deadline is the last instant of its day:
  *
  * - Offline24: the first working day after the issue date (P_1).
- * - Unavailability: the first working day after the day the unavailability ended.
- * - Failure: the 7th working day after the day the failure ended.
- * - A failure announced (started) while the invoice is pending, that is between the issue date
- *   and the current deadline, moves the deadline to the failure rule counted from the end of the
- *   last such failure; this repeats as long as further failures fall inside the extended window.
- *   A failure never brings a deadline forward: when the failure rule gives an earlier day than
- *   the deadline it would replace, the later deadline is kept.
- * - A failure that has not ended yet leaves the deadline unknown (FailureOngoing).
+ * - Unavailability: the first working day after the day the unavailability ended; while it has
+ *   not ended the deadline is unknown (UnavailabilityOngoing).
+ * - Failure: the 7th working day after the day the failure ended; while it has not ended the
+ *   deadline is unknown (FailureOngoing).
+ * - A failure announced (started) while the invoice is pending, that is between the start of the
+ *   issue day and the current deadline, replaces the deadline with the failure rule, even when
+ *   that gives an earlier day (the deadline "is moved and counted from the end of the last
+ *   announced failure"). The failures taken into account are every failure overlapping the
+ *   pending window, including the cause in Failure mode: if any of them has not ended, the
+ *   deadline is unknown (FailureOngoing); otherwise the 7 working days count from the latest end
+ *   among them, so overlapping failures never yield a deadline before an announced failure is
+ *   over. This repeats while further failures start inside the extended window, so a new
+ *   failure announcement restarts the count.
  * - A total failure, as the mode or announced while the invoice is pending, removes the duty to
  *   send (TotalFailure).
+ *
+ * A failure that was already running before the issue day is out of scope for an offline24
+ * invoice on its own, because an invoice issued during an announced failure is a Failure-mode
+ * invoice; it only counts when another failure is announced inside the pending window.
  *
  * This is a calculation aid, not legal advice.
  */
@@ -36,11 +46,11 @@ final class OfflineDeadlines
      * @param  list<Outage>  $outages  announced outages, for example folded from Latarnia messages;
      *                                 maintenance entries are ignored
      * @param  Outage|null  $cause  the outage the invoice was issued under: required for the
-     *                              Unavailability (a Maintenance outage that has ended) and Failure
+     *                              Unavailability (a Maintenance outage) and Failure
      *                              (a Failure outage) modes, ignored otherwise
      *
-     * @throws InvalidArgumentException when the cause is missing or does not match the mode, or a
-     *                                  day falls outside the supported years
+     * @throws InvalidArgumentException when the cause is missing or does not match the mode, or the
+     *                                  issue date or a day counted falls outside the supported years
      */
     public static function for(
         DateTimeImmutable $issueDate,
@@ -48,11 +58,12 @@ final class OfflineDeadlines
         array $outages = [],
         ?Outage $cause = null,
     ): OfflineDeadline {
+        $windowStart = $issueDate->setTimezone(new DateTimeZone('Europe/Warsaw'))->setTime(0, 0);
+        PolishWorkingDays::assertSupportedYear((int) $windowStart->format('Y'));
+
         if ($mode === OfflineMode::TotalFailure) {
             return new OfflineDeadline(null, DeadlineReason::TotalFailure);
         }
-
-        $windowStart = $issueDate->setTimezone(new DateTimeZone('Europe/Warsaw'))->setTime(0, 0);
 
         $result = match ($mode) {
             OfflineMode::Offline24 => self::endOfDay(PolishWorkingDays::addWorkingDays($issueDate, 1), DeadlineReason::NextWorkingDay),
@@ -60,45 +71,47 @@ final class OfflineDeadlines
             OfflineMode::Failure => self::afterFailure(self::requireCause($mode, $cause, OutageCategory::Failure)),
         };
 
+        $failures = array_values(array_filter(
+            $cause !== null && $cause->category === OutageCategory::Failure ? [$cause, ...$outages] : $outages,
+            static fn (Outage $outage): bool => $outage->category === OutageCategory::Failure,
+        ));
+
         while ($result->deadline !== null) {
             $deadline = $result->deadline;
-            $pending = array_values(array_filter(
-                $outages,
-                static fn (Outage $outage): bool => $outage != $cause
-                    && $outage->start >= $windowStart
-                    && $outage->start <= $deadline,
-            ));
 
-            foreach ($pending as $outage) {
-                if ($outage->category === OutageCategory::TotalFailure) {
+            foreach ($outages as $outage) {
+                if ($outage->category === OutageCategory::TotalFailure && $outage->start >= $windowStart && $outage->start <= $deadline) {
                     return new OfflineDeadline(null, DeadlineReason::TotalFailure);
                 }
             }
 
-            $last = null;
+            $announced = array_filter(
+                $failures,
+                static fn (Outage $failure): bool => $failure != $cause
+                    && $failure->start >= $windowStart
+                    && $failure->start <= $deadline,
+            );
 
-            foreach ($pending as $outage) {
-                if ($outage->category === OutageCategory::Failure && ($last === null || $outage->start > $last->start)) {
-                    $last = $outage;
-                }
-            }
-
-            if ($last === null) {
+            if ($announced === []) {
                 return $result;
             }
 
-            $next = self::afterFailure($last);
+            // Every announced failure overlaps the window, so this list is never empty.
+            $overlapping = array_values(array_filter(
+                $failures,
+                static fn (Outage $failure): bool => $failure->start <= $deadline
+                    && ($failure->end === null || $failure->end >= $windowStart),
+            ));
+            $next = self::afterLatestEnd($overlapping);
 
-            if ($next->deadline === null || $next->deadline > $deadline) {
-                $result = $next;
-
-                continue;
+            if ($next->deadline !== null && $result->reason === DeadlineReason::AfterFailure && $next->deadline == $deadline) {
+                return $result;
             }
 
-            return $result;
+            $result = $next;
         }
 
-        // While a failure is ongoing the pending window has no end, so any later total failure counts.
+        // While the deadline is unknown the pending window has no end, so any later total failure counts.
         foreach ($outages as $outage) {
             if ($outage->category === OutageCategory::TotalFailure && $outage->start >= $windowStart) {
                 return new OfflineDeadline(null, DeadlineReason::TotalFailure);
@@ -124,7 +137,7 @@ final class OfflineDeadlines
     private static function afterUnavailability(Outage $unavailability): OfflineDeadline
     {
         if ($unavailability->end === null) {
-            throw new InvalidArgumentException('The unavailability has not ended, so no deadline can be computed yet.');
+            return new OfflineDeadline(null, DeadlineReason::UnavailabilityOngoing);
         }
 
         return self::endOfDay(
@@ -143,6 +156,32 @@ final class OfflineDeadlines
             PolishWorkingDays::addWorkingDays($failure->end, self::FAILURE_WORKING_DAYS),
             DeadlineReason::AfterFailure,
         );
+    }
+
+    /**
+     * The failure rule counted from the latest end among overlapping failures.
+     *
+     * @param  list<Outage>  $failures
+     */
+    private static function afterLatestEnd(array $failures): OfflineDeadline
+    {
+        $latest = null;
+
+        foreach ($failures as $failure) {
+            if ($failure->end === null) {
+                return new OfflineDeadline(null, DeadlineReason::FailureOngoing);
+            }
+
+            if ($latest === null || $failure->end > $latest->end) {
+                $latest = $failure;
+            }
+        }
+
+        if ($latest === null) {
+            throw new LogicException('No failure to count the deadline from.');
+        }
+
+        return self::afterFailure($latest);
     }
 
     private static function endOfDay(DateTimeImmutable $day, DeadlineReason $reason): OfflineDeadline
