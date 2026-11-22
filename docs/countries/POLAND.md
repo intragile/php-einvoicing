@@ -942,6 +942,27 @@ $ksef->close();
   | 500 unknown error, any code this version does not know | Failed / Other |
 
   `providerCode` is the KSeF code as a string; the message joins KSeF's description and details.
+- **Duplicates (440).** KSeF recognises a duplicate by the seller NIP (`Podmiot1/NIP`), the invoice
+  type (`RodzajFaktury`) and the invoice number (`P_2`), not by a file hash (MF documentation
+  `faktury/weryfikacja-faktury.md`). A 440 therefore proves only that an invoice with that number
+  exists, not that it is the file you resent. `KsefInvoiceStatus::$originalSessionReferenceNumber`
+  carries the session of the original (next to `originalKsefNumber`) when KSeF reports it.
+  - `isSameDocument($status, $invoiceXml)` answers the question. It reads the receipt (UPO) of the
+    original from its session and compares the receipt's `SkrotDokumentu` with the SHA-256 digest
+    of the bytes you pass, which are the exact FA(3) bytes that were sent. `true` means the original
+    is this file, so the earlier send was accepted under the original KSeF number. `false` means
+    another invoice with the same number is in KSeF. It throws `LogicException`, before any request,
+    for a status that is not a duplicate naming both the original KSeF number and its session.
+  - **Any other exception means "not provable now, retry later", never "different".** For example,
+    duplicate detection is global per seller NIP, so the original may have been sent from another
+    context, whose receipt this context cannot read (HTTP 403, or error 21178); and the receipt of
+    the original session may not be issued yet (also 21178). A receipt that does not list the
+    original alone, or whose digest is missing or unreadable, throws `UnexpectedResponse`.
+  - `upoByKsefNumber($sessionReference, $ksefNumber)` fetches the receipt of any session's invoice
+    without reading its status first. `isSameDocument()` uses it.
+  - Live-verified on TE on 2026-11-22: the same bytes resent gave `true`; a different file with the
+    same seller, type and `P_2` gave `false`; the receipt of the original was fetchable while its
+    session was still open.
 - **UPO.** `upo()` fetches the receipt by the KSeF number the status reports, and throws
   `LogicException` without a request while the invoice has no KSeF number. On TE the receipt of an
   invoice was available before the session was closed. `Upo` keeps the raw bytes unchanged and
@@ -1017,8 +1038,28 @@ foreach ($result->invoices as $fileName => $status) {
 
 `KsefTransport` implements `InboundSource`: `pending()` lists the invoices addressed to the
 context (the buyer, `Subject2`) that are not acknowledged yet, `fetch()` downloads one exactly as
-KSeF stores it, and `acknowledge()` marks it processed. The document id of a received invoice is
-its KSeF number.
+KSeF stores it, and `acknowledge()` marks it processed.
+
+**Document id.** `pending()` returns the id of a received invoice as `<KSeF number>@<PermanentStorage
+date>`, with the date in UTC as `Y-m-d\TH:i:s.u\Z`, for example
+`5265877635-20250626-010080DD2B5E-26@2025-09-18T12:24:01.015432Z`. `fetch()` takes everything it
+needs from the id, so a process that did not run `pending()`, such as a fresh queue worker, spends
+no metadata query. The date KSeF stored an invoice never changes, so the id repeats on every
+listing that returns the invoice's metadata.
+
+- **Fallback.** The cursor keeps only KSeF numbers. An invoice still open in the stored window that
+  the current read no longer returns (KSeF stopped listing it in the window's query, for example
+  after the context lost access to it) is offered under its plain KSeF number. One invoice can
+  therefore appear under both forms.
+- **Deduplicate by `KsefTransport::ksefNumberOf($id)`**, which returns the KSeF number of either
+  form; never by the id itself. It throws `InvalidArgumentException` for a malformed id.
+- A plain KSeF number still fetches, at the cost of one metadata query. `acknowledge()` accepts
+  both forms. An id that is not a KSeF inbound id is ignored by `acknowledge()`.
+- `fetch()` refuses a malformed id (bad checksum, a date that does not round-trip, a date more than
+  a day before the date in the KSeF number) with `InvalidArgumentException`, before any request.
+- Live-verified on TE on 2026-11-22: `fetch()` of a compound id on a fresh transport made no
+  metadata query and returned content byte-equal to the sent invoice; a plain KSeF number fetched
+  too, at one metadata query.
 
 ```php
 foreach ($ksef->pending() as $reference) {
@@ -1043,7 +1084,8 @@ the window's HWM. The cursor is kept in a `KsefCursorStore` under
   window is acknowledged. `resetInbox($from)` restarts the inbox at a given point; invoices of the
   old window that were not acknowledged are dropped from the cursor and offered again only if they
   fall after the new start.
-- **Duplicates.** Invoices at window boundaries can be offered again; deduplicate by KSeF number.
+- **Duplicates.** Invoices at window boundaries can be offered again; deduplicate by KSeF number
+  (`KsefTransport::ksefNumberOf($id)`).
 - **Store.** `InMemoryCursorStore` (the default) keeps nothing across restarts and gives no
   protection against two consumers of the same inbox. A restarted process reads from the start
   point again. Implement `KsefCursorStore` (two methods: `window()` and `save()`) on your database
@@ -1052,15 +1094,16 @@ the window's HWM. The cursor is kept in a `KsefCursorStore` under
   The lag on PRODUCTION is unknown.
 - **Limits.** More than 10,000 invoices with one PermanentStorage timestamp cannot be paged past
   (KSeF offers no further page) and throw `UnexpectedResponse`.
-- `fetch()` of a KSeF number this instance did not list looks its PermanentStorage date up by a
-  metadata query from the date in the number.
+- `fetch()` of a plain KSeF number (the fallback form, or one you built yourself) looks its
+  PermanentStorage date up by a metadata query from the date in the number. A compound id needs no
+  lookup.
 
 **Rate limits.** KSeF counts requests per context and IP address in sliding windows; all three
 thresholds apply at once (MF documentation `limity/limity-api.md`, 2026-09-14):
 
 | Request | Per second | Per minute | Per hour |
 |---|---|---|---|
-| `POST /invoices/query/metadata` (`pending()`, the lookup in `fetch()`) | 8 | 16 | 20 |
+| `POST /invoices/query/metadata` (`pending()`, the lookup in `fetch()` of a plain KSeF number) | 8 | 16 | 20 |
 | `POST /invoices/exports` (each `export()` round) | 8 | 16 | 20 |
 | `GET /invoices/ksef/{ksefNumber}` (`fetch()`) | 8 | 16 | 64 |
 
@@ -1068,8 +1111,8 @@ thresholds apply at once (MF documentation `limity/limity-api.md`, 2026-09-14):
   page of 250 records it reads: at least one, at most 10. A result longer than 10 pages ends the
   window at its last record, like a truncated one, and the next call continues from there.
   Catching up an inbox start older than 90 days therefore takes at least one call per 90-day chunk.
-- `fetch()` spends one of the 64 downloads per hour, plus one metadata query for an invoice this
-  instance did not list. `pending()` with `fetch()` therefore handles about 64 invoices an hour;
+- `fetch()` spends one of the 64 downloads per hour, plus one metadata query when you pass a plain
+  KSeF number instead of the id `pending()` returned. `pending()` with `fetch()` therefore handles about 64 invoices an hour;
   for higher volumes use `export()`, as the Ministry of Finance recommends.
 - The Ministry of Finance recommends polling no more often than **every 15 minutes** for each
   subject of an invoice on PRODUCTION.
@@ -1499,7 +1542,8 @@ repeated. An error code counts in any position of the error list.
 
 **A resend is safe.** After an `OutcomeUnknown` on `send()`, send the same invoice again: KSeF
 reports the second copy as a duplicate (status 440, Failed / Duplicate) naming the KSeF number of
-the first. The library never repeats an invoice send that failed without an answer. An
+the first. A 440 proves only that an invoice with that number exists, so confirm with
+`isSameDocument()` that it is your file (see **Duplicates (440)** above). The library never repeats an invoice send that failed without an answer. An
 `OutcomeUnknown` whose message names `/auth/token/refresh` (or another `/auth/` request) comes
 from renewing the access token: the invoice was not posted (or KSeF refused it with 401), so
 sending it again is safe as well.
@@ -1566,6 +1610,8 @@ verified.**
 | Online session: send, status, KSeF number, UPO (also before close), duplicate (440), schema-invalid invoice, a send into a session KSeF closed (21180) | Live-verified on TE |
 | Batch: three invoices in two parts | Live-verified on TE |
 | Inbox: pending, fetch, acknowledge | Live-verified on TE |
+| Inbound ids: `pending()` returns `<KSeF number>@<date>`; `fetch()` on a fresh transport makes 0 metadata queries and returns byte-equal content; a plain KSeF number fetches at one metadata query. `acknowledge()` of the id raised no error, but the cursor effect was not observed live | Live-verified on TE (2026-11-22) |
+| Duplicate proof: `isSameDocument()` is true for the same bytes, false for a different file with the same `P_2`; the original's UPO is fetchable while its session is open. A duplicate of an original from another context (403/21178) or a closed-session receipt was not exercised | Live-verified on TE (2026-11-22) |
 | Export | Live-verified on TE |
 | Correction referencing the KSeF number of the corrected invoice | Live-verified on TE |
 | Unknown public key id (21470) recovery, rate limit (429) | Live-verified on TE |

@@ -129,6 +129,12 @@ All notable changes to this project are documented here. The format follows
   `upo()` (`Upo` keeps the raw receipt, parses it and validates it against the bundled UPO 4-3
   schema; the Ministry of Finance signature is not verified) and `close()`. A session KSeF closed
   early (error 21180) is forgotten, so the next send opens a new one.
+- **Poland:** `KsefTransport::isSameDocument()` proves that the original a duplicate (status 440)
+  names is the file that was resent, by comparing the original's UPO `SkrotDokumentu` with the
+  file's SHA-256; KSeF itself detects a duplicate by seller NIP, invoice type and `P_2`, so a 440
+  alone proves only that the number exists. Any exception means "not provable now, retry later".
+  New: `upoByKsefNumber()` and `KsefInvoiceStatus::$originalSessionReferenceNumber`. Live-verified
+  on TE.
 - **Poland:** batch sessions: `sendBatch()` zips, splits (`KsefConfig::$batchPartBytes`, 100 MB by
   default), encrypts and uploads the invoices, with `batchStatus()` and `awaitBatch()`
   (`BatchResult`). The whole package is held in memory.
@@ -200,6 +206,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Poland:** `KsefTransport::pending()` returns the id of a received invoice as
+  `<KSeF number>@<PermanentStorage date, UTC>` instead of the bare KSeF number, so `fetch()` in a
+  fresh worker spends no metadata query (live-verified on TE). A plain KSeF number is returned only
+  when the current read no longer lists an invoice still open in the stored window; plain ids still
+  fetch, at one metadata query, and `acknowledge()` accepts both forms. Deduplicate by
+  `KsefTransport::ksefNumberOf($id)`.
 - **Readers and writers:** `UblReader` and `CiiReader` now mark an invoice as French (attach
   `FrenchInvoice`) when BT-23 is a French billing framework code (B1, S1, M1 …) or BT-24 is the
   EXTENDED-CTC-FR identifier, and writing such an invoice applies the French decimal limits of
