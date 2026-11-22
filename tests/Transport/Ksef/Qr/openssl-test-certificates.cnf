@@ -1,0 +1,14 @@
+# OpenSSL configuration for the in-memory KSeF test certificates of the QR code tests.
+# No default subject values; the extension sections mirror the keyUsage KSeF puts on its
+# certificates: Non Repudiation on Offline certificates, Digital Signature on Authentication ones.
+[ req ]
+default_bits = 2048
+distinguished_name = req_distinguished_name
+
+[ req_distinguished_name ]
+
+[ offline ]
+keyUsage = critical, nonRepudiation
+
+[ authentication ]
+keyUsage = critical, digitalSignature
