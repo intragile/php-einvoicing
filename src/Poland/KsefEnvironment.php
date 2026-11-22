@@ -38,15 +38,15 @@ enum KsefEnvironment: string
     }
 
     /**
-     * Base URL of Latarnia, the public KSeF availability service, for the environment, or null
-     * for DEMO, for which the Ministry of Finance publishes no Latarnia.
+     * Base URL of Latarnia, the public KSeF availability service, for the environment, without a
+     * trailing slash, or null for DEMO, for which the Ministry of Finance publishes no Latarnia.
      */
     public function latarniaBaseUrl(): ?string
     {
         return match ($this) {
-            self::Test => 'https://api-latarnia-test.ksef.mf.gov.pl/',
+            self::Test => 'https://api-latarnia-test.ksef.mf.gov.pl',
             self::Demo => null,
-            self::Production => 'https://api-latarnia.ksef.mf.gov.pl/',
+            self::Production => 'https://api-latarnia.ksef.mf.gov.pl',
         };
     }
 }

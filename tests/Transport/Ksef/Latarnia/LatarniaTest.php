@@ -15,6 +15,7 @@ use IntrAgile\EInvoicing\Transport\Http\HttpClient;
 use IntrAgile\EInvoicing\Transport\Ksef\Latarnia\KsefAvailability;
 use IntrAgile\EInvoicing\Transport\Ksef\Latarnia\Latarnia;
 use IntrAgile\EInvoicing\Transport\Ksef\Latarnia\LatarniaMessage;
+use IntrAgile\EInvoicing\Transport\Ksef\Latarnia\LatarniaMessageType;
 use InvalidArgumentException;
 use LogicException;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -29,9 +30,9 @@ final class LatarniaTest extends TestCase
 {
     use CapturesThrowable;
 
-    private const TEST_BASE = 'https://api-latarnia-test.ksef.mf.gov.pl/';
+    private const TEST_BASE = 'https://api-latarnia-test.ksef.mf.gov.pl';
 
-    private const PRODUCTION_BASE = 'https://api-latarnia.ksef.mf.gov.pl/';
+    private const PRODUCTION_BASE = 'https://api-latarnia.ksef.mf.gov.pl';
 
     /**
      * @return iterable<string, array{string, KsefAvailability}>
@@ -77,7 +78,7 @@ final class LatarniaTest extends TestCase
         self::assertSame('X/2030/F/11', $message->id);
         self::assertSame(4207, $message->eventId);
         self::assertSame(OutageCategory::Failure, $message->category);
-        self::assertSame(LatarniaMessage::TYPE_FAILURE_START, $message->type);
+        self::assertSame(LatarniaMessageType::FailureStart, $message->type);
         self::assertNull($message->end);
     }
 
@@ -105,12 +106,12 @@ final class LatarniaTest extends TestCase
         [$ongoing, $end, $start, $maintenance] = $messages;
         self::assertNull($ongoing->end);
         self::assertEquals(new DateTimeImmutable('2030-04-12T11:00:00+00:00'), $ongoing->start);
-        self::assertSame(LatarniaMessage::TYPE_FAILURE_END, $end->type);
+        self::assertSame(LatarniaMessageType::FailureEnd, $end->type);
         self::assertEquals(new DateTimeImmutable('2030-04-09T13:40:00+00:00'), $end->end);
         self::assertSame(2, $start->version);
         self::assertEquals(new DateTimeImmutable('2030-04-09T06:20:00+00:00'), $start->published);
         self::assertSame(OutageCategory::Maintenance, $maintenance->category);
-        self::assertSame(LatarniaMessage::TYPE_MAINTENANCE_ANNOUNCEMENT, $maintenance->type);
+        self::assertSame(LatarniaMessageType::MaintenanceAnnouncement, $maintenance->type);
         self::assertSame('Sample planned maintenance', $maintenance->title);
         self::assertSame('Sample text: planned works on a Saturday night.', $maintenance->text);
         self::assertEquals(new DateTimeImmutable('2030-04-07T03:30:00+00:00'), $maintenance->end);
@@ -139,6 +140,8 @@ final class LatarniaTest extends TestCase
         yield 'date without zone' => [self::message(['start' => '2030-04-09T06:15:00'])];
         yield 'not a date' => [self::message(['published' => 'yesterday'])];
         yield 'missing version' => [self::message(['version' => null])];
+        yield 'end message without end' => [self::message(['type' => 'FAILURE_END', 'end' => null])];
+        yield 'end message with end left out' => [array_diff_key(self::message(['type' => 'FAILURE_END']), ['end' => true])];
     }
 
     /**
@@ -152,6 +155,18 @@ final class LatarniaTest extends TestCase
         $exception = self::capture(fn () => self::latarnia($recorder)->messages());
 
         self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertSame(200, $exception->status);
+    }
+
+    public function test_end_message_without_end_names_the_cause(): void
+    {
+        $body = json_encode([self::message(['type' => 'FAILURE_END', 'end' => null])], JSON_THROW_ON_ERROR);
+
+        $exception = self::capture(fn () => self::latarnia(new RecordingHttpClient(self::json(200, $body)))->messages());
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString('FAILURE_END', $exception->getMessage());
+        self::assertStringContainsString('end', $exception->getMessage());
     }
 
     /**
@@ -263,13 +278,15 @@ final class LatarniaTest extends TestCase
         self::assertSame('https://api-latarnia-test.ksef.mf.gov.pl/status', (string) $test->requests()[0]->getUri());
     }
 
-    public function test_base_url_without_trailing_slash_is_accepted(): void
+    public function test_base_url_with_or_without_trailing_slash_is_accepted(): void
     {
-        $recorder = new RecordingHttpClient(self::fixture('status-available.json'));
+        foreach (['https://latarnia.example.test', 'https://latarnia.example.test/'] as $baseUrl) {
+            $recorder = new RecordingHttpClient(self::fixture('status-available.json'));
 
-        (new Latarnia('https://latarnia.example.test', self::http($recorder)))->status();
+            (new Latarnia($baseUrl, self::http($recorder)))->status();
 
-        self::assertSame('https://latarnia.example.test/status', (string) $recorder->requests()[0]->getUri());
+            self::assertSame('https://latarnia.example.test/status', (string) $recorder->requests()[0]->getUri());
+        }
     }
 
     /**

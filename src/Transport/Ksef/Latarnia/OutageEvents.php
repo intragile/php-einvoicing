@@ -12,9 +12,9 @@ use IntrAgile\EInvoicing\Poland\Offline\Outage;
  * Messages are grouped by event id. Of several revisions of the same message (same id), the one
  * with the highest version counts. A maintenance announcement carries its own window. A failure
  * starts at its start message and ends at the end its end message gives, or else at the end
- * Latarnia copied onto the start message; with neither, it has not ended. An end message without
- * an end time closes the failure at the time it was published. An event whose start message has
- * already dropped out of the list is taken from its end message alone, which repeats the start.
+ * Latarnia copied onto the start message; with neither, it has not ended. An event whose start
+ * message has already dropped out of the list is taken from its end message alone, which repeats
+ * the start.
  */
 final class OutageEvents
 {
@@ -37,7 +37,7 @@ final class OutageEvents
         $events = [];
         foreach ($latest as $message) {
             $event = $events[$message->eventId] ?? ['opening' => null, 'closing' => null];
-            $slot = $message->opensEvent() ? 'opening' : 'closing';
+            $slot = $message->type->opensEvent() ? 'opening' : 'closing';
             if ($event[$slot] === null || self::newer($message, $event[$slot])) {
                 $event[$slot] = $message;
             }
@@ -50,8 +50,8 @@ final class OutageEvents
             if ($first === null) {
                 continue;
             }
-            // The null coalescing operator also covers a missing opening or closing message.
-            $end = $closing->end ?? $opening->end ?? $closing?->published;
+            // An end message always carries an end time; LatarniaMessage refuses one without.
+            $end = $closing !== null ? $closing->end : $opening?->end;
             $outages[] = new Outage($first->category, $first->start, $end, (string) $eventId);
         }
 

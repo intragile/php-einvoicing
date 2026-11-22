@@ -15,18 +15,11 @@ use UnexpectedValueException;
  *
  * A maintenance is announced by a single message carrying its whole window. A failure has a
  * start message and, once it is over, an end message with the same event id; Latarnia then also
- * copies the end time onto the start message. A null end means the event has not ended.
+ * copies the end time onto the start message. A null end means the event has not ended, so an end
+ * message must carry one.
  */
 final readonly class LatarniaMessage
 {
-    public const TYPE_MAINTENANCE_ANNOUNCEMENT = 'MAINTENANCE_ANNOUNCEMENT';
-
-    public const TYPE_FAILURE_START = 'FAILURE_START';
-
-    public const TYPE_FAILURE_END = 'FAILURE_END';
-
-    private const TYPES = [self::TYPE_MAINTENANCE_ANNOUNCEMENT, self::TYPE_FAILURE_START, self::TYPE_FAILURE_END];
-
     private const CATEGORIES = [
         'MAINTENANCE' => OutageCategory::Maintenance,
         'FAILURE' => OutageCategory::Failure,
@@ -37,9 +30,7 @@ final readonly class LatarniaMessage
     private const DATE_TIME = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,7})?)?(?:Z|[+-]\d{2}:\d{2})$/i';
 
     /**
-     * @param  string  $type  one of the TYPE_* constants
-     *
-     * @throws InvalidArgumentException when the type is not one of the TYPE_* constants
+     * @throws InvalidArgumentException when an end message carries no end time
      */
     public function __construct(
         /** The message identifier shown to users, for example a reference number. */
@@ -47,7 +38,7 @@ final readonly class LatarniaMessage
         /** The event the message belongs to; a failure's start and end messages share it. */
         public int $eventId,
         public OutageCategory $category,
-        public string $type,
+        public LatarniaMessageType $type,
         public string $title,
         public string $text,
         public DateTimeImmutable $start,
@@ -56,8 +47,9 @@ final readonly class LatarniaMessage
         public int $version,
         public DateTimeImmutable $published,
     ) {
-        if (! in_array($type, self::TYPES, true)) {
-            throw new InvalidArgumentException(sprintf('Unknown Latarnia message type "%s".', $type));
+        if ($type === LatarniaMessageType::FailureEnd && $end === null) {
+            // No end is guessed: a later end than the real one would move a legal deadline later.
+            throw new InvalidArgumentException(sprintf('The Latarnia FAILURE_END message "%s" carries no end time.', $id));
         }
     }
 
@@ -66,36 +58,30 @@ final readonly class LatarniaMessage
      *
      * @param  array<mixed>  $data
      *
-     * @throws UnexpectedValueException when a field is missing, has the wrong type or an unknown value
+     * @throws UnexpectedValueException when a field is missing, has the wrong type or an unknown
+     *                                  value, or an end message carries no end time
      */
     public static function fromArray(array $data): self
     {
         $category = self::string($data, 'category');
         $type = self::string($data, 'type');
-        if (! in_array($type, self::TYPES, true)) {
-            throw new UnexpectedValueException(sprintf('Unknown Latarnia message type "%s".', $type));
+
+        try {
+            return new self(
+                self::string($data, 'id'),
+                self::int($data, 'eventId'),
+                self::CATEGORIES[$category] ?? throw new UnexpectedValueException(sprintf('Unknown Latarnia message category "%s".', $category)),
+                LatarniaMessageType::tryFrom($type) ?? throw new UnexpectedValueException(sprintf('Unknown Latarnia message type "%s".', $type)),
+                self::string($data, 'title'),
+                self::string($data, 'text'),
+                self::dateTime($data, 'start'),
+                ($data['end'] ?? null) === null ? null : self::dateTime($data, 'end'),
+                self::int($data, 'version'),
+                self::dateTime($data, 'published'),
+            );
+        } catch (InvalidArgumentException $exception) {
+            throw new UnexpectedValueException($exception->getMessage(), 0, $exception);
         }
-
-        return new self(
-            self::string($data, 'id'),
-            self::int($data, 'eventId'),
-            self::CATEGORIES[$category] ?? throw new UnexpectedValueException(sprintf('Unknown Latarnia message category "%s".', $category)),
-            $type,
-            self::string($data, 'title'),
-            self::string($data, 'text'),
-            self::dateTime($data, 'start'),
-            ($data['end'] ?? null) === null ? null : self::dateTime($data, 'end'),
-            self::int($data, 'version'),
-            self::dateTime($data, 'published'),
-        );
-    }
-
-    /**
-     * Whether the message opens an event: a maintenance announcement or a failure start.
-     */
-    public function opensEvent(): bool
-    {
-        return $this->type !== self::TYPE_FAILURE_END;
     }
 
     /**
