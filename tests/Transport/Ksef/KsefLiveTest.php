@@ -97,6 +97,9 @@ final class KsefLiveTest extends TestCase
 
     private const QR_WAIT_SECONDS = 5;
 
+    /** The detail line of the TE QR page for a KOD II signature that does not verify. */
+    private const SIGNATURE_INVALID = 'Podpis wystawcy nie jest prawidłowy';
+
     /** Metadata queries spent by the tests of this run that count them. */
     private static int $metadataQueries = 0;
 
@@ -792,6 +795,7 @@ final class KsefLiveTest extends TestCase
                 $tampered = KsefLive::qrPage($tap, self::tampered($link));
                 KsefLive::report(sprintf('KOD II %s, tampered signature: %s', $kind, self::verdict($tampered)));
                 self::assertStringContainsString(KsefLive::KOD2_INVALID, $tampered);
+                self::assertStringContainsString(self::SIGNATURE_INVALID, $tampered);
                 self::assertStringNotContainsString(KsefLive::KOD2_VALID, $tampered);
             }
             self::assertSame(86, strlen(substr($kod2->url, (int) strrpos($kod2->url, '/') + 1)));
@@ -854,9 +858,12 @@ final class KsefLiveTest extends TestCase
             KsefLive::report('KOD I before the send: '.self::verdict($before));
             self::assertStringContainsString(KsefLive::KOD1_NOT_FOUND, $before);
 
-            $sent = $transport->send($xml, offline: true);
-            $status = $transport->awaitFinal($sent->documentId);
-            $transport->close();
+            try {
+                $sent = $transport->send($xml, offline: true);
+                $status = $transport->awaitFinal($sent->documentId);
+            } finally {
+                $transport->close();
+            }
             KsefLive::report(sprintf('offline send: status %d, KSeF number %s, invoicingMode %s', $status->code, $status->ksefNumber ?? '-', $status->invoicingMode->value ?? '-'));
             self::assertSame(200, $status->code, $status->description);
             self::assertSame(InvoicingMode::Offline, $status->invoicingMode);
@@ -869,6 +876,7 @@ final class KsefLiveTest extends TestCase
             $after = self::awaitQrVerdict($tap, $sentCode->url, KsefLive::KOD1_FOUND, $attempts);
             KsefLive::report(sprintf('KOD I after the send: %s after %d page read(s)', self::verdict($after), $attempts));
             self::assertStringContainsString(KsefLive::KOD1_FOUND, $after);
+            self::assertStringNotContainsString(KsefLive::KOD1_NOT_FOUND, $after);
             self::assertStringContainsString($ksefNumber, $after);
             self::assertStringContainsString('Tryb wystawienia faktury Offline', $after);
             self::reportCalls($this->name(), $tap);
@@ -894,9 +902,12 @@ final class KsefLiveTest extends TestCase
         $this->live($config, function () use ($seller, $config, $transport, $tap, $api, $keys): void {
             [$fixed, $broken] = self::rejectedOfflineInvoice($seller, new OnlineSession($api, $keys, $config));
 
-            $correction = $transport->sendTechnicalCorrection($fixed, $broken);
-            $status = $transport->awaitFinal($correction->documentId);
-            $transport->close();
+            try {
+                $correction = $transport->sendTechnicalCorrection($fixed, $broken);
+                $status = $transport->awaitFinal($correction->documentId);
+            } finally {
+                $transport->close();
+            }
             KsefLive::report(sprintf('technical correction: status %d, KSeF number %s, invoicingMode %s', $status->code, $status->ksefNumber ?? '-', $status->invoicingMode->value ?? '-'));
             self::assertSame(200, $status->code, $status->description.' '.implode('; ', $status->details));
             self::assertSame(InvoicingMode::Offline, $status->invoicingMode);
@@ -1015,8 +1026,11 @@ final class KsefLiveTest extends TestCase
             $dated = str_replace('<P_1>'.$today->format('Y-m-d').'</P_1>', '<P_1>'.$today->modify('-1 day')->format('Y-m-d').'</P_1>', $xml);
             self::assertNotSame($xml, $dated);
 
-            $status = $transport->awaitFinal($transport->send($dated)->documentId);
-            $transport->close();
+            try {
+                $status = $transport->awaitFinal($transport->send($dated)->documentId);
+            } finally {
+                $transport->close();
+            }
             KsefLive::report(sprintf('online send dated yesterday: status %d, invoicingMode %s', $status->code, $status->invoicingMode->value ?? '-'));
             self::assertSame(200, $status->code, $status->description);
             self::assertSame(InvoicingMode::Offline, $status->invoicingMode);
@@ -1281,7 +1295,7 @@ final class KsefLiveTest extends TestCase
     private static function verdict(string $text): string
     {
         $found = array_filter(
-            [KsefLive::KOD2_VALID, KsefLive::KOD2_INVALID, KsefLive::KOD2_REVOKED, 'Podpis wystawcy nie jest prawidłowy', KsefLive::KOD1_FOUND, KsefLive::KOD1_NOT_FOUND],
+            [KsefLive::KOD2_VALID, KsefLive::KOD2_INVALID, KsefLive::KOD2_REVOKED, self::SIGNATURE_INVALID, KsefLive::KOD1_FOUND, KsefLive::KOD1_NOT_FOUND],
             static fn (string $phrase): bool => str_contains($text, $phrase),
         );
 
