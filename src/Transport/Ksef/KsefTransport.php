@@ -6,6 +6,8 @@ namespace IntrAgile\EInvoicing\Transport\Ksef;
 
 use Closure;
 use DateTimeImmutable;
+use DateTimeZone;
+use DOMElement;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Model\Invoice;
@@ -73,7 +75,14 @@ use RuntimeException;
  * invoices acknowledged in it are kept in the KsefCursorStore under
  * "<environment>:<context>:Subject2"; once every invoice of a window is acknowledged, the next
  * window starts at its high water mark. Without a persistent store a restarted process reads its
- * inbox from the start point again. The document id of a received invoice is its KSeF number.
+ * inbox from the start point again.
+ *
+ * The document id of a received invoice is "<KSeF number>@<PermanentStorage date>", the date in
+ * UTC as "Y-m-d\TH:i:s.u\Z" (for example "5265877635-20250626-010080DD2B5E-26@2025-09-18T12:24:01.015432Z"):
+ * fetch() takes everything it needs from the id, so a process that did not run pending(), such
+ * as a queue worker, spends no metadata query. The id is the same on every listing, as the date
+ * KSeF stored the invoice never changes. ksefNumberOf() returns the KSeF number of an id. A plain
+ * KSeF number is accepted as an id too; fetch() then looks its date up with a metadata query.
  *
  * Every component shares one authenticator and one public-key registry, so the context
  * authenticates once and the Ministry of Finance keys are fetched once per instance. Polling is
@@ -108,8 +117,8 @@ final class KsefTransport implements InboundSource
 
     /**
      * Metadata pages one pending() call reads at most. KSeF allows 20 metadata queries per hour
-     * for each context and IP address, so one call leaves room for a retry and fetch() lookups
-     * within the hour; a longer result ends the window at its last record, as a truncated one
+     * for each context and IP address, so one call leaves room for a retry and for fetch()
+     * lookups of plain KSeF numbers within the hour; a longer result ends the window at its last record, as a truncated one
      * does.
      */
     private const MAX_INBOX_PAGES = 10;
@@ -119,6 +128,12 @@ final class KsefTransport implements InboundSource
 
     /** Days after the date in a KSeF number searched for its PermanentStorage date. */
     private const LOOKUP_DAYS = 31;
+
+    /** Separates the KSeF number from the PermanentStorage date in an inbound document id. */
+    private const ID_SEPARATOR = '@';
+
+    /** The format of the PermanentStorage date in an inbound document id, always in UTC. */
+    private const ID_DATE_FORMAT = 'Y-m-d\TH:i:s.u\Z';
 
     private ?Fa3Validator $validator = null;
 
@@ -519,8 +534,8 @@ final class KsefTransport implements InboundSource
      * record. When KSeF refuses a later page with 429, the window is saved ending at the last
      * record already listed and the RateLimited is thrown; the next call after the Retry-After
      * delay lists those invoices again, and once they are acknowledged the cursor moves past them.
-     * fetch() spends one of KSeF's 64 invoice downloads per hour, plus a metadata query for an
-     * invoice this instance did not list; for high volumes use export().
+     * fetch() spends one of KSeF's 64 invoice downloads per hour and no metadata query for an id
+     * listed here, in this process or another; for high volumes use export().
      *
      * @return list<InboundReference>
      *
@@ -588,7 +603,9 @@ final class KsefTransport implements InboundSource
         foreach ($window->pending() as $ksefNumber) {
             $metadata = $this->inbox[$ksefNumber] ?? null;
             $references[] = new InboundReference(
-                $ksefNumber,
+                // An invoice whose metadata this read did not return keeps the plain KSeF number;
+                // fetch() then looks it up.
+                $metadata === null ? $ksefNumber : self::inboundId($ksefNumber, $metadata->permanentStorageDate),
                 null,
                 null,
                 $metadata === null ? self::DEFAULT_DOCUMENT_TYPE : self::documentType($metadata),
@@ -612,16 +629,21 @@ final class KsefTransport implements InboundSource
     }
 
     /**
-     * The invoice file with the given KSeF number, exactly as KSeF stores it. The reference
-     * carries the PermanentStorage date from the metadata pending() read, or, for an invoice not
-     * listed by this instance, from a metadata query by its KSeF number.
+     * The invoice file of an inbound document id, exactly as KSeF stores it.
      *
-     * KSeF allows 64 invoice downloads per hour for each context and IP address, and the lookup
-     * of an unlisted invoice spends one of the 20 metadata queries per hour as well; pending()
-     * with fetch() therefore handles about 64 invoices an hour. Use export() for high volumes.
+     * For an id pending() returned, the reference carries the PermanentStorage date from the id
+     * (or from the metadata this instance listed) and no metadata query is made; the document
+     * type is the form code this instance listed, or else the kodSystemowy of the file's
+     * KodFormularza, null when the file names none. For a plain KSeF number the metadata is
+     * queried by that number, unless this instance listed it.
      *
-     * @throws InvalidArgumentException when the id is not a valid KSeF number; no request is made
-     * @throws UnexpectedResponse when KSeF lists no invoice with that number addressed to the context
+     * KSeF allows 64 invoice downloads per hour for each context and IP address, so pending()
+     * with fetch() handles about 64 invoices an hour; a plain KSeF number spends one of the 20
+     * metadata queries per hour as well. Use export() for high volumes.
+     *
+     * @throws InvalidArgumentException when the id is neither a valid KSeF number nor one with a
+     *                                  date as pending() writes it; no request is made
+     * @throws UnexpectedResponse when a plain KSeF number is not listed as addressed to the context
      * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
      *                                                   sign with the configured certificate or
      *                                                   OpenSSL fails; see the class description
@@ -629,25 +651,43 @@ final class KsefTransport implements InboundSource
      */
     public function fetch(string $documentId): InboundDocument
     {
-        if (! KsefNumber::isValid($documentId)) {
-            throw new InvalidArgumentException('The invoice to fetch needs a valid KSeF number as its document id.');
-        }
-        $metadata = $this->inbox[$documentId] ?? $this->lookUp($documentId);
-        $xml = $this->query->download($documentId);
+        [$ksefNumber, $storedAt] = self::parseInboundId($documentId)
+            ?? throw new InvalidArgumentException('The invoice to fetch needs a document id as pending() returns it, or a valid KSeF number.');
+        $metadata = $this->inbox[$ksefNumber] ?? ($storedAt === null ? $this->lookUp($ksefNumber) : null);
+        $xml = $this->query->download($ksefNumber);
 
         return new InboundDocument(
-            new InboundReference($documentId, null, null, self::documentType($metadata), $metadata->permanentStorageDate),
+            new InboundReference(
+                $documentId,
+                null,
+                null,
+                $metadata === null ? self::formCode($xml) : self::documentType($metadata),
+                $metadata->permanentStorageDate ?? $storedAt ?? throw new LogicException('An inbound invoice without metadata has a date in its id.'),
+            ),
             $xml,
         );
     }
 
     /**
-     * Marks an invoice of the current inbox window as processed. Once every invoice of the window
-     * is acknowledged, the stored cursor moves to the window's high water mark. An id outside the
-     * current window is ignored.
+     * The KSeF number of an inbound document id: the id pending() returns, or a plain KSeF number.
+     *
+     * @throws InvalidArgumentException when the id is neither
+     */
+    public static function ksefNumberOf(string $documentId): string
+    {
+        return (self::parseInboundId($documentId)
+            ?? throw new InvalidArgumentException('A KSeF inbound document id is a KSeF number, optionally followed by "@" and the PermanentStorage date pending() writes.'))[0];
+    }
+
+    /**
+     * Marks an invoice of the current inbox window as processed, by the id pending() returned or
+     * by its plain KSeF number. Once every invoice of the window is acknowledged, the stored
+     * cursor moves to the window's high water mark. An id outside the current window, or one that
+     * is not a KSeF inbound id, is ignored.
      */
     public function acknowledge(string $documentId): void
     {
+        $documentId = self::parseInboundId($documentId)[0] ?? $documentId;
         $key = $this->cursorKey();
         $window = $this->cursor->window($key);
         unset($this->inbox[$documentId]);
@@ -836,6 +876,51 @@ final class KsefTransport implements InboundSource
         $systemCode = is_array($formCode) ? ($formCode['systemCode'] ?? null) : null;
 
         return is_string($systemCode) && trim($systemCode) !== '' ? trim($systemCode) : self::DEFAULT_DOCUMENT_TYPE;
+    }
+
+    private static function inboundId(string $ksefNumber, DateTimeImmutable $permanentStorageDate): string
+    {
+        return $ksefNumber.self::ID_SEPARATOR.$permanentStorageDate->setTimezone(new DateTimeZone('UTC'))->format(self::ID_DATE_FORMAT);
+    }
+
+    /**
+     * The KSeF number and PermanentStorage date of an inbound document id, the date null for a
+     * plain KSeF number; null when the id is neither form. The date must be written exactly as
+     * inboundId() writes it.
+     *
+     * @return array{string, ?DateTimeImmutable}|null
+     */
+    private static function parseInboundId(string $documentId): ?array
+    {
+        $parts = explode(self::ID_SEPARATOR, $documentId);
+        if (count($parts) > 2 || ! KsefNumber::isValid($parts[0])) {
+            return null;
+        }
+        if (count($parts) === 1) {
+            return [$parts[0], null];
+        }
+        $date = DateTimeImmutable::createFromFormat('!'.self::ID_DATE_FORMAT, $parts[1], new DateTimeZone('UTC'));
+        if ($date === false || $date->format(self::ID_DATE_FORMAT) !== $parts[1]) {
+            return null;
+        }
+
+        return [$parts[0], $date];
+    }
+
+    /**
+     * The kodSystemowy of the file's KodFormularza (as "FA (3)"), or null when the file names
+     * none or cannot be read.
+     */
+    private static function formCode(string $xml): ?string
+    {
+        try {
+            $element = SafeXml::load($xml)->getElementsByTagNameNS('*', 'KodFormularza')->item(0);
+        } catch (UnsafeXml|UnsupportedDocument) {
+            return null;
+        }
+        $code = $element instanceof DOMElement ? trim($element->getAttribute('kodSystemowy')) : '';
+
+        return $code === '' ? null : $code;
     }
 
     /**

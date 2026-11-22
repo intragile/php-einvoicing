@@ -522,7 +522,7 @@ final class KsefLiveTest extends TestCase
             $found = KsefLive::poll(function () use ($buyerTransport, $ksefNumber, &$queries): ?string {
                 $queries++;
                 foreach ($buyerTransport->pending() as $reference) {
-                    if ($reference->documentId === $ksefNumber) {
+                    if (KsefTransport::ksefNumberOf($reference->documentId) === $ksefNumber) {
                         return $reference->documentId;
                     }
                 }
@@ -532,12 +532,16 @@ final class KsefLiveTest extends TestCase
             KsefLive::report(sprintf('buyer inbox: %s after %d pending() calls, %.0f s', $found === null ? 'not listed' : 'listed', $queries, microtime(true) - $started));
             $queries = $buyerTap->all('POST', '#^/invoices/query/metadata$#');
             KsefLive::report(sprintf('buyer inbox: metadata queries answered %s', implode(', ', array_unique(array_map(static fn (array $answer): string => (string) $answer['status'], $queries)))));
-            self::assertSame($ksefNumber, $found);
+            self::assertNotNull($found);
+            self::assertSame($ksefNumber, KsefTransport::ksefNumberOf($found));
 
-            $document = $buyerTransport->fetch($ksefNumber);
+            // The id from pending() is fetched without a metadata query.
+            $before = count($buyerTap->all('POST', '#^/invoices/query/metadata$#'));
+            $document = $buyerTransport->fetch($found);
             self::assertSame($xml, $document->xml);
-            $buyerTransport->acknowledge($ksefNumber);
-            self::assertSame([], array_filter($buyerTransport->pending(), static fn ($r): bool => $r->documentId === $ksefNumber));
+            self::assertCount($before, $buyerTap->all('POST', '#^/invoices/query/metadata$#'));
+            $buyerTransport->acknowledge($found);
+            self::assertSame([], array_filter($buyerTransport->pending(), static fn ($r): bool => $r->documentId === $found));
             $spent = count($buyerTap->all('POST', '#^/invoices/query/metadata$#'));
             KsefLive::report(sprintf('buyer inbox: %d metadata queries in total', $spent));
             self::assertLessThanOrEqual(self::INBOX_QUERY_BUDGET, $spent);

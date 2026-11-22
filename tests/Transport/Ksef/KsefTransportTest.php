@@ -55,11 +55,16 @@ final class KsefTransportTest extends TestCase
 
     private const INBOX_SECOND = '7777777777-20261121-0100806157AB-87';
 
+    /** The document ids pending() gives the inbox invoices: KSeF number and PermanentStorage date. */
+    private const FIRST_ID = self::INBOX_FIRST.'@2026-11-21T09:00:00.000000Z';
+
+    private const SECOND_ID = self::INBOX_SECOND.'@2026-11-21T09:30:00.000000Z';
+
     private const INBOX_KEY = 'test:5265877635:Subject2';
 
     private const INBOX_HWM = '2026-11-21T09:59:00.000000+00:00';
 
-    private const RECEIVED_XML = '<?xml version="1.0" encoding="UTF-8"?><Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/"/>';
+    private const RECEIVED_XML = '<?xml version="1.0" encoding="UTF-8"?><Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/"><Naglowek><KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza></Naglowek></Faktura>';
 
     public function test_send_invoice_writes_fa3_and_returns_pending(): void
     {
@@ -228,7 +233,7 @@ final class KsefTransportTest extends TestCase
 
         $pending = $transport->pending();
 
-        self::assertSame([self::INBOX_FIRST, self::INBOX_SECOND], array_map(static fn ($reference): string => $reference->documentId, $pending));
+        self::assertSame([self::FIRST_ID, self::SECOND_ID], array_map(static fn ($reference): string => $reference->documentId, $pending));
         self::assertSame('FA (3)', $pending[0]->documentType);
         self::assertNull($pending[0]->sender);
         self::assertEquals(new DateTimeImmutable('2026-11-21T09:00:00+00:00'), $pending[0]->receivedAt);
@@ -246,20 +251,20 @@ final class KsefTransportTest extends TestCase
         self::assertInstanceOf(CursorWindow::class, $window);
         self::assertSame([self::INBOX_FIRST, self::INBOX_SECOND], $window->pending());
 
-        $document = $transport->fetch(self::INBOX_FIRST);
+        $document = $transport->fetch(self::FIRST_ID);
         self::assertSame(self::RECEIVED_XML, $document->xml);
-        self::assertSame(self::INBOX_FIRST, $document->reference->documentId);
+        self::assertSame(self::FIRST_ID, $document->reference->documentId);
         self::assertSame('FA (3)', $document->reference->documentType);
         self::assertEquals(new DateTimeImmutable('2026-11-21T09:00:00+00:00'), $document->reference->receivedAt);
         self::assertSame('/v2/invoices/ksef/'.self::INBOX_FIRST, self::requestsTo($recorder, 'GET', '/invoices/ksef/'.self::INBOX_FIRST)[0]->getUri()->getPath());
 
-        $transport->acknowledge(self::INBOX_FIRST);
+        $transport->acknowledge(self::FIRST_ID);
         $window = $store->window($key);
         self::assertNotNull($window);
         self::assertEquals(new DateTimeImmutable('2026-10-22T10:00:00+00:00'), $window->from, 'The cursor stays while an invoice of the window is open.');
         self::assertSame([self::INBOX_SECOND], $window->pending());
 
-        $transport->acknowledge(self::INBOX_SECOND);
+        $transport->acknowledge(self::SECOND_ID);
         $window = $store->window($key);
         self::assertNotNull($window);
         self::assertEquals(new DateTimeImmutable(self::INBOX_HWM), $window->from);
@@ -288,7 +293,7 @@ final class KsefTransportTest extends TestCase
         self::assertCount(1, $first->pending());
         // A new instance over the same store: the invoice was not acknowledged.
         $second = $this->transport($recorder, $store);
-        self::assertSame(self::INBOX_FIRST, $second->pending()[0]->documentId ?? null);
+        self::assertSame(self::FIRST_ID, $second->pending()[0]->documentId ?? null);
 
         foreach (self::requestsTo($recorder, 'POST', '/invoices/query/metadata') as $query) {
             self::assertSame('2026-11-20T00:00:00.000000+00:00', self::dateRange(self::body($query))['from']);
@@ -308,7 +313,7 @@ final class KsefTransportTest extends TestCase
         ]);
         $transport = $this->transport($recorder, $store);
 
-        self::assertSame([$june], array_map(static fn ($reference): string => $reference->documentId, $transport->pending()));
+        self::assertSame([$june.'@2026-06-01T08:00:00.000000Z'], array_map(static fn ($reference): string => $reference->documentId, $transport->pending()));
         // KSeF's high water mark (today) lies beyond the chunk: the window ends at the chunk end.
         self::assertEquals(new DateTimeImmutable('2026-07-30T00:00:00+00:00'), $store->window(self::INBOX_KEY)?->hwm);
         $transport->acknowledge($june);
@@ -448,6 +453,98 @@ final class KsefTransportTest extends TestCase
         self::assertSame('Subject2', $query['subjectType'] ?? null);
         // From the day before the date in the KSeF number (Polish time); open-ended up to now.
         self::assertSame(['dateType' => 'PermanentStorage', 'from' => '2026-11-19T00:00:00.000000+01:00'], self::dateRange($query));
+    }
+
+    public function test_fresh_transport_fetches_a_pending_id_without_a_metadata_query(): void
+    {
+        $store = new InMemoryCursorStore;
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            self::metadataPage([
+                self::metadataEntry(self::INBOX_FIRST, '2026-11-21T09:00:00.000+00:00'),
+                self::metadataEntry(self::INBOX_SECOND, '2026-11-21T09:30:00.000+00:00'),
+            ]),
+        ]);
+        $listed = $this->transport($recorder, $store)->pending();
+
+        // A queue worker: a new instance over the same store, with nothing listed in memory.
+        $worker = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            new Response(200, ['Content-Type' => 'application/xml'], self::RECEIVED_XML),
+        ]);
+        $fresh = $this->transport($worker, $store);
+        $document = $fresh->fetch($listed[0]->documentId);
+
+        self::assertSame([], self::requestsTo($worker, 'POST', '/invoices/query/metadata'));
+        self::assertCount(1, self::requestsTo($worker, 'GET', '/invoices/ksef/'.self::INBOX_FIRST));
+        self::assertSame(self::RECEIVED_XML, $document->xml);
+        self::assertSame($listed[0]->documentId, $document->reference->documentId);
+        self::assertEquals($listed[0]->receivedAt, $document->reference->receivedAt);
+        self::assertSame('FA (3)', $document->reference->documentType);
+
+        $fresh->acknowledge($listed[0]->documentId);
+        self::assertSame([self::INBOX_SECOND], $store->window(self::INBOX_KEY)?->pending());
+    }
+
+    public function test_pending_ids_are_stable_across_reads(): void
+    {
+        $entry = self::metadataEntry(self::INBOX_FIRST, '2026-11-21T10:00:00.1234567+01:00');
+        $recorder = new RecordingHttpClient(...[...self::tokenAuthResponses(), self::metadataPage([$entry]), self::metadataPage([$entry])]);
+        $transport = $this->transport($recorder);
+
+        $first = $transport->pending()[0]->documentId ?? null;
+
+        self::assertSame(self::INBOX_FIRST.'@2026-11-21T09:00:00.123456Z', $first);
+        self::assertSame($first, $transport->pending()[0]->documentId ?? null);
+        self::assertSame(self::INBOX_FIRST, KsefTransport::ksefNumberOf((string) $first));
+        self::assertSame(self::INBOX_FIRST, KsefTransport::ksefNumberOf(self::INBOX_FIRST));
+    }
+
+    public function test_plain_ksef_number_id_is_still_fetched_and_acknowledged(): void
+    {
+        $store = new InMemoryCursorStore;
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            self::metadataPage([self::metadataEntry(self::INBOX_FIRST, '2026-11-21T09:00:00.000+00:00')]),
+            ...self::tokenAuthResponses(),
+            self::metadataPage([self::metadataEntry(self::INBOX_FIRST, '2026-11-21T09:00:00.000+00:00')]),
+            new Response(200, ['Content-Type' => 'application/xml'], self::RECEIVED_XML),
+        ]);
+        $this->transport($recorder, $store)->pending();
+        $fresh = $this->transport($recorder, $store);
+
+        $document = $fresh->fetch(self::INBOX_FIRST);
+
+        self::assertSame(self::INBOX_FIRST, $document->reference->documentId);
+        self::assertEquals(new DateTimeImmutable('2026-11-21T09:00:00+00:00'), $document->reference->receivedAt);
+        self::assertCount(2, self::requestsTo($recorder, 'POST', '/invoices/query/metadata'), 'The plain id is looked up.');
+        $fresh->acknowledge(self::INBOX_FIRST);
+        self::assertSame([], $store->window(self::INBOX_KEY)?->pending());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function malformedInboundIds(): iterable
+    {
+        yield 'no KSeF number' => ['not-a-ksef-number'];
+        yield 'bad checksum' => ['5555555555-20261120-010080615740-00@2026-11-21T09:00:00.000000Z'];
+        yield 'no date after the separator' => [self::INBOX_FIRST.'@'];
+        yield 'date without microseconds' => [self::INBOX_FIRST.'@2026-11-21T09:00:00Z'];
+        yield 'date with an offset' => [self::INBOX_FIRST.'@2026-11-21T09:00:00.000000+01:00'];
+        yield 'impossible date' => [self::INBOX_FIRST.'@2026-02-30T09:00:00.000000Z'];
+        yield 'two separators' => [self::FIRST_ID.'@2026-11-21T09:00:00.000000Z'];
+    }
+
+    #[DataProvider('malformedInboundIds')]
+    public function test_malformed_inbound_id_is_refused_without_a_request(string $documentId): void
+    {
+        $recorder = new RecordingHttpClient;
+        $transport = $this->transport($recorder);
+
+        self::assertInstanceOf(InvalidArgumentException::class, self::capture(static fn () => $transport->fetch($documentId)));
+        self::assertInstanceOf(InvalidArgumentException::class, self::capture(static fn () => KsefTransport::ksefNumberOf($documentId)));
+        self::assertSame([], self::paths($recorder));
     }
 
     public function test_fetch_of_invoice_outside_the_inbox_is_unexpected(): void
