@@ -634,6 +634,27 @@ final class KsefTransportTest extends TestCase
         self::assertSame(0, $counter->count());
     }
 
+    public function test_correction_with_a_rejected_file_that_is_not_xml_refused(): void
+    {
+        $xml = (new Fa3Writer($this->now()))->write(PolishInvoices::domestic());
+        $counter = new RequestCounter(new RecordingHttpClient);
+        $transport = $this->transport($counter);
+        $notXml = [
+            'a path' => '/var/invoices/rejected/FA-1-2026.xml',
+            'Base64' => base64_encode(self::INVOICE_XML),
+            'a digest' => base64_encode(hash('sha256', self::INVOICE_XML, true)),
+            'JSON' => '{"invoiceHash":"abc"}',
+            'truncated XML' => substr(self::INVOICE_XML, 0, 80),
+        ];
+
+        foreach ($notXml as $what => $rejected) {
+            $exception = self::capture(static fn () => $transport->sendTechnicalCorrection($xml, $rejected));
+            self::assertInstanceOf(InvalidArgumentException::class, $exception, $what);
+            self::assertStringContainsString('not well-formed XML', $exception->getMessage(), $what);
+        }
+        self::assertSame(0, $counter->count());
+    }
+
     public function test_correction_sends_offline_true(): void
     {
         $corrected = (new Fa3Writer($this->now()))->write(PolishInvoices::domestic());
@@ -666,7 +687,7 @@ final class KsefTransportTest extends TestCase
         $exception = self::capture(static fn () => $transport->sendTechnicalCorrection($corrected, self::INVOICE_XML));
 
         self::assertInstanceOf(DocumentRejected::class, $exception);
-        self::assertStringContainsString('a technical correction was already accepted', $exception->getMessage());
+        self::assertStringContainsString('a technical correction was already accepted for the rejected invoice it names', $exception->getMessage());
         self::assertStringContainsString('21166', $exception->getMessage());
         self::assertTrue(KsefErrors::hasCode($exception, 21166));
     }

@@ -11,6 +11,7 @@ use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
 use IntrAgile\EInvoicing\Model\Invoice;
 use IntrAgile\EInvoicing\Poland\KsefNumber;
 use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Writer;
+use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\DeliveryStatus;
 use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
@@ -224,17 +225,20 @@ final class KsefTransport implements InboundSource
      * The correction is sent in offline mode and names the rejected invoice by the SHA-256 digest
      * (Base64) of its exact bytes, which this method computes from the file: KSeF accepts a digest
      * of an invoice it has never seen, so a mistyped digest would not be refused. Pass the rejected
-     * file byte for byte as it was sent; it is not validated, since KSeF rejected it. KSeF accepts
-     * one technical correction per invoice and refuses a second one with error 21166, thrown as
-     * DocumentRejected. OnlineSession::send() takes the digest directly, for callers that only
-     * kept the digest.
+     * file byte for byte as it was sent; it must be well-formed XML, but its schema is not
+     * validated, since KSeF rejected it. KSeF accepts one technical correction per invoice and
+     * refuses a second one with error 21166, thrown as DocumentRejected.
+     *
+     * A caller that sent an Invoice object should keep the FA(3) bytes written for it (they are
+     * not returned by send()); without them the rejected file cannot be passed here, and the
+     * fallback is OnlineSession::send() with the stored digest as hashOfCorrectedInvoice.
      *
      * @param  string|Invoice  $corrected  the corrected FA(3) file, or an invoice to write as one
      * @param  string  $rejectedInvoiceXml  the FA(3) file KSeF rejected, as it was sent
      *
-     * @throws InvalidArgumentException when the rejected file is empty or the corrected file is
-     *                                  identical to it, before anything is validated or sent;
-     *                                  when the invoice cannot be written as FA(3)
+     * @throws InvalidArgumentException when the rejected file is empty, not well-formed XML, or
+     *                                  identical to the corrected file, before anything is
+     *                                  validated or sent; when the invoice cannot be written as FA(3)
      * @throws DocumentRejected when the corrected file fails its schema or a fatal FA(3) rule
      *                          (nothing is sent), or KSeF refuses a second technical correction
      *                          of the same invoice (21166)
@@ -249,6 +253,14 @@ final class KsefTransport implements InboundSource
     {
         if ($rejectedInvoiceXml === '') {
             throw new InvalidArgumentException('A technical correction needs the rejected FA(3) file it replaces; an empty file was given.');
+        }
+        // KSeF accepts a digest of anything, so a path, Base64 text or JSON passed by mistake
+        // would be hashed and accepted as the rejected invoice's digest. The file is only
+        // required to be XML; its schema is what KSeF rejected.
+        try {
+            SafeXml::load($rejectedInvoiceXml);
+        } catch (UnsafeXml|UnsupportedDocument $exception) {
+            throw new InvalidArgumentException('The rejected FA(3) file of a technical correction must be the XML file KSeF rejected, byte for byte; the given content is not well-formed XML.', 0, $exception);
         }
         // Checked before validation as well, so a rejected file passed twice is reported as such
         // rather than as failing validation.

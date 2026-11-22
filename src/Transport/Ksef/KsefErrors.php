@@ -109,7 +109,7 @@ final class KsefErrors
         }
         if ($status === 400 && in_array(self::TECHNICAL_CORRECTION_UNAVAILABLE, $codes, true)) {
             return new DocumentRejected(
-                sprintf('%s failed: KSeF refused the technical correction, because a technical correction was already accepted for the corrected invoice (HTTP 400)%s.', $operation, $detail),
+                sprintf('%s failed: KSeF refused the technical correction, because a technical correction was already accepted for the rejected invoice it names (HTTP 400)%s.', $operation, $detail),
                 ['errors' => $lines],
             );
         }
