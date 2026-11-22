@@ -1,6 +1,6 @@
 {
     "name": "intragile/php-einvoicing",
-    "description": "Framework-agnostic EN 16931 e-invoicing core for PHP: invoice model, exact decimal totals, UBL and CII reading and writing, pure-PHP validation against the official CEN EN 16931 and Peppol BIS 3 Schematron rules, XRechnung 3.0.2 validation like the KoSIT validator, ZUGFeRD and Factur-X (PDF/A-3 embedding and reading in pure PHP, validation against the official 1.09.2 rules), and Peppol sending, receiving and participant lookup (SML, SMP, Directory).",
+    "description": "Framework-agnostic EN 16931 e-invoicing core for PHP: invoice model, exact decimal totals, UBL and CII reading and writing, pure-PHP validation against the official CEN EN 16931 and Peppol BIS 3 Schematron rules, XRechnung 3.0.2 validation like the KoSIT validator, ZUGFeRD and Factur-X (PDF/A-3 embedding and reading in pure PHP, validation against the official 1.09.2 rules), Peppol sending, receiving and participant lookup (SML, SMP, Directory), and Polish KSeF: FA(3) writing, reading and validation, sending and receiving through the KSeF API 2.0, offline mode with sending deadlines, KSeF certificates and QR codes.",
     "keywords": [
         "en16931",
         "e-invoicing",
@@ -20,7 +20,11 @@
         "kosit",
         "zugferd",
         "factur-x",
-        "pdf-a-3"
+        "pdf-a-3",
+        "ksef",
+        "fa3",
+        "poland",
+        "e-faktura"
     ],
     "type": "library",
     "license": "MIT",
@@ -116,7 +120,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-main": "1.0.x-dev"
+            "dev-main": "1.2.x-dev"
         }
     },
     "scripts": {

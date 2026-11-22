@@ -4,7 +4,8 @@ Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
 How this package builds, reads and validates Polish structured invoices in the FA(3) format of
 KSeF, how the shared EN 16931 model maps onto FA(3), how it sends and receives them through the
-KSeF API 2.0, and what is not covered yet. This page is a
+KSeF API 2.0, including offline mode, KSeF certificates and the QR codes, and what is not covered
+yet. This page is a
 technical guide, not legal or tax advice.
 
 ## KSeF and FA(3)
@@ -765,8 +766,8 @@ The KSeF number printed in brochure example 14 (`…-9A`) fails the checksum; th
 `VerificationLink` builds KOD I, the verification link printed as a QR code on an invoice
 visualisation: `<base>/invoice/<seller NIP>/<issue date DD-MM-YYYY>/<SHA-256, Base64URL>`. The hash
 covers the exact bytes sent to KSeF; any re-serialisation, added newline or byte order mark gives
-another link. `KsefEnvironment` gives the base URL of TEST, DEMO and PRODUCTION. This package
-outputs the URL only; rendering the QR image is up to you.
+another link. `KsefEnvironment` gives the base URL of TEST, DEMO and PRODUCTION. For the captions,
+KOD II of offline invoices and optional rendering as an image, see [QR codes](#qr-codes).
 
 <!-- sample: run -->
 ```php
@@ -808,7 +809,7 @@ to you. It is not a `Transport` like the Peppol drivers: KSeF takes FA(3) files,
 `OutboundDocument` cannot carry, so it has its own `send()` and `status()` and implements
 `InboundSource` for receiving.
 
-> **Live-verified on KSeF TE (API 2.10 RC) on 2026-11-21; DEMO and PRODUCTION are not verified.**
+> **Live-verified on KSeF TE (API 2.10 RC) on 2026-11-21 and 2026-11-22; DEMO and PRODUCTION are not verified.**
 > See [What is verified for the KSeF transport](#what-is-verified-for-the-ksef-transport).
 
 The transport needs `ext-openssl` and `phpseclib/phpseclib` (both required by this package: RSA-OAEP
@@ -1063,9 +1064,10 @@ thresholds apply at once (MF documentation `limity/limity-api.md`, 2026-09-14):
 | `POST /invoices/exports` (each `export()` round) | 8 | 16 | 20 |
 | `GET /invoices/ksef/{ksefNumber}` (`fetch()`) | 8 | 16 | 64 |
 
-- Each `pending()` call spends at least one metadata query, one more per page of 250 records and
-  per catch-up chunk; it reads at most 10 pages per call (`MAX_INBOX_PAGES`), and a longer result
-  ends the window at its last record, like a truncated one.
+- Each `pending()` call queries one window of at most 90 days and spends one metadata query per
+  page of 250 records it reads: at least one, at most 10. A result longer than 10 pages ends the
+  window at its last record, like a truncated one, and the next call continues from there.
+  Catching up an inbox start older than 90 days therefore takes at least one call per 90-day chunk.
 - `fetch()` spends one of the 64 downloads per hour, plus one metadata query for an invoice this
   instance did not list. `pending()` with `fetch()` therefore handles about 64 invoices an hour;
   for higher volumes use `export()`, as the Ministry of Finance recommends.
@@ -1110,6 +1112,356 @@ if ($result->isTruncated) {
   $http = new HttpClient($psr18Client, $psr17Factory, $psr17Factory, maxResponseBytes: KsefExport::MAX_PART_BYTES);
   ```
 
+## Offline mode
+
+An invoice may be issued outside KSeF and sent to it later. The KSeF 2.0 documentation of the
+Ministry of Finance (`tryby-offline.md`) names the modes (`OfflineMode`):
+
+| Mode | When | Sending deadline |
+|---|---|---|
+| `Offline24` | The taxpayer's own choice (art. 106nda of the VAT Act) | The first working day after the issue date (`P_1`) |
+| `Unavailability` | A KSeF unavailability the Ministry of Finance announced, such as a maintenance window (art. 106nh) | The first working day after the day the unavailability ended |
+| `Failure` | An announced KSeF failure (art. 106nf) | The 7th working day after the day the failure ended |
+| `TotalFailure` | An announced total failure | None: the invoice need not be sent to KSeF |
+
+An offline invoice carries two QR codes on its visualisation: KOD I, captioned "OFFLINE" until KSeF
+assigns a number, and KOD II, signed with a KSeF certificate of type Offline (see
+[KSeF certificates](#ksef-certificates) and [QR codes](#qr-codes)). An offline invoice KSeF
+rejects is replaced by a [technical correction](#technical-correction).
+
+### Send an offline invoice
+
+`send()` and `sendBatch()` take an `$offline` flag. It applies to the whole batch.
+
+```php
+$sent = $ksef->send((string) file_get_contents('faktura.xml'), offline: true);
+$status = $ksef->awaitFinal($sent->documentId);
+echo $status->invoicingMode?->name, "\n"; // Offline
+
+$session = $ksef->sendBatch(['FV-2026-001.xml' => $xml1, 'FV-2026-002.xml' => $xml2], offline: true);
+```
+
+KSeF classifies every invoice itself and reports the result as `invoicingMode` (`InvoicingMode::Online`
+or `Offline`, null when absent) on `KsefInvoiceStatus` and on the inbox `InvoiceMetadata`. Its
+classification does not depend on the flag alone: on TE, an invoice sent online without the flag
+but dated the day before the send (`P_1`) came back as Offline. The library makes no local
+prediction of KSeF's classification. Neither the flag nor the reported mode computes a deadline;
+`OfflineDeadlines` does that, for any invoice KSeF reports as Offline.
+
+### Deadlines
+
+`OfflineDeadlines::for($issueDate, $mode, $outages, $cause)` returns an `OfflineDeadline`: the
+`deadline` (the last instant of the deadline day, `23:59:59.999999` Europe/Warsaw) and the
+`reason` (`DeadlineReason`) that produced it.
+
+> **The deadline calculator is a calculation aid, not legal advice.** It implements the rules of
+> the Ministry of Finance documentation as we read them. Check the deadlines of your own invoices
+> against the law and the official announcements.
+
+| Situation | `deadline` | `reason` |
+|---|---|---|
+| `Offline24` | The first working day after the issue date | `NextWorkingDay` |
+| `Unavailability`, with `$cause` the unavailability (a `Maintenance` outage) that has ended | The first working day after its end day | `AfterUnavailability` |
+| `Unavailability` whose cause has not ended | null | `UnavailabilityOngoing` |
+| `Failure`, with `$cause` the failure that has ended | The 7th working day after its end day | `AfterFailure` |
+| A failure announced while the invoice is pending, in any mode | Replaced by the failure rule, counted from the end of the last such failure | `AfterFailure` |
+| A failure that has not ended, as the cause or announced while the invoice is pending | null | `FailureOngoing` |
+| `TotalFailure`, or a total failure announced while the invoice is pending | null | `TotalFailure` |
+
+- **Pending window.** An invoice is pending from the start of its issue day to its current
+  deadline. A failure that starts inside that window replaces the deadline with the failure rule,
+  even when this gives an earlier day (the documentation says the deadline "is moved and counted
+  from the end of the last announced failure"). The count runs from the latest end among the
+  failures that overlap the window, and starts again whenever a further failure starts inside the
+  extended window.
+- **Working days** (`PolishWorkingDays`) are Monday to Friday, except the statutory holidays of the
+  Act of 18 January 1951 on public holidays: 1 and 6 January, Easter Sunday and Monday, 1 and
+  3 May, Pentecost Sunday, Corpus Christi, 15 August, 1 and 11 November, and 24, 25 and 26
+  December. 24 December is a holiday from 2025 on (Act of 6 December 2024, Dz.U. 2024 poz. 1965).
+  Easter is computed in the class (Gregorian computus). Days are taken in Europe/Warsaw.
+- **Supported years** are 2025 to 2099; any other year throws `InvalidArgumentException`, because
+  a later change of the holiday law cannot be known here. A change of the law needs a new release.
+- `$cause` is required for `Unavailability` (a `Maintenance` outage) and `Failure` (a `Failure`
+  outage), and ignored otherwise. `$outages` is the list of announced outages, for example folded
+  from Latarnia messages (see below); maintenance entries in it are ignored.
+
+<!-- sample: run -->
+```php
+use IntrAgile\EInvoicing\Poland\Offline\OfflineDeadlines;
+use IntrAgile\EInvoicing\Poland\Offline\OfflineMode;
+use IntrAgile\EInvoicing\Poland\Offline\Outage;
+use IntrAgile\EInvoicing\Poland\Offline\OutageCategory;
+use IntrAgile\EInvoicing\Poland\Offline\PolishWorkingDays;
+
+$warsaw = new DateTimeZone('Europe/Warsaw');
+
+// Offline24, issued on Wednesday 23 December 2026: 24 to 26 December are holidays, the 27th is a Sunday.
+$deadline = OfflineDeadlines::for(new DateTimeImmutable('2026-12-23', $warsaw), OfflineMode::Offline24);
+echo $deadline->reason->name, ' ', $deadline->deadline?->format('Y-m-d H:i:s'), "\n"; // NextWorkingDay 2026-12-28 23:59:59
+
+// The example of the Ministry of Finance documentation: an offline24 invoice of Wednesday 8 July 2025,
+// a failure announced on Thursday 9 July and removed on Saturday 12 July.
+$failure = new Outage(OutageCategory::Failure, new DateTimeImmutable('2025-07-09 10:00', $warsaw), new DateTimeImmutable('2025-07-12 14:00', $warsaw));
+$deadline = OfflineDeadlines::for(new DateTimeImmutable('2025-07-08', $warsaw), OfflineMode::Offline24, [$failure]);
+echo $deadline->reason->name, ' ', $deadline->deadline?->format('Y-m-d'), "\n"; // AfterFailure 2025-07-22
+
+// Issued during a failure that has not ended: the deadline is not known yet.
+$ongoing = new Outage(OutageCategory::Failure, new DateTimeImmutable('2026-11-20 09:00', $warsaw), null);
+$deadline = OfflineDeadlines::for(new DateTimeImmutable('2026-11-20', $warsaw), OfflineMode::Failure, cause: $ongoing);
+echo $deadline->reason->name, ' ', var_export($deadline->deadline, true), "\n"; // FailureOngoing NULL
+
+var_dump(PolishWorkingDays::isWorkingDay(new DateTimeImmutable('2026-12-24', $warsaw))); // bool(false)
+```
+
+### Latarnia
+
+Latarnia is the Ministry of Finance's public KSeF availability service. It needs no
+authentication. `Latarnia::forEnvironment()` gives the client for TE
+(`https://api-latarnia-test.ksef.mf.gov.pl/`) or PRODUCTION (`https://api-latarnia.ksef.mf.gov.pl/`).
+The Ministry publishes no Latarnia for DEMO, so DEMO throws `LogicException`; pass a base URL to
+the constructor instead.
+
+```php
+use IntrAgile\EInvoicing\Poland\KsefEnvironment;
+use IntrAgile\EInvoicing\Transport\Ksef\Latarnia\Latarnia;
+use IntrAgile\EInvoicing\Transport\Ksef\Latarnia\OutageEvents;
+
+$latarnia = Latarnia::forEnvironment(KsefEnvironment::Production, $http);
+
+$status = $latarnia->status();          // LatarniaStatus
+echo $status->availability->name, "\n"; // Available, Maintenance, Failure or TotalFailure
+
+$outages = OutageEvents::fold($latarnia->messages()); // list<Outage>, for OfflineDeadlines
+```
+
+- `status()` returns the current `KsefAvailability` and the messages it follows from. When several
+  events are active, the most severe one wins: total failure, then failure, then maintenance.
+- `messages()` returns every current `LatarniaMessage`: announced and running maintenance windows
+  and failures, and those that ended in the last 30 days. Each has an id, an event id, a category,
+  a type (`LatarniaMessageType`: `MaintenanceAnnouncement`, `FailureStart`, `FailureEnd`), a title
+  and text, a start, an end (null while a failure runs), a version and a publication time.
+- `OutageEvents::fold()` groups the messages by event id and keeps the highest version of each
+  message. A maintenance announcement carries its whole window. A failure ends at the end its
+  `FAILURE_END` message gives; without one, it has not ended.
+- A failed request, a server error (5xx) or a rate limit (429) throws `TransportUnavailable`;
+  anything else unexpected, including a body of the wrong shape, throws `UnexpectedResponse`.
+  Nothing is repeated, and request timeouts belong to your PSR-18 client.
+- **TE serves stale sample events.** On 2026-11-22 the TE Latarnia still reported a total failure
+  of January 2026 as active. Do not base TE tests on its content.
+
+Folding messages into outages and computing a deadline needs no network:
+
+<!-- sample: run -->
+```php
+use IntrAgile\EInvoicing\Poland\Offline\OfflineDeadlines;
+use IntrAgile\EInvoicing\Poland\Offline\OfflineMode;
+use IntrAgile\EInvoicing\Transport\Ksef\Latarnia\LatarniaMessage;
+use IntrAgile\EInvoicing\Transport\Ksef\Latarnia\OutageEvents;
+
+// The start and end messages of one failure, in the shape GET /messages returns them.
+$messages = array_map(LatarniaMessage::fromArray(...), [
+    ['id' => 'K/2026/11/01', 'eventId' => 101, 'category' => 'FAILURE', 'type' => 'FAILURE_START',
+        'title' => 'Awaria KSeF', 'text' => '…', 'start' => '2026-11-24T09:00:00+01:00', 'end' => null,
+        'version' => 1, 'published' => '2026-11-24T09:05:00+01:00'],
+    ['id' => 'K/2026/11/02', 'eventId' => 101, 'category' => 'FAILURE', 'type' => 'FAILURE_END',
+        'title' => 'Koniec awarii KSeF', 'text' => '…', 'start' => '2026-11-24T09:00:00+01:00',
+        'end' => '2026-11-24T15:30:00+01:00', 'version' => 1, 'published' => '2026-11-24T15:35:00+01:00'],
+]);
+
+$outages = OutageEvents::fold($messages);
+echo count($outages), ' ', $outages[0]->category->name, ' ', $outages[0]->end?->format('Y-m-d H:i'), "\n"; // 1 Failure 2026-11-24 15:30
+
+// An offline24 invoice of Monday 23 November 2026: the failure starts while it is pending.
+$deadline = OfflineDeadlines::for(new DateTimeImmutable('2026-11-23', new DateTimeZone('Europe/Warsaw')), OfflineMode::Offline24, $outages);
+echo $deadline->reason->name, ' ', $deadline->deadline?->format('Y-m-d'), "\n"; // AfterFailure 2026-12-03
+```
+
+## KSeF certificates
+
+`certificates()` returns `KsefCertificates` for the authenticated subject. KSeF issues two types
+(`KsefCertificateType`): **Offline**, which signs KOD II, and **Authentication**, which logs in to
+KSeF with XAdES like any other certificate.
+
+| Method | What it does |
+|---|---|
+| `limits()` | `CertificateLimits`: whether a request is allowed now, and the enrolments and active certificates left |
+| `enrollmentData()` | The subject a request must carry, as KSeF reports it for the certificate you authenticated with |
+| `enroll($type, $algorithm, $name, $validFrom)` | Generates the key, sends the request, polls for the result and returns an `EnrolledCertificate` |
+| `retrieve($serial)` | One `KsefCertificate` by its serial number |
+| `query($type, $status, $name, $serial, $expiresAfter)` | Every certificate matching the filters, with its status (Active, Blocked, Revoked, Expired) |
+| `revoke($serial, $reason)` | Revokes a certificate (`RevocationReason`: Unspecified, Superseded, KeyCompromise) |
+
+```php
+use IntrAgile\EInvoicing\Transport\Ksef\Certificates\KeyAlgorithm;
+use IntrAgile\EInvoicing\Transport\Ksef\Certificates\KsefCertificateType;
+
+$enrolled = $ksef->certificates()->enroll(KsefCertificateType::Offline); // EC P-256 by default
+
+// The private key exists only in this object: store it before doing anything else.
+file_put_contents('/run/secrets/ksef-offline.key.pem', $enrolled->privateKeyPem());
+chmod('/run/secrets/ksef-offline.key.pem', 0600);
+file_put_contents('/run/secrets/ksef-offline.crt.pem', $enrolled->certificate->certificatePem);
+echo $enrolled->certificate->serialNumber, "\n"; // 16 upper-case hex digits
+
+$offlineCertificate = $enrolled->credentials(); // CertificateCredentials, for KOD II
+
+$rsa = $ksef->certificates()->enroll(KsefCertificateType::Authentication, KeyAlgorithm::Rsa, 'ERP login');
+```
+
+- **Certificate login only.** KSeF accepts an enrolment only after an authentication with a
+  certificate (XAdES). A configuration with `TokenCredentials` is refused with `LogicException`
+  before any request.
+- **The key is generated locally**, EC P-256 by default (the Ministry of Finance's recommendation,
+  and the shorter KOD II signature) or RSA-2048 (`KeyAlgorithm::Rsa`). KSeF accepts no other key
+  types or sizes. The private key is never sent.
+- **The request carries exactly the subject of `enrollmentData()`**, in KSeF's order. The PKCS#10
+  request is DER-encoded in PHP, because `openssl_csr_new()` cannot repeat an attribute (several
+  given names).
+- **`EnrolledCertificate` returns the private key once**, as unencrypted PKCS#8 PEM. KSeF cannot
+  issue it again, and a lost key means a new enrolment. The key stays out of `var_dump()`,
+  `print_r()`, `var_export()`, `json_encode()` and array casts, and the object refuses to be
+  serialized, so it cannot end up in a log, a cache, a queued job or a session by accident.
+- **Polling.** `enroll()` reads the request status within the `statusPollAttempts` and
+  `statusPollWaitMs` bounds of the `KsefConfig`. A request still processing after them, or
+  cancelled by KSeF (550), throws `TransportUnavailable` naming the enrolment reference; a rejected
+  one (400) throws `DocumentRejected`. If reading back an issued certificate fails, the exception
+  names its serial number and says to revoke it.
+- **Name.** 5 to 100 letters (Polish ones included), digits, spaces, hyphens and underscores;
+  `"<type> <UTC date and time>"` when none is given.
+- **Observed on TE** (2026-11-22): EC and RSA certificates issued in 3 to 4 seconds by
+  `CN=TEST CCK KSeF`, valid for two years. An Offline certificate's common name ends in
+  " (offline)" and has the key usage Non Repudiation; an Authentication certificate's ends in
+  " (uwierzytelnienie)" and has Digital Signature. Logging in with an Authentication certificate
+  (EC) worked, and KSeF reported the method `xades.ksef-certificate`. The limits were 300 enrolments
+  and 100 active certificates per subject.
+
+## QR codes
+
+The visualisation of an FA(3) invoice carries KOD I, the invoice verification link, and, for an
+invoice issued offline, KOD II, the issuer's certificate verification link. The library builds the
+links and their captions (`QrCode`); rendering an image is optional.
+
+| Code | Link | Caption (`QrCode::$label`) |
+|---|---|---|
+| KOD I | `<qr host>/invoice/<seller NIP>/<issue date DD-MM-YYYY>/<invoice hash>` | The KSeF number once KSeF has assigned one, `OFFLINE` until then |
+| KOD II | `<qr host>/certificate/<context type>/<context value>/<seller NIP>/<certificate serial>/<invoice hash>/<signature>` | `CERTYFIKAT` |
+
+- `KsefQrCodes::online($env, $invoiceXml, $ksefNumber)` returns KOD I, reading the seller NIP and
+  the issue date from the invoice. `KsefQrCodes::offline($env, $context, $invoiceXml,
+  $offlineCertificate, $ksefNumber)` returns KOD I and KOD II. The URL of KOD I stays the same when
+  the KSeF number arrives; only the caption changes.
+- `CertificateVerificationLink::build()` signs KOD II for an FA(3) file; `fromHash()` takes an
+  invoice hash and an issue date, for documents other than FA(3). The invoice hash is the SHA-256 of
+  the exact invoice bytes, Base64URL without padding, the same as in KOD I.
+- **Signature.** It covers the link without `https://` and without the signature segment or a
+  trailing slash. An EC P-256 key signs with ECDSA-SHA256 in IEEE P1363 form (r‖s, 64 bytes, 86
+  characters encoded); an RSA key of 2048 bits or more signs with RSASSA-PSS (SHA-256, MGF1-SHA-256,
+  salt 32) through phpseclib, because OpenSSL's PHP binding offers only PKCS#1 v1.5, which KSeF
+  rejects.
+- **Checks before signing.** The private key must match the certificate; a certificate marked as
+  an Authentication certificate (key usage Digital Signature only) is refused; the certificate must
+  be valid at some moment of the issue date (Europe/Warsaw); the serial number is taken from the
+  certificate, in upper case, and must be 16 hex digits. Each failed check throws
+  `InvalidArgumentException`.
+
+<!-- sample: run -->
+```php
+use IntrAgile\EInvoicing\Poland\KsefEnvironment;
+use IntrAgile\EInvoicing\Poland\VerificationLink;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\CertificateCredentials;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\ContextIdentifier;
+use IntrAgile\EInvoicing\Transport\Ksef\Qr\CertificateVerificationLink;
+use IntrAgile\EInvoicing\Transport\Ksef\Qr\KsefQrCodes;
+
+$xml = (string) file_get_contents('faktura.xml'); // the exact bytes sent to KSeF
+
+$kod1 = KsefQrCodes::online(KsefEnvironment::Test, $xml, null);
+echo $kod1->label, "\n"; // OFFLINE
+echo $kod1->url, "\n";   // https://qr-test.ksef.mf.gov.pl/invoice/2222222222/18-11-2026/<hash>
+echo KsefQrCodes::online(KsefEnvironment::Test, $xml, '5265877635-20250826-0100001AF629-AF')->label, "\n";
+
+// For the sample only: a self-signed EC certificate made in memory stands in for a KSeF Offline
+// certificate. It is valid from now, so the link is signed for today's issue date.
+$key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
+$csr = openssl_csr_new(['countryName' => 'PL', 'commonName' => 'Example (offline)'], $key, ['digest_alg' => 'sha256']);
+$certificate = openssl_csr_sign($csr, null, $key, 30, ['digest_alg' => 'sha256'], 0x01F20A5D352AE590);
+openssl_x509_export($certificate, $certificatePem);
+openssl_pkey_export($key, $keyPem);
+
+$kod2 = CertificateVerificationLink::fromHash(
+    KsefEnvironment::Test,
+    ContextIdentifier::nip('2222222222'),
+    '2222222222',
+    VerificationLink::invoiceHash($xml),
+    new DateTimeImmutable('now', new DateTimeZone('Europe/Warsaw')),
+    new CertificateCredentials($certificatePem, $keyPem),
+);
+echo $kod2, "\n"; // https://qr-test.ksef.mf.gov.pl/certificate/Nip/2222222222/2222222222/01F20A5D352AE590/<hash>/<signature>
+```
+
+With a real Offline certificate, `KsefQrCodes::offline()` builds both codes from the invoice, and
+a renderer draws them:
+
+```php
+use IntrAgile\EInvoicing\Poland\KsefEnvironment;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\CertificateCredentials;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\ContextIdentifier;
+use IntrAgile\EInvoicing\Transport\Ksef\Qr\ChillerlanQrRenderer;
+use IntrAgile\EInvoicing\Transport\Ksef\Qr\KsefQrCodes;
+
+$offlineCertificate = new CertificateCredentials(
+    (string) file_get_contents('/run/secrets/ksef-offline.crt.pem'),
+    (string) file_get_contents('/run/secrets/ksef-offline.key.pem'),
+);
+
+[$kod1, $kod2] = KsefQrCodes::offline(KsefEnvironment::Production, ContextIdentifier::nip('5265877635'), $xml, $offlineCertificate);
+
+$renderer = new ChillerlanQrRenderer;                 // needs chillerlan/php-qrcode ^5
+file_put_contents('kod1.svg', $renderer->svg($kod1)); // caption "OFFLINE" under the code
+file_put_contents('kod2.png', $renderer->png($kod2)); // 5 pixels per module; PNG needs ext-gd
+```
+
+- `QrRenderer` is the interface: `svg(QrCode)` returns a scalable SVG document on a white
+  background, and `png(QrCode, $pixelsPerModule = 5)` returns PNG bytes (the Ministry of Finance
+  samples use 5 pixels per module). Both draw the caption under the code.
+- `ChillerlanQrRenderer` uses `chillerlan/php-qrcode` ^5, an optional dependency
+  (`composer require chillerlan/php-qrcode`). Its constructor throws `LogicException` when the
+  package is not installed, and `png()` needs `ext-gd`. chillerlan encodes the link (byte mode,
+  error correction level M, a 4-module quiet zone); the image and the caption are drawn here, so
+  both formats look the same.
+- **Observed on TE** (`qr-test.ksef.mf.gov.pl`, 2026-11-22): EC and RSA-PSS links built by the
+  library verified ("Weryfikacja prawidłowa"); the same links with a tampered signature, and a link
+  signed with a certificate that was then revoked, did not. KOD I of an offline invoice changed
+  from "not found" to "found in KSeF" after the send.
+
+## Technical correction
+
+When KSeF rejects an offline invoice (for example status 450, a schema error), the seller sends a
+technical correction: the corrected file, naming the rejected one by the SHA-256 of its bytes.
+`sendTechnicalCorrection()` computes that hash from the rejected file itself:
+
+```php
+$rejected = (string) file_get_contents('FV-2026-001.rejected.xml'); // byte for byte as sent
+$corrected = (string) file_get_contents('FV-2026-001.xml');
+
+$sent = $ksef->sendTechnicalCorrection($corrected, $rejected);
+$status = $ksef->awaitFinal($sent->documentId);
+```
+
+- **Why the file and not a hash.** KSeF accepts a correction naming a hash it has never seen
+  (observed on TE), so a mistyped hash would not be refused. The rejected file must be well-formed
+  XML; its schema is not checked, since KSeF rejected it. A rejected file identical to the
+  corrected one is refused with `InvalidArgumentException` before anything is sent.
+- The corrected file is validated (or an `Invoice` written) as in `send()`, and sent in the online
+  session in offline mode. KSeF lists it with `hashOfCorrectedInvoice` (Base64 SHA-256 of the
+  rejected file) and `invoicingMode` Offline in `InvoiceMetadata`.
+- **One correction per invoice.** KSeF refuses a second technical correction of the same invoice
+  with HTTP 400 and code 21166, thrown as `DocumentRejected` ("a technical correction was already
+  accepted for the rejected invoice").
+- If you sent an `Invoice` object, keep the FA(3) bytes written for it: `send()` does not return
+  them. A caller who kept only the hash can use the low-level `OnlineSession::send($xml, true,
+  $hashOfCorrectedInvoice)`.
+
 ## Errors and retries
 
 Every failure is a `TransportException` subclass ([TRANSPORT.md](../TRANSPORT.md#errors)):
@@ -1118,7 +1470,7 @@ Every failure is a `TransportException` subclass ([TRANSPORT.md](../TRANSPORT.md
 |---|---|
 | HTTP 401, or KSeF code 21301 or 21304 in a 4xx answer (including a refused token refresh); HTTP 403 | `AuthenticationFailed` |
 | HTTP 429 | `RateLimited` (`retryAfterSeconds` from `Retry-After`, null when the header is missing or unreadable) |
-| HTTP 400 with a refused-body code (21401, 21402, 21403, 21405, 21217, 9101, 9102, 9103, 9105); an FA(3) file that fails local validation | `DocumentRejected` |
+| HTTP 400 with a refused-body code (21401, 21402, 21403, 21405, 21217, 9101, 9102, 9103, 9105) or with 21166 (a second technical correction of the same invoice); an FA(3) file that fails local validation | `DocumentRejected` |
 | Network failure or HTTP 5xx on a GET | `TransportUnavailable` (safe to retry; not repeated automatically) |
 | Network failure or HTTP 5xx on a POST | `OutcomeUnknown` |
 | HTTP 404, a not-found code, a redirect, or anything else | `UnexpectedResponse` |
@@ -1178,17 +1530,24 @@ $testData->resetRateLimits();
   only: no real names, NIPs, addresses or amounts.
 - **Maintenance window.** TE is unavailable every day from 16:00 to 18:00 Europe/Warsaw.
 - The live test group `ksef-live` runs the flows on this page against TE. It needs no secrets: each
-  run generates fresh NIPs and certificates. It is excluded by default, refuses any host but TE,
-  skips from 15:55 to 18:00 Europe/Warsaw and never prints a token or key:
-  `vendor/bin/phpunit --group ksef-live`.
+  run generates fresh NIPs and certificates. It is excluded by default, refuses plain http and every
+  KSeF host but the TE API, `qr-test.ksef.mf.gov.pl` and the TE Latarnia, skips from 15:55 to 18:00 Europe/Warsaw and
+  never prints a token or key. Every KSeF certificate it enrols is revoked at the end of its test,
+  pass or fail: `vendor/bin/phpunit --group ksef-live`.
 
 ## What is verified for the KSeF transport
 
-**Live-verified on KSeF TE (API 2.10 RC), 2026-11-21; DEMO and PRODUCTION not verified.** The
-live group `ksef-live` passed in full, 14 of 14 tests in one run each, on PHP 8.5 (13:52–13:56
-Europe/Warsaw) and on PHP 8.3 (13:56–14:00). In both runs the buyer inbox test listed the invoice
-after 6 `pending()` calls (130 s) and spent 7 metadata queries in total. RSA-OAEP runs through
-phpseclib on every PHP version.
+**Live-verified on KSeF TE (API 2.10 RC), 2026-11-21 and 2026-11-22; DEMO and PRODUCTION not
+verified.**
+
+- On 2026-11-21 the live group `ksef-live`, then 14 tests, passed in full in one run each, on
+  PHP 8.5 (13:52–13:56 Europe/Warsaw) and on PHP 8.3 (13:56–14:00). In both runs the buyer inbox
+  test listed the invoice after 6 `pending()` calls (130 s) and spent 7 metadata queries in total.
+- On 2026-11-22 the group, extended by 9 tests for offline mode, KSeF certificates, KOD II, the
+  technical correction and Latarnia, passed in full on PHP 8.5: 23 of 23 tests in one run
+  (11:20–11:25 Europe/Warsaw), 8 metadata queries in total. The extended group has not yet been run
+  on PHP 8.3.
+- RSA-OAEP runs through phpseclib on every PHP version.
 
 | Flow | Status |
 |---|---|
@@ -1201,6 +1560,17 @@ phpseclib on every PHP version.
 | Export | Live-verified on TE |
 | Correction referencing the KSeF number of the corrected invoice | Live-verified on TE |
 | Unknown public key id (21470) recovery, rate limit (429) | Live-verified on TE |
+| KSeF certificates: limits, enrolment data, EC and RSA Offline enrolment, query, revoke | Live-verified on TE |
+| An EC Authentication certificate: enrolment and XAdES login (ECDSA, method `xades.ksef-certificate`) | Live-verified on TE |
+| KOD II: EC (P1363) and RSA-PSS links verify on `qr-test`; a tampered signature and a revoked certificate do not | Live-verified on TE |
+| KOD I of an offline invoice: "not found" before the send, found after it | Live-verified on TE |
+| Offline send: `invoicingMode` Offline in the status; an online send with yesterday's `P_1` reported as Offline | Live-verified on TE |
+| Technical correction of a rejected offline invoice (450), `hashOfCorrectedInvoice` in the metadata, a second correction refused (21166) | Live-verified on TE |
+| Latarnia TE: `status()` and `messages()` parse (shape only; TE serves stale sample events) | Live-verified on TE |
+| Latarnia PRODUCTION | Offline tests with canned answers only; not called live |
+| A revoked Authentication certificate no longer logs in | Not verified live |
+| Offline deadlines and Polish working days | Offline tests only (including the documented example); a calculation aid, not legal advice |
+| Rendering QR images (`ChillerlanQrRenderer`) | Offline tests only: the rendered PNG is decoded again and compared with the link |
 | A second 9105, export status 420 | Not observed live; offline tests only |
 | UPO signature of the Ministry of Finance | **Not verified** (by design) |
 | Qualified certificates with multi-valued RDNs in the issuer name | Not verifiable without a real certificate (DEMO/PRODUCTION) |
@@ -1211,21 +1581,19 @@ a literal `$`. The bundled copy is kept byte-identical and the defect is documen
 
 ## Not covered yet
 
-- **KSeF offline mode:** enrolment of the KSeF offline certificate (CSR), the signed KOD II link,
-  the offline24 and outage deadlines (fed by the Latarnia availability service), and the technical
-  correction flow (the low-level `OnlineSession::send()` already takes the hash of the corrected
-  invoice; `KsefTransport` does not offer the flow yet).
-- **QR images.** Only the KOD I URL is produced.
-- **Laravel bridge** (configuration per environment, queued sending, scheduled inbound polling, a
-  persistent cursor store, events, an adapter to the generic `Transport` if needed), and the entry
-  package `laravel-ksef`.
-- **Reading FA_PEF(3) and FA_KOR_PEF(3) downloads** (the Peppol-based invoices KSeF serves): they
-  download like any other invoice, but `Fa3Reader` does not map them.
+- **Reading FA_PEF(3) and FA_KOR_PEF(3) downloads** (the Peppol-based invoices KSeF serves, form
+  codes `PEF (3)` and `PEF_KOR (3)`, UBL 2.1 with Polish extensions): they download like any other
+  invoice, but `Fa3Reader` does not map them. Only Peppol providers can issue them, so a PEF
+  invoice cannot be produced on TE without a Peppol provider identity, and a reader could only be
+  verified offline. Until then, read them as UBL 2.1 yourself; the generic `UblReader` was not
+  tested on PEF files.
 - **Typed builders** for the transport blocks, the new means of transport, the authorised party and
   the attachment, which are verbatim XML fragments for now.
 - **`Podmiot1K/PrefiksPodatnika` and `Podmiot2K/IDNabywcy`** in correction data.
-- **Not planned:** sending FA_PEF (Peppol providers only); permission and certificate management
-  beyond the TE test data; the Trusted Profile; verifying the Ministry of Finance UPO signature;
+- The Laravel integration (configuration, queued sending, scheduled inbound polling, a persistent
+  cursor store) belongs to `intragile/laravel-einvoicing`, not to this package.
+- **Not planned:** sending FA_PEF (Peppol providers only); permission management beyond the TE
+  test data; the Trusted Profile; verifying the Ministry of Finance UPO signature;
   FA_RR(1) farmers' invoices and FA(2), which KSeF accepts only on TEST and FA(3) replaced.
 
 ---

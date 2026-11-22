@@ -64,8 +64,12 @@ Included today:
 - Polish FA(3) and KSeF transport: sending FA(3) invoices to KSeF through the KSeF API 2.0
   (XAdES certificate or KSeF token authentication, online and batch sessions, status, KSeF number
   and UPO receipt), reading the inbox with an acknowledgement cursor and exporting invoices, KSeF
-  token management, and self-signed certificates and test data for KSeF TE. Live-verified on KSeF
-  TE (API 2.10 RC); DEMO and PRODUCTION not verified; the UPO signature is not verified
+  token management, and self-signed certificates and test data for KSeF TE. Offline mode: offline
+  sending with KSeF's reported invoicing mode, a sending-deadline calculator over Polish working
+  days (a calculation aid, not legal advice) fed by the Latarnia availability service, KSeF
+  certificate enrolment (EC or RSA, key generated locally), the KOD I and signed KOD II QR links
+  with optional rendering, and technical corrections. Live-verified on KSeF TE (API 2.10 RC); DEMO
+  and PRODUCTION not verified; the UPO signature is not verified
   ([Poland](docs/countries/POLAND.md#send-to-ksef)).
 
 Country notes: [Germany](docs/countries/DE.md) (legal basis, formats, channels and what is
@@ -73,8 +77,9 @@ verified), [France](docs/countries/FRANCE.md) (the reform, profiles, installing 
 French rules, lifecycle statuses, e-reporting, routing, sending through B2Brouter, what is not
 covered yet), [Poland](docs/countries/POLAND.md) (FA(3) and KSeF transport: building, reading and
 validating Polish invoices, the mapping, the KSeF number and verification link, sending, batch,
-receiving and exporting through KSeF, errors and retries, testing on KSeF TE, what is verified and
-what is not covered yet).
+receiving and exporting through KSeF, offline mode and deadlines, KSeF certificates, QR codes,
+technical corrections, errors and retries, testing on KSeF TE, what is verified and what is not
+covered yet).
 
 Not included: self-billing over Peppol, and CII under Peppol BIS Billing 3.0 (CII goes over
 Peppol only as XRechnung). Rendering the invoice PDF is out of scope: you supply the PDF. The
@@ -83,7 +88,8 @@ Laravel integration is a separate package, `intragile/laravel-einvoicing`.
 ## Install
 
 Requires PHP 8.3 or later, `ext-dom`, `ext-libxml`, `ext-mbstring`, `ext-openssl` and `ext-zlib`.
-KSeF batch sessions and invoice exports also need `ext-zip`.
+KSeF batch sessions and invoice exports also need `ext-zip`. Rendering the KSeF QR codes as images
+needs the optional `chillerlan/php-qrcode` ^5 (and `ext-gd` for PNG).
 
 The package is not published yet. Once it is, installation will be:
 

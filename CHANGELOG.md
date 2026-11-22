@@ -154,11 +154,49 @@ All notable changes to this project are documented here. The format follows
 - **Transport:** `HttpClient::maxResponseBytes()` reports the client's response size cap.
 - **Poland:** test helpers for KSeF TE: `SelfSignedCertificate` (seal and personal certificates for
   synthetic NIPs) and `KsefTestData` (the `/testdata` endpoints, refused outside TE), and the live
-  test group `ksef-live`, which needs no secrets. Live-verified on KSeF TE (API 2.10 RC): the full
-  group passed (14 of 14 tests in one run) on PHP 8.5 and on PHP 8.3. DEMO and PRODUCTION not
-  verified.
+  test group `ksef-live`, which needs no secrets. Live-verified on KSeF TE (API 2.10 RC): the group
+  passed in full with its first 14 tests on PHP 8.5 and on PHP 8.3 (2026-11-21), and with the 9
+  offline-mode tests added (23 of 23) on PHP 8.5 (2026-11-22). DEMO and PRODUCTION not verified.
+- **Poland, offline mode:** `send()` and `sendBatch()` take `$offline` for invoices issued outside
+  KSeF. `KsefInvoiceStatus::$invoicingMode` and `InvoiceMetadata::$invoicingMode`
+  (`InvoicingMode::Online|Offline`, null when absent) report KSeF's own classification, and
+  `InvoiceMetadata::$hashOfCorrectedInvoice` the corrected invoice of a technical correction. KSeF
+  may report Offline for an invoice sent without the flag (live on TE: an online send dated the day
+  before); the library makes no prediction of its own.
+- **Poland, offline mode:** `OfflineDeadlines::for()` computes the sending deadline of an offline
+  invoice (`OfflineMode`: Offline24, Unavailability, Failure, TotalFailure) as an `OfflineDeadline`
+  with a `DeadlineReason`: the next working day after the issue date or after an unavailability,
+  the 7th working day after a failure, a failure announced while the invoice is pending replacing
+  the deadline, no deadline while a failure runs, and no duty after a total failure.
+  `PolishWorkingDays` gives the Polish working days for 2025 to 2099, with 24 December a holiday
+  from 2025 (Dz.U. 2024 poz. 1965). A calculation aid, not legal advice; tested offline, including
+  the example of the Ministry of Finance documentation.
+- **Poland, Latarnia:** `Latarnia` reads the public KSeF availability service of TE and PRODUCTION
+  (DEMO has none and throws): `status()` (`LatarniaStatus`, `KsefAvailability`) and `messages()`
+  (`LatarniaMessage`, `LatarniaMessageType`). `OutageEvents::fold()` turns the messages into the
+  `Outage` list `OfflineDeadlines` takes. Live-verified on the TE Latarnia (shape only, TE serves
+  stale sample events); PRODUCTION is tested with canned answers only.
+- **Poland, KSeF certificates:** `KsefTransport::certificates()` (`KsefCertificates`): `limits()`,
+  `enrollmentData()`, `enroll()` of Offline and Authentication certificates, `retrieve()`, `query()`
+  and `revoke()`. The key is generated locally (EC P-256 by default, or RSA-2048), the CSR carries
+  exactly the subject KSeF reports and is DER-encoded in PHP, and the private key is returned once
+  in `EnrolledCertificate`, which keeps it out of debug output and refuses serialization. A
+  configuration with a KSeF token is refused before any request, as KSeF refuses enrolment after
+  token login. Live-verified on TE, including a XAdES login with an EC Authentication certificate.
+- **Poland, QR codes:** `CertificateVerificationLink` builds and signs KOD II (EC as IEEE P1363,
+  RSA as RSASSA-PSS), refusing a key that does not match the certificate, an Authentication
+  certificate and a certificate not valid on the issue date. `KsefQrCodes::online()` and
+  `offline()` return the links with their captions (`QrCode`: the KSeF number or OFFLINE, and
+  CERTYFIKAT). `QrRenderer` with `ChillerlanQrRenderer` draws them as SVG or PNG with the caption,
+  using the optional `chillerlan/php-qrcode` ^5 (new in `suggest`). EC and RSA links live-verified
+  on `qr-test.ksef.mf.gov.pl`; rendering tested offline.
+- **Poland, technical correction:** `sendTechnicalCorrection($corrected, $rejectedXml)` sends the
+  correction of a rejected offline invoice and computes the rejected file's hash itself, because
+  KSeF accepts a hash it has never seen; identical files are refused locally. A second correction of
+  the same invoice (KSeF error 21166) is thrown as `DocumentRejected`. Live-verified on TE.
 - **Documentation:** [docs/countries/POLAND.md](docs/countries/POLAND.md), including sending
-  and receiving through KSeF.
+  and receiving through KSeF, offline mode and deadlines, KSeF certificates, QR codes and technical
+  corrections.
 
 ### Changed
 

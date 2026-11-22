@@ -56,7 +56,7 @@ final class PackagingTest extends TestCase
     public function test_versions_are_aligned(): void
     {
         $alias = self::value(self::composer(''), 'extra', 'branch-alias', 'dev-main');
-        self::assertSame('1.0.x-dev', $alias);
+        self::assertSame('1.2.x-dev', $alias);
 
         foreach (array_keys(self::RULE_PACKAGES) as $dir) {
             self::assertSame($alias, self::value(self::composer($dir), 'extra', 'branch-alias', 'dev-main'), $dir);

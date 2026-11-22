@@ -68,8 +68,12 @@ Jelenleg tartalmazza:
   (azonosítás XAdES-tanúsítvánnyal vagy KSeF-tokennel, online és kötegelt munkamenetek, státusz,
   KSeF-szám és UPO-nyugta), a beérkezett számlák olvasása nyugtázásos kurzorral és számlaexport,
   KSeF-tokenek kezelése, valamint önaláírt tanúsítványok és tesztadatok a KSeF TE környezethez.
-  Élő hívásokkal ellenőrizve a KSeF TE tesztkörnyezetben (API 2.10 RC); a DEMO és a PRODUCTION nincs
-  ellenőrizve, az UPO aláírását a csomag nem ellenőrzi
+  Offline mód: offline küldés a KSeF által visszajelzett számlázási móddal, a beküldési határidő
+  kiszámítása a lengyel munkanapok alapján (számítási segédlet, nem jogi tanácsadás) a Latarnia
+  elérhetőségi szolgáltatás adataiból, KSeF-tanúsítvány igénylése (EC vagy RSA, helyben generált
+  kulccsal), a KOD I és az aláírt KOD II QR-link, opcionális képi megjelenítéssel, valamint
+  technikai javítás. Élő hívásokkal ellenőrizve a KSeF TE tesztkörnyezetben (API 2.10 RC); a DEMO
+  és a PRODUCTION nincs ellenőrizve, az UPO aláírását a csomag nem ellenőrzi
   ([Lengyelország](docs/countries/POLAND.md#send-to-ksef), angolul).
 
 Országjegyzetek: [Németország](docs/countries/DE.md) (jogalap, formátumok, csatornák és az ellenőrzés, angolul),
@@ -77,7 +81,8 @@ Országjegyzetek: [Németország](docs/countries/DE.md) (jogalap, formátumok, c
 futtatása, életciklus-státuszok, e-riportolás, útválasztás, küldés a B2Brouteren keresztül, ami
 még hiányzik; angolul), [Lengyelország](docs/countries/POLAND.md) (az FA(3) és a KSeF-átvitel: lengyel
 számlák készítése, olvasása és ellenőrzése, a leképezés, a KSeF-szám és az ellenőrző link, küldés,
-kötegelt küldés, fogadás és export a KSeF-en keresztül, hibák és újrapróbálás, tesztelés a KSeF TE
+kötegelt küldés, fogadás és export a KSeF-en keresztül, offline mód és határidők,
+KSeF-tanúsítványok, QR-kódok, technikai javítás, hibák és újrapróbálás, tesztelés a KSeF TE
 környezetben, mit ellenőriztünk, és ami még hiányzik; angolul).
 
 Nincs benne: önszámlázó (self-billing) számlák küldése Peppolon, valamint CII a Peppol BIS
@@ -88,7 +93,9 @@ Billing 3.0 szerint (CII Peppolon csak XRechnungként megy). A számla PDF-jéne
 ## Telepítés
 
 PHP 8.3 vagy újabb, valamint `ext-dom`, `ext-libxml`, `ext-mbstring`, `ext-openssl` és `ext-zlib`
-szükséges. A KSeF kötegelt munkamenetekhez és a számlaexporthoz az `ext-zip` is kell.
+szükséges. A KSeF kötegelt munkamenetekhez és a számlaexporthoz az `ext-zip` is kell. A KSeF
+QR-kódok képként való megjelenítéséhez az opcionális `chillerlan/php-qrcode` ^5 csomag (PNG-hez az
+`ext-gd` is) szükséges.
 
 A csomag még nincs publikálva. Publikálás után a telepítés:
 
