@@ -162,7 +162,8 @@ All notable changes to this project are documented here. The format follows
   synthetic NIPs) and `KsefTestData` (the `/testdata` endpoints, refused outside TE), and the live
   test group `ksef-live`, which needs no secrets. Live-verified on KSeF TE (API 2.10 RC): the group
   passed in full with its first 14 tests on PHP 8.5 and on PHP 8.3 (2026-11-21), and with the 9
-  offline-mode tests added (23 of 23) on PHP 8.5 (2026-11-22). DEMO and PRODUCTION not verified.
+  offline-mode tests added (23 of 23) on PHP 8.5 and on PHP 8.3 (2026-11-22). DEMO and PRODUCTION
+  not verified.
 - **Poland, offline mode:** `send()` and `sendBatch()` take `$offline` for invoices issued outside
   KSeF. `KsefInvoiceStatus::$invoicingMode` and `InvoiceMetadata::$invoicingMode`
   (`InvoicingMode::Online|Offline`, null when absent) report KSeF's own classification, and

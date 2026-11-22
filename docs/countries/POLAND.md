@@ -1625,8 +1625,9 @@ verified.**
   test listed the invoice after 6 `pending()` calls (130 s) and spent 7 metadata queries in total.
 - On 2026-11-22 the group, extended by 9 tests for offline mode, KSeF certificates, KOD II, the
   technical correction and Latarnia, passed in full on PHP 8.5: 23 of 23 tests in one run
-  (11:20–11:25 Europe/Warsaw), 8 metadata queries in total. The extended group has not yet been run
-  on PHP 8.3.
+  (11:20–11:25 Europe/Warsaw), 8 metadata queries in total. With the duplicate proof added it passed
+  in full again, one run each, on PHP 8.5 (13:10–13:15) and on PHP 8.3 (13:15–13:20): 23 of 23
+  tests, 178 assertions, 8 metadata queries per run.
 - RSA-OAEP runs through phpseclib on every PHP version.
 
 | Flow | Status |
