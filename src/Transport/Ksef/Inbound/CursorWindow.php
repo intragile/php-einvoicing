@@ -15,7 +15,8 @@ use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
  * appears later, so once every invoice of a window is acknowledged the next window can start at
  * its high water mark. Until then next() returns the same window, so an unacknowledged invoice
  * is offered again after a restart. Invoices stored exactly at a window boundary may be offered
- * in two adjacent windows: consumers deduplicate by KSeF number.
+ * in two adjacent windows: consumers deduplicate by KSeF number, which for a KsefTransport
+ * document id is KsefTransport::ksefNumberOf($documentId), not the id itself.
  *
  * The window is immutable; every change returns a new one to save in a KsefCursorStore.
  */

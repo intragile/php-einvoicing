@@ -12,9 +12,11 @@ use IntrAgile\EInvoicing\Tests\Support\RecordingHttpClient;
 use IntrAgile\EInvoicing\Tests\Support\RequestCounter;
 use IntrAgile\EInvoicing\Tests\Transport\Ksef\Session\SessionFixtures;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
+use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
 use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
+use IntrAgile\EInvoicing\Transport\Exception\TransportException;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\FailureCategory;
 use IntrAgile\EInvoicing\Transport\Http\HttpClient;
@@ -534,6 +536,8 @@ final class KsefTransportTest extends TestCase
         yield 'date with an offset' => [self::INBOX_FIRST.'@2026-11-21T09:00:00.000000+01:00'];
         yield 'impossible date' => [self::INBOX_FIRST.'@2026-02-30T09:00:00.000000Z'];
         yield 'two separators' => [self::FIRST_ID.'@2026-11-21T09:00:00.000000Z'];
+        // KSeF may store an invoice shortly before it assigns the number, never a day earlier.
+        yield 'date over a day before the KSeF number date' => [self::INBOX_FIRST.'@2026-11-18T22:59:59.999999Z'];
     }
 
     #[DataProvider('malformedInboundIds')]
@@ -654,6 +658,114 @@ final class KsefTransportTest extends TestCase
 
         self::assertInstanceOf(LogicException::class, $exception);
         self::assertSame([], self::paths($recorder));
+    }
+
+    public function test_id_date_up_to_a_day_before_the_ksef_number_date_is_accepted(): void
+    {
+        // The day before the date in the KSeF number, Polish time: 2026-11-19T00:00+01:00.
+        self::assertSame(self::INBOX_FIRST, KsefTransport::ksefNumberOf(self::INBOX_FIRST.'@2026-11-18T23:00:00.000000Z'));
+    }
+
+    public function test_invoice_the_read_no_longer_lists_keeps_its_plain_ksef_number(): void
+    {
+        // The stored window holds an invoice that this read does not return (for example after
+        // the context lost access to it): there is no date to put in its id.
+        $store = new InMemoryCursorStore;
+        $store->save(self::INBOX_KEY, new CursorWindow(new DateTimeImmutable('2026-11-20T00:00:00+00:00'), new DateTimeImmutable(self::INBOX_HWM), [self::INBOX_FIRST => false]));
+        $recorder = new RecordingHttpClient(...[...self::tokenAuthResponses(), self::metadataPage([])]);
+
+        $pending = $this->transport($recorder, $store)->pending();
+
+        self::assertSame([self::INBOX_FIRST], array_map(static fn ($reference): string => $reference->documentId, $pending));
+        self::assertSame('FA (3)', $pending[0]->documentType);
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function filesAndTheirFormCodes(): iterable
+    {
+        yield 'FA with KodFormularza' => ['<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/"><Naglowek><KodFormularza kodSystemowy="FA_RR (1)" wersjaSchemy="1-1E">FA_RR</KodFormularza></Naglowek></Faktura>', 'FA_RR (1)'];
+        yield 'PEF invoice' => ['<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"/>', 'PEF (3)'];
+        yield 'PEF correction' => ['<cn:CreditNote xmlns:cn="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"/>', 'PEF_KOR (3)'];
+        yield 'nothing to tell' => ['<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/"/>', 'FA (3)'];
+        yield 'not XML' => ['not xml', 'FA (3)'];
+    }
+
+    #[DataProvider('filesAndTheirFormCodes')]
+    public function test_fetch_without_metadata_names_the_form_code_metadata_would(string $xml, string $expected): void
+    {
+        $recorder = new RecordingHttpClient(...[...self::tokenAuthResponses(), new Response(200, ['Content-Type' => 'application/xml'], $xml)]);
+
+        self::assertSame($expected, $this->transport($recorder)->fetch(self::FIRST_ID)->reference->documentType);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unreadableDigests(): iterable
+    {
+        yield 'not Base64' => ['not*base64*at*all'];
+        yield 'not 32 bytes' => [base64_encode(str_repeat("\x01", 16))];
+    }
+
+    #[DataProvider('unreadableDigests')]
+    public function test_is_same_document_refuses_an_unreadable_digest(string $digest): void
+    {
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            new Response(200, ['Content-Type' => 'application/xml'], self::upoWithDocumentHash($digest)),
+        ]);
+
+        $exception = self::capture(fn () => $this->transport($recorder)->isSameDocument(self::duplicateOfUpoInvoice(), self::INVOICE_XML));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString('SkrotDokumentu', $exception->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{Response, class-string<TransportException>}>
+     */
+    public static function refusedOriginalReceipts(): iterable
+    {
+        // The original was sent in another context: duplicates are detected per seller NIP.
+        yield 'no permission (403)' => [new Response(403), AuthenticationFailed::class];
+        // No receipt for the original yet, or not in this context.
+        yield 'no receipt (21178)' => [self::json(400, ['exception' => ['exceptionDetailList' => [[
+            'exceptionCode' => 21178,
+            'exceptionDescription' => 'Nie znaleziono UPO dla podanych kryteriów.',
+            'details' => ['UPO o numerze KSeF '.self::UPO_KSEF_NUMBER.' i numerze referencyjnym sesji '.self::UPO_SESSION.' nie zostało znalezione.'],
+        ]]]]), UnexpectedResponse::class];
+    }
+
+    /**
+     * @param  class-string<TransportException>  $expected
+     */
+    #[DataProvider('refusedOriginalReceipts')]
+    public function test_is_same_document_throws_when_the_original_receipt_is_refused(Response $refusal, string $expected): void
+    {
+        $recorder = new RecordingHttpClient(...[...self::tokenAuthResponses(), $refusal]);
+
+        $exception = self::capture(fn () => $this->transport($recorder)->isSameDocument(self::duplicateOfUpoInvoice(), self::INVOICE_XML));
+
+        self::assertInstanceOf($expected, $exception);
+        self::assertInstanceOf(TransportException::class, $exception);
+    }
+
+    public function test_is_same_document_refuses_a_session_receipt_listing_two_documents(): void
+    {
+        $xml = (string) file_get_contents(__DIR__.'/../../fixtures/ksef/upo-te.xml');
+        self::assertSame(1, preg_match('#<Dokument>.*?</Dokument>#s', $xml, $match));
+        $document = $match[0] ?? '';
+        $second = str_replace(self::UPO_KSEF_NUMBER, '4425138491-20261121-00F89C000001-00', $document);
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            new Response(200, ['Content-Type' => 'application/xml'], str_replace($document, $document.$second, $xml)),
+        ]);
+
+        $exception = self::capture(fn () => $this->transport($recorder)->isSameDocument(self::duplicateOfUpoInvoice(), self::INVOICE_XML));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
     }
 
     public function test_is_same_document_refuses_a_receipt_for_another_invoice(): void

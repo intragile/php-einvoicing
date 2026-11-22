@@ -80,9 +80,14 @@ use RuntimeException;
  * The document id of a received invoice is "<KSeF number>@<PermanentStorage date>", the date in
  * UTC as "Y-m-d\TH:i:s.u\Z" (for example "5265877635-20250626-010080DD2B5E-26@2025-09-18T12:24:01.015432Z"):
  * fetch() takes everything it needs from the id, so a process that did not run pending(), such
- * as a queue worker, spends no metadata query. The id is the same on every listing, as the date
- * KSeF stored the invoice never changes. ksefNumberOf() returns the KSeF number of an id. A plain
- * KSeF number is accepted as an id too; fetch() then looks its date up with a metadata query.
+ * as a queue worker, spends no metadata query. As the date KSeF stored an invoice never changes,
+ * the id repeats on every listing that returns the invoice's metadata. The cursor keeps only KSeF
+ * numbers, though: an invoice still open in the stored window that the current read no longer
+ * returns (KSeF stopped listing it in the window's query, for example after the context lost
+ * access to it) is offered under its plain KSeF number. One invoice can therefore appear under
+ * both forms; consumers deduplicate by ksefNumberOf(), which returns the KSeF number of either. A
+ * plain KSeF number is accepted as an id too; fetch() then looks its date up with a metadata
+ * query.
  *
  * Every component shares one authenticator and one public-key registry, so the context
  * authenticates once and the Ministry of Finance keys are fetched once per instance. Polling is
@@ -134,6 +139,15 @@ final class KsefTransport implements InboundSource
 
     /** The format of the PermanentStorage date in an inbound document id, always in UTC. */
     private const ID_DATE_FORMAT = 'Y-m-d\TH:i:s.u\Z';
+
+    /** The length of a SHA-256 digest. */
+    private const SHA256_BYTES = 32;
+
+    /** The form codes of the PEF (UBL) files KSeF stores, by document element namespace. */
+    private const PEF_FORM_CODES = [
+        'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2' => 'PEF (3)',
+        'urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2' => 'PEF_KOR (3)',
+    ];
 
     private ?Fa3Validator $validator = null;
 
@@ -464,15 +478,22 @@ final class KsefTransport implements InboundSource
      * with the SHA-256 digest of the file, as OnlineSession::invoiceHash() computes it.
      *
      * True means the original is this exact file: the earlier send was accepted under the
-     * original KSeF number. False means another invoice with the same number is in KSeF.
+     * original KSeF number. False means another invoice with the same number is in KSeF. Any
+     * exception means the question cannot be answered now, never that the files differ:
+     * - duplicate detection is global per seller NIP, so the original may have been sent in
+     *   another context, whose receipt this context may not read (HTTP 403, AuthenticationFailed,
+     *   or error 21178, UnexpectedResponse);
+     * - KSeF may issue the receipt only once the original session is closed; until then it
+     *   answers 21178 as well.
+     * Treat both as "not provable yet" and retry later.
      *
      * @param  KsefInvoiceStatus  $duplicate  the status of the resend, as invoiceStatus() reads it
      * @param  string  $invoiceXml  the exact FA(3) bytes that were sent
      *
      * @throws LogicException when the status is not a duplicate naming the original KSeF number
      *                        and session; no request is made
-     * @throws UnexpectedResponse when the receipt does not list the original invoice alone or has
-     *                            no document digest
+     * @throws UnexpectedResponse when the receipt does not list the original invoice alone, or
+     *                            its document digest is missing or not a Base64 SHA-256 digest
      * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
      *                                                   sign with the configured certificate or
      *                                                   OpenSSL fails; see the class description
@@ -492,16 +513,16 @@ final class KsefTransport implements InboundSource
         }
 
         $upo = $this->upoByKsefNumber($session, $ksefNumber);
-        if ($upo->ksefNumbers !== [$ksefNumber] || $upo->documentHash === null) {
+        $original = $upo->documentHash === null ? false : base64_decode($upo->documentHash, true);
+        if ($upo->ksefNumbers !== [$ksefNumber] || $original === false || strlen($original) !== self::SHA256_BYTES) {
             throw new UnexpectedResponse(sprintf(
-                'The receipt (UPO) of session %s does not list the KSeF invoice %s alone with its document digest (SkrotDokumentu).',
+                'The receipt (UPO) of session %s does not list the KSeF invoice %s alone with a readable SHA-256 document digest (SkrotDokumentu).',
                 $session,
                 $ksefNumber,
             ));
         }
-        $original = base64_decode($upo->documentHash, true);
 
-        return $original !== false && hash_equals($original, hash('sha256', $invoiceXml, true));
+        return hash_equals($original, hash('sha256', $invoiceXml, true));
     }
 
     /**
@@ -603,8 +624,9 @@ final class KsefTransport implements InboundSource
         foreach ($window->pending() as $ksefNumber) {
             $metadata = $this->inbox[$ksefNumber] ?? null;
             $references[] = new InboundReference(
-                // An invoice whose metadata this read did not return keeps the plain KSeF number;
-                // fetch() then looks it up.
+                // An invoice of the stored window that this read did not return has no known date
+                // and keeps the plain KSeF number; fetch() then looks it up. Consumers deduplicate
+                // by ksefNumberOf().
                 $metadata === null ? $ksefNumber : self::inboundId($ksefNumber, $metadata->permanentStorageDate),
                 null,
                 null,
@@ -633,9 +655,10 @@ final class KsefTransport implements InboundSource
      *
      * For an id pending() returned, the reference carries the PermanentStorage date from the id
      * (or from the metadata this instance listed) and no metadata query is made; the document
-     * type is the form code this instance listed, or else the kodSystemowy of the file's
-     * KodFormularza, null when the file names none. For a plain KSeF number the metadata is
-     * queried by that number, unless this instance listed it.
+     * type is the form code this instance listed, or else the one the file names: the
+     * kodSystemowy of its KodFormularza, "PEF (3)" for a UBL Invoice, "PEF_KOR (3)" for a UBL
+     * CreditNote, and "FA (3)" as pending() assumes when nothing tells. For a plain KSeF number
+     * the metadata is queried by that number, unless this instance listed it.
      *
      * KSeF allows 64 invoice downloads per hour for each context and IP address, so pending()
      * with fetch() handles about 64 invoices an hour; a plain KSeF number spends one of the 20
@@ -886,7 +909,9 @@ final class KsefTransport implements InboundSource
     /**
      * The KSeF number and PermanentStorage date of an inbound document id, the date null for a
      * plain KSeF number; null when the id is neither form. The date must be written exactly as
-     * inboundId() writes it.
+     * inboundId() writes it, and may not be more than a day before the date in the KSeF number
+     * (the same margin lookUp() searches from): KSeF may store an invoice shortly before it
+     * assigns the number, never earlier.
      *
      * @return array{string, ?DateTimeImmutable}|null
      */
@@ -900,7 +925,11 @@ final class KsefTransport implements InboundSource
             return [$parts[0], null];
         }
         $date = DateTimeImmutable::createFromFormat('!'.self::ID_DATE_FORMAT, $parts[1], new DateTimeZone('UTC'));
-        if ($date === false || $date->format(self::ID_DATE_FORMAT) !== $parts[1]) {
+        if (
+            $date === false
+            || $date->format(self::ID_DATE_FORMAT) !== $parts[1]
+            || $date < KsefNumber::parse($parts[0])->acceptedOn->modify('-1 day')
+        ) {
             return null;
         }
 
@@ -908,19 +937,24 @@ final class KsefTransport implements InboundSource
     }
 
     /**
-     * The kodSystemowy of the file's KodFormularza (as "FA (3)"), or null when the file names
-     * none or cannot be read.
+     * The form code a file names, as the metadata formCode.systemCode gives it: the kodSystemowy
+     * of its KodFormularza, the PEF code of a UBL document, or DEFAULT_DOCUMENT_TYPE when the
+     * file tells none or cannot be read.
      */
-    private static function formCode(string $xml): ?string
+    private static function formCode(string $xml): string
     {
         try {
-            $element = SafeXml::load($xml)->getElementsByTagNameNS('*', 'KodFormularza')->item(0);
+            $document = SafeXml::load($xml);
         } catch (UnsafeXml|UnsupportedDocument) {
-            return null;
+            return self::DEFAULT_DOCUMENT_TYPE;
         }
+        $element = $document->getElementsByTagNameNS('*', 'KodFormularza')->item(0);
         $code = $element instanceof DOMElement ? trim($element->getAttribute('kodSystemowy')) : '';
+        if ($code !== '') {
+            return $code;
+        }
 
-        return $code === '' ? null : $code;
+        return self::PEF_FORM_CODES[$document->documentElement->namespaceURI ?? ''] ?? self::DEFAULT_DOCUMENT_TYPE;
     }
 
     /**
