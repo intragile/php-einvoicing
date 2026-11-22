@@ -19,6 +19,7 @@ use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
+use IntrAgile\EInvoicing\Transport\FailureCategory;
 use IntrAgile\EInvoicing\Transport\Http\HttpClient;
 use IntrAgile\EInvoicing\Transport\InboundDocument;
 use IntrAgile\EInvoicing\Transport\InboundReference;
@@ -63,7 +64,9 @@ use RuntimeException;
  *
  * The document id of a sent invoice is "<session reference>/<invoice reference>". status() maps
  * the KSeF invoice status onto a DeliveryStatus; invoiceStatus() and awaitFinal() return the full
- * KSeF status with the KSeF number, and upo() the receipt (UPO) of an accepted invoice.
+ * KSeF status with the KSeF number, and upo() the receipt (UPO) of an accepted invoice;
+ * upoByKsefNumber() reads the receipt of any session's invoice, and isSameDocument() tells whether
+ * the original a duplicate (status 440) names is the file that was resent.
  *
  * Receiving (InboundSource): pending() lists the invoices addressed to the context (Subject2) by
  * PermanentStorage date, in windows bounded by KSeF's high water mark. The window and the
@@ -412,6 +415,78 @@ final class KsefTransport implements InboundSource
         }
 
         return $this->session->upo($session, $status->ksefNumber);
+    }
+
+    /**
+     * The receipt (UPO) of an invoice by the reference of the session it was sent in and its KSeF
+     * number, without reading its status first. It serves invoices of any session of the context,
+     * such as the original that a duplicate (status 440) names.
+     *
+     * @throws InvalidArgumentException when the session reference or the KSeF number is malformed;
+     *                                  no request is made
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
+     * @throws TransportException when the request fails or KSeF has no receipt (error 21178)
+     * @throws UnsafeXml|UnsupportedDocument when the answer is not a readable UPO
+     */
+    public function upoByKsefNumber(string $sessionReference, string $ksefNumber): Upo
+    {
+        $sessionReference = self::reference($sessionReference, 'session reference');
+        if (! KsefNumber::isValid($ksefNumber)) {
+            throw new InvalidArgumentException('The receipt (UPO) needs a valid KSeF number.');
+        }
+
+        return $this->session->upo($sessionReference, $ksefNumber);
+    }
+
+    /**
+     * Whether the invoice a duplicate (status 440) names as the original is the given file, byte
+     * for byte. KSeF reports a duplicate when the seller NIP, the invoice type and the invoice
+     * number (Podmiot1/NIP, RodzajFaktury, P_2) match an accepted invoice, whatever the content,
+     * so a 440 alone does not prove that a resend reached KSeF before. This reads the receipt
+     * (UPO) of the original from its session and compares its document digest (SkrotDokumentu)
+     * with the SHA-256 digest of the file, as OnlineSession::invoiceHash() computes it.
+     *
+     * True means the original is this exact file: the earlier send was accepted under the
+     * original KSeF number. False means another invoice with the same number is in KSeF.
+     *
+     * @param  KsefInvoiceStatus  $duplicate  the status of the resend, as invoiceStatus() reads it
+     * @param  string  $invoiceXml  the exact FA(3) bytes that were sent
+     *
+     * @throws LogicException when the status is not a duplicate naming the original KSeF number
+     *                        and session; no request is made
+     * @throws UnexpectedResponse when the receipt does not list the original invoice alone or has
+     *                            no document digest
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
+     * @throws TransportException when the request fails or KSeF has no receipt for the original
+     * @throws UnsafeXml|UnsupportedDocument when the answer is not a readable UPO
+     */
+    public function isSameDocument(KsefInvoiceStatus $duplicate, string $invoiceXml): bool
+    {
+        $ksefNumber = $duplicate->originalKsefNumber;
+        $session = $duplicate->originalSessionReferenceNumber;
+        if ($duplicate->failure()?->category !== FailureCategory::Duplicate || $ksefNumber === null || $session === null) {
+            throw new LogicException(sprintf(
+                'Only a duplicate (status 440) that names the original KSeF number and session can be compared with a file; this status is %d: %s.',
+                $duplicate->code,
+                rtrim($duplicate->description, '. '),
+            ));
+        }
+
+        $upo = $this->upoByKsefNumber($session, $ksefNumber);
+        if ($upo->ksefNumbers !== [$ksefNumber] || $upo->documentHash === null) {
+            throw new UnexpectedResponse(sprintf(
+                'The receipt (UPO) of session %s does not list the KSeF invoice %s alone with its document digest (SkrotDokumentu).',
+                $session,
+                $ksefNumber,
+            ));
+        }
+        $original = base64_decode($upo->documentHash, true);
+
+        return $original !== false && hash_equals($original, hash('sha256', $invoiceXml, true));
     }
 
     /**

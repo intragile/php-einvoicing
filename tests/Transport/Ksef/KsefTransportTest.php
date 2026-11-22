@@ -24,6 +24,7 @@ use IntrAgile\EInvoicing\Transport\Ksef\KsefConfig;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefErrors;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefTransport;
 use IntrAgile\EInvoicing\Transport\Ksef\Session\InvoicingMode;
+use IntrAgile\EInvoicing\Transport\Ksef\Session\KsefInvoiceStatus;
 use InvalidArgumentException;
 use LogicException;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -44,6 +45,11 @@ final class KsefTransportTest extends TestCase
     private const DOCUMENT_ID = self::SESSION_REF.'/'.self::INVOICE_REF;
 
     private const ORIGINAL_KSEF_NUMBER = '5265877635-20250626-010080DD2B5E-26';
+
+    /** The session and KSeF number of the invoice the bundled TE receipt lists. */
+    private const UPO_SESSION = '20261120-SO-4F70173000-DBF8CA6741-F1';
+
+    private const UPO_KSEF_NUMBER = '4425138491-20261121-00F89C000000-00';
 
     private const INBOX_FIRST = '5555555555-20261120-010080615740-BB';
 
@@ -478,6 +484,95 @@ final class KsefTransportTest extends TestCase
         );
     }
 
+    public function test_upo_by_ksef_number_fetches_the_receipt_of_any_session_without_a_status_read(): void
+    {
+        $xml = (string) file_get_contents(__DIR__.'/../../fixtures/ksef/upo-te.xml');
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            new Response(200, ['Content-Type' => 'application/xml'], $xml),
+        ]);
+
+        $upo = $this->transport($recorder)->upoByKsefNumber(self::UPO_SESSION, self::UPO_KSEF_NUMBER);
+
+        self::assertSame($xml, $upo->xml);
+        self::assertSame(
+            ['GET /sessions/'.self::UPO_SESSION.'/invoices/ksef/'.self::UPO_KSEF_NUMBER.'/upo'],
+            array_values(array_filter(self::paths($recorder), static fn (string $path): bool => str_starts_with($path, 'GET /sessions/'))),
+        );
+    }
+
+    public function test_upo_by_ksef_number_refuses_malformed_arguments_without_a_request(): void
+    {
+        $recorder = new RecordingHttpClient;
+        $transport = $this->transport($recorder);
+
+        self::assertInstanceOf(InvalidArgumentException::class, self::capture(static fn () => $transport->upoByKsefNumber('a/b', self::UPO_KSEF_NUMBER)));
+        self::assertInstanceOf(InvalidArgumentException::class, self::capture(static fn () => $transport->upoByKsefNumber(self::UPO_SESSION, 'not-a-ksef-number')));
+        self::assertSame([], self::paths($recorder));
+    }
+
+    public function test_duplicate_is_the_same_document_when_the_original_receipt_carries_its_hash(): void
+    {
+        $resent = self::INVOICE_XML;
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            new Response(200, ['Content-Type' => 'application/xml'], self::upoWithDocumentHash(base64_encode(hash('sha256', $resent, true)))),
+        ]);
+
+        self::assertTrue($this->transport($recorder)->isSameDocument(self::duplicateOfUpoInvoice(), $resent));
+        self::assertSame(
+            ['GET /sessions/'.self::UPO_SESSION.'/invoices/ksef/'.self::UPO_KSEF_NUMBER.'/upo'],
+            array_values(array_filter(self::paths($recorder), static fn (string $path): bool => str_starts_with($path, 'GET /sessions/'))),
+        );
+    }
+
+    public function test_duplicate_is_another_document_when_the_original_receipt_carries_another_hash(): void
+    {
+        // Same seller, invoice type and number (what KSeF compares), different bytes.
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            new Response(200, ['Content-Type' => 'application/xml'], (string) file_get_contents(__DIR__.'/../../fixtures/ksef/upo-te.xml')),
+        ]);
+
+        self::assertFalse($this->transport($recorder)->isSameDocument(self::duplicateOfUpoInvoice(), self::INVOICE_XML));
+    }
+
+    /**
+     * @return iterable<string, array{KsefInvoiceStatus}>
+     */
+    public static function statusesThatAreNotProvableDuplicates(): iterable
+    {
+        yield 'delivered' => [new KsefInvoiceStatus(200, 'Sukces', [], self::UPO_KSEF_NUMBER)];
+        yield 'duplicate without the original session' => [new KsefInvoiceStatus(440, 'Duplikat faktury', [], originalKsefNumber: self::UPO_KSEF_NUMBER)];
+        yield 'duplicate without the original number' => [new KsefInvoiceStatus(440, 'Duplikat faktury', [], originalSessionReferenceNumber: self::UPO_SESSION)];
+    }
+
+    #[DataProvider('statusesThatAreNotProvableDuplicates')]
+    public function test_is_same_document_refuses_a_status_without_the_original_references(KsefInvoiceStatus $status): void
+    {
+        $recorder = new RecordingHttpClient;
+        $transport = $this->transport($recorder);
+
+        $exception = self::capture(static fn () => $transport->isSameDocument($status, self::INVOICE_XML));
+
+        self::assertInstanceOf(LogicException::class, $exception);
+        self::assertSame([], self::paths($recorder));
+    }
+
+    public function test_is_same_document_refuses_a_receipt_for_another_invoice(): void
+    {
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            new Response(200, ['Content-Type' => 'application/xml'], (string) file_get_contents(__DIR__.'/../../fixtures/ksef/upo-te.xml')),
+        ]);
+        $status = new KsefInvoiceStatus(440, 'Duplikat faktury', [], originalKsefNumber: self::ORIGINAL_KSEF_NUMBER, originalSessionReferenceNumber: self::UPO_SESSION);
+
+        $exception = self::capture(fn () => $this->transport($recorder)->isSameDocument($status, self::INVOICE_XML));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString(self::ORIGINAL_KSEF_NUMBER, $exception->getMessage());
+    }
+
     /**
      * @return iterable<string, array{array<string, mixed>, string}>
      */
@@ -737,6 +832,41 @@ final class KsefTransportTest extends TestCase
             new Response(201),
             new Response(204),
         ];
+    }
+
+    /**
+     * A 440 answer naming the invoice of the bundled TE receipt as the original.
+     */
+    private static function duplicateOfUpoInvoice(): KsefInvoiceStatus
+    {
+        return KsefInvoiceStatus::fromAnswer([
+            'ordinalNumber' => 2,
+            'referenceNumber' => self::SECOND_INVOICE_REF,
+            'invoiceHash' => base64_encode(hash('sha256', self::INVOICE_XML, true)),
+            'invoicingDate' => '2026-11-22T10:00:01.0154302+00:00',
+            'status' => [
+                'code' => 440,
+                'description' => 'Duplikat faktury',
+                'details' => ['Duplikat faktury. Faktura o numerze KSeF: '.self::UPO_KSEF_NUMBER.' została już prawidłowo przesłana do systemu w sesji: '.self::UPO_SESSION],
+                'extensions' => [
+                    'originalSessionReferenceNumber' => self::UPO_SESSION,
+                    'originalKsefNumber' => self::UPO_KSEF_NUMBER,
+                ],
+            ],
+        ], 'The KSeF request');
+    }
+
+    /**
+     * The bundled TE receipt with another document digest (its signature no longer matches,
+     * which the parser does not check).
+     */
+    private static function upoWithDocumentHash(string $hash): string
+    {
+        $xml = (string) file_get_contents(__DIR__.'/../../fixtures/ksef/upo-te.xml');
+        $replaced = preg_replace('#<SkrotDokumentu>[^<]+</SkrotDokumentu>#', '<SkrotDokumentu>'.$hash.'</SkrotDokumentu>', $xml, 1, $count);
+        self::assertSame(1, $count);
+
+        return (string) $replaced;
     }
 
     /**

@@ -87,6 +87,7 @@ final class KsefInvoiceStatusTest extends TestCase
         self::assertSame('5265877635-20250626-010080DD2B5E-26', $status->ksefNumber);
         self::assertSame('2026-11-21T10:00:03+00:00', $status->acquisitionDate?->format(DATE_ATOM));
         self::assertNull($status->originalKsefNumber);
+        self::assertNull($status->originalSessionReferenceNumber);
     }
 
     public function test_status_reads_invoicing_mode(): void

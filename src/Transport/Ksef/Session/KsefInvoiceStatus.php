@@ -17,7 +17,9 @@ use IntrAgile\EInvoicing\Transport\Ksef\KsefAnswer;
  * Status codes map to delivery states as follows:
  * - 100 (accepted for processing) and 150 (processing): Pending;
  * - 200 (success, KSeF number assigned): Delivered;
- * - 440 (duplicate): Failed / Duplicate, the original KSeF number in the message;
+ * - 440 (duplicate): Failed / Duplicate, the original KSeF number in the message. KSeF detects a
+ *   duplicate by seller NIP, invoice type and invoice number, not by the file; whether the
+ *   original is the same file is told by KsefTransport::isSameDocument();
  * - 430 (invoice file verification) and 450 (semantic verification): Failed / Validation;
  * - 410 (permission scope) and 415 (attachments not allowed): Failed / DocumentNotSupported;
  * - 405 (cancelled by a session error), 435 (decryption error) and 550 (cancelled by the
@@ -43,6 +45,9 @@ final readonly class KsefInvoiceStatus
      * @param  InvoicingMode|null  $invoicingMode  how KSeF classified the invoice; null when the
      *                                             answer names no mode (as for a rejected invoice)
      *                                             or one this version does not know
+     * @param  string|null  $originalSessionReferenceNumber  for a duplicate (status 440), the
+     *                                                       reference of the session the
+     *                                                       original invoice was sent in
      */
     public function __construct(
         public int $code,
@@ -52,6 +57,7 @@ final readonly class KsefInvoiceStatus
         public ?DateTimeImmutable $acquisitionDate = null,
         public ?string $originalKsefNumber = null,
         public ?InvoicingMode $invoicingMode = null,
+        public ?string $originalSessionReferenceNumber = null,
     ) {}
 
     /**
@@ -79,6 +85,7 @@ final readonly class KsefInvoiceStatus
             is_string($acquisition) ? KsefAnswer::parseDateTime($acquisition) : null,
             self::optionalString($extensions['originalKsefNumber'] ?? null),
             InvoicingMode::fromAnswer($answer['invoicingMode'] ?? null),
+            self::optionalString($extensions['originalSessionReferenceNumber'] ?? null),
         );
     }
 

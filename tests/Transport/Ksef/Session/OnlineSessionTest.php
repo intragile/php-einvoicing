@@ -310,6 +310,7 @@ final class OnlineSessionTest extends TestCase
         self::assertTrue($status->isFinal());
         self::assertSame(DeliveryState::Failed, $status->deliveryState());
         self::assertSame('5265877635-20250626-010080DD2B5E-26', $status->originalKsefNumber);
+        self::assertSame('20250626-SO-2F14610000-242991F8C9-B4', $status->originalSessionReferenceNumber);
         self::assertNull($status->ksefNumber);
         $failure = $status->failure();
         self::assertNotNull($failure);
