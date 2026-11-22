@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+use IntrAgile\EInvoicing\Poland\Fa3InvoiceFacts;
 use IntrAgile\EInvoicing\Poland\KsefEnvironment;
 use IntrAgile\EInvoicing\Poland\Nip;
 use IntrAgile\EInvoicing\Poland\VerificationLink;
@@ -247,7 +248,7 @@ final class CertificateVerificationLink
                 throw new RuntimeException('OpenSSL could not compute the ECDSA signature.');
             }
 
-            return self::derToP1363($der);
+            return EcdsaSignature::derToP1363($der, self::EC_FIELD_BYTES);
         }
 
         if ($details['type'] === OPENSSL_KEYTYPE_RSA) {
@@ -301,62 +302,6 @@ final class CertificateVerificationLink
         }
 
         return $key;
-    }
-
-    /**
-     * Converts an ASN.1 DER ECDSA-Sig-Value (SEQUENCE of two INTEGERs) to IEEE P1363 r‖s, each
-     * a 32-byte big-endian unsigned integer.
-     */
-    private static function derToP1363(string $der): string
-    {
-        $offset = 0;
-        if (self::byte($der, $offset++) !== 0x30) {
-            throw new RuntimeException('The ECDSA signature is not a DER SEQUENCE.');
-        }
-        $length = self::derLength($der, $offset);
-        if ($offset + $length !== strlen($der)) {
-            throw new RuntimeException('The ECDSA signature has an inconsistent DER length.');
-        }
-
-        $result = '';
-        for ($i = 0; $i < 2; $i++) {
-            if (self::byte($der, $offset++) !== 0x02) {
-                throw new RuntimeException('The ECDSA signature does not hold two DER INTEGERs.');
-            }
-            $intLength = self::derLength($der, $offset);
-            $integer = ltrim(substr($der, $offset, $intLength), "\x00");
-            $offset += $intLength;
-            if (strlen($integer) > self::EC_FIELD_BYTES) {
-                throw new RuntimeException('The ECDSA signature value is longer than the P-256 field.');
-            }
-            $result .= str_pad($integer, self::EC_FIELD_BYTES, "\x00", STR_PAD_LEFT);
-        }
-
-        return $result;
-    }
-
-    private static function derLength(string $der, int &$offset): int
-    {
-        $first = self::byte($der, $offset++);
-        if ($first < 0x80) {
-            return $first;
-        }
-
-        $length = 0;
-        for ($count = $first & 0x7F; $count > 0; $count--) {
-            $length = ($length << 8) | self::byte($der, $offset++);
-        }
-
-        return $length;
-    }
-
-    private static function byte(string $der, int $offset): int
-    {
-        if ($offset >= strlen($der)) {
-            throw new RuntimeException('The ECDSA signature is truncated.');
-        }
-
-        return ord($der[$offset]);
     }
 
     private static function base64Url(string $bytes): string

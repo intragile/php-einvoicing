@@ -125,6 +125,11 @@ final class CertificateVerificationLinkTest extends TestCase
         self::assertFalse($pkcs1->verify($signed, $signature));
     }
 
+    /**
+     * The CertificateCredentials constructor enforces the key match, so a mismatched pair is
+     * refused before a link can be built; the check repeated inside the builder is defensive and
+     * cannot be reached through the public API.
+     */
     public function test_mismatched_key_refused(): void
     {
         $certificate = QrFixtures::certificate('ec');

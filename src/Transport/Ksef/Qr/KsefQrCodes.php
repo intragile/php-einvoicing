@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Transport\Ksef\Qr;
 
 use IntrAgile\EInvoicing\Exception\UnsafeXml;
 use IntrAgile\EInvoicing\Exception\UnsupportedDocument;
+use IntrAgile\EInvoicing\Poland\Fa3InvoiceFacts;
 use IntrAgile\EInvoicing\Poland\KsefEnvironment;
 use IntrAgile\EInvoicing\Poland\KsefNumber;
 use IntrAgile\EInvoicing\Poland\VerificationLink;
@@ -41,7 +42,7 @@ final class KsefQrCodes
      */
     public static function online(KsefEnvironment $env, string $invoiceXml, ?string $ksefNumber): QrCode
     {
-        $label = $ksefNumber === null ? self::OFFLINE_LABEL : KsefNumber::parse($ksefNumber)->value;
+        $label = self::label($ksefNumber);
 
         return new QrCode(VerificationLink::forInvoiceXml($env, $invoiceXml), $label);
     }
@@ -68,10 +69,21 @@ final class KsefQrCodes
         CertificateCredentials $offlineCertificate,
         ?string $ksefNumber = null,
     ): array {
-        $kod1 = self::online($env, $invoiceXml, $ksefNumber);
-        $sellerNip = Fa3InvoiceFacts::read($invoiceXml)->sellerNip;
-        $kod2 = CertificateVerificationLink::build($env, $ctx, $sellerNip, $invoiceXml, $offlineCertificate);
+        $label = self::label($ksefNumber);
+        $facts = Fa3InvoiceFacts::read($invoiceXml);
+        $hash = VerificationLink::invoiceHash($invoiceXml);
 
-        return [$kod1, new QrCode($kod2, self::CERTIFICATE_LABEL)];
+        $kod1 = VerificationLink::invoiceFromHash($env, $facts->sellerNip, $facts->issueDate, $hash);
+        $kod2 = CertificateVerificationLink::fromHash($env, $ctx, $facts->sellerNip, $hash, $facts->issueDate, $offlineCertificate);
+
+        return [new QrCode($kod1, $label), new QrCode($kod2, self::CERTIFICATE_LABEL)];
+    }
+
+    /**
+     * @throws InvalidArgumentException when the KSeF number is invalid
+     */
+    private static function label(?string $ksefNumber): string
+    {
+        return $ksefNumber === null ? self::OFFLINE_LABEL : KsefNumber::parse($ksefNumber)->value;
     }
 }

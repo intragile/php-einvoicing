@@ -76,8 +76,8 @@ final class ChillerlanQrRenderer implements QrRenderer
         $height = $label === '' ? (float) $size : $size + $fontSize * 1.5;
 
         $svg = sprintf(
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %s" shape-rendering="crispEdges">'
-            .'<rect width="%1$d" height="%2$s" fill="#ffffff"/><path fill="#000000" d="%s"/>',
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %1$d %2$s" shape-rendering="crispEdges">'
+            .'<rect width="%1$d" height="%2$s" fill="#ffffff"/><path fill="#000000" d="%3$s"/>',
             $size,
             self::number($height),
             $path,
@@ -85,7 +85,7 @@ final class ChillerlanQrRenderer implements QrRenderer
 
         if ($label !== '') {
             $svg .= sprintf(
-                '<text x="%s" y="%s" font-family="sans-serif" font-size="%s" text-anchor="middle" fill="#000000">%s</text>',
+                '<text x="%1$s" y="%2$s" font-family="sans-serif" font-size="%3$s" text-anchor="middle" fill="#000000">%4$s</text>',
                 self::number($size / 2),
                 self::number($size + $fontSize),
                 self::number($fontSize),

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace IntrAgile\EInvoicing\Transport\Ksef\Qr;
+namespace IntrAgile\EInvoicing\Poland;
 
 use DateTimeImmutable;
 use DOMElement;
@@ -15,7 +15,7 @@ use InvalidArgumentException;
 
 /**
  * The seller NIP (Podmiot1/DaneIdentyfikacyjne/NIP) and the issue date (Fa/P_1) of an FA(3)
- * invoice, as the verification links need them.
+ * invoice, as the KSeF verification links (KOD I and KOD II) need them.
  *
  * @internal
  */
