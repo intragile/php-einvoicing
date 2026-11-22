@@ -304,10 +304,10 @@ final class CertificateVerificationLinkTest extends TestCase
                 $bytes = "\x00".$bytes;
             }
 
-            return "\x02".chr(strlen($bytes)).$bytes;
+            return "\x02".chr(strlen($bytes) & 0xFF).$bytes;
         };
         $body = $integer(substr($signature, 0, 32)).$integer(substr($signature, 32));
 
-        return "\x30".chr(strlen($body)).$body;
+        return "\x30".chr(strlen($body) & 0xFF).$body;
     }
 }

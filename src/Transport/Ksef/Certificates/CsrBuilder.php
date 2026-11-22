@@ -182,7 +182,7 @@ final class CsrBuilder
     private static function oid(string $dotted): string
     {
         $arcs = array_map('intval', explode('.', $dotted));
-        $bytes = chr(40 * $arcs[0] + $arcs[1]);
+        $bytes = chr((40 * $arcs[0] + $arcs[1]) & 0xFF);
         foreach (array_slice($arcs, 2) as $arc) {
             $encoded = chr($arc & 0x7F);
             for ($arc >>= 7; $arc > 0; $arc >>= 7) {
@@ -208,11 +208,11 @@ final class CsrBuilder
     {
         $length = strlen($contents);
         if ($length < 0x80) {
-            return chr($tag).chr($length).$contents;
+            return chr($tag & 0xFF).chr($length & 0xFF).$contents;
         }
         $lengthBytes = ltrim(pack('N', $length), "\x00");
 
-        return chr($tag).chr(0x80 | strlen($lengthBytes)).$lengthBytes.$contents;
+        return chr($tag & 0xFF).chr((0x80 | strlen($lengthBytes)) & 0xFF).$lengthBytes.$contents;
     }
 
     private static function pemToDer(string $pem): string
