@@ -49,7 +49,7 @@ final class OfflineDeadlinesTest extends TestCase
 
     public function test_documented_example_offline24_moved_by_failure(): void
     {
-        // tryby-offline.md: offline24 invoice on Wed 2025-07-08, failure announced Thu 2025-07-09,
+        // tryby-offline.md: offline24 invoice on Tue 2025-07-08, failure announced Wed 2025-07-09,
         // failure removed Sat 2025-07-12, deadline Tue 2025-07-22.
         $failure = new Outage(OutageCategory::Failure, self::at('2025-07-09 10:00'), self::at('2025-07-12 14:00'), 'evt-1');
 

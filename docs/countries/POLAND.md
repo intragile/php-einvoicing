@@ -1181,9 +1181,14 @@ prediction of KSeF's classification. Neither the flag nor the reported mode comp
   Easter is computed in the class (Gregorian computus). Days are taken in Europe/Warsaw.
 - **Supported years** are 2025 to 2099; any other year throws `InvalidArgumentException`, because
   a later change of the holiday law cannot be known here. A change of the law needs a new release.
-- `$cause` is required for `Unavailability` (a `Maintenance` outage) and `Failure` (a `Failure`
-  outage), and ignored otherwise. `$outages` is the list of announced outages, for example folded
-  from Latarnia messages (see below); maintenance entries in it are ignored.
+- `$cause` is the outage the invoice was issued under. It is required for `Unavailability` (a
+  `Maintenance` outage) and `Failure` (a `Failure` outage); a missing or mismatched cause throws
+  `InvalidArgumentException`. In `Offline24` mode a `Maintenance` cause is ignored, and a `Failure`
+  cause never moves the deadline by itself (it is not "announced while pending"), but it joins the
+  failures the count runs from once another failure starts inside the pending window. With
+  `TotalFailure` the cause is not read.
+- `$outages` is the list of announced outages, for example folded from Latarnia messages (see
+  below); maintenance entries in it are ignored.
 
 <!-- sample: run -->
 ```php
@@ -1199,8 +1204,8 @@ $warsaw = new DateTimeZone('Europe/Warsaw');
 $deadline = OfflineDeadlines::for(new DateTimeImmutable('2026-12-23', $warsaw), OfflineMode::Offline24);
 echo $deadline->reason->name, ' ', $deadline->deadline?->format('Y-m-d H:i:s'), "\n"; // NextWorkingDay 2026-12-28 23:59:59
 
-// The example of the Ministry of Finance documentation: an offline24 invoice of Wednesday 8 July 2025,
-// a failure announced on Thursday 9 July and removed on Saturday 12 July.
+// The example of the Ministry of Finance documentation: an offline24 invoice of Tuesday 8 July 2025,
+// a failure announced on Wednesday 9 July and removed on Saturday 12 July.
 $failure = new Outage(OutageCategory::Failure, new DateTimeImmutable('2025-07-09 10:00', $warsaw), new DateTimeImmutable('2025-07-12 14:00', $warsaw));
 $deadline = OfflineDeadlines::for(new DateTimeImmutable('2025-07-08', $warsaw), OfflineMode::Offline24, [$failure]);
 echo $deadline->reason->name, ' ', $deadline->deadline?->format('Y-m-d'), "\n"; // AfterFailure 2025-07-22
@@ -1234,15 +1239,19 @@ echo $status->availability->name, "\n"; // Available, Maintenance, Failure or To
 $outages = OutageEvents::fold($latarnia->messages()); // list<Outage>, for OfflineDeadlines
 ```
 
-- `status()` returns the current `KsefAvailability` and the messages it follows from. When several
-  events are active, the most severe one wins: total failure, then failure, then maintenance.
+- `status()` returns the current `KsefAvailability` and the messages it follows from, as Latarnia
+  reports them. When several events are active, Latarnia reports the most severe: total failure,
+  then failure, then maintenance.
 - `messages()` returns every current `LatarniaMessage`: announced and running maintenance windows
   and failures, and those that ended in the last 30 days. Each has an id, an event id, a category,
   a type (`LatarniaMessageType`: `MaintenanceAnnouncement`, `FailureStart`, `FailureEnd`), a title
   and text, a start, an end (null while a failure runs), a version and a publication time.
 - `OutageEvents::fold()` groups the messages by event id and keeps the highest version of each
-  message. A maintenance announcement carries its whole window. A failure ends at the end its
-  `FAILURE_END` message gives; without one, it has not ended.
+  message (same id). A maintenance announcement carries its whole window. A failure starts at its
+  `FAILURE_START` message and ends at the end its `FAILURE_END` message gives, or else at the end
+  Latarnia copied onto the start message; with neither, it has not ended. An event whose start
+  message has already dropped out of the list is built from its end message alone, which repeats
+  the start. The outages are ordered by start, then by event id.
 - A failed request, a server error (5xx) or a rate limit (429) throws `TransportUnavailable`;
   anything else unexpected, including a body of the wrong shape, throws `UnexpectedResponse`.
   Nothing is repeated, and request timeouts belong to your PSR-18 client.
