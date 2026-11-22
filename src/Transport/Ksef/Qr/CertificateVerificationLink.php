@@ -221,7 +221,8 @@ final class CertificateVerificationLink
             throw new InvalidArgumentException('The certificate has no readable serial number.');
         }
 
-        return KsefCertificate::serial($serial);
+        // OpenSSL drops leading zero bytes; KSeF always writes the serial as 16 digits.
+        return KsefCertificate::serial(str_pad($serial, 16, '0', STR_PAD_LEFT));
     }
 
     private static function sign(string $data, CertificateCredentials $credentials): string

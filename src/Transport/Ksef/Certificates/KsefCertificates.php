@@ -74,6 +74,9 @@ final class KsefCertificates
 
     private const STATUS_OPERATION = 'The KSeF request GET /certificates/enrollments/{referenceNumber}';
 
+    /** What to do when KSeF may have issued a certificate whose private key is lost. */
+    private const UNCONFIRMED_ADVICE = 'KSeF may still issue the certificate, but its private key is lost, so revoke it when it appears in query() and enrol again.';
+
     /** @var Closure(): DateTimeImmutable */
     private readonly Closure $now;
 
@@ -156,7 +159,9 @@ final class KsefCertificates
      * statusPollAttempts times in all, statusPollWaitMs apart. The private key exists only in the
      * returned object: store it before doing anything else with the result. When reading the
      * issued certificate back fails, the exception, of the type the failure had and with it as the
-     * previous one, names the issued serial number and says to revoke it.
+     * previous one, names the issued serial number and says to revoke it. When reading the
+     * status of the accepted enrolment fails, the exception names the enrolment reference number
+     * and says to revoke the certificate if it appears in query().
      *
      * @param  ?string  $name  the certificate's own name: 5 to 100 letters (Polish ones included),
      *                         digits, spaces, hyphens and underscores; "<type> <UTC date and time>"
@@ -330,17 +335,23 @@ final class KsefCertificates
     {
         $path = '/certificates/enrollments/'.rawurlencode($reference);
         for ($attempt = 1; ; $attempt++) {
-            $answer = $this->api->authorized(fn (string $bearer): array => $this->api->json('GET', $path, null, $bearer));
-            $code = KsefAnswer::int($answer, ['status', 'code'], self::STATUS_OPERATION);
+            // Once the enrolment is accepted KSeF may issue the certificate at any moment, while
+            // its private key exists only in this call: a failed read must name the enrolment.
+            try {
+                $answer = $this->api->authorized(fn (string $bearer): array => $this->api->json('GET', $path, null, $bearer));
+                $code = KsefAnswer::int($answer, ['status', 'code'], self::STATUS_OPERATION);
+                if ($code === self::STATUS_ISSUED) {
+                    $serial = KsefAnswer::string($answer, ['certificateSerialNumber'], self::STATUS_OPERATION);
+
+                    return self::answerSerial($serial, self::STATUS_OPERATION);
+                }
+            } catch (Throwable $exception) {
+                throw self::unconfirmedEnrolment($exception, $reference);
+            }
             $status = is_array($answer['status'] ?? null) ? $answer['status'] : [];
             $description = is_string($status['description'] ?? null) ? $status['description'] : '';
             $details = is_array($status['details'] ?? null) ? array_values(array_filter($status['details'], 'is_string')) : [];
 
-            if ($code === self::STATUS_ISSUED) {
-                $serial = KsefAnswer::string($answer, ['certificateSerialNumber'], self::STATUS_OPERATION);
-
-                return self::answerSerial($serial, self::STATUS_OPERATION);
-            }
             if ($code === self::STATUS_REJECTED) {
                 $lines = $details === [] ? [$description] : array_map(static fn (string $detail): string => $description.': '.$detail, $details);
 
@@ -353,7 +364,13 @@ final class KsefCertificates
                 throw new TransportUnavailable(sprintf('KSeF cancelled the certificate enrolment %s (status %d: %s); enrol again.', $reference, $code, $description));
             }
             if ($code !== self::STATUS_IN_PROGRESS) {
-                throw new UnexpectedResponse(sprintf('The KSeF certificate enrolment %s failed with status %d: %s', $reference, $code, $description));
+                throw new UnexpectedResponse(sprintf(
+                    'The KSeF certificate enrolment %s failed with status %d: %s. %s',
+                    $reference,
+                    $code,
+                    rtrim($description, '.'),
+                    self::UNCONFIRMED_ADVICE,
+                ));
             }
             if ($attempt >= $this->config->statusPollAttempts) {
                 throw new TransportUnavailable(sprintf(
@@ -375,13 +392,35 @@ final class KsefCertificates
      */
     private static function orphaned(Throwable $exception, string $serial): Throwable
     {
-        $message = sprintf(
+        return self::rethrown($exception, sprintf(
             'KSeF issued the certificate %s, but it could not be read back with its private key: %s The private key is gone, so revoke the certificate %s and enrol again.',
             $serial,
             rtrim($exception->getMessage(), '.').'.',
             $serial,
-        );
+        ));
+    }
 
+    /**
+     * The failure of reading the status of an accepted enrolment, as an exception of the same
+     * type, and with the same fields, that names the enrolment reference and says how to clean up
+     * a certificate KSeF may still issue. The original is kept as the previous exception.
+     */
+    private static function unconfirmedEnrolment(Throwable $exception, string $reference): Throwable
+    {
+        return self::rethrown($exception, sprintf(
+            'Reading the KSeF certificate enrolment %s failed: %s %s',
+            $reference,
+            rtrim($exception->getMessage(), '.').'.',
+            self::UNCONFIRMED_ADVICE,
+        ));
+    }
+
+    /**
+     * The exception again with another message: the same type and fields, the original kept as
+     * the previous exception. An exception of a type not known here is returned unchanged.
+     */
+    private static function rethrown(Throwable $exception, string $message): Throwable
+    {
         return match ($exception::class) {
             TransportUnavailable::class => new TransportUnavailable($message, $exception),
             OutcomeUnknown::class => new OutcomeUnknown($message, $exception),

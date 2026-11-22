@@ -214,6 +214,30 @@ final class KsefCertificatesTest extends TestCase
         }
     }
 
+    public function test_failure_while_polling_names_the_enrolment_to_revoke(): void
+    {
+        $cases = [
+            'status read fails' => [new Response(503), TransportUnavailable::class],
+            'issued without a serial' => [self::enrollmentStatus(200, 'Wniosek obsłużony (certyfikat wygenerowany)'), UnexpectedResponse::class],
+            'unknown error status' => [self::enrollmentStatus(500, 'Nieznany błąd'), UnexpectedResponse::class],
+        ];
+        foreach ($cases as $label => [$status, $class]) {
+            $client = new ScriptedHttpClient(...[
+                ...self::xadesAuthResponses(),
+                self::enrollmentDataResponse(),
+                self::enrollResponse(),
+                $status,
+            ]);
+
+            $exception = self::capture(fn () => $this->certificates($client)->enroll(KsefCertificateType::Offline, name: 'KOD II seal'));
+
+            self::assertSame($class, $exception::class, $label);
+            self::assertStringContainsString(self::ENROLLMENT_REFERENCE, $exception->getMessage(), $label);
+            self::assertStringContainsString('revoke it when it appears in query()', $exception->getMessage(), $label);
+            self::assertStringNotContainsString('-----BEGIN', $exception->getMessage(), $label);
+        }
+    }
+
     public function test_failure_after_issue_names_the_serial_to_revoke(): void
     {
         $cases = [

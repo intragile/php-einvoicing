@@ -36,6 +36,15 @@ use LogicException;
  * invoice on its own, because an invoice issued during an announced failure is a Failure-mode
  * invoice; it only counts when another failure is announced inside the pending window.
  *
+ * "Announced" is read as the outage's start (Outage::$start), not the time Latarnia published
+ * the message: a failure that starts inside the pending window counts even when it was published
+ * later, and one that started before the issue day does not, even when it was published inside
+ * the window.
+ *
+ * The issue date is an instant, converted to Europe/Warsaw before its day is taken. Pass P_1 as
+ * midnight Europe/Warsaw: an instant late in the evening UTC can fall on the next day in Warsaw,
+ * while the QR links use the calendar date of the value as given.
+ *
  * This is a calculation aid, not legal advice.
  */
 final class OfflineDeadlines

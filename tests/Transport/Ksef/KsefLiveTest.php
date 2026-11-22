@@ -457,10 +457,13 @@ final class KsefLiveTest extends TestCase
 
     /**
      * Sends the same FA(3) file twice: the second copy ends Failed / Duplicate naming the KSeF
-     * number of the first (status 440).
+     * number of the first (status 440). The original's UPO proves the copy is the same document.
+     * A different file with the same seller, invoice type and number (P_2) is also answered 440,
+     * and the UPO proves it is not the same document.
      *
      * Observed: status 440 "Duplikat faktury" with extensions.originalKsefNumber and
-     * extensions.originalSessionReferenceNumber.
+     * extensions.originalSessionReferenceNumber; the original's UPO can be read while its
+     * session is still open.
      */
     public function test_resend_is_reported_as_duplicate(): void
     {
@@ -484,6 +487,15 @@ final class KsefLiveTest extends TestCase
             self::assertSame(DeliveryState::Failed, $status->state);
             self::assertSame(FailureCategory::Duplicate, $status->failure?->category);
             self::assertStringContainsString((string) $first->ksefNumber, (string) $status->failure->message);
+            self::assertNotNull($duplicate->originalSessionReferenceNumber);
+            self::assertTrue($transport->isSameDocument($duplicate, $xml));
+
+            $other = str_replace('Materiał testowy', 'Materiał testowy B', $xml);
+            self::assertNotSame($xml, $other);
+            $otherDuplicate = $transport->awaitFinal($transport->send($other)->documentId);
+            self::assertSame(440, $otherDuplicate->code);
+            self::assertSame($first->ksefNumber, $otherDuplicate->originalKsefNumber);
+            self::assertFalse($transport->isSameDocument($otherDuplicate, $other));
             $transport->close();
         });
     }

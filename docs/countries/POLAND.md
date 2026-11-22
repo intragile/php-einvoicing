@@ -1112,8 +1112,9 @@ thresholds apply at once (MF documentation `limity/limity-api.md`, 2026-09-14):
   window at its last record, like a truncated one, and the next call continues from there.
   Catching up an inbox start older than 90 days therefore takes at least one call per 90-day chunk.
 - `fetch()` spends one of the 64 downloads per hour, plus one metadata query when you pass a plain
-  KSeF number instead of the id `pending()` returned. `pending()` with `fetch()` therefore handles about 64 invoices an hour;
-  for higher volumes use `export()`, as the Ministry of Finance recommends.
+  KSeF number instead of the id `pending()` returned. `pending()` with `fetch()` therefore
+  handles about 64 invoices an hour; for higher volumes use `export()`, as the Ministry of Finance
+  recommends.
 - The Ministry of Finance recommends polling no more often than **every 15 minutes** for each
   subject of an invoice on PRODUCTION.
 - A metadata query refused with 429 is a POST, so it is not repeated: `pending()` throws
@@ -1176,8 +1177,23 @@ rejects is replaced by a [technical correction](#technical-correction).
 
 `send()` and `sendBatch()` take an `$offline` flag. It applies to the whole batch.
 
+Write an offline invoice once, and use the same string for its QR codes and for the send. The QR
+codes printed on it hash its exact bytes. `Fa3Writer` stamps `DataWytworzeniaFa` from the clock
+unless `PolishInvoice::$createdAt` is set, so an `Invoice` passed to `send()` is written again with
+other bytes, and the printed codes would never match the invoice in KSeF. If you pass `Invoice`
+objects, set `PolishInvoice::$createdAt` so every write gives the same bytes.
+
 ```php
-$sent = $ksef->send((string) file_get_contents('faktura.xml'), offline: true);
+use IntrAgile\EInvoicing\Poland\KsefEnvironment;
+use IntrAgile\EInvoicing\Syntax\Fa3\Fa3Writer;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\ContextIdentifier;
+use IntrAgile\EInvoicing\Transport\Ksef\Qr\KsefQrCodes;
+
+$xml = (new Fa3Writer)->write($invoice); // write once
+[$kod1, $kod2] = KsefQrCodes::offline(KsefEnvironment::Production, ContextIdentifier::nip('5265877635'), $xml, $offlineCertificate);
+// ... print the invoice with both codes, then send the same bytes:
+
+$sent = $ksef->send($xml, offline: true);
 $status = $ksef->awaitFinal($sent->documentId);
 echo $status->invoicingMode?->name, "\n"; // Offline
 
@@ -1216,7 +1232,13 @@ prediction of KSeF's classification. Neither the flag nor the reported mode comp
   even when this gives an earlier day (the documentation says the deadline "is moved and counted
   from the end of the last announced failure"). The count runs from the latest end among the
   failures that overlap the window, and starts again whenever a further failure starts inside the
-  extended window.
+  extended window. "Announced" is read as the outage's `start`, not the time Latarnia published
+  the message: a failure starting inside the window counts even if it was published later, and one
+  that started before the issue day does not, even if it was published inside the window.
+- **Issue date.** `$issueDate` is converted to Europe/Warsaw before its day is taken. Pass `P_1` as
+  midnight Europe/Warsaw (`new DateTimeImmutable('2026-03-02', new DateTimeZone('Europe/Warsaw'))`):
+  an instant such as `2026-03-02 23:30 UTC` is already 3 March in Warsaw, while the QR links use
+  the calendar date of the value as given.
 - **Working days** (`PolishWorkingDays`) are Monday to Friday, except the statutory holidays of the
   Act of 18 January 1951 on public holidays: 1 and 6 January, Easter Sunday and Monday, 1 and
   3 May, Pentecost Sunday, Corpus Christi, 15 August, 1 and 11 November, and 24, 25 and 26
@@ -1376,8 +1398,11 @@ $rsa = $ksef->certificates()->enroll(KsefCertificateType::Authentication, KeyAlg
 - **Polling.** `enroll()` reads the request status within the `statusPollAttempts` and
   `statusPollWaitMs` bounds of the `KsefConfig`. A request still processing after them, or
   cancelled by KSeF (550), throws `TransportUnavailable` naming the enrolment reference; a rejected
-  one (400) throws `DocumentRejected`. If reading back an issued certificate fails, the exception
-  names its serial number and says to revoke it.
+  one (400) throws `DocumentRejected`. When a status read fails (a network error, a rate limit,
+  an unreadable answer or an unknown status), the exception keeps its type, names the enrolment
+  reference and says to revoke the certificate if it appears in `query()`, since KSeF may still
+  issue it. If reading back an issued certificate fails, the exception names its serial number and
+  says to revoke it.
 - **Name.** 5 to 100 letters (Polish ones included), digits, spaces, hyphens and underscores;
   `"<type> <UTC date and time>"` when none is given.
 - **Observed on TE** (2026-11-22): EC and RSA certificates issued in 3 to 4 seconds by
@@ -1413,17 +1438,18 @@ links and their captions (`QrCode`); rendering an image is optional.
 - **Checks before signing.** The private key must match the certificate; a certificate marked as
   an Authentication certificate (key usage Digital Signature only) is refused; the certificate must
   be valid at some moment of the issue date (Europe/Warsaw); the serial number is taken from the
-  certificate, in upper case, and must be 16 hex digits. Each failed check throws
+  certificate, in upper case, padded with leading zeros to 16 hex digits (OpenSSL drops leading zero
+  bytes; KSeF always writes 16 digits). Each failed check throws
   `InvalidArgumentException`.
 
 <!-- sample: run -->
 ```php
 use IntrAgile\EInvoicing\Poland\KsefEnvironment;
 use IntrAgile\EInvoicing\Poland\VerificationLink;
-use IntrAgile\EInvoicing\Transport\Ksef\Auth\CertificateCredentials;
 use IntrAgile\EInvoicing\Transport\Ksef\Auth\ContextIdentifier;
 use IntrAgile\EInvoicing\Transport\Ksef\Qr\CertificateVerificationLink;
 use IntrAgile\EInvoicing\Transport\Ksef\Qr\KsefQrCodes;
+use IntrAgile\EInvoicing\Transport\Ksef\Testing\SelfSignedCertificate;
 
 $xml = (string) file_get_contents('faktura.xml'); // the exact bytes sent to KSeF
 
@@ -1432,13 +1458,10 @@ echo $kod1->label, "\n"; // OFFLINE
 echo $kod1->url, "\n";   // https://qr-test.ksef.mf.gov.pl/invoice/2222222222/18-11-2026/<hash>
 echo KsefQrCodes::online(KsefEnvironment::Test, $xml, '5265877635-20250826-0100001AF629-AF')->label, "\n";
 
-// For the sample only: a self-signed EC certificate made in memory stands in for a KSeF Offline
-// certificate. It is valid from now, so the link is signed for today's issue date.
-$key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
-$csr = openssl_csr_new(['countryName' => 'PL', 'commonName' => 'Example (offline)'], $key, ['digest_alg' => 'sha256']);
-$certificate = openssl_csr_sign($csr, null, $key, 30, ['digest_alg' => 'sha256'], 0x01F20A5D352AE590);
-openssl_x509_export($certificate, $certificatePem);
-openssl_pkey_export($key, $keyPem);
+// For the sample only: a self-signed RSA certificate made in memory stands in for a KSeF Offline
+// certificate. It is valid from now, so the link is signed for today's issue date. The helper
+// uses the library's own OpenSSL configuration, so it also works where PHP finds no openssl.cnf.
+$certificate = SelfSignedCertificate::seal('2222222222');
 
 $kod2 = CertificateVerificationLink::fromHash(
     KsefEnvironment::Test,
@@ -1446,9 +1469,9 @@ $kod2 = CertificateVerificationLink::fromHash(
     '2222222222',
     VerificationLink::invoiceHash($xml),
     new DateTimeImmutable('now', new DateTimeZone('Europe/Warsaw')),
-    new CertificateCredentials($certificatePem, $keyPem),
+    $certificate,
 );
-echo $kod2, "\n"; // https://qr-test.ksef.mf.gov.pl/certificate/Nip/2222222222/2222222222/01F20A5D352AE590/<hash>/<signature>
+echo $kod2, "\n"; // https://qr-test.ksef.mf.gov.pl/certificate/Nip/2222222222/2222222222/<serial>/<hash>/<signature>
 ```
 
 With a real Offline certificate, `KsefQrCodes::offline()` builds both codes from the invoice, and
@@ -1509,10 +1532,14 @@ $status = $ksef->awaitFinal($sent->documentId);
   rejected file) and `invoicingMode` Offline in `InvoiceMetadata`.
 - **One correction per invoice.** KSeF refuses a second technical correction of the same invoice
   with HTTP 400 and code 21166, thrown as `DocumentRejected` ("a technical correction was already
-  accepted for the rejected invoice").
+  accepted for the rejected invoice"). A correction naming an invoice KSeF accepted is refused
+  with HTTP 400 and code 21167, also thrown as `DocumentRejected` ("the invoice it names was
+  accepted and needs no technical correction").
 - If you sent an `Invoice` object, keep the FA(3) bytes written for it: `send()` does not return
   them. A caller who kept only the hash can use the low-level `OnlineSession::send($xml, true,
-  $hashOfCorrectedInvoice)`.
+  $hashOfCorrectedInvoice)`. The same fallback applies when the rejected file is not well-formed
+  XML or carries a DOCTYPE (for example one KSeF rejected with status 430):
+  `sendTechnicalCorrection()` refuses such a file with `InvalidArgumentException`.
 
 ## Errors and retries
 
@@ -1522,7 +1549,7 @@ Every failure is a `TransportException` subclass ([TRANSPORT.md](../TRANSPORT.md
 |---|---|
 | HTTP 401, or KSeF code 21301 or 21304 in a 4xx answer (including a refused token refresh); HTTP 403 | `AuthenticationFailed` |
 | HTTP 429 | `RateLimited` (`retryAfterSeconds` from `Retry-After`, null when the header is missing or unreadable) |
-| HTTP 400 with a refused-body code (21401, 21402, 21403, 21405, 21217, 9101, 9102, 9103, 9105) or with 21166 (a second technical correction of the same invoice); an FA(3) file that fails local validation | `DocumentRejected` |
+| HTTP 400 with a refused-body code (21401, 21402, 21403, 21405, 21217, 9101, 9102, 9103, 9105) or with 21166 (a second technical correction of the same invoice) or 21167 (a technical correction of an accepted invoice); an FA(3) file that fails local validation | `DocumentRejected` |
 | Network failure or HTTP 5xx on a GET | `TransportUnavailable` (safe to retry; not repeated automatically) |
 | Network failure or HTTP 5xx on a POST | `OutcomeUnknown` |
 | HTTP 404, a not-found code, a redirect, or anything else | `UnexpectedResponse` |
@@ -1617,7 +1644,9 @@ verified.**
 | Unknown public key id (21470) recovery, rate limit (429) | Live-verified on TE |
 | KSeF certificates: limits, enrolment data, EC and RSA Offline enrolment, query, revoke | Live-verified on TE |
 | An EC Authentication certificate: enrolment and XAdES login (ECDSA, method `xades.ksef-certificate`) | Live-verified on TE |
-| KOD II: EC (P1363) and RSA-PSS links verify on `qr-test`; a tampered signature and a revoked certificate do not | Live-verified on TE |
+| KOD II: EC (P1363) and RSA-PSS links verify on `qr-test`; a tampered signature and a revoked certificate do not | Live-verified on TE, with the `Nip` context only |
+| KOD II with the `InternalId` and `NipVatUe` context segments | Offline tests only |
+| KOD II for a certificate whose serial starts with a zero byte (padded to 16 digits) | Offline tests only; no such certificate could be issued on TE on demand |
 | KOD I of an offline invoice: "not found" before the send, found after it | Live-verified on TE |
 | Offline send: `invoicingMode` Offline in the status; an online send with yesterday's `P_1` reported as Offline | Live-verified on TE |
 | Technical correction of a rejected offline invoice (450), `hashOfCorrectedInvoice` in the metadata, a second correction refused (21166) | Live-verified on TE |
@@ -1627,6 +1656,8 @@ verified.**
 | Offline deadlines and Polish working days | Offline tests only (including the documented example); a calculation aid, not legal advice |
 | Rendering QR images (`ChillerlanQrRenderer`) | Offline tests only: the rendered PNG is decoded again and compared with the link |
 | A second 9105, export status 420 | Not observed live; offline tests only |
+| The form code `fetch()` derives from a UBL (FA_PEF) download | Offline tests only (no PEF invoice can be produced on TE) |
+| A technical correction of an accepted invoice (21167) | Offline tests only |
 | UPO signature of the Ministry of Finance | **Not verified** (by design) |
 | Qualified certificates with multi-valued RDNs in the issuer name | Not verifiable without a real certificate (DEMO/PRODUCTION) |
 

@@ -123,8 +123,8 @@ final class KsefTransport implements InboundSource
     /**
      * Metadata pages one pending() call reads at most. KSeF allows 20 metadata queries per hour
      * for each context and IP address, so one call leaves room for a retry and for fetch()
-     * lookups of plain KSeF numbers within the hour; a longer result ends the window at its last record, as a truncated one
-     * does.
+     * lookups of plain KSeF numbers within the hour; a longer result ends the window at its last
+     * record, as a truncated one does.
      */
     private const MAX_INBOX_PAGES = 10;
 
@@ -231,6 +231,13 @@ final class KsefTransport implements InboundSource
      * example one whose issue date (P_1) lies before the day of the send. The flag and the
      * reported mode do not compute a sending deadline; see OfflineDeadlines.
      *
+     * The QR codes printed on an offline invoice (KsefQrCodes::offline()) hash its exact bytes.
+     * An Invoice passed here is written again, and Fa3Writer stamps DataWytworzeniaFa from the
+     * clock unless PolishInvoice::$createdAt is set, so the bytes sent would not match codes made
+     * from an earlier write. Write the FA(3) once with Fa3Writer::write() and pass the same
+     * string to KsefQrCodes::offline() and to this method, or set PolishInvoice::$createdAt so
+     * every write gives the same bytes.
+     *
      * @param  string|Invoice  $invoice  an FA(3) file, or an invoice to write as one
      * @param  bool  $offline  true for an invoice issued in offline mode
      *
@@ -259,11 +266,14 @@ final class KsefTransport implements InboundSource
      * of an invoice it has never seen, so a mistyped digest would not be refused. Pass the rejected
      * file byte for byte as it was sent; it must be well-formed XML, but its schema is not
      * validated, since KSeF rejected it. KSeF accepts one technical correction per invoice and
-     * refuses a second one with error 21166, thrown as DocumentRejected.
+     * refuses a second one with error 21166, thrown as DocumentRejected; a correction of an
+     * invoice KSeF accepted is refused with error 21167, also thrown as DocumentRejected.
      *
      * A caller that sent an Invoice object should keep the FA(3) bytes written for it (they are
      * not returned by send()); without them the rejected file cannot be passed here, and the
-     * fallback is OnlineSession::send() with the stored digest as hashOfCorrectedInvoice.
+     * fallback is OnlineSession::send() with the stored digest as hashOfCorrectedInvoice. The same
+     * fallback applies to a rejected file that is not well-formed XML or carries a DOCTYPE (for
+     * example one KSeF rejected with status 430), which this method refuses.
      *
      * @param  string|Invoice  $corrected  the corrected FA(3) file, or an invoice to write as one
      * @param  string  $rejectedInvoiceXml  the FA(3) file KSeF rejected, as it was sent
@@ -273,7 +283,8 @@ final class KsefTransport implements InboundSource
      *                                  validated or sent; when the invoice cannot be written as FA(3)
      * @throws DocumentRejected when the corrected file fails its schema or a fatal FA(3) rule
      *                          (nothing is sent), or KSeF refuses a second technical correction
-     *                          of the same invoice (21166)
+     *                          of the same invoice (21166) or a correction of an accepted
+     *                          invoice (21167)
      * @throws UnsafeXml|UnsupportedDocument when the corrected file is not well-formed XML or not an FA(3) invoice
      * @throws OutcomeUnknown when the send failed without an answer
      * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
@@ -292,7 +303,7 @@ final class KsefTransport implements InboundSource
         try {
             SafeXml::load($rejectedInvoiceXml);
         } catch (UnsafeXml|UnsupportedDocument $exception) {
-            throw new InvalidArgumentException('The rejected FA(3) file of a technical correction must be the XML file KSeF rejected, byte for byte; the given content is not well-formed XML.', 0, $exception);
+            throw new InvalidArgumentException('The rejected FA(3) file of a technical correction must be the XML file KSeF rejected, byte for byte; the given content is not well-formed XML or carries a DOCTYPE.', 0, $exception);
         }
         // Checked before validation as well, so a rejected file passed twice is reported as such
         // rather than as failing validation.
@@ -311,6 +322,9 @@ final class KsefTransport implements InboundSource
      * Sends invoices in a batch session of their own and returns the session reference; read the
      * result with batchStatus() or awaitBatch(). Each invoice is validated or written as in send()
      * before anything is sent.
+     *
+     * For offline invoices, pass the same FA(3) strings the printed QR codes were made from, or
+     * set PolishInvoice::$createdAt on each Invoice; see send() for why.
      *
      * @param  array<string, string|Invoice>  $invoices  FA(3) files or invoices by file name
      *                                                   (letters, digits, ".", "_", "-", ending in ".xml")

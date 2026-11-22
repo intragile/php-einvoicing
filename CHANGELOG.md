@@ -168,7 +168,9 @@ All notable changes to this project are documented here. The format follows
   (`InvoicingMode::Online|Offline`, null when absent) report KSeF's own classification, and
   `InvoiceMetadata::$hashOfCorrectedInvoice` the corrected invoice of a technical correction. KSeF
   may report Offline for an invoice sent without the flag (live on TE: an online send dated the day
-  before); the library makes no prediction of its own.
+  before); the library makes no prediction of its own. Write an offline invoice once and pass the
+  same FA(3) string to `KsefQrCodes::offline()` and `send()` (or set `PolishInvoice::$createdAt`),
+  so the bytes in KSeF match the printed QR codes.
 - **Poland, offline mode:** `OfflineDeadlines::for()` computes the sending deadline of an offline
   invoice (`OfflineMode`: Offline24, Unavailability, Failure, TotalFailure) as an `OfflineDeadline`
   with a `DeadlineReason`: the next working day after the issue date or after an unavailability,
@@ -199,19 +201,20 @@ All notable changes to this project are documented here. The format follows
 - **Poland, technical correction:** `sendTechnicalCorrection($corrected, $rejectedXml)` sends the
   correction of a rejected offline invoice and computes the rejected file's hash itself, because
   KSeF accepts a hash it has never seen; identical files are refused locally. A second correction of
-  the same invoice (KSeF error 21166) is thrown as `DocumentRejected`. Live-verified on TE.
+  the same invoice (KSeF error 21166) is thrown as `DocumentRejected`. Live-verified on TE. A
+  correction of an invoice KSeF accepted (error 21167) is also thrown as `DocumentRejected`
+  (tested offline).
+- **Poland, inbound ids:** `KsefTransport::pending()` returns the id of a received invoice as
+  `<KSeF number>@<PermanentStorage date, UTC>`, so `fetch()` in a fresh worker spends no metadata
+  query (live-verified on TE). A plain KSeF number is returned only when the current read no
+  longer lists an invoice still open in the stored window; plain ids fetch too, at one metadata
+  query, and `acknowledge()` accepts both forms. Deduplicate by `KsefTransport::ksefNumberOf($id)`.
 - **Documentation:** [docs/countries/POLAND.md](docs/countries/POLAND.md), including sending
   and receiving through KSeF, offline mode and deadlines, KSeF certificates, QR codes and technical
   corrections.
 
 ### Changed
 
-- **Poland:** `KsefTransport::pending()` returns the id of a received invoice as
-  `<KSeF number>@<PermanentStorage date, UTC>` instead of the bare KSeF number, so `fetch()` in a
-  fresh worker spends no metadata query (live-verified on TE). A plain KSeF number is returned only
-  when the current read no longer lists an invoice still open in the stored window; plain ids still
-  fetch, at one metadata query, and `acknowledge()` accepts both forms. Deduplicate by
-  `KsefTransport::ksefNumberOf($id)`.
 - **Readers and writers:** `UblReader` and `CiiReader` now mark an invoice as French (attach
   `FrenchInvoice`) when BT-23 is a French billing framework code (B1, S1, M1 …) or BT-24 is the
   EXTENDED-CTC-FR identifier, and writing such an invoice applies the French decimal limits of

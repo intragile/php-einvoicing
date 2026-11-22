@@ -996,6 +996,31 @@ final class KsefTransportTest extends TestCase
         self::assertTrue(KsefErrors::hasCode($exception, 21166));
     }
 
+    public function test_21167_maps_to_document_rejected_naming_an_accepted_invoice(): void
+    {
+        $corrected = (new Fa3Writer($this->now()))->write(PolishInvoices::domestic());
+        $recorder = new RecordingHttpClient(...[
+            ...self::openingResponses(),
+            self::json(400, [
+                'title' => 'Bad Request',
+                'status' => 400,
+                'detail' => 'Żądanie jest nieprawidłowe.',
+                'errors' => [[
+                    'code' => 21167,
+                    'description' => 'Status faktury nie pozwala na korektę techniczną.',
+                    'details' => ['Nie można wysłać korekty technicznej do prawidłowo przetworzonej faktury.'],
+                ]],
+            ]),
+        ]);
+        $transport = $this->transport($recorder);
+
+        $exception = self::capture(static fn () => $transport->sendTechnicalCorrection($corrected, self::INVOICE_XML));
+
+        self::assertInstanceOf(DocumentRejected::class, $exception);
+        self::assertStringContainsString('the invoice it names was accepted and needs no technical correction', $exception->getMessage());
+        self::assertTrue(KsefErrors::hasCode($exception, 21167));
+    }
+
     public function test_correction_goes_through_online_session_only(): void
     {
         $corrected = (new Fa3Writer($this->now()))->write(PolishInvoices::domestic());

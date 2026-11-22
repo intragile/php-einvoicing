@@ -23,9 +23,14 @@ use RuntimeException;
  * because OpenSSL's own "uniqueIdentifier" is a different attribute (0.9.2342.19200300.100.1.44)
  * from the KSeF one (2.5.4.45, x500UniqueIdentifier). X.520 types x500UniqueIdentifier as a BIT
  * STRING; it is encoded as a UTF8String here, which is unverified against KSeF because KSeF TE
- * has never returned that attribute. The key is EC on P-256 or RSA-2048, and the request is signed with SHA-256
- * (ecdsa-with-SHA256 or sha256WithRSAEncryption). The key is generated in memory and returned
+ * has never returned that attribute. The key is EC on P-256 or RSA-2048, and the request is
+ * signed with SHA-256 (ecdsa-with-SHA256 or sha256WithRSAEncryption). The key is generated in memory and returned
  * once; it is never written anywhere.
+ *
+ * Not part of the public API: build() returns the private key unprotected. Use
+ * KsefCertificates::enroll(), which wraps the key in EnrolledCertificate.
+ *
+ * @internal
  */
 final class CsrBuilder
 {

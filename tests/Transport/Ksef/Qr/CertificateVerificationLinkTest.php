@@ -224,6 +224,17 @@ final class CertificateVerificationLinkTest extends TestCase
         self::assertMatchesRegularExpression(self::LINK_PATTERN, $link);
     }
 
+    public function test_serial_with_leading_zero_byte_is_padded_to_sixteen_digits(): void
+    {
+        $certificate = QrFixtures::certificate('ec', serialHex: '0012345678ABCDEF');
+        $xml = QrFixtures::invoiceIssuedToday();
+
+        $link = CertificateVerificationLink::build(KsefEnvironment::Test, ContextIdentifier::nip(QrFixtures::SELLER_NIP), QrFixtures::SELLER_NIP, $xml, $certificate);
+
+        self::assertMatchesRegularExpression(self::LINK_PATTERN, $link);
+        self::assertStringContainsString('/'.QrFixtures::SELLER_NIP.'/0012345678ABCDEF/'.VerificationLink::invoiceHash($xml).'/', $link);
+    }
+
     public function test_context_types_and_environment_host(): void
     {
         $certificate = QrFixtures::certificate('ec');

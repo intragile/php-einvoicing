@@ -37,6 +37,9 @@ final class KsefErrors
     /** The KSeF code of a technical correction refused because the invoice already has an accepted one. */
     public const TECHNICAL_CORRECTION_UNAVAILABLE = 21166;
 
+    /** The KSeF code of a technical correction refused because the invoice it names was accepted. */
+    public const TECHNICAL_CORRECTION_NOT_ALLOWED = 21167;
+
     /** KSeF codes of a missing authorisation or authentication. */
     private const AUTHENTICATION_CODES = [21301, 21304];
 
@@ -60,9 +63,9 @@ final class KsefErrors
      * The exception an unsuccessful answer stands for: 401, or a 4xx with KSeF code 21301/21304,
      * is AuthenticationFailed, 403 is AuthenticationFailed (no permission in the context), 429 is
      * RateLimited, a 5xx status is TransportUnavailable for a safe method and OutcomeUnknown
-     * otherwise, 400 with a refused-body code or with 21166 (a technical correction already
-     * accepted) is DocumentRejected, and 404, a not-found code or anything else is
-     * UnexpectedResponse.
+     * otherwise, 400 with a refused-body code, with 21166 (a technical correction already
+     * accepted) or with 21167 (the named invoice was accepted, so it needs no correction) is
+     * DocumentRejected, and 404, a not-found code or anything else is UnexpectedResponse.
      *
      * @param  string  $operation  what was attempted, phrased to start a sentence
      * @param  string  $method  the HTTP method of the request; a server error on a request that
@@ -110,6 +113,12 @@ final class KsefErrors
         if ($status === 400 && in_array(self::TECHNICAL_CORRECTION_UNAVAILABLE, $codes, true)) {
             return new DocumentRejected(
                 sprintf('%s failed: KSeF refused the technical correction, because a technical correction was already accepted for the rejected invoice it names (HTTP 400)%s.', $operation, $detail),
+                ['errors' => $lines],
+            );
+        }
+        if ($status === 400 && in_array(self::TECHNICAL_CORRECTION_NOT_ALLOWED, $codes, true)) {
+            return new DocumentRejected(
+                sprintf('%s failed: KSeF refused the technical correction, because the invoice it names was accepted and needs no technical correction (HTTP 400)%s.', $operation, $detail),
                 ['errors' => $lines],
             );
         }
