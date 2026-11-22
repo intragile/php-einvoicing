@@ -1,0 +1,16 @@
+{
+    "status": "FAILURE",
+    "messages": [
+        {
+            "id": "X/2030/F/11",
+            "eventId": 4207,
+            "category": "FAILURE",
+            "type": "FAILURE_START",
+            "title": "Sample failure began",
+            "text": "Sample text: invoices cannot be sent since 08:15.",
+            "start": "2030-04-09T06:15:00Z",
+            "version": 1,
+            "published": "2030-04-09T06:20:00Z"
+        }
+    ]
+}

@@ -1,0 +1,50 @@
+[
+    {
+        "id": "X/2030/F/14",
+        "eventId": 4209,
+        "category": "FAILURE",
+        "type": "FAILURE_START",
+        "title": "Sample failure began",
+        "text": "Sample text: an ongoing failure without an end.",
+        "start": "2030-04-12T11:00:00+00:00",
+        "end": null,
+        "version": 1,
+        "published": "2030-04-12T11:05:00+00:00"
+    },
+    {
+        "id": "X/2030/F/13",
+        "eventId": 4207,
+        "category": "FAILURE",
+        "type": "FAILURE_END",
+        "title": "Sample failure ended",
+        "text": "Sample text: the failure that began at 08:15 is over.",
+        "start": "2030-04-09T06:15:00+00:00",
+        "end": "2030-04-09T13:40:00+00:00",
+        "version": 1,
+        "published": "2030-04-09T13:45:00+00:00"
+    },
+    {
+        "id": "X/2030/F/11",
+        "eventId": 4207,
+        "category": "FAILURE",
+        "type": "FAILURE_START",
+        "title": "Sample failure began",
+        "text": "Sample text: invoices cannot be sent since 08:15.",
+        "start": "2030-04-09T06:15:00+00:00",
+        "end": "2030-04-09T13:40:00+00:00",
+        "version": 2,
+        "published": "2030-04-09T06:20:00+00:00"
+    },
+    {
+        "id": "X/2030/M/03",
+        "eventId": 4150,
+        "category": "MAINTENANCE",
+        "type": "MAINTENANCE_ANNOUNCEMENT",
+        "title": "Sample planned maintenance",
+        "text": "Sample text: planned works on a Saturday night.",
+        "start": "2030-04-06T22:00:00+00:00",
+        "end": "2030-04-07T03:30:00+00:00",
+        "version": 1,
+        "published": "2030-03-29T09:00:00+00:00"
+    }
+]
