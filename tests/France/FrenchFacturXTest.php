@@ -130,6 +130,13 @@ final class FrenchFacturXTest extends TestCase
      */
     public static function facturxExamples(): iterable
     {
+        // A data provider cannot skip; without the download, one case is yielded and the test skips.
+        if (! Fixtures::hasFranceRfe()) {
+            yield 'France_RFE not fetched' => ['FX/EN16931', ''];
+
+            return;
+        }
+
         foreach (['FX/EN16931', 'FX/EXTENDED'] as $folder) {
             foreach (Fixtures::franceExamples($folder) as $name => $file) {
                 yield $name => [$folder, $file];
@@ -140,6 +147,7 @@ final class FrenchFacturXTest extends TestCase
     #[DataProvider('facturxExamples')]
     public function test_french_facturx_examples_round_trip(string $folder, string $file): void
     {
+        Fixtures::franceRfeRoot();
         $source = (string) file_get_contents($file);
         $profile = FacturXProfile::fromGuidelineId($this->values($this->xpath($source), self::GUIDELINE)[0] ?? '');
         self::assertSame($folder === 'FX/EXTENDED' ? FacturXProfile::Extended : FacturXProfile::En16931, $profile);
