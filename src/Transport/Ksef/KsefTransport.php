@@ -25,6 +25,7 @@ use IntrAgile\EInvoicing\Transport\InboundSource;
 use IntrAgile\EInvoicing\Transport\Ksef\Auth\Authenticator;
 use IntrAgile\EInvoicing\Transport\Ksef\Auth\KsefTokens;
 use IntrAgile\EInvoicing\Transport\Ksef\Auth\PublicKeyRegistry;
+use IntrAgile\EInvoicing\Transport\Ksef\Certificates\KsefCertificates;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\CursorWindow;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\ExportResult;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InMemoryCursorStore;
@@ -128,6 +129,7 @@ final class KsefTransport implements InboundSource
         private readonly MetadataQuery $query,
         private readonly KsefExport $exporter,
         private readonly KsefTokens $tokens,
+        private readonly KsefCertificates $certificates,
         private readonly KsefCursorStore $cursor,
         private readonly Fa3Writer $writer,
         private readonly ?DateTimeImmutable $inboxStart,
@@ -162,6 +164,7 @@ final class KsefTransport implements InboundSource
             new MetadataQuery($api),
             new KsefExport($api, $keys, $config),
             new KsefTokens($api),
+            new KsefCertificates($api, $config, $now),
             $cursor ?? new InMemoryCursorStore,
             new Fa3Writer($now),
             $inboxStart,
@@ -540,6 +543,15 @@ final class KsefTransport implements InboundSource
     public function tokens(): KsefTokens
     {
         return $this->tokens;
+    }
+
+    /**
+     * The KSeF certificates of the subject: enrol, retrieve, list and revoke them. Enrolment needs
+     * a configuration with CertificateCredentials.
+     */
+    public function certificates(): KsefCertificates
+    {
+        return $this->certificates;
     }
 
     /**
