@@ -6,6 +6,7 @@ namespace IntrAgile\EInvoicing\Tests\Transport\Ksef\Certificates;
 
 use DateTimeImmutable;
 use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
+use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
 use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\Http\HttpClient;
@@ -210,6 +211,36 @@ final class KsefCertificatesTest extends TestCase
             self::assertInstanceOf($class, $exception);
             self::assertStringContainsString((string) $code, $exception->getMessage());
             self::assertStringContainsString($description, $exception->getMessage());
+        }
+    }
+
+    public function test_failure_after_issue_names_the_serial_to_revoke(): void
+    {
+        $cases = [
+            'retrieve fails without an answer' => [new Response(503), OutcomeUnknown::class],
+            'certificate with another serial' => [self::retrieveResponse([[self::issue(self::csrFor(), self::SECOND_SERIAL), self::SERIAL, 'KOD II seal', 'Offline']]), UnexpectedResponse::class],
+            'certificate for another key' => [self::retrieveResponse([[self::issue(self::csrFor(), self::SERIAL), self::SERIAL, 'KOD II seal', 'Offline']]), InvalidArgumentException::class],
+        ];
+        foreach ($cases as $label => [$retrieve, $class]) {
+            $client = new ScriptedHttpClient(...[
+                ...self::xadesAuthResponses(),
+                self::enrollmentDataResponse(),
+                self::enrollResponse(),
+                self::issuedStatus(),
+                $retrieve,
+            ]);
+
+            $exception = self::capture(fn () => $this->certificates($client)->enroll(KsefCertificateType::Offline, name: 'KOD II seal'));
+
+            self::assertSame($class, $exception::class, $label);
+            self::assertStringContainsString('KSeF issued the certificate '.self::SERIAL, $exception->getMessage(), $label);
+            self::assertStringContainsString('revoke the certificate '.self::SERIAL, $exception->getMessage(), $label);
+            self::assertStringNotContainsString('PRIVATE KEY', $exception->getMessage(), $label);
+            self::assertStringNotContainsString('-----BEGIN', $exception->getMessage(), $label);
+            $previous = $exception->getPrevious();
+            self::assertNotNull($previous, $label);
+            self::assertSame($class, $previous::class, $label);
+            self::assertStringContainsString($previous->getMessage(), $exception->getMessage(), $label);
         }
     }
 

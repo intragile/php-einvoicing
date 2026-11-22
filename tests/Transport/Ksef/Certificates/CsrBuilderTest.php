@@ -40,7 +40,8 @@ final class CsrBuilderTest extends TestCase
         $csr = CsrBuilder::build(['commonName' => 'Testowa Firma', 'countryName' => 'PL', 'uniqueIdentifier' => 'KSeF-ABC-123'], KeyAlgorithm::Ec);
 
         // OID 2.5.4.45, which OpenSSL names x500UniqueIdentifier; its own "uniqueIdentifier" is
-        // the LDAP uid attribute (0.9.2342.19200300.100.1.1).
+        // 0.9.2342.19200300.100.1.44. The UTF8String value type is unverified against KSeF, which
+        // has not returned this attribute on TE.
         self::assertSame(
             ['commonName' => 'Testowa Firma', 'countryName' => 'PL', 'x500UniqueIdentifier' => 'KSeF-ABC-123'],
             openssl_csr_get_subject(self::csrPem($csr['csrDer']), false),

@@ -18,9 +18,12 @@ use RuntimeException;
  * attributes. countryName, and serialNumber when it fits, are PrintableString values as X.520
  * requires; every other value is a UTF8String.
  *
- * The request is DER-encoded here rather than by openssl_csr_new(), which neither repeats an
- * attribute nor knows uniqueIdentifier as OID 2.5.4.45 (its own name of that label is the LDAP uid
- * attribute). The key is EC on P-256 or RSA-2048, and the request is signed with SHA-256
+ * The request is DER-encoded here rather than by openssl_csr_new(), which cannot repeat an
+ * attribute: a list of given names becomes the literal value "Array". The OIDs are explicit
+ * because OpenSSL's own "uniqueIdentifier" is a different attribute (0.9.2342.19200300.100.1.44)
+ * from the KSeF one (2.5.4.45, x500UniqueIdentifier). X.520 types x500UniqueIdentifier as a BIT
+ * STRING; it is encoded as a UTF8String here, which is unverified against KSeF because KSeF TE
+ * has never returned that attribute. The key is EC on P-256 or RSA-2048, and the request is signed with SHA-256
  * (ecdsa-with-SHA256 or sha256WithRSAEncryption). The key is generated in memory and returned
  * once; it is never written anywhere.
  */

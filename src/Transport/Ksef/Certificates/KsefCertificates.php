@@ -7,7 +7,10 @@ namespace IntrAgile\EInvoicing\Transport\Ksef\Certificates;
 use Closure;
 use DateTimeImmutable;
 use DateTimeZone;
+use IntrAgile\EInvoicing\Transport\Exception\AuthenticationFailed;
 use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
+use IntrAgile\EInvoicing\Transport\Exception\OutcomeUnknown;
+use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
 use IntrAgile\EInvoicing\Transport\Exception\TransportUnavailable;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
@@ -18,6 +21,7 @@ use IntrAgile\EInvoicing\Transport\Ksef\KsefConfig;
 use InvalidArgumentException;
 use LogicException;
 use RuntimeException;
+use Throwable;
 
 /**
  * Enrols, reads, lists and revokes the KSeF certificates of the authenticated subject through the
@@ -150,7 +154,9 @@ final class KsefCertificates
      * The key pair is generated locally (EC P-256 by default, or RSA-2048), the CSR carries
      * exactly the subject of enrollmentData(), and the status is read at once and then at most
      * statusPollAttempts times in all, statusPollWaitMs apart. The private key exists only in the
-     * returned object: store it before doing anything else with the result.
+     * returned object: store it before doing anything else with the result. When reading the
+     * issued certificate back fails, the exception, of the type the failure had and with it as the
+     * previous one, names the issued serial number and says to revoke it.
      *
      * @param  ?string  $name  the certificate's own name: 5 to 100 letters (Polish ones included),
      *                         digits, spaces, hyphens and underscores; "<type> <UTC date and time>"
@@ -191,7 +197,11 @@ final class KsefCertificates
 
         $serial = $this->await($reference);
 
-        return new EnrolledCertificate($this->retrieve($serial), $csr['privateKeyPem']);
+        try {
+            return new EnrolledCertificate($this->retrieve($serial), $csr['privateKeyPem']);
+        } catch (Throwable $exception) {
+            throw self::orphaned($exception, $serial);
+        }
     }
 
     /**
@@ -354,6 +364,35 @@ final class KsefCertificates
             }
             $this->config->sleep($this->config->statusPollWaitMs);
         }
+    }
+
+    /**
+     * The failure of reading back a certificate KSeF has already issued, as an exception of the
+     * same type, and with the same fields, that names the serial number and says the certificate
+     * should be revoked: its private key existed only in this call and is gone. The original is
+     * kept as the previous exception. An exception of a type not known here is returned unchanged.
+     * The message quotes the original message, which never holds key material.
+     */
+    private static function orphaned(Throwable $exception, string $serial): Throwable
+    {
+        $message = sprintf(
+            'KSeF issued the certificate %s, but it could not be read back with its private key: %s The private key is gone, so revoke the certificate %s and enrol again.',
+            $serial,
+            rtrim($exception->getMessage(), '.').'.',
+            $serial,
+        );
+
+        return match ($exception::class) {
+            TransportUnavailable::class => new TransportUnavailable($message, $exception),
+            OutcomeUnknown::class => new OutcomeUnknown($message, $exception),
+            AuthenticationFailed::class => new AuthenticationFailed($message, $exception),
+            RateLimited::class => new RateLimited($message, $exception->retryAfterSeconds, $exception),
+            DocumentRejected::class => new DocumentRejected($message, $exception->errors, $exception),
+            UnexpectedResponse::class => new UnexpectedResponse($message, $exception->status, $exception->bodyExcerpt, $exception),
+            InvalidArgumentException::class => new InvalidArgumentException($message, 0, $exception),
+            RuntimeException::class => new RuntimeException($message, 0, $exception),
+            default => $exception,
+        };
     }
 
     /**
