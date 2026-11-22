@@ -109,7 +109,7 @@ final class OnlineSession
         [$reference, $key] = $this->openSession();
 
         $ciphertext = InvoiceCipher::encrypt($invoiceXml, $key);
-        $invoiceHash = base64_encode(hash('sha256', $invoiceXml, true));
+        $invoiceHash = self::invoiceHash($invoiceXml);
         $body = [
             'invoiceHash' => $invoiceHash,
             'invoiceSize' => strlen($invoiceXml),
@@ -137,6 +137,15 @@ final class OnlineSession
         $this->sentInSession++;
 
         return new SentInvoice($reference, KsefAnswer::string($answer, ['referenceNumber'], self::SEND_OPERATION), $invoiceHash);
+    }
+
+    /**
+     * The digest KSeF identifies an invoice file by: SHA-256 of the exact bytes, Base64. It is
+     * sent as invoiceHash, and names the rejected invoice in hashOfCorrectedInvoice.
+     */
+    public static function invoiceHash(string $invoiceXml): string
+    {
+        return base64_encode(hash('sha256', $invoiceXml, true));
     }
 
     /**

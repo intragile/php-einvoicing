@@ -40,6 +40,9 @@ final readonly class KsefInvoiceStatus
      * @param  DateTimeImmutable|null  $acquisitionDate  when the KSeF number was assigned
      * @param  string|null  $originalKsefNumber  for a duplicate (status 440), the KSeF number of
      *                                           the invoice sent before
+     * @param  InvoicingMode|null  $invoicingMode  how KSeF classified the invoice; null when the
+     *                                             answer names no mode (as for a rejected invoice)
+     *                                             or one this version does not know
      */
     public function __construct(
         public int $code,
@@ -48,6 +51,7 @@ final readonly class KsefInvoiceStatus
         public ?string $ksefNumber = null,
         public ?DateTimeImmutable $acquisitionDate = null,
         public ?string $originalKsefNumber = null,
+        public ?InvoicingMode $invoicingMode = null,
     ) {}
 
     /**
@@ -74,6 +78,7 @@ final readonly class KsefInvoiceStatus
             self::optionalString($answer['ksefNumber'] ?? null),
             is_string($acquisition) ? KsefAnswer::parseDateTime($acquisition) : null,
             self::optionalString($extensions['originalKsefNumber'] ?? null),
+            InvoicingMode::fromAnswer($answer['invoicingMode'] ?? null),
         );
     }
 

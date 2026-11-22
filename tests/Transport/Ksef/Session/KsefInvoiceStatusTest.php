@@ -8,6 +8,7 @@ use IntrAgile\EInvoicing\Tests\Support\CapturesThrowable;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
 use IntrAgile\EInvoicing\Transport\Exception\UnexpectedResponse;
 use IntrAgile\EInvoicing\Transport\FailureCategory;
+use IntrAgile\EInvoicing\Transport\Ksef\Session\InvoicingMode;
 use IntrAgile\EInvoicing\Transport\Ksef\Session\KsefInvoiceStatus;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -86,6 +87,25 @@ final class KsefInvoiceStatusTest extends TestCase
         self::assertSame('5265877635-20250626-010080DD2B5E-26', $status->ksefNumber);
         self::assertSame('2026-11-21T10:00:03+00:00', $status->acquisitionDate?->format(DATE_ATOM));
         self::assertNull($status->originalKsefNumber);
+    }
+
+    public function test_status_reads_invoicing_mode(): void
+    {
+        $answer = [
+            'referenceNumber' => '20250625-EE-319D7EE000-B67F415CDC-2C',
+            'status' => ['code' => 200, 'description' => 'Sukces'],
+        ];
+
+        $offline = KsefInvoiceStatus::fromAnswer($answer + ['invoicingMode' => 'Offline'], 'The KSeF request');
+        $online = KsefInvoiceStatus::fromAnswer($answer + ['invoicingMode' => 'Online'], 'The KSeF request');
+        // A rejected invoice carries no mode, and a mode this version does not know is not guessed.
+        $absent = KsefInvoiceStatus::fromAnswer($answer, 'The KSeF request');
+        $unknown = KsefInvoiceStatus::fromAnswer($answer + ['invoicingMode' => 'Emergency'], 'The KSeF request');
+
+        self::assertSame(InvoicingMode::Offline, $offline->invoicingMode);
+        self::assertSame(InvoicingMode::Online, $online->invoicingMode);
+        self::assertNull($absent->invoicingMode);
+        self::assertNull($unknown->invoicingMode);
     }
 
     public function test_from_answer_without_status_code_is_unexpected_response(): void

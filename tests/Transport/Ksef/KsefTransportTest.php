@@ -21,7 +21,9 @@ use IntrAgile\EInvoicing\Transport\Http\HttpClient;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\CursorWindow;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InMemoryCursorStore;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefConfig;
+use IntrAgile\EInvoicing\Transport\Ksef\KsefErrors;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefTransport;
+use IntrAgile\EInvoicing\Transport\Ksef\Session\InvoicingMode;
 use InvalidArgumentException;
 use LogicException;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -541,11 +543,179 @@ final class KsefTransportTest extends TestCase
         self::assertInstanceOf(LogicException::class, $exception);
     }
 
+    public function test_offline_flag_is_sent(): void
+    {
+        $recorder = new RecordingHttpClient(...[...self::openingResponses(), self::sendResponse(), self::sendResponse(self::SECOND_INVOICE_REF)]);
+        $transport = $this->transport($recorder);
+
+        $transport->send(PolishInvoices::domestic());
+        $transport->send(PolishInvoices::domestic(), true);
+
+        $sends = self::requestsTo($recorder, 'POST', '/sessions/online/'.self::SESSION_REF.'/invoices');
+        self::assertCount(2, $sends);
+        self::assertFalse(self::body($sends[0])['offlineMode']);
+        self::assertTrue(self::body($sends[1])['offlineMode']);
+        self::assertArrayNotHasKey('hashOfCorrectedInvoice', self::body($sends[1]));
+    }
+
+    public function test_batch_offline_flag_is_sent(): void
+    {
+        $recorder = new RecordingHttpClient(...[...self::batchResponses(), ...self::batchResponses(withKeys: false)]);
+        $transport = $this->transport($recorder);
+
+        $transport->sendBatch(['a.xml' => PolishInvoices::domestic()]);
+        $transport->sendBatch(['a.xml' => PolishInvoices::domestic()], true);
+
+        $opens = self::requestsTo($recorder, 'POST', '/sessions/batch');
+        self::assertCount(2, $opens);
+        self::assertFalse(self::body($opens[0])['offlineMode']);
+        self::assertTrue(self::body($opens[1])['offlineMode']);
+    }
+
+    public function test_status_reads_invoicing_mode(): void
+    {
+        $recorder = new RecordingHttpClient(...[
+            ...self::tokenAuthResponses(),
+            self::invoiceStatusResponse(['code' => 200, 'description' => 'Sukces'], [
+                'ksefNumber' => self::KSEF_NUMBER,
+                'acquisitionDate' => '2026-11-21T10:00:03.0154302+00:00',
+                'invoicingMode' => 'Offline',
+            ]),
+        ]);
+
+        $status = $this->transport($recorder)->invoiceStatus(self::DOCUMENT_ID);
+
+        self::assertSame(InvoicingMode::Offline, $status->invoicingMode);
+    }
+
+    public function test_correction_hash_is_computed_from_rejected_file(): void
+    {
+        $corrected = (new Fa3Writer($this->now()))->write(PolishInvoices::domestic());
+        $recorder = new RecordingHttpClient(...[...self::openingResponses(), self::sendResponse()]);
+
+        $result = $this->transport($recorder)->sendTechnicalCorrection($corrected, self::INVOICE_XML);
+
+        self::assertSame(self::DOCUMENT_ID, $result->documentId);
+        self::assertSame(DeliveryState::Pending, $result->state);
+        $body = self::body(self::requestsTo($recorder, 'POST', '/sessions/online/'.self::SESSION_REF.'/invoices')[0]);
+        self::assertSame(base64_encode(hash('sha256', self::INVOICE_XML, true)), $body['hashOfCorrectedInvoice']);
+        self::assertSame(base64_encode(hash('sha256', $corrected, true)), $body['invoiceHash']);
+    }
+
+    public function test_correction_of_an_invoice_object_is_written_as_fa3(): void
+    {
+        $recorder = new RecordingHttpClient(...[...self::openingResponses(), self::sendResponse()]);
+
+        $this->transport($recorder)->sendTechnicalCorrection(PolishInvoices::domestic(), self::INVOICE_XML);
+
+        $expected = (new Fa3Writer($this->now()))->write(PolishInvoices::domestic());
+        $body = self::body(self::requestsTo($recorder, 'POST', '/sessions/online/'.self::SESSION_REF.'/invoices')[0]);
+        self::assertSame(base64_encode(hash('sha256', $expected, true)), $body['invoiceHash']);
+        self::assertSame(base64_encode(hash('sha256', self::INVOICE_XML, true)), $body['hashOfCorrectedInvoice']);
+    }
+
+    public function test_correction_with_identical_bytes_refused(): void
+    {
+        $xml = (new Fa3Writer($this->now()))->write(PolishInvoices::domestic());
+        $counter = new RequestCounter(new RecordingHttpClient);
+        $transport = $this->transport($counter);
+
+        $raw = self::capture(static fn () => $transport->sendTechnicalCorrection($xml, $xml));
+        $written = self::capture(static fn () => $transport->sendTechnicalCorrection(PolishInvoices::domestic(), $xml));
+        // A rejected file that fails validation is refused as identical, not as invalid.
+        $broken = self::capture(static fn () => $transport->sendTechnicalCorrection(self::INVOICE_XML, self::INVOICE_XML));
+        $empty = self::capture(static fn () => $transport->sendTechnicalCorrection($xml, ''));
+
+        foreach ([$raw, $written, $broken] as $exception) {
+            self::assertInstanceOf(InvalidArgumentException::class, $exception);
+            self::assertStringContainsString('identical', $exception->getMessage());
+        }
+        self::assertInstanceOf(InvalidArgumentException::class, $empty);
+        self::assertSame(0, $counter->count());
+    }
+
+    public function test_correction_sends_offline_true(): void
+    {
+        $corrected = (new Fa3Writer($this->now()))->write(PolishInvoices::domestic());
+        $recorder = new RecordingHttpClient(...[...self::openingResponses(), self::sendResponse()]);
+
+        $this->transport($recorder)->sendTechnicalCorrection($corrected, self::INVOICE_XML);
+
+        $body = self::body(self::requestsTo($recorder, 'POST', '/sessions/online/'.self::SESSION_REF.'/invoices')[0]);
+        self::assertTrue($body['offlineMode']);
+    }
+
+    public function test_21166_maps_to_document_rejected(): void
+    {
+        $corrected = (new Fa3Writer($this->now()))->write(PolishInvoices::domestic());
+        $recorder = new RecordingHttpClient(...[
+            ...self::openingResponses(),
+            self::json(400, [
+                'title' => 'Bad Request',
+                'status' => 400,
+                'detail' => 'Żądanie jest nieprawidłowe.',
+                'errors' => [[
+                    'code' => 21166,
+                    'description' => 'Korekta techniczna faktury jest niedostępna.',
+                    'details' => ['Faktura posiada już przetworzoną prawidłowo korektę techniczną'],
+                ]],
+            ]),
+        ]);
+        $transport = $this->transport($recorder);
+
+        $exception = self::capture(static fn () => $transport->sendTechnicalCorrection($corrected, self::INVOICE_XML));
+
+        self::assertInstanceOf(DocumentRejected::class, $exception);
+        self::assertStringContainsString('a technical correction was already accepted', $exception->getMessage());
+        self::assertStringContainsString('21166', $exception->getMessage());
+        self::assertTrue(KsefErrors::hasCode($exception, 21166));
+    }
+
+    public function test_correction_goes_through_online_session_only(): void
+    {
+        $corrected = (new Fa3Writer($this->now()))->write(PolishInvoices::domestic());
+        $recorder = new RecordingHttpClient(...[...self::openingResponses(), self::sendResponse()]);
+
+        $this->transport($recorder)->sendTechnicalCorrection($corrected, self::INVOICE_XML);
+
+        self::assertSame([], self::requestsTo($recorder, 'POST', '/sessions/batch'));
+        self::assertSame(
+            ['POST /sessions/online', 'POST /sessions/online/'.self::SESSION_REF.'/invoices'],
+            array_values(array_filter(self::paths($recorder), static fn (string $path): bool => str_starts_with($path, 'POST /sessions'))),
+        );
+    }
+
     private function transport(ClientInterface $client, ?InMemoryCursorStore $store = null, ?KsefConfig $config = null): KsefTransport
     {
         $factory = new Psr17Factory;
 
         return KsefTransport::create($config ?? $this->sessionConfig(), new HttpClient($client, $factory, $factory), $store, now: $this->now());
+    }
+
+    /**
+     * The answers of one single-part batch send: the authentication (with the key list on the
+     * first one), the opened batch session with its upload request, the upload and the close.
+     *
+     * @return list<Response>
+     */
+    private static function batchResponses(bool $withKeys = true): array
+    {
+        $open = self::json(201, [
+            'referenceNumber' => '20250626-SB-213D593000-4DE10D80A5-E9',
+            'partUploadRequests' => [[
+                'ordinalNumber' => 1,
+                'method' => 'PUT',
+                'url' => 'https://ksef-api-storage.example/storage/00/batch-parts/1?sv=2025-01-05&sr=b&sp=w&sig=c2lnbmF0dXJl',
+                'headers' => ['x-ms-blob-type' => 'BlockBlob'],
+            ]],
+        ]);
+
+        return [
+            ...($withKeys ? [self::keysResponse(), ...self::tokenAuthResponses(withKeys: false)] : []),
+            $open,
+            new Response(201),
+            new Response(204),
+        ];
     }
 
     /**

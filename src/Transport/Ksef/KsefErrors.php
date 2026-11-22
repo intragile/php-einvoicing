@@ -34,6 +34,9 @@ final class KsefErrors
     /** KSeF codes of a request body KSeF refused: schema, validation, size, hash, encoding, signature. */
     private const REJECTED_CODES = [21401, 21402, 21403, 21405, 21217, 9101, 9102, 9103, 9105];
 
+    /** The KSeF code of a technical correction refused because the invoice already has an accepted one. */
+    public const TECHNICAL_CORRECTION_UNAVAILABLE = 21166;
+
     /** KSeF codes of a missing authorisation or authentication. */
     private const AUTHENTICATION_CODES = [21301, 21304];
 
@@ -57,8 +60,9 @@ final class KsefErrors
      * The exception an unsuccessful answer stands for: 401, or a 4xx with KSeF code 21301/21304,
      * is AuthenticationFailed, 403 is AuthenticationFailed (no permission in the context), 429 is
      * RateLimited, a 5xx status is TransportUnavailable for a safe method and OutcomeUnknown
-     * otherwise, 400 with a refused-body code is DocumentRejected, and 404, a not-found code or
-     * anything else is UnexpectedResponse.
+     * otherwise, 400 with a refused-body code or with 21166 (a technical correction already
+     * accepted) is DocumentRejected, and 404, a not-found code or anything else is
+     * UnexpectedResponse.
      *
      * @param  string  $operation  what was attempted, phrased to start a sentence
      * @param  string  $method  the HTTP method of the request; a server error on a request that
@@ -102,6 +106,12 @@ final class KsefErrors
                 $status,
                 $detail,
             ));
+        }
+        if ($status === 400 && in_array(self::TECHNICAL_CORRECTION_UNAVAILABLE, $codes, true)) {
+            return new DocumentRejected(
+                sprintf('%s failed: KSeF refused the technical correction, because a technical correction was already accepted for the corrected invoice (HTTP 400)%s.', $operation, $detail),
+                ['errors' => $lines],
+            );
         }
         if ($status === 400 && array_intersect($codes, self::REJECTED_CODES) !== []) {
             return new DocumentRejected(sprintf('%s failed: KSeF rejected the request (HTTP 400)%s.', $operation, $detail), ['errors' => $lines]);

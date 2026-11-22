@@ -55,6 +55,8 @@ use RuntimeException;
  * - send() sends one invoice in the online session of this instance, opened on the first send
  *   and replaced before it expires; close() closes it so that KSeF issues the receipts.
  * - sendBatch() sends several invoices in a batch session of their own.
+ * - Both take an offline flag for invoices issued in offline mode; sendTechnicalCorrection()
+ *   replaces an offline invoice KSeF rejected, in the online session.
  * - A raw FA(3) file is validated before anything is sent; an Invoice is written with Fa3Writer,
  *   which validates its own output.
  *
@@ -190,7 +192,14 @@ final class KsefTransport implements InboundSource
      * error 21180 (thrown as UnexpectedResponse): the invoice was not accepted and the local
      * session is dropped, so sending it again opens a new session.
      *
+     * Offline mode: pass $offline for an invoice issued outside KSeF (offline24, unavailability
+     * or failure mode). KSeF reports its own classification in KsefInvoiceStatus::$invoicingMode
+     * and in the inbox metadata; it may report Offline for an invoice sent without the flag, for
+     * example one whose issue date (P_1) lies before the day of the send. The flag and the
+     * reported mode do not compute a sending deadline; see OfflineDeadlines.
+     *
      * @param  string|Invoice  $invoice  an FA(3) file, or an invoice to write as one
+     * @param  bool  $offline  true for an invoice issued in offline mode
      *
      * @throws DocumentRejected when the FA(3) file fails its schema or a fatal FA(3) rule; nothing is sent
      * @throws UnsafeXml|UnsupportedDocument when the file is not well-formed XML or not an FA(3) invoice
@@ -201,9 +210,55 @@ final class KsefTransport implements InboundSource
      *                                                   OpenSSL fails; see the class description
      * @throws TransportException when opening the session or sending fails, or KSeF refuses it
      */
-    public function send(string|Invoice $invoice): SendResult
+    public function send(string|Invoice $invoice, bool $offline = false): SendResult
     {
-        $sent = $this->session->send($this->fa3($invoice, null));
+        $sent = $this->session->send($this->fa3($invoice, null), $offline);
+
+        return new SendResult($sent->documentId(), DeliveryState::Pending);
+    }
+
+    /**
+     * Sends the technical correction of an offline invoice KSeF rejected, in the online session
+     * as send() does, and returns the correction's document id as Pending.
+     *
+     * The correction is sent in offline mode and names the rejected invoice by the SHA-256 digest
+     * (Base64) of its exact bytes, which this method computes from the file: KSeF accepts a digest
+     * of an invoice it has never seen, so a mistyped digest would not be refused. Pass the rejected
+     * file byte for byte as it was sent; it is not validated, since KSeF rejected it. KSeF accepts
+     * one technical correction per invoice and refuses a second one with error 21166, thrown as
+     * DocumentRejected. OnlineSession::send() takes the digest directly, for callers that only
+     * kept the digest.
+     *
+     * @param  string|Invoice  $corrected  the corrected FA(3) file, or an invoice to write as one
+     * @param  string  $rejectedInvoiceXml  the FA(3) file KSeF rejected, as it was sent
+     *
+     * @throws InvalidArgumentException when the rejected file is empty or the corrected file is
+     *                                  identical to it, before anything is validated or sent;
+     *                                  when the invoice cannot be written as FA(3)
+     * @throws DocumentRejected when the corrected file fails its schema or a fatal FA(3) rule
+     *                          (nothing is sent), or KSeF refuses a second technical correction
+     *                          of the same invoice (21166)
+     * @throws UnsafeXml|UnsupportedDocument when the corrected file is not well-formed XML or not an FA(3) invoice
+     * @throws OutcomeUnknown when the send failed without an answer
+     * @throws InvalidArgumentException|RuntimeException when an authentication on the way cannot
+     *                                                   sign with the configured certificate or
+     *                                                   OpenSSL fails; see the class description
+     * @throws TransportException when opening the session or sending fails, or KSeF refuses it
+     */
+    public function sendTechnicalCorrection(string|Invoice $corrected, string $rejectedInvoiceXml): SendResult
+    {
+        if ($rejectedInvoiceXml === '') {
+            throw new InvalidArgumentException('A technical correction needs the rejected FA(3) file it replaces; an empty file was given.');
+        }
+        // Checked before validation as well, so a rejected file passed twice is reported as such
+        // rather than as failing validation.
+        if (is_string($corrected)) {
+            self::assertCorrects($corrected, $rejectedInvoiceXml);
+        }
+        $xml = $this->fa3($corrected, null);
+        self::assertCorrects($xml, $rejectedInvoiceXml);
+
+        $sent = $this->session->send($xml, true, OnlineSession::invoiceHash($rejectedInvoiceXml));
 
         return new SendResult($sent->documentId(), DeliveryState::Pending);
     }
@@ -215,6 +270,8 @@ final class KsefTransport implements InboundSource
      *
      * @param  array<string, string|Invoice>  $invoices  FA(3) files or invoices by file name
      *                                                   (letters, digits, ".", "_", "-", ending in ".xml")
+     * @param  bool  $offline  true when the invoices were issued in offline mode; the flag
+     *                         applies to the whole batch, as in send()
      *
      * @throws DocumentRejected when an FA(3) file fails validation; nothing is sent
      * @throws UnsafeXml|UnsupportedDocument when a file is not well-formed XML or not an FA(3) invoice
@@ -226,14 +283,14 @@ final class KsefTransport implements InboundSource
      *                                                   OpenSSL fails; see the class description
      * @throws TransportException when opening, uploading or closing fails, or KSeF refuses it
      */
-    public function sendBatch(array $invoices): string
+    public function sendBatch(array $invoices, bool $offline = false): string
     {
         $files = [];
         foreach ($invoices as $name => $invoice) {
             $files[$name] = $this->fa3($invoice, (string) $name);
         }
 
-        return $this->batch->send(BatchPackage::build($files, $this->config->batchPartBytes));
+        return $this->batch->send(BatchPackage::build($files, $this->config->batchPartBytes), $offline);
     }
 
     /**
@@ -617,6 +674,19 @@ final class KsefTransport implements InboundSource
         }
 
         return $invoice;
+    }
+
+    /**
+     * Refuses a technical correction whose file is byte for byte the rejected one: it would name
+     * itself as the invoice it corrects.
+     *
+     * @throws InvalidArgumentException
+     */
+    private static function assertCorrects(string $correctedXml, string $rejectedInvoiceXml): void
+    {
+        if ($correctedXml === $rejectedInvoiceXml) {
+            throw new InvalidArgumentException('The technical correction is identical to the rejected FA(3) file it should replace; pass the corrected file and the rejected file, in that order.');
+        }
     }
 
     /**
