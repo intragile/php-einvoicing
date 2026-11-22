@@ -11,18 +11,32 @@ use IntrAgile\EInvoicing\Tests\Support\KsefLive;
 use IntrAgile\EInvoicing\Tests\Support\KsefTap;
 use IntrAgile\EInvoicing\Tests\Support\LiveTransport;
 use IntrAgile\EInvoicing\Transport\DeliveryState;
+use IntrAgile\EInvoicing\Transport\Exception\DocumentRejected;
 use IntrAgile\EInvoicing\Transport\Exception\RateLimited;
 use IntrAgile\EInvoicing\Transport\Exception\TransportException;
 use IntrAgile\EInvoicing\Transport\FailureCategory;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\ContextIdentifier;
 use IntrAgile\EInvoicing\Transport\Ksef\Auth\TokenCredentials;
 use IntrAgile\EInvoicing\Transport\Ksef\Auth\TokenPermission;
+use IntrAgile\EInvoicing\Transport\Ksef\Certificates\EnrolledCertificate;
+use IntrAgile\EInvoicing\Transport\Ksef\Certificates\KeyAlgorithm;
+use IntrAgile\EInvoicing\Transport\Ksef\Certificates\KsefCertificate;
+use IntrAgile\EInvoicing\Transport\Ksef\Certificates\KsefCertificates;
+use IntrAgile\EInvoicing\Transport\Ksef\Certificates\KsefCertificateType;
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InvoiceMetadata;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InvoiceQueryFilters;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\MetadataQuery;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefApi;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefConfig;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefErrors;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefTransport;
+use IntrAgile\EInvoicing\Transport\Ksef\Latarnia\Latarnia;
+use IntrAgile\EInvoicing\Transport\Ksef\Latarnia\LatarniaMessage;
+use IntrAgile\EInvoicing\Transport\Ksef\Latarnia\OutageEvents;
+use IntrAgile\EInvoicing\Transport\Ksef\Qr\CertificateVerificationLink;
+use IntrAgile\EInvoicing\Transport\Ksef\Qr\KsefQrCodes;
 use IntrAgile\EInvoicing\Transport\Ksef\Session\BatchPackage;
+use IntrAgile\EInvoicing\Transport\Ksef\Session\InvoicingMode;
 use IntrAgile\EInvoicing\Transport\Ksef\Session\OnlineSession;
 use IntrAgile\EInvoicing\Transport\Ksef\Session\Upo;
 use IntrAgile\EInvoicing\Transport\Ksef\Testing\KsefTestData;
@@ -70,8 +84,27 @@ final class KsefLiveTest extends TestCase
     /** Metadata queries the buyer test may spend, below the hourly quota of 20. */
     private const INBOX_QUERY_BUDGET = 15;
 
+    /** Metadata queries all tests of a run may spend together; each context also has its own hourly quota of 20. */
+    private const RUN_METADATA_BUDGET = 15;
+
+    /** Reads of the invoice metadata before giving up on a technical correction's entry. */
+    private const METADATA_ATTEMPTS = 5;
+
+    private const METADATA_WAIT_SECONDS = 10;
+
+    /** Reads of a QR verification page before giving up on the expected verdict. */
+    private const QR_ATTEMPTS = 6;
+
+    private const QR_WAIT_SECONDS = 5;
+
+    /** Metadata queries spent by the tests of this run that count them. */
+    private static int $metadataQueries = 0;
+
     /** @var list<string> secrets a running test learned, kept out of its failure message */
     private array $secrets = [];
+
+    /** @var array<string, KsefCertificates> certificates the running test enrolled and has not revoked, by serial number */
+    private array $enrolled = [];
 
     protected function setUp(): void
     {
@@ -661,20 +694,404 @@ final class KsefLiveTest extends TestCase
     }
 
     /**
+     * Enrols an Offline certificate with an EC P-256 key and one with an RSA-2048 key for a fresh
+     * seal and checks what KSeF issued; both are revoked at the end.
+     *
+     * Observed on 2026-11-22: issued in 3-4 s each by "TEST CCK KSeF", CN with the suffix
+     * " (offline)", key usage Non Repudiation, valid two years; both listed Active by the query.
+     */
+    public function test_offline_certificate_enrolment_ec_and_rsa(): void
+    {
+        $nip = SelfSignedCertificate::randomNip();
+        $tap = new KsefTap;
+        $config = KsefLive::config($nip, SelfSignedCertificate::seal($nip, 'Testowa Pieczęć '.substr($nip, -4)));
+        $transport = KsefTransport::create($config, KsefLive::http($tap));
+
+        $this->live($config, function () use ($transport, $tap): void {
+            $certificates = $transport->certificates();
+            $limits = $certificates->limits();
+            KsefLive::report(sprintf('certificate limits: canRequest %s, enrolments %d/%d, certificates %d/%d', var_export($limits->canRequest, true), $limits->enrollmentRemaining, $limits->enrollmentLimit, $limits->certificateRemaining, $limits->certificateLimit));
+            self::assertTrue($limits->canRequest);
+
+            $issued = [];
+            foreach ([KeyAlgorithm::Ec, KeyAlgorithm::Rsa] as $algorithm) {
+                $started = microtime(true);
+                $enrolled = $this->enrol($certificates, KsefCertificateType::Offline, $algorithm);
+                $certificate = $enrolled->certificate;
+                $fields = self::certificateFields($certificate->certificatePem);
+                KsefLive::report(sprintf(
+                    'enrolled Offline %s in %.1f s: serial %s, CN "%s", issuer CN "%s", key usage %s, valid %s to %s',
+                    $algorithm->name,
+                    microtime(true) - $started,
+                    $certificate->serialNumber,
+                    $fields['subject'],
+                    $fields['issuer'],
+                    $fields['keyUsage'],
+                    $certificate->validFrom->format(DATE_ATOM),
+                    $certificate->validTo->format(DATE_ATOM),
+                ));
+                self::assertSame(KsefCertificateType::Offline, $certificate->type);
+                self::assertMatchesRegularExpression(KsefCertificate::SERIAL_PATTERN, $certificate->serialNumber);
+                self::assertStringEndsWith(' (offline)', $fields['subject']);
+                self::assertSame('TEST CCK KSeF', $fields['issuer']);
+                self::assertStringContainsString('Non Repudiation', $fields['keyUsage']);
+                self::assertSame($algorithm === KeyAlgorithm::Ec ? OPENSSL_KEYTYPE_EC : OPENSSL_KEYTYPE_RSA, $fields['keyType']);
+                self::assertTrue(openssl_x509_check_private_key($certificate->certificatePem, $enrolled->credentials()->privateKey()));
+                $issued[] = $certificate->serialNumber;
+            }
+
+            $listed = [];
+            foreach ($certificates->query(KsefCertificateType::Offline) as $certificate) {
+                $listed[$certificate->serialNumber] = $certificate->status;
+            }
+            KsefLive::report('certificate query (Offline): '.json_encode($listed));
+            foreach ($issued as $serial) {
+                self::assertSame('Active', $listed[$serial] ?? null);
+            }
+            self::reportCalls($this->name(), $tap);
+        });
+    }
+
+    /**
+     * KOD II signed with an Offline certificate verifies on the TE QR page, for an EC P-256 key
+     * (through KsefQrCodes::offline()) and an RSA-2048 key (through
+     * CertificateVerificationLink::build()); the same link with a tampered signature does not.
+     *
+     * Observed on 2026-11-22: the page answers HTTP 200 text/html in every case;
+     * "Weryfikacja prawidłowa" for the signed links, "Weryfikacja nieprawidłowa" / "Podpis
+     * wystawcy nie jest prawidłowy" for the tampered ones.
+     */
+    public function test_kod2_ec_and_rsa_verify_on_qr_test(): void
+    {
+        $seller = SelfSignedCertificate::randomNip();
+        $tap = new KsefTap;
+        $config = KsefLive::config($seller, SelfSignedCertificate::seal($seller));
+        $transport = KsefTransport::create($config, KsefLive::http($tap));
+
+        $this->live($config, function () use ($seller, $transport, $tap): void {
+            $certificates = $transport->certificates();
+            $ec = $this->enrol($certificates, KsefCertificateType::Offline, KeyAlgorithm::Ec);
+            $rsa = $this->enrol($certificates, KsefCertificateType::Offline, KeyAlgorithm::Rsa);
+            $xml = KsefLive::fa3(KsefLive::invoice($seller, SelfSignedCertificate::randomNip()));
+            $context = ContextIdentifier::nip($seller);
+
+            [$kod1, $kod2] = KsefQrCodes::offline(KsefEnvironment::Test, $context, $xml, $ec->credentials());
+            self::assertSame(KsefQrCodes::OFFLINE_LABEL, $kod1->label);
+            self::assertSame(KsefQrCodes::CERTIFICATE_LABEL, $kod2->label);
+            self::assertStringStartsWith(sprintf('%s/certificate/Nip/%s/%s/%s/', KsefLive::QR_BASE_URL, $seller, $seller, $ec->certificate->serialNumber), $kod2->url);
+            $rsaLink = CertificateVerificationLink::build(KsefEnvironment::Test, $context, $seller, $xml, $rsa->credentials());
+
+            foreach (['EC' => $kod2->url, 'RSA' => $rsaLink] as $kind => $link) {
+                $signature = substr($link, (int) strrpos($link, '/') + 1);
+                $attempts = 0;
+                $text = self::awaitQrVerdict($tap, $link, KsefLive::KOD2_VALID, $attempts);
+                KsefLive::report(sprintf('KOD II %s (signature %d characters): %s after %d page read(s)', $kind, strlen($signature), self::verdict($text), $attempts));
+                self::assertStringContainsString(KsefLive::KOD2_VALID, $text);
+                self::assertStringNotContainsString(KsefLive::KOD2_INVALID, $text);
+
+                $tampered = KsefLive::qrPage($tap, self::tampered($link));
+                KsefLive::report(sprintf('KOD II %s, tampered signature: %s', $kind, self::verdict($tampered)));
+                self::assertStringContainsString(KsefLive::KOD2_INVALID, $tampered);
+                self::assertStringNotContainsString(KsefLive::KOD2_VALID, $tampered);
+            }
+            self::assertSame(86, strlen(substr($kod2->url, (int) strrpos($kod2->url, '/') + 1)));
+            self::reportCalls($this->name(), $tap);
+        });
+    }
+
+    /**
+     * A KOD II link that verifies stops verifying once its Offline certificate is revoked.
+     *
+     * Observed on 2026-11-22: right after the revocation the page reports
+     * "Weryfikacja nieprawidłowa" with "Certyfikat został unieważniony".
+     */
+    public function test_kod2_fails_after_revocation(): void
+    {
+        $seller = SelfSignedCertificate::randomNip();
+        $tap = new KsefTap;
+        $config = KsefLive::config($seller, SelfSignedCertificate::seal($seller));
+        $transport = KsefTransport::create($config, KsefLive::http($tap));
+
+        $this->live($config, function () use ($seller, $transport, $tap): void {
+            $ec = $this->enrol($transport->certificates(), KsefCertificateType::Offline, KeyAlgorithm::Ec);
+            $xml = KsefLive::fa3(KsefLive::invoice($seller, SelfSignedCertificate::randomNip()));
+            $link = KsefQrCodes::offline(KsefEnvironment::Test, ContextIdentifier::nip($seller), $xml, $ec->credentials())[1]->url;
+
+            $attempts = 0;
+            $before = self::awaitQrVerdict($tap, $link, KsefLive::KOD2_VALID, $attempts);
+            KsefLive::report(sprintf('KOD II before revocation: %s after %d page read(s)', self::verdict($before), $attempts));
+            self::assertStringContainsString(KsefLive::KOD2_VALID, $before);
+
+            $this->revoke($ec->certificate->serialNumber);
+            $attempts = 0;
+            $after = self::awaitQrVerdict($tap, $link, KsefLive::KOD2_INVALID, $attempts);
+            KsefLive::report(sprintf('KOD II after revocation: %s after %d page read(s); revoked phrase %s', self::verdict($after), $attempts, str_contains($after, KsefLive::KOD2_REVOKED) ? 'present' : 'absent'));
+            self::assertStringContainsString(KsefLive::KOD2_INVALID, $after);
+            self::assertStringContainsString(KsefLive::KOD2_REVOKED, $after);
+            self::reportCalls($this->name(), $tap);
+        });
+    }
+
+    /**
+     * An invoice sent with the offline flag is accepted and reported Offline; its KOD I page says
+     * "not found" before the send and "found" (mode Offline) after it.
+     *
+     * Observed on 2026-11-22: status 200 with invoicingMode Offline; the KOD I page lists the
+     * KSeF number and "Tryb wystawienia faktury Offline" seconds after acceptance.
+     */
+    public function test_offline_send_reports_offline_mode_and_kod1_found(): void
+    {
+        $seller = SelfSignedCertificate::randomNip();
+        $tap = new KsefTap;
+        $config = KsefLive::config($seller, SelfSignedCertificate::seal($seller));
+        $transport = KsefTransport::create($config, KsefLive::http($tap));
+
+        $this->live($config, function () use ($seller, $transport, $tap): void {
+            $xml = KsefLive::fa3(KsefLive::invoice($seller, SelfSignedCertificate::randomNip()));
+            $unsent = KsefQrCodes::online(KsefEnvironment::Test, $xml, null);
+            self::assertSame(KsefQrCodes::OFFLINE_LABEL, $unsent->label);
+            $before = KsefLive::qrPage($tap, $unsent->url);
+            KsefLive::report('KOD I before the send: '.self::verdict($before));
+            self::assertStringContainsString(KsefLive::KOD1_NOT_FOUND, $before);
+
+            $sent = $transport->send($xml, offline: true);
+            $status = $transport->awaitFinal($sent->documentId);
+            $transport->close();
+            KsefLive::report(sprintf('offline send: status %d, KSeF number %s, invoicingMode %s', $status->code, $status->ksefNumber ?? '-', $status->invoicingMode->value ?? '-'));
+            self::assertSame(200, $status->code, $status->description);
+            self::assertSame(InvoicingMode::Offline, $status->invoicingMode);
+            $ksefNumber = (string) $status->ksefNumber;
+
+            $sentCode = KsefQrCodes::online(KsefEnvironment::Test, $xml, $ksefNumber);
+            self::assertSame($ksefNumber, $sentCode->label);
+            self::assertSame($unsent->url, $sentCode->url);
+            $attempts = 0;
+            $after = self::awaitQrVerdict($tap, $sentCode->url, KsefLive::KOD1_FOUND, $attempts);
+            KsefLive::report(sprintf('KOD I after the send: %s after %d page read(s)', self::verdict($after), $attempts));
+            self::assertStringContainsString(KsefLive::KOD1_FOUND, $after);
+            self::assertStringContainsString($ksefNumber, $after);
+            self::assertStringContainsString('Tryb wystawienia faktury Offline', $after);
+            self::reportCalls($this->name(), $tap);
+        });
+    }
+
+    /**
+     * An offline invoice without its mandatory P_2 is rejected with 450; its technical correction
+     * is accepted, reported Offline, and listed in the metadata with hashOfCorrectedInvoice, the
+     * SHA-256 of the rejected file.
+     *
+     * Observed on 2026-11-22: 450 "Błąd weryfikacji semantyki dokumentu faktury" with the XSD
+     * message naming P_2; the correction 200 with invoicingMode Offline.
+     */
+    public function test_technical_correction_of_rejected_offline_invoice(): void
+    {
+        $seller = SelfSignedCertificate::randomNip();
+        $tap = new KsefTap;
+        $config = KsefLive::config($seller, SelfSignedCertificate::seal($seller));
+        $transport = KsefTransport::create($config, KsefLive::http($tap));
+        [$api, , $keys] = KsefLive::api($config, KsefLive::http($tap));
+
+        $this->live($config, function () use ($seller, $config, $transport, $tap, $api, $keys): void {
+            [$fixed, $broken] = self::rejectedOfflineInvoice($seller, new OnlineSession($api, $keys, $config));
+
+            $correction = $transport->sendTechnicalCorrection($fixed, $broken);
+            $status = $transport->awaitFinal($correction->documentId);
+            $transport->close();
+            KsefLive::report(sprintf('technical correction: status %d, KSeF number %s, invoicingMode %s', $status->code, $status->ksefNumber ?? '-', $status->invoicingMode->value ?? '-'));
+            self::assertSame(200, $status->code, $status->description.' '.implode('; ', $status->details));
+            self::assertSame(InvoicingMode::Offline, $status->invoicingMode);
+            $ksefNumber = (string) $status->ksefNumber;
+
+            $query = new MetadataQuery($api);
+            $filters = new InvoiceQueryFilters(InvoiceQueryFilters::SUBJECT_SELLER, InvoiceQueryFilters::DATE_INVOICING, new DateTimeImmutable('-1 hour'), new DateTimeImmutable('+5 minutes'));
+            $metadata = KsefLive::poll(static function () use ($query, $filters, $ksefNumber): ?InvoiceMetadata {
+                foreach ($query->page($filters, 0, 10)['invoices'] as $entry) {
+                    if ($entry->ksefNumber === $ksefNumber) {
+                        return $entry;
+                    }
+                }
+
+                return null;
+            }, self::METADATA_ATTEMPTS, self::METADATA_WAIT_SECONDS);
+            $spent = self::spendMetadataQueries($tap);
+            KsefLive::report(sprintf('technical correction metadata: %s after %d metadata quer(ies); invoicingMode %s, hashOfCorrectedInvoice %s', $metadata === null ? 'not listed' : 'listed', $spent, $metadata->invoicingMode->value ?? '-', $metadata->hashOfCorrectedInvoice ?? '-'));
+            self::assertNotNull($metadata);
+            self::assertSame(base64_encode(hash('sha256', $broken, true)), $metadata->hashOfCorrectedInvoice);
+            self::assertSame(InvoicingMode::Offline, $metadata->invoicingMode);
+            self::reportCalls($this->name(), $tap);
+        });
+    }
+
+    /**
+     * KSeF accepts one technical correction per rejected invoice: a second one, with different
+     * bytes, is refused with HTTP 400, code 21166, thrown as DocumentRejected.
+     *
+     * Observed on 2026-11-22: "21166: Korekta techniczna faktury jest niedostępna. — Faktura
+     * posiada już przetworzoną prawidłowo korektę techniczną".
+     */
+    public function test_second_technical_correction_is_refused_21166(): void
+    {
+        $seller = SelfSignedCertificate::randomNip();
+        $tap = new KsefTap;
+        $config = KsefLive::config($seller, SelfSignedCertificate::seal($seller));
+        $transport = KsefTransport::create($config, KsefLive::http($tap));
+        [$api, , $keys] = KsefLive::api($config, KsefLive::http($tap));
+
+        $this->live($config, function () use ($seller, $config, $transport, $tap, $api, $keys): void {
+            [$fixed, $broken] = self::rejectedOfflineInvoice($seller, new OnlineSession($api, $keys, $config));
+
+            $first = $transport->awaitFinal($transport->sendTechnicalCorrection($fixed, $broken)->documentId);
+            self::assertSame(200, $first->code, $first->description.' '.implode('; ', $first->details));
+
+            $again = str_replace('<P_1M>Testowo</P_1M>', '<P_1M>Testowo Dolne</P_1M>', $fixed);
+            self::assertNotSame($fixed, $again);
+            $refused = null;
+            try {
+                $transport->sendTechnicalCorrection($again, $broken);
+            } catch (TransportException $exception) {
+                $refused = $exception;
+            } finally {
+                $transport->close();
+            }
+            self::assertNotNull($refused, 'A second technical correction of the same invoice must be refused.');
+            $answer = $tap->last('POST', '#^/sessions/online/[^/]+/invoices$#');
+            KsefLive::report(sprintf('second technical correction: %s, HTTP %d, codes %s: %s', $refused::class, $answer['status'] ?? 0, implode(', ', KsefErrors::codesOf($refused)), $refused->getMessage()));
+            self::assertInstanceOf(DocumentRejected::class, $refused);
+            self::assertTrue(KsefErrors::hasCode($refused, KsefErrors::TECHNICAL_CORRECTION_UNAVAILABLE));
+            self::reportCalls($this->name(), $tap);
+        });
+    }
+
+    /**
+     * A KSeF certificate of type Authentication with an EC P-256 key, enrolled after seal
+     * authentication, authenticates in the same context through the XAdES signer's ECDSA path.
+     *
+     * Observed on 2026-11-22: the certificate's CN carries the suffix " (uwierzytelnienie)" and
+     * the key usage Digital Signature; GET /auth/sessions reports the method
+     * xades.ksef-certificate.
+     */
+    public function test_authentication_certificate_logs_in(): void
+    {
+        $nip = SelfSignedCertificate::randomNip();
+        $tap = new KsefTap;
+        $config = KsefLive::config($nip, SelfSignedCertificate::seal($nip, 'Testowa Pieczęć '.substr($nip, -4)));
+        $transport = KsefTransport::create($config, KsefLive::http($tap));
+
+        $this->live($config, function () use ($nip, $transport, $tap): void {
+            $enrolled = $this->enrol($transport->certificates(), KsefCertificateType::Authentication, KeyAlgorithm::Ec);
+            $fields = self::certificateFields($enrolled->certificate->certificatePem);
+            KsefLive::report(sprintf('enrolled Authentication EC: serial %s, CN "%s", key usage %s', $enrolled->certificate->serialNumber, $fields['subject'], $fields['keyUsage']));
+            self::assertSame(KsefCertificateType::Authentication, $enrolled->certificate->type);
+
+            $ksefTap = new KsefTap;
+            $ksefConfig = KsefLive::config($nip, $enrolled->credentials());
+            [$api, $authenticator] = KsefLive::api($ksefConfig, KsefLive::http($ksefTap));
+            $tokens = $authenticator->authenticate();
+            array_push($this->secrets, $tokens->accessToken(), $tokens->refreshToken());
+            self::assertGreaterThan(new DateTimeImmutable, $tokens->accessValidUntil);
+            $method = self::authenticationMethod($api);
+            KsefLive::report('KSeF Authentication certificate (EC): authentication method '.$method);
+            self::assertSame('xades.ksef-certificate', $method);
+            self::reportCalls($this->name(), $tap, $ksefTap);
+        });
+    }
+
+    /**
+     * An invoice sent without the offline flag whose issue date (P_1) is yesterday is classified
+     * Offline by KSeF.
+     *
+     * Observed on 2026-11-22: status 200 with invoicingMode Offline.
+     */
+    public function test_online_send_dated_yesterday_is_classified_offline(): void
+    {
+        $seller = SelfSignedCertificate::randomNip();
+        $tap = new KsefTap;
+        $config = KsefLive::config($seller, SelfSignedCertificate::seal($seller));
+        $transport = KsefTransport::create($config, KsefLive::http($tap));
+
+        $this->live($config, function () use ($seller, $transport, $tap): void {
+            $xml = KsefLive::fa3(KsefLive::invoice($seller, SelfSignedCertificate::randomNip()));
+            $today = KsefLive::today();
+            $dated = str_replace('<P_1>'.$today->format('Y-m-d').'</P_1>', '<P_1>'.$today->modify('-1 day')->format('Y-m-d').'</P_1>', $xml);
+            self::assertNotSame($xml, $dated);
+
+            $status = $transport->awaitFinal($transport->send($dated)->documentId);
+            $transport->close();
+            KsefLive::report(sprintf('online send dated yesterday: status %d, invoicingMode %s', $status->code, $status->invoicingMode->value ?? '-'));
+            self::assertSame(200, $status->code, $status->description);
+            self::assertSame(InvoicingMode::Offline, $status->invoicingMode);
+            self::reportCalls($this->name(), $tap);
+        });
+    }
+
+    /**
+     * Latarnia TE answers /status and /messages in the documented shape. TE serves stale sample
+     * events, so only the shape is asserted.
+     *
+     * Observed on 2026-11-22: status TOTAL_FAILURE with 2 messages; /messages lists 3 (a total
+     * failure and a failure start, a maintenance announcement), the January 2026 samples.
+     */
+    public function test_latarnia_te_status_and_messages_parse(): void
+    {
+        $tap = new KsefTap;
+        $latarnia = Latarnia::forEnvironment(KsefEnvironment::Test, KsefLive::http($tap));
+
+        $status = $latarnia->status();
+        $messages = $latarnia->messages();
+        $outages = OutageEvents::fold($messages);
+        KsefLive::report(sprintf(
+            'Latarnia TE: status %s with %d message(s); /messages %d message(s) (%s); %d outage(s) folded',
+            $status->availability->value,
+            count($status->messages),
+            count($messages),
+            implode(', ', array_map(static fn (LatarniaMessage $message): string => $message->category->name.'/'.$message->type->value, $messages)),
+            count($outages),
+        ));
+        // The parse itself is the shape check: an unknown status, category or type, a missing
+        // field or an end message without an end time throws.
+        foreach ([...$status->messages, ...$messages] as $message) {
+            self::assertNotSame('', $message->id);
+            self::assertNotSame('', $message->title);
+            self::assertTrue($message->end === null || $message->end >= $message->start, 'A Latarnia event ends after it starts.');
+        }
+        self::assertSame(2, $tap->countFor(KsefLive::LATARNIA_HOST));
+        self::assertSame(0, $tap->count());
+        self::reportCalls($this->name(), $tap);
+    }
+
+    /**
      * Runs a live body with every failure message redacted of the configuration's credentials
-     * and of the secrets the body added to $secrets on the way (generated tokens).
+     * and of the secrets the body added to $secrets on the way (generated tokens, the private
+     * keys of enrolled certificates). Every certificate the body enrolled through enrol() and
+     * did not revoke is revoked afterwards, whether the body failed or not; a failed revocation
+     * fails a body that passed.
      *
      * @param  \Closure(): void  $body
      */
     private function live(KsefConfig $config, \Closure $body): void
     {
         $this->secrets = [];
+        $this->enrolled = [];
+        $failure = null;
         try {
             $body();
-        } catch (Throwable $failure) {
-            LiveTransport::failRedacted(KsefLive::redactor($config, ...$this->secrets), static function () use ($failure): never {
-                throw $failure;
-            });
+        } catch (Throwable $exception) {
+            $failure = $exception;
+        }
+        $revocationFailures = $this->revokeEnrolled();
+        try {
+            $redactor = KsefLive::redactor($config, ...$this->secrets);
+            foreach ($revocationFailures as $line) {
+                KsefLive::report($line, $redactor);
+            }
+            if ($failure === null && $revocationFailures !== []) {
+                $failure = new \RuntimeException(implode("\n", $revocationFailures));
+            }
+            if ($failure !== null) {
+                LiveTransport::failRedacted($redactor, static function () use ($failure): never {
+                    throw $failure;
+                });
+            }
         } finally {
             $this->secrets = [];
         }
@@ -744,5 +1161,172 @@ final class KsefLiveTest extends TestCase
         }
 
         return $upo;
+    }
+
+    /**
+     * Enrols a certificate for the running test, remembers it for revocation at the end of live()
+     * and keeps its private key out of every failure message.
+     */
+    private function enrol(KsefCertificates $certificates, KsefCertificateType $type, KeyAlgorithm $algorithm): EnrolledCertificate
+    {
+        $name = sprintf('Live %s %s %s', $type->value, $algorithm->name, strtoupper(bin2hex(random_bytes(3))));
+        $enrolled = $certificates->enroll($type, $algorithm, $name);
+        $this->enrolled[$enrolled->certificate->serialNumber] = $certificates;
+        $this->secrets[] = $enrolled->privateKeyPem();
+
+        return $enrolled;
+    }
+
+    /**
+     * Revokes a certificate the running test enrolled.
+     */
+    private function revoke(string $serial): void
+    {
+        $certificates = $this->enrolled[$serial] ?? throw new \LogicException('The certificate '.$serial.' was not enrolled by this test.');
+        $certificates->revoke($serial);
+        unset($this->enrolled[$serial]);
+    }
+
+    /**
+     * Revokes every certificate the running test enrolled and has not revoked yet; returns one
+     * line for each revocation that failed.
+     *
+     * @return list<string>
+     */
+    private function revokeEnrolled(): array
+    {
+        $failures = [];
+        foreach (array_keys($this->enrolled) as $serial) {
+            try {
+                $this->revoke($serial);
+                KsefLive::report('revoked certificate '.$serial);
+            } catch (Throwable $exception) {
+                $failures[] = sprintf('revoking certificate %s failed: %s: %s', $serial, $exception::class, $exception->getMessage());
+            }
+        }
+        $this->enrolled = [];
+
+        return $failures;
+    }
+
+    /**
+     * Metadata queries the tap has seen, added to the run's count, which must stay within
+     * RUN_METADATA_BUDGET; returns the tap's count.
+     */
+    private static function spendMetadataQueries(KsefTap $tap): int
+    {
+        $spent = count($tap->all('POST', '#^/invoices/query/metadata$#'));
+        self::$metadataQueries += $spent;
+        KsefLive::report(sprintf('metadata queries: %d in this test, %d in the run so far', $spent, self::$metadataQueries));
+        self::assertLessThanOrEqual(self::RUN_METADATA_BUDGET, self::$metadataQueries);
+
+        return $spent;
+    }
+
+    /**
+     * Writes the number of requests the taps sent to each TE host.
+     */
+    private static function reportCalls(string $test, KsefTap ...$taps): void
+    {
+        $count = static fn (string $host): int => array_sum(array_map(static fn (KsefTap $tap): int => $tap->countFor($host), $taps));
+        KsefLive::report(sprintf('%s: requests to the TE API %d, QR pages %d, Latarnia %d', $test, $count(KsefLive::HOST), $count(KsefLive::QR_HOST), $count(KsefLive::LATARNIA_HOST)));
+    }
+
+    /**
+     * An FA(3) file and the same file without its mandatory P_2, the latter sent in offline mode
+     * through the session and rejected with 450; returns both files.
+     *
+     * @return array{string, string} the corrected file, then the rejected one
+     */
+    private static function rejectedOfflineInvoice(string $seller, OnlineSession $session): array
+    {
+        $fixed = KsefLive::fa3(KsefLive::invoice($seller, SelfSignedCertificate::randomNip()));
+        $broken = preg_replace('#<P_2>[^<]*</P_2>#', '', $fixed, 1);
+        self::assertIsString($broken);
+        self::assertNotSame($fixed, $broken);
+
+        $sent = $session->send($broken, offlineMode: true);
+        try {
+            $rejected = $session->awaitFinal($sent->sessionReference, $sent->invoiceReference);
+        } finally {
+            $session->close();
+        }
+        KsefLive::report(sprintf('offline invoice without P_2: status %d %s — %s', $rejected->code, $rejected->description, implode('; ', $rejected->details)));
+        self::assertSame(450, $rejected->code);
+        self::assertStringContainsString('P_2', implode(' ', $rejected->details));
+
+        return [$fixed, $broken];
+    }
+
+    /**
+     * The text of the QR page, read until it contains the phrase, at most QR_ATTEMPTS times
+     * QR_WAIT_SECONDS apart; the last text is returned either way.
+     */
+    private static function awaitQrVerdict(KsefTap $tap, string $url, string $phrase, int &$attempts): string
+    {
+        $text = '';
+        KsefLive::poll(function () use ($tap, $url, $phrase, &$text, &$attempts): ?bool {
+            $attempts++;
+            $text = KsefLive::qrPage($tap, $url);
+
+            return str_contains($text, $phrase) ? true : null;
+        }, self::QR_ATTEMPTS, self::QR_WAIT_SECONDS);
+
+        return $text;
+    }
+
+    /**
+     * The verdict phrases found in a QR page text, for the report.
+     */
+    private static function verdict(string $text): string
+    {
+        $found = array_filter(
+            [KsefLive::KOD2_VALID, KsefLive::KOD2_INVALID, KsefLive::KOD2_REVOKED, 'Podpis wystawcy nie jest prawidłowy', KsefLive::KOD1_FOUND, KsefLive::KOD1_NOT_FOUND],
+            static fn (string $phrase): bool => str_contains($text, $phrase),
+        );
+
+        return $found === [] ? 'no known verdict' : '"'.implode('", "', $found).'"';
+    }
+
+    /**
+     * The link with its signature segment's bytes reversed: well-formed, but not a valid signature.
+     */
+    private static function tampered(string $link): string
+    {
+        $cut = (int) strrpos($link, '/');
+        $signature = base64_decode(strtr(substr($link, $cut + 1), '-_', '+/'), true);
+        self::assertIsString($signature);
+
+        return substr($link, 0, $cut + 1).rtrim(strtr(base64_encode(strrev($signature)), '+/', '-_'), '=');
+    }
+
+    /**
+     * The subject and issuer common names, the key usage and the key type of a certificate.
+     *
+     * @return array{subject: string, issuer: string, keyUsage: string, keyType: int}
+     */
+    private static function certificateFields(string $pem): array
+    {
+        $details = openssl_x509_parse($pem);
+        self::assertIsArray($details);
+        $publicKey = openssl_pkey_get_public($pem);
+        self::assertNotFalse($publicKey);
+        $key = openssl_pkey_get_details($publicKey);
+        self::assertIsArray($key);
+        $name = static function (mixed $dn): string {
+            $cn = is_array($dn) ? ($dn['CN'] ?? '') : '';
+
+            return is_string($cn) ? $cn : '';
+        };
+        $extensions = is_array($details['extensions'] ?? null) ? $details['extensions'] : [];
+        $keyUsage = $extensions['keyUsage'] ?? '';
+        $keyType = $key['type'] ?? null;
+
+        return [
+            'subject' => $name($details['subject'] ?? null),
+            'issuer' => $name($details['issuer'] ?? null),
+            'keyUsage' => is_string($keyUsage) ? $keyUsage : '',
+            'keyType' => is_int($keyType) ? $keyType : -1,
+        ];
     }
 }

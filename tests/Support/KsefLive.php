@@ -52,6 +52,26 @@ final class KsefLive
 
     public const BASE_URL = 'https://api-test.ksef.mf.gov.pl/v2';
 
+    /** The TE host of the QR verification pages (KOD I and KOD II). */
+    public const QR_HOST = 'qr-test.ksef.mf.gov.pl';
+
+    public const QR_BASE_URL = 'https://qr-test.ksef.mf.gov.pl';
+
+    /** The TE host of Latarnia, the KSeF availability service. */
+    public const LATARNIA_HOST = 'api-latarnia-test.ksef.mf.gov.pl';
+
+    /** KOD II verdicts of the TE QR page (the page answers HTTP 200 text/html in every case). */
+    public const KOD2_VALID = 'Weryfikacja prawidłowa';
+
+    public const KOD2_INVALID = 'Weryfikacja nieprawidłowa';
+
+    public const KOD2_REVOKED = 'Certyfikat został unieważniony';
+
+    /** KOD I verdicts of the TE QR page. */
+    public const KOD1_FOUND = 'Faktura znajduje się w KSeF';
+
+    public const KOD1_NOT_FOUND = 'Faktura nie została znaleziona w KSeF';
+
     /** The daily TE maintenance window, Europe/Warsaw time, during which no live call is made. */
     public const MAINTENANCE_FROM_HOUR = 16;
 
@@ -214,6 +234,37 @@ final class KsefLive
     public static function fa3(Invoice $invoice): string
     {
         return (new Fa3Writer)->write($invoice);
+    }
+
+    /**
+     * The visible text of a TE QR verification page, read through the tap.
+     *
+     * @throws LogicException when the link does not point at the TE QR host
+     */
+    public static function qrPage(KsefTap $tap, string $url): string
+    {
+        if (! str_starts_with($url, self::QR_BASE_URL.'/')) {
+            throw new LogicException('The KSeF live tests open QR verification links of TE only.');
+        }
+        $response = $tap->sendRequest((new Psr17Factory)->createRequest('GET', $url)->withHeader('Accept', 'text/html'));
+        Assert::assertSame(200, $response->getStatusCode(), 'The QR verification page answers HTTP 200 for every link.');
+
+        return self::pageText((string) $response->getBody());
+    }
+
+    /**
+     * The visible text of an HTML page: scripts and styles dropped, tags replaced by spaces,
+     * entities decoded (the QR page writes some Polish letters as &#x142; and the like) and every
+     * run of white space, non-breaking ones included, collapsed into one space.
+     */
+    public static function pageText(string $html): string
+    {
+        $html = preg_replace('#<(script|style|noscript|template)\b[^>]*>.*?</\1\s*>#is', ' ', $html) ?? $html;
+        $html = preg_replace('#<!--.*?-->#s', ' ', $html) ?? $html;
+        $text = preg_replace('#<[^>]*>#', ' ', $html) ?? $html;
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        return trim(preg_replace('/[\s\x{00A0}\x{202F}]+/u', ' ', $text) ?? $text);
     }
 
     /**
