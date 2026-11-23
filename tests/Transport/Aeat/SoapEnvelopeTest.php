@@ -136,6 +136,23 @@ final class SoapEnvelopeTest extends TestCase
         $this->assertFalse($fault->isServer());
     }
 
+    public function test_dotted_subcodes_keep_their_class(): void
+    {
+        $client = SoapEnvelope::open($this->fault('soapenv:Client.Authentication', 'Codigo[4112]. Refused'));
+        $server = SoapEnvelope::open($this->fault('soapenv:Server.Busy', 'Down'));
+        $lookalike = SoapEnvelope::open($this->fault('soapenv:ClientSide', 'x'));
+
+        $this->assertInstanceOf(SoapFault::class, $client);
+        $this->assertInstanceOf(SoapFault::class, $server);
+        $this->assertInstanceOf(SoapFault::class, $lookalike);
+        $this->assertSame('Client.Authentication', $client->faultCode);
+        $this->assertTrue($client->isClient());
+        $this->assertFalse($client->isServer());
+        $this->assertTrue($server->isServer());
+        $this->assertFalse($server->isClient());
+        $this->assertFalse($lookalike->isClient());
+    }
+
     public function test_doctype_is_refused(): void
     {
         $this->expectException(UnsafeXml::class);

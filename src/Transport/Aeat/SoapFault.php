@@ -14,7 +14,7 @@ use DOMElement;
 final readonly class SoapFault
 {
     public function __construct(
-        /** The local part of faultcode: "Client", "Server" or another value. */
+        /** The local part of faultcode: "Client", "Server", a dotted subcode of either or another value. */
         public string $faultCode,
         /** The fault string, trimmed, with inner whitespace collapsed. */
         public string $faultString,
@@ -48,13 +48,24 @@ final readonly class SoapFault
         return new self($faultCode, $faultString, $code);
     }
 
+    /**
+     * Whether the fault class is Client, a SOAP 1.1 dotted subcode such as "Client.Foo" included.
+     */
     public function isClient(): bool
     {
-        return $this->faultCode === 'Client';
+        return $this->hasClass('Client');
     }
 
+    /**
+     * Whether the fault class is Server, a SOAP 1.1 dotted subcode such as "Server.Bar" included.
+     */
     public function isServer(): bool
     {
-        return $this->faultCode === 'Server';
+        return $this->hasClass('Server');
+    }
+
+    private function hasClass(string $class): bool
+    {
+        return $this->faultCode === $class || str_starts_with($this->faultCode, $class.'.');
     }
 }
