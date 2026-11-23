@@ -22,6 +22,7 @@ use IntrAgile\EInvoicing\Spain\Verifactu\Amount;
 use IntrAgile\EInvoicing\Spain\Verifactu\Exception\InvalidRecord;
 use IntrAgile\EInvoicing\Spain\Verifactu\TaxParty;
 use IntrAgile\EInvoicing\Tests\Support\InvoiceFactory;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class SpanishInvoiceTest extends TestCase
@@ -117,6 +118,73 @@ final class SpanishInvoiceTest extends TestCase
 
         self::assertSame('121.00', $euro->total->text);
         self::assertSame('21.00', $euro->breakdown['S|21']['quota']?->text);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function malformedKeys(): array
+    {
+        return ['trailing zeros' => ['S|21.00'], 'lower case' => ['s|21'], 'one zero' => ['S|21.0'], 'no rate' => ['S'], 'empty rate' => ['S|']];
+    }
+
+    #[DataProvider('malformedKeys')]
+    public function test_malformed_breakdown_keys_are_refused(string $key): void
+    {
+        $this->expectException(InvalidRecord::class);
+        new SpanishInvoice(breakdown: [$key => new BreakdownOverride]);
+    }
+
+    public function test_euro_amounts_refuse_malformed_keys(): void
+    {
+        $this->expectException(InvalidRecord::class);
+        new EuroAmounts(Amount::of('1'), Amount::of('2'), ['S|21.0' => ['base' => Amount::of('1'), 'quota' => null]]);
+    }
+
+    public function test_breakdown_value_must_be_an_override(): void
+    {
+        $this->expectException(InvalidRecord::class);
+        /** @phpstan-ignore argument.type (proves the runtime guard for untyped callers) */
+        new SpanishInvoice(breakdown: ['S|21' => 'exempt']);
+    }
+
+    public function test_generated_keys_are_accepted(): void
+    {
+        $keys = [
+            SpanishInvoice::breakdownKey(VatCategory::StandardRate, BigDecimal::of('21.00')),
+            SpanishInvoice::breakdownKey(VatCategory::StandardRate, BigDecimal::of('10.5')),
+            SpanishInvoice::breakdownKey(VatCategory::ZeroRated, BigDecimal::of('0')),
+            SpanishInvoice::breakdownKey(VatCategory::StandardRate, BigDecimal::of('100')),
+            SpanishInvoice::breakdownKey(VatCategory::Exempt, null),
+        ];
+        $spanish = new SpanishInvoice(breakdown: array_fill_keys($keys, new BreakdownOverride));
+
+        self::assertSame($keys, array_keys($spanish->breakdown));
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>}>
+     */
+    public static function malformedEuroEntries(): array
+    {
+        return [
+            'missing base' => [['quota' => null]],
+            'missing quota key' => [['base' => Amount::of('1')]],
+            'base not an amount' => [['base' => '1', 'quota' => null]],
+            'quota not an amount' => [['base' => Amount::of('1'), 'quota' => 2]],
+            'not an array' => [[]],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $entry
+     */
+    #[DataProvider('malformedEuroEntries')]
+    public function test_euro_amounts_refuse_a_malformed_entry(array $entry): void
+    {
+        $this->expectException(InvalidRecord::class);
+        /** @phpstan-ignore argument.type (proves the runtime guard for untyped callers) */
+        new EuroAmounts(Amount::of('1'), Amount::of('2'), ['S|21' => $entry]);
     }
 
     public function test_extension_round_trips_through_invoice(): void

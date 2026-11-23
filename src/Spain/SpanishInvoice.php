@@ -45,6 +45,11 @@ final readonly class SpanishInvoice
         public ?string $systemAgreementId = null,
         public AltaOperation $operation = AltaOperation::Initial,
     ) {
+        foreach ($breakdown as $key => $override) {
+            self::assertBreakdownKey((string) $key);
+            self::assertOverride($key, $override);
+        }
+
         if ($correctionType !== null && $type !== null && ! $type->isCorrective()) {
             throw new InvalidRecord(sprintf('A correction type needs a corrective invoice type, "%s" is not one.', $type->value));
         }
@@ -63,5 +68,28 @@ final readonly class SpanishInvoice
         $text = $rate === null ? '-' : (string) $rate->strippedOfTrailingZeros();
 
         return $category->value.'|'.$text;
+    }
+
+    /**
+     * Refuses a key that {@see self::breakdownKey()} could never produce, so an override is never
+     * silently ignored by the lookup.
+     *
+     * @internal
+     */
+    public static function assertBreakdownKey(string $key): void
+    {
+        if (preg_match('/\A[A-Z0-9]{1,2}\|(-|\d+(\.\d*[1-9])?)\z/', $key) !== 1) {
+            throw new InvalidRecord(sprintf('The breakdown key "%s" is not in the form produced by breakdownKey() (for example "S|21", "S|10.5", "E|-").', $key));
+        }
+    }
+
+    /**
+     * Guards callers that bypass the static array shape.
+     */
+    private static function assertOverride(int|string $key, mixed $override): void
+    {
+        if (! $override instanceof BreakdownOverride) {
+            throw new InvalidRecord(sprintf('The breakdown entry "%s" must be a BreakdownOverride.', $key));
+        }
     }
 }
