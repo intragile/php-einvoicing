@@ -393,10 +393,16 @@ final class VerifactuRules
 
         // ES-VF-16
         if ($qualification === 'S2') {
-            foreach ([[$rateElement, $rate], [$quotaElement, $quota]] as [$element, $value]) {
-                if ($element !== null && $value !== null && ! $value->isZero()) {
-                    $report('ES-VF-16', '1198', $element, "{$element->localName} is {$value}.");
+            $missing = [];
+            foreach (['TipoImpositivo' => [$rateElement, $rate], 'CuotaRepercutida' => [$quotaElement, $quota]] as $name => [$element, $value]) {
+                if ($element === null || self::text($element) === '') {
+                    $missing[] = $name;
+                } elseif ($value !== null && ! $value->isZero()) {
+                    $report('ES-VF-16', '1198', $element, "{$name} is {$value}.");
                 }
+            }
+            if ($missing !== []) {
+                $report('ES-VF-16', '1198', $line, implode(' and ', $missing).' missing or empty.');
             }
         }
 
@@ -450,7 +456,7 @@ final class VerifactuRules
             'ES-VF-13' => 'ClaveRegimen is required for IVA (also when Impuesto is absent), IPSI and IGIC and must be a key admitted for that tax; it is not allowed for other taxes (05).',
             'ES-VF-14' => 'With IVA or IGIC and ClaveRegimen 01, OperacionExenta must not be E2 or E3.',
             'ES-VF-15' => 'An exempt line (OperacionExenta) must not carry TipoImpositivo, CuotaRepercutida, TipoRecargoEquivalencia or CuotaRecargoEquivalencia.',
-            'ES-VF-16' => 'On a reverse-charge line (CalificacionOperacion S2), TipoImpositivo and CuotaRepercutida must be 0.',
+            'ES-VF-16' => 'On a reverse-charge line (CalificacionOperacion S2), TipoImpositivo and CuotaRepercutida must be given and be 0.',
             'ES-VF-17' => 'CuotaRepercutida may differ from 0 only when CalificacionOperacion is S1.',
             'ES-VF-18' => 'A line with CalificacionOperacion S1 and without BaseImponibleACoste needs TipoImpositivo and CuotaRepercutida.',
             'ES-VF-19' => 'On a line with CalificacionOperacion S1, CuotaRepercutida must have the sign of the base and equal base x TipoImpositivo / 100 within 10.00 euros (not checked when TipoRectificativa is I or TipoFactura is R2 or R3).',

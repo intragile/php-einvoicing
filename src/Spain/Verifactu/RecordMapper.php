@@ -420,6 +420,14 @@ final class RecordMapper
             [$qualification, $exemption] = [null, $override->exemption];
         }
 
+        $tax = $override->tax ?? $tax;
+        // IVA and IGIC refuse E2 and E3 under regime 01 (Validaciones §3.1.3.15.5, error 1199);
+        // those exemptions default to the export regime 02 unless the override names a regime.
+        if (in_array($exemption, [ExemptOperation::E2, ExemptOperation::E3], true)
+            && in_array($tax, [TaxType::Iva, TaxType::Igic], true)) {
+            $regime = RegimeKey::Key02;
+        }
+
         if ($qualification === null && $exemption === null) {
             $problems[] = $group->category === VatCategory::NotSubjectToVat
                 ? sprintf('CalificacionOperacion (%s): a not-subject group needs the cause (N1 or N2) in SpanishInvoice::$breakdown.', $key)
@@ -456,7 +464,7 @@ final class RecordMapper
         }
 
         return new TaxBreakdownLine(
-            $override->tax ?? $tax,
+            $tax,
             $override->regime ?? $regime,
             $qualification,
             $exemption,

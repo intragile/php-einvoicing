@@ -49,9 +49,7 @@ final class VerifactuValidatorTest extends TestCase
             $documents['b2brouter/'.$name] = [$xml];
         }
         foreach (RecordMapperTest::mappableSamples() as $name => [$invoice]) {
-            if ($name !== self::E3_SAMPLE) {
-                $documents['mapped/'.$name] = [self::mapped($invoice)];
-            }
+            $documents['mapped/'.$name] = [self::mapped($invoice)];
         }
 
         return $documents;
@@ -72,23 +70,24 @@ final class VerifactuValidatorTest extends TestCase
 
     public function test_valid_corpus_holds_every_document(): void
     {
-        self::assertCount(3 + 4 + 10, self::validCorpus());
+        self::assertCount(3 + 4 + 11, self::validCorpus());
     }
 
     /**
-     * The mapper gives a rateless exempt line the general regime 01 unless the breakdown override
-     * names another key, and AEAT refuses E2 and E3 under regime 01 (error 1199). The mapped E3
-     * sample therefore stays out of the valid corpus and pins that finding here.
+     * Regime 01 refuses E2 and E3 (error 1199), so the mapper writes the E3 exemption under the
+     * export regime 02 and the record passes ES-VF-14.
      */
-    public function test_mapped_e3_exemption_under_the_default_regime_fires_es_vf_14(): void
+    public function test_mapped_e3_exemption_uses_regime_02(): void
     {
         $samples = iterator_to_array(RecordMapperTest::mappableSamples());
         self::assertArrayHasKey(self::E3_SAMPLE, $samples);
+        $xml = self::mapped($samples[self::E3_SAMPLE][0]);
 
-        $report = VerifactuRulesTest::validator()->validate(self::mapped($samples[self::E3_SAMPLE][0]));
+        $report = VerifactuRulesTest::validator()->validate($xml);
 
-        self::assertSame([], VerifactuRulesTest::schemaMessages($report));
-        self::assertSame(['ES-VF-14 fatal'], $report->verdict());
+        self::assertStringContainsString('<sum1:ClaveRegimen>02</sum1:ClaveRegimen>', $xml);
+        self::assertStringContainsString('<sum1:OperacionExenta>E3</sum1:OperacionExenta>', $xml);
+        self::assertSame([], $report->verdict());
     }
 
     public function test_aeat_vectors_dated_2024_fire_only_es_vf_01(): void

@@ -142,6 +142,37 @@ final class RecordMapperTest extends TestCase
         self::assertSame('5.20', $line->equivalenceQuota?->text);
     }
 
+    /** @return iterable<string, array{ExemptOperation}> */
+    public static function exportExemptions(): iterable
+    {
+        yield 'E2' => [ExemptOperation::E2];
+        yield 'E3' => [ExemptOperation::E3];
+    }
+
+    /**
+     * Regime 01 refuses E2 and E3 (Validaciones §3.1.3.15.5, error 1199), so an exempt group
+     * overridden to either defaults to the export regime 02.
+     */
+    #[DataProvider('exportExemptions')]
+    public function test_export_exemption_defaults_to_regime_02(ExemptOperation $article): void
+    {
+        $draft = (new RecordMapper)->map(SpanishInvoices::exempt($article));
+
+        self::assertSame(['01', '02', null, $article->value, null, '400.00', null], self::describe($draft->breakdown[0]));
+    }
+
+    public function test_explicit_regime_override_is_kept_for_export_exemptions(): void
+    {
+        $invoice = SpanishInvoices::invoice(
+            [SpanishInvoices::line('1', '400.00', VatCategory::Exempt, null)],
+            spanish: new SpanishInvoice(breakdown: ['E|-' => new BreakdownOverride(regime: RegimeKey::Key01, exemption: ExemptOperation::E3)]),
+        );
+
+        $draft = (new RecordMapper)->map($invoice);
+
+        self::assertSame(['01', '01', null, 'E3', null, '400.00', null], self::describe($draft->breakdown[0]));
+    }
+
     public function test_exempt_and_not_subject_need_overrides(): void
     {
         $invoice = SpanishInvoices::invoice([

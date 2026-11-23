@@ -133,6 +133,14 @@ return [
         ["{$alta}/sf:CuotaTotal", 'set', '0'],
         ["{$alta}/sf:ImporteTotal", 'set', '100.0'],
     ]),
+    // A reverse-charge (S2) line without TipoImpositivo and CuotaRepercutida.
+    $case('ES-VF-16', $domestic, [
+        ["{$line}/sf:CalificacionOperacion", 'set', 'S2'],
+        ["{$line}/sf:TipoImpositivo", 'remove'],
+        ["{$line}/sf:CuotaRepercutida", 'remove'],
+        ["{$alta}/sf:CuotaTotal", 'set', '0'],
+        ["{$alta}/sf:ImporteTotal", 'set', '100.0'],
+    ]),
     // A non-subject (N1) line with a quota.
     $case('ES-VF-17', $domestic, [
         ["{$line}/sf:CalificacionOperacion", 'set', 'N1'],
