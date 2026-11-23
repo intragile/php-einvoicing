@@ -24,7 +24,10 @@ jobs:
           coverage: none
       - run: composer update --prefer-dist --no-interaction --no-progress
       - run: composer fetch-official
+      # The VERI*FACTU schemas and the AEAT example are downloaded, never committed.
+      - run: composer fetch-official -- --spain
       - run: vendor/bin/phpunit
+      - run: vendor/bin/phpunit --group verifactu-official --fail-on-skipped
       - run: composer compile-rules -- --check
       - run: vendor/bin/phpstan analyse --memory-limit=1G
 
@@ -44,7 +47,9 @@ jobs:
       - run: composer validate --strict
       - run: composer update --prefer-lowest --prefer-stable --prefer-dist --no-interaction --no-progress
       - run: composer fetch-official
+      - run: composer fetch-official -- --spain
       - run: vendor/bin/phpunit
+      - run: vendor/bin/phpunit --group verifactu-official --fail-on-skipped
 
   pint:
     runs-on: ubuntu-latest
@@ -128,4 +133,6 @@ jobs:
       - name: Restore the committed composer.json for the packaging tests
         run: git checkout -- composer.json
       - run: composer fetch-official
+      - run: composer fetch-official -- --spain
       - run: vendor/bin/phpunit
+      - run: vendor/bin/phpunit --group verifactu-official --fail-on-skipped

@@ -11,6 +11,8 @@ declare(strict_types=1);
  *   einvoicing-rules check peppol --dir=DIR
  *   einvoicing-rules install france --dir=DIR [--from=DIR]
  *   einvoicing-rules check france --dir=DIR
+ *   einvoicing-rules install spain --dir=DIR [--from=DIR]
+ *   einvoicing-rules check spain --dir=DIR
  */
 
 use IntrAgile\EInvoicing\Schematron\Exception\UnsupportedSchematron;
@@ -23,6 +25,8 @@ use IntrAgile\EInvoicing\Validation\France\RuleInstaller as FranceRuleInstaller;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolRules;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
 use IntrAgile\EInvoicing\Validation\Peppol\RuleInstaller;
+use IntrAgile\EInvoicing\Validation\Spain\VerifactuSchemas;
+use IntrAgile\EInvoicing\Validation\Spain\VerifactuSources;
 
 // Composer's bin proxy names the autoloader; otherwise look for it in this repository and in the
 // vendor folder of a project that installed this package.
@@ -52,6 +56,12 @@ $usage = <<<'TXT'
       einvoicing-rules check france --dir=DIR
           Exits 0 when all seven compiled rule sets in DIR load with this engine and every schema
           file matches its checksum, 1 otherwise.
+      einvoicing-rules install spain --dir=DIR [--from=DIR]
+          Downloads the AEAT VERI*FACTU schemas, WSDL and error catalogue with the W3C XML Signature
+          schema (or reads them from --from, a folder holding the eight files by name), verifies
+          their checksums and copies them below DIR.
+      einvoicing-rules check spain --dir=DIR
+          Exits 0 when every VERI*FACTU file below DIR matches its checksum, 1 otherwise.
 
     TXT;
 
@@ -68,7 +78,7 @@ foreach (array_slice($arguments, 2) as $argument) {
 }
 
 $allowed = ['install' => ['dir', 'from'], 'check' => ['dir']];
-if (! is_string($command) || ! isset($allowed[$command]) || ! in_array($target, ['peppol', 'france'], true) || ! is_array($options)
+if (! is_string($command) || ! isset($allowed[$command]) || ! in_array($target, ['peppol', 'france', 'spain'], true) || ! is_array($options)
     || ! isset($options['dir']) || array_diff(array_keys($options), $allowed[$command]) !== []) {
     fwrite(STDERR, $usage);
     exit(1);
@@ -79,6 +89,9 @@ $from = $options['from'] ?? null;
 
 if ($target === 'france') {
     exit($command === 'check' ? checkFrance($dir) : installFrance($dir, $from));
+}
+if ($target === 'spain') {
+    exit($command === 'check' ? checkSpain($dir) : installSpain($dir, $from));
 }
 
 if ($command === 'check') {
@@ -176,6 +189,49 @@ function installFrance(string $dir, ?string $from): int
     }
     echo 'Wrote '.count(FranceSources::files('schema')).' schema files below '.rtrim($dir, '/\\').'/'.FranceRules::SCHEMA_DIR."\n";
     echo "Compiled for this machine only: the France_RFE files carry no licence that allows redistribution, do not redistribute these files.\n";
+
+    return 0;
+}
+
+function checkSpain(string $dir): int
+{
+    try {
+        (new VerifactuSchemas($dir))->check();
+    } catch (RulesNotInstalled $exception) {
+        fwrite(STDERR, $exception->getMessage()."\n");
+
+        return 1;
+    }
+
+    echo 'The '.count(VerifactuSources::files('runtime'))." VERI*FACTU files in \"{$dir}\" match their checksums.\n";
+
+    return 0;
+}
+
+function installSpain(string $dir, ?string $from): int
+{
+    echo $from === null
+        ? 'Downloading the AEAT VERI*FACTU '.VerifactuSources::RELEASE." schemas and the W3C XML Signature schema\n"
+        : 'Reading the AEAT VERI*FACTU '.VerifactuSources::RELEASE." schemas and the W3C XML Signature schema from \"{$from}\"\n";
+    try {
+        $written = VerifactuSchemas::install($dir, $from);
+    } catch (PartialInstall $exception) {
+        fwrite(STDERR, 'Installation incomplete: '.$exception->getMessage()."\n");
+        fwrite(STDERR, "The previous files could not be restored for these paths; run the install again to make the folder consistent:\n");
+        foreach ($exception->writtenPaths as $path) {
+            fwrite(STDERR, "  {$path}\n");
+        }
+
+        return 1;
+    } catch (RuleSourceMismatch|RuntimeException|InvalidArgumentException $exception) {
+        fwrite(STDERR, 'Nothing was installed: '.$exception->getMessage()."\n");
+
+        return 1;
+    }
+    foreach ($written as $path) {
+        echo "Wrote {$path}\n";
+    }
+    echo "Downloaded for this machine only: AEAT publishes no licence for these files, do not redistribute them.\n";
 
     return 0;
 }

@@ -57,6 +57,13 @@ declare(strict_types=1);
  *                      the git-ignored tests/fixtures/france-rfe/ (by repository path), each file
  *                      verified against that manifest before it is written. The repository has no
  *                      redistribution licence, so nothing from it is ever committed.
+ *  --spain             installs the AEAT VERI*FACTU schema set listed in
+ *                      resources/spain/verifactu-<release>.sha256 (with the W3C XML Signature
+ *                      schema) into the git-ignored tests/fixtures/verifactu/, the way
+ *                      "einvoicing-rules install spain" does, and the AEAT example archive with the
+ *                      ejemploRegistro.xml record unpacked from it into its examples/ folder, each
+ *                      file verified against that manifest. AEAT publishes no licence for these
+ *                      files, so they are never committed.
  * With --write-manifest, the file list is taken from the GitHub tree of the pinned commit and the
  * manifest is rewritten; for --facturx the folders must still match the aggregate SHA-256 values
  * and the licence sums pinned in FacturXSources.
@@ -68,6 +75,8 @@ use IntrAgile\EInvoicing\Syntax\SafeXml;
 use IntrAgile\EInvoicing\Validation\FacturX\FacturXSources;
 use IntrAgile\EInvoicing\Validation\France\FranceSources;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
+use IntrAgile\EInvoicing\Validation\Spain\VerifactuSchemas;
+use IntrAgile\EInvoicing\Validation\Spain\VerifactuSources;
 use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungSources;
 
 require_once dirname(__DIR__).'/src/Validation/FacturX/FacturXSources.php';
@@ -188,13 +197,20 @@ $peppolDir = $root.'/tests/fixtures/peppol-'.PeppolSources::VERSION;
 $facturxDir = $root.'/tests/fixtures/official/facturx-'.FacturXSources::VERSION;
 $facturxExamplesDir = $root.'/tests/fixtures/facturx-examples';
 $franceDir = $root.'/tests/fixtures/france-rfe';
-$options = getopt('', ['write-manifest', 'facturx', 'facturx-examples', 'france']) ?: [];
+$verifactuDir = $root.'/tests/fixtures/verifactu';
+$options = getopt('', ['write-manifest', 'facturx', 'facturx-examples', 'france', 'spain']) ?: [];
 $writeManifest = array_key_exists('write-manifest', $options);
 
 try {
     if (array_key_exists('france', $options)) {
         $count = fetchFrance($franceDir);
         fwrite(STDOUT, 'france-rfe-'.FranceSources::VERSION.": {$count} files, manifest verified\n");
+        exit(0);
+    }
+
+    if (array_key_exists('spain', $options)) {
+        $count = fetchSpain($root, $verifactuDir);
+        fwrite(STDOUT, 'verifactu-'.VerifactuSources::RELEASE.": {$count} files, manifest verified\n");
         exit(0);
     }
 
@@ -488,13 +504,13 @@ function withoutPrefix(string $name, array $prefixes): string
 /**
  * Returns the cached file when its checksum matches, otherwise downloads it and verifies it.
  */
-function fetchVerified(string $url, string $path, string $sha256): string
+function fetchVerified(string $url, string $path, string $sha256, int $timeout = 300): string
 {
     if (is_file($path) && hash_file('sha256', $path) === $sha256) {
         return $path;
     }
 
-    $body = httpGet($url);
+    $body = httpGet($url, $timeout);
 
     $actual = hash('sha256', $body);
     if ($actual !== $sha256) {
@@ -738,6 +754,63 @@ function fetchFrance(string $target): int
     replaceTree($staging, $target);
 
     return count($expected);
+}
+
+/**
+ * Installs the VERI*FACTU runtime files into $target with the package's own installer (skipped when
+ * the installed set already matches the manifest), then fetches the example archive into
+ * $target/examples/ and unpacks every example listed as "zip:<archive>" next to it, each verified
+ * against the manifest. Returns the number of manifest files in place.
+ */
+function fetchSpain(string $root, string $target): int
+{
+    // The installer and its downloader live in the package; Composer's autoloader loads them.
+    require_once $root.'/vendor/autoload.php';
+
+    if (! class_exists(ZipArchive::class)) {
+        throw new RuntimeException('The zip extension is required to unpack the AEAT example archive.');
+    }
+
+    $runtime = VerifactuSources::files('runtime');
+    try {
+        (new VerifactuSchemas($target))->check();
+    } catch (RuntimeException) {
+        VerifactuSchemas::install($target);
+        (new VerifactuSchemas($target))->check();
+    }
+
+    $examples = VerifactuSources::files('example');
+    $examplesDir = $target.'/examples';
+    ensureDirectory($examplesDir);
+    foreach ($examples as $name => $file) {
+        if (! str_starts_with($file['url'], 'zip:')) {
+            fetchVerified($file['url'], $examplesDir.'/'.$name, $file['sha256'], FACTURX_FILE_TIMEOUT);
+        }
+    }
+    foreach ($examples as $name => $file) {
+        if (! str_starts_with($file['url'], 'zip:')) {
+            continue;
+        }
+        $archive = $examplesDir.'/'.substr($file['url'], 4);
+        $zip = new ZipArchive;
+        if ($zip->open($archive, ZipArchive::RDONLY) !== true) {
+            throw new RuntimeException("Cannot open {$archive}");
+        }
+        $contents = $zip->getFromName($name);
+        $zip->close();
+        if ($contents === false) {
+            throw new RuntimeException("{$archive} has no entry {$name}");
+        }
+        $sum = hash('sha256', $contents);
+        if ($sum !== $file['sha256']) {
+            throw new RuntimeException("Checksum mismatch for {$name} in {$archive}: expected {$file['sha256']}, got {$sum}");
+        }
+        if (file_put_contents($examplesDir.'/'.$name, $contents) === false) {
+            throw new RuntimeException("Cannot write {$examplesDir}/{$name}");
+        }
+    }
+
+    return count($runtime) + count($examples);
 }
 
 /**

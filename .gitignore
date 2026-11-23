@@ -12,3 +12,5 @@
 /tests/fixtures/facturx-examples/
 # The FNFE France_RFE files have no redistribution licence: downloaded, never committed.
 /tests/fixtures/france-rfe/
+# AEAT publishes no licence for the VERI*FACTU schemas and examples: downloaded, never committed.
+/tests/fixtures/verifactu/

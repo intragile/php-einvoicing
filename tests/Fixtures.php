@@ -13,6 +13,7 @@ use IntrAgile\EInvoicing\Tests\Support\UnitTestDocument;
 use IntrAgile\EInvoicing\Validation\FacturX\FacturXSources;
 use IntrAgile\EInvoicing\Validation\France\FranceSources;
 use IntrAgile\EInvoicing\Validation\Peppol\PeppolSources;
+use IntrAgile\EInvoicing\Validation\Spain\VerifactuSchemas;
 use IntrAgile\EInvoicing\Validation\XRechnung\XRechnungSources;
 use InvalidArgumentException;
 use PHPUnit\Framework\Assert;
@@ -70,6 +71,12 @@ final class Fixtures
 
     /** Git-ignored folder filled by bin/fetch-official.php --france, laid out by repository path. */
     private const FRANCE_RFE_DIR = __DIR__.'/fixtures/france-rfe';
+
+    /**
+     * Git-ignored folder filled by bin/fetch-official.php --spain: the installed VERI*FACTU schema
+     * set and, in examples/, the AEAT example archive and record. AEAT publishes no licence for them.
+     */
+    private const VERIFACTU_DIR = __DIR__.'/fixtures/verifactu';
 
     private const FACTURX_EXAMPLES_MANIFEST = __DIR__.'/fixtures/facturx-examples.sha256';
 
@@ -439,6 +446,32 @@ final class Fixtures
         ksort($examples, SORT_STRING);
 
         return $examples;
+    }
+
+    /**
+     * The downloaded VERI*FACTU schema set. Skips the test when it was not fetched.
+     */
+    public static function verifactuSchemas(): VerifactuSchemas
+    {
+        if (! is_dir(self::VERIFACTU_DIR.'/'.VerifactuSchemas::DIR)) {
+            Assert::markTestSkipped('Run composer fetch-official -- --spain');
+        }
+
+        return new VerifactuSchemas(self::VERIFACTU_DIR);
+    }
+
+    /**
+     * Absolute path of AEAT's example record ejemploRegistro.xml. Skips the test when it was not
+     * fetched.
+     */
+    public static function verifactuExample(): string
+    {
+        $path = self::VERIFACTU_DIR.'/examples/ejemploRegistro.xml';
+        if (! is_file($path)) {
+            Assert::markTestSkipped('Run composer fetch-official -- --spain');
+        }
+
+        return $path;
     }
 
     /**

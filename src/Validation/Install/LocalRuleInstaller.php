@@ -17,7 +17,8 @@ use RuntimeException;
 /**
  * Compiles pinned Schematron files that may not be redistributed into PHP rule files on the
  * user's machine, and optionally copies a pinned tree of companion files (such as XML Schemas)
- * next to them.
+ * next to them. installFiles() copies a set of pinned files, each with its own download URL,
+ * without compiling anything.
  *
  * Every file is downloaded (or read from a local copy for offline use) and checked against its
  * pinned SHA-256 checksum before anything in the target folder is replaced.
@@ -102,18 +103,7 @@ final class LocalRuleInstaller
             $pinned[$path] = [$this->fetch($baseUrl, $sourceDir, $path, $family), $sha256];
         }
 
-        foreach ($pinned as $path => [$contents, $sha256]) {
-            $actual = hash('sha256', $contents);
-            if ($actual !== $sha256) {
-                throw new RuleSourceMismatch(sprintf(
-                    '%s is not the published %s file: expected SHA-256 %s, got %s.',
-                    $path,
-                    $release === '' ? 'pinned' : $release,
-                    $sha256,
-                    $actual,
-                ));
-            }
-        }
+        self::verify($pinned, $release);
 
         if (! is_dir($targetDir) && ! @mkdir($targetDir, 0775, true) && ! is_dir($targetDir)) {
             throw new RuntimeException("Cannot create the rules folder \"{$targetDir}\".");
@@ -156,6 +146,72 @@ final class LocalRuleInstaller
         }
 
         return $written;
+    }
+
+    /**
+     * Copies pinned files, each from its own URL, unchanged into "<targetDir>/<treeDir>/<path>".
+     * Every file is fetched and checked against its checksum before anything is written; the new
+     * tree is then swapped in by renaming, and if that fails the previous tree is restored.
+     *
+     * @param  array<string, array{url: string, sha256: string}>  $files  local path => download URL
+     *                                                                    and pinned SHA-256
+     * @param  ?string  $sourceDir  a folder holding the files at their local paths, for air-gapped
+     *                              machines; null downloads each file from its URL
+     * @param  string  $treeDir  folder below $targetDir that receives the files
+     * @param  string  $release  the publication the files belong to, for checksum errors
+     * @param  string  $family  short name of the files, for read errors
+     * @return list<string> written file paths, in the order of $files
+     *
+     * @throws RuleSourceMismatch when a file does not have its pinned checksum
+     * @throws PartialInstall when the new tree could not be moved into place and restoring the
+     *                        previous one failed as well
+     * @throws InvalidArgumentException|RuntimeException when a local path is unsafe, a file cannot
+     *                                                   be read or downloaded, or the target folder
+     *                                                   cannot be written
+     */
+    public function installFiles(string $targetDir, array $files, ?string $sourceDir, string $treeDir, string $release, string $family): array
+    {
+        if ($files === [] || $treeDir === '' || ! self::isSafePath($treeDir)) {
+            throw new InvalidArgumentException('Pinned files need at least one file and a folder to be copied into.');
+        }
+        foreach (array_keys($files) as $path) {
+            if (! self::isSafePath($path)) {
+                throw new InvalidArgumentException("Unsafe local path for a pinned file: \"{$path}\".");
+            }
+        }
+
+        /** @var array<string, array{string, string}> $pinned path => [contents, SHA-256] */
+        $pinned = [];
+        foreach ($files as $path => $file) {
+            $pinned[$path] = [
+                $sourceDir === null ? $this->downloader->get($file['url']) : $this->fetch('', $sourceDir, $path, $family),
+                $file['sha256'],
+            ];
+        }
+        self::verify($pinned, $release);
+
+        if (! is_dir($targetDir) && ! @mkdir($targetDir, 0775, true) && ! is_dir($targetDir)) {
+            throw new RuntimeException("Cannot create the rules folder \"{$targetDir}\".");
+        }
+
+        $installed = rtrim($targetDir, '/\\').'/'.$treeDir;
+        // Assigned before writing, so the finally block removes a tree that failed halfway.
+        $tree = $installed.'.tmp-'.bin2hex(random_bytes(6));
+        try {
+            $verbatim = array_map(static fn (array $file): string => $file['sha256'], $files);
+            self::writeTree($tree, $verbatim, $pinned);
+            unset($pinned);
+            $backup = $this->swapTree($tree, $installed);
+        } finally {
+            if (is_dir($tree)) {
+                self::removeTree($tree);
+            }
+        }
+        if ($backup !== null) {
+            self::removeTree($backup);
+        }
+
+        return array_map(static fn (string $path): string => $installed.'/'.$path, array_keys($files));
     }
 
     /**
@@ -431,6 +487,46 @@ final class LocalRuleInstaller
         }
 
         return $contents;
+    }
+
+    /**
+     * Checks every fetched file against its pinned checksum.
+     *
+     * @param  array<string, array{string, string}>  $pinned  path => [contents, SHA-256]
+     *
+     * @throws RuleSourceMismatch naming the first file that does not match
+     */
+    private static function verify(array $pinned, string $release): void
+    {
+        foreach ($pinned as $path => [$contents, $sha256]) {
+            $actual = hash('sha256', $contents);
+            if ($actual !== $sha256) {
+                throw new RuleSourceMismatch(sprintf(
+                    '%s is not the published %s file: expected SHA-256 %s, got %s.',
+                    $path,
+                    $release === '' ? 'pinned' : $release,
+                    $sha256,
+                    $actual,
+                ));
+            }
+        }
+    }
+
+    /**
+     * True for a relative path without empty, "." or ".." segments and without backslashes.
+     */
+    private static function isSafePath(string $path): bool
+    {
+        if ($path === '' || str_contains($path, '\\')) {
+            return false;
+        }
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '' || $segment === '.' || $segment === '..') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

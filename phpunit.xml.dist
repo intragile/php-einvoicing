@@ -22,7 +22,9 @@
          official validators; run them explicitly with the group option of PHPUnit. The
          france-rules group compiles the French rules from the France_RFE checkout (the france
          option of composer fetch-official) and is skipped without it, so it stays in the default
-         run. -->
+         run. The verifactu-official group reads the AEAT VERI*FACTU schemas and example record
+         (the spain option of composer fetch-official) and is skipped without them, so it stays in
+         the default run too; CI runs it again with fail-on-skipped, so a missing download fails. -->
     <groups>
         <exclude><group>oracle</group><group>kosit-oracle</group><group>verapdf</group><group>network</group><group>recommand-live</group><group>b2brouter-live</group><group>b2brouter-france-live</group><group>einvoicebe-live</group><group>ksef-live</group><group>performance</group><group>release-artefacts</group><group>release-gate</group></exclude>
     </groups>

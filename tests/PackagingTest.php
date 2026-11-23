@@ -126,8 +126,9 @@ final class PackagingTest extends TestCase
             self::assertContains($path, $ignored);
         }
         self::assertNotContains('/bin/einvoicing-rules', $ignored);
-        // The bundled FA(3) schemas are used at run time, so the dist archive keeps them.
-        foreach (['/resources', '/resources/poland', '/resources/poland/**'] as $path) {
+        // The bundled FA(3) schemas and the VERI*FACTU manifest are used at run time, so the dist
+        // archive keeps them.
+        foreach (['/resources', '/resources/poland', '/resources/poland/**', '/resources/spain', '/resources/spain/**'] as $path) {
             self::assertNotContains($path, $ignored);
         }
 
