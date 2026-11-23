@@ -52,6 +52,37 @@ final class ChillerlanQrDecoderTest extends TestCase
         self::assertSame(VerifactuQr::url($record, VerifactuEnvironment::Production), $text);
     }
 
+    public function test_error_handler_turns_only_reported_warnings_and_notices_into_exceptions(): void
+    {
+        $forwarded = [];
+        $previous = static function (int $level, string $message) use (&$forwarded): bool {
+            $forwarded[] = $level;
+
+            return true;
+        };
+        $handler = (new \ReflectionMethod(ChillerlanQrDecoder::class, 'errorHandler'))->invoke(null, $previous);
+        self::assertInstanceOf(\Closure::class, $handler);
+
+        foreach ([E_WARNING, E_NOTICE] as $level) {
+            $thrown = null;
+            try {
+                $handler($level, 'imagecreatefromstring(): bad data');
+            } catch (RuntimeException $e) {
+                $thrown = $e;
+            }
+            self::assertInstanceOf(RuntimeException::class, $thrown);
+        }
+
+        self::assertTrue($handler(E_DEPRECATED, 'deprecated'));
+        self::assertTrue($handler(E_USER_DEPRECATED, 'deprecated'));
+        self::assertTrue(@$handler(E_WARNING, 'silenced'));
+        self::assertSame([E_DEPRECATED, E_USER_DEPRECATED, E_WARNING], $forwarded);
+
+        $alone = (new \ReflectionMethod(ChillerlanQrDecoder::class, 'errorHandler'))->invoke(null, null);
+        self::assertInstanceOf(\Closure::class, $alone);
+        self::assertFalse($alone(E_DEPRECATED, 'deprecated'));
+    }
+
     public function test_garbage_png_throws(): void
     {
         $this->expectException(RuntimeException::class);
