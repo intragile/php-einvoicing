@@ -23,8 +23,11 @@ use IntrAgile\EInvoicing\Transport\Ksef\Certificates\KeyAlgorithm;
 use IntrAgile\EInvoicing\Transport\Ksef\Certificates\KsefCertificate;
 use IntrAgile\EInvoicing\Transport\Ksef\Certificates\KsefCertificates;
 use IntrAgile\EInvoicing\Transport\Ksef\Certificates\KsefCertificateType;
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\CursorWindow;
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InMemoryCursorStore;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InvoiceMetadata;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\InvoiceQueryFilters;
+use IntrAgile\EInvoicing\Transport\Ksef\Inbound\KsefCursorStore;
 use IntrAgile\EInvoicing\Transport\Ksef\Inbound\MetadataQuery;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefApi;
 use IntrAgile\EInvoicing\Transport\Ksef\KsefConfig;
@@ -508,6 +511,9 @@ final class KsefLiveTest extends TestCase
      * Polls at most INBOX_ATTEMPTS times INBOX_WAIT_SECONDS apart and asserts that the whole
      * test spends at most INBOX_QUERY_BUDGET metadata queries, within KSeF's 20 per hour.
      *
+     * After the acknowledgement the stored cursor moves to the window's high water mark, and a
+     * fresh transport on the same cursor store no longer offers the invoice.
+     *
      * Observed: the chunked queries are answered 200; the invoice was listed about two minutes
      * after acceptance, as the PermanentStorage high water mark lags behind (6 pending() calls
      * 25 s apart, 7 metadata queries in total).
@@ -520,9 +526,31 @@ final class KsefLiveTest extends TestCase
         $buyerConfig = KsefLive::config($buyer, SelfSignedCertificate::seal($buyer));
         $sellerTransport = KsefTransport::create($sellerConfig, KsefLive::http(new KsefTap));
         $buyerTap = new KsefTap;
-        $buyerTransport = KsefTransport::create($buyerConfig, KsefLive::http($buyerTap), inboxStart: new DateTimeImmutable('-100 days'));
+        $store = new class implements KsefCursorStore
+        {
+            public ?CursorWindow $last = null;
 
-        $this->live($buyerConfig, function () use ($seller, $buyer, $sellerTransport, $buyerTransport, $buyerTap): void {
+            private InMemoryCursorStore $inner;
+
+            public function __construct()
+            {
+                $this->inner = new InMemoryCursorStore;
+            }
+
+            public function window(string $key): ?CursorWindow
+            {
+                return $this->inner->window($key);
+            }
+
+            public function save(string $key, CursorWindow $window): void
+            {
+                $this->last = $window;
+                $this->inner->save($key, $window);
+            }
+        };
+        $buyerTransport = KsefTransport::create($buyerConfig, KsefLive::http($buyerTap), $store, new DateTimeImmutable('-100 days'));
+
+        $this->live($buyerConfig, function () use ($seller, $buyer, $sellerTransport, $buyerTransport, $buyerTap, $buyerConfig, $store): void {
             $xml = KsefLive::fa3(KsefLive::invoice($seller, $buyer));
             $status = $sellerTransport->awaitFinal($sellerTransport->send($xml)->documentId);
             self::assertSame(200, $status->code, $status->description);
@@ -552,9 +580,25 @@ final class KsefLiveTest extends TestCase
             $document = $buyerTransport->fetch($found);
             self::assertSame($xml, $document->xml);
             self::assertCount($before, $buyerTap->all('POST', '#^/invoices/query/metadata$#'));
+            $listed = $store->last;
+            self::assertNotNull($listed);
+            self::assertNotNull($listed->hwm);
+            self::assertArrayHasKey($ksefNumber, $listed->ids);
             $buyerTransport->acknowledge($found);
             self::assertSame([], array_filter($buyerTransport->pending(), static fn ($r): bool => $r->documentId === $found));
-            $spent = count($buyerTap->all('POST', '#^/invoices/query/metadata$#'));
+
+            // The cursor moved past the acknowledged window and survives in the store.
+            $moved = $store->last;
+            self::assertNotNull($moved);
+            self::assertArrayNotHasKey($ksefNumber, $moved->ids);
+            self::assertGreaterThanOrEqual($listed->hwm, $moved->from);
+            self::assertGreaterThan($listed->from, $moved->from);
+            KsefLive::report(sprintf('buyer inbox: cursor moved from %s to %s', $listed->from->format(DATE_RFC3339_EXTENDED), $moved->from->format(DATE_RFC3339_EXTENDED)));
+            $freshTap = new KsefTap;
+            $fresh = KsefTransport::create($buyerConfig, KsefLive::http($freshTap), $store);
+            self::assertSame([], array_filter($fresh->pending(), static fn ($r): bool => KsefTransport::ksefNumberOf($r->documentId) === $ksefNumber));
+            $fresh->close();
+            $spent = count($buyerTap->all('POST', '#^/invoices/query/metadata$#')) + count($freshTap->all('POST', '#^/invoices/query/metadata$#'));
             KsefLive::report(sprintf('buyer inbox: %d metadata queries in total', $spent));
             self::assertLessThanOrEqual(self::INBOX_QUERY_BUDGET, $spent);
         });

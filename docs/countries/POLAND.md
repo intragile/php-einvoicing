@@ -1638,7 +1638,7 @@ verified.**
 | Online session: send, status, KSeF number, UPO (also before close), duplicate (440), schema-invalid invoice, a send into a session KSeF closed (21180) | Live-verified on TE |
 | Batch: three invoices in two parts | Live-verified on TE |
 | Inbox: pending, fetch, acknowledge | Live-verified on TE |
-| Inbound ids: `pending()` returns `<KSeF number>@<date>`; `fetch()` on a fresh transport makes 0 metadata queries and returns byte-equal content; a plain KSeF number fetches at one metadata query. `acknowledge()` of the id raised no error, but the cursor effect was not observed live | Live-verified on TE (2026-11-22) |
+| Inbound ids: `pending()` returns `<KSeF number>@<date>`; `fetch()` on a fresh transport makes 0 metadata queries and returns byte-equal content; a plain KSeF number fetches at one metadata query. After `acknowledge()` the stored cursor moved to the window's high water mark, and a fresh transport on the same cursor store no longer listed the invoice | Live-verified on TE (2026-11-22; cursor effect 2026-11-23) |
 | Duplicate proof: `isSameDocument()` is true for the same bytes, false for a different file with the same `P_2`; the original's UPO is fetchable while its session is open. A duplicate of an original from another context (403/21178) or a closed-session receipt was not exercised | Live-verified on TE (2026-11-22) |
 | Export | Live-verified on TE |
 | Correction referencing the KSeF number of the corrected invoice | Live-verified on TE |
