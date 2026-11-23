@@ -71,12 +71,12 @@
         "intragile/einvoicing-rules-xrechnung": "<1.0 || >=2.0"
     },
     "suggest": {
-        "chillerlan/php-qrcode": "Renders the KSeF and VERI*FACTU verification links as SVG or PNG QR codes and reads B2Brouter VERI*FACTU QR images (^5; PNG needs ext-gd, reading ext-gd or ext-imagick)",
+        "chillerlan/php-qrcode": "Renders the KSeF and VERI*FACTU verification links as SVG or PNG QR codes and decodes the VERI*FACTU QR PNG images B2Brouter returns, for the cross-check (^5; PNG needs ext-gd, decoding ext-gd or ext-imagick)",
         "ext-zip": "Needed for KSeF batch sessions and invoice export packages (ZIP archives)",
-        "guzzlehttp/guzzle": "A PSR-18 HTTP client and PSR-17 factories for the Peppol transports",
+        "guzzlehttp/guzzle": "A PSR-18 HTTP client and PSR-17 factories for the Peppol transports and for the AEAT VERI*FACTU client with mutual TLS",
         "intragile/einvoicing-rules-facturx": "The Factur-X 1.09.2 rules and profile schemas (Apache-2.0), needed for writing and validating Factur-X/ZUGFeRD profiles other than XRECHNUNG",
         "intragile/einvoicing-rules-xrechnung": "The KoSIT XRechnung rules, scenario table and schemas (Apache-2.0), needed for XRechnung validation",
-        "symfony/http-client": "A PSR-18 HTTP client (with nyholm/psr7 for the PSR-17 factories) for the Peppol transports"
+        "symfony/http-client": "A PSR-18 HTTP client (with nyholm/psr7 for the PSR-17 factories) for the Peppol transports and for the AEAT VERI*FACTU client with mutual TLS"
     },
     "repositories": [
         {

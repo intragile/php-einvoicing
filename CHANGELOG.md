@@ -9,8 +9,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 The Spanish VERI*FACTU core: billing records, their fingerprint and chain, the QR link, the
-record XML and its validation. VERI*FACTU mode only; non-VERI*FACTU mode is not covered;
-transports follow.
+record XML and its validation, plus two transports: a direct AEAT client (verified offline only)
+and B2Brouter (verified live on its sandbox). VERI*FACTU mode only; non-VERI*FACTU mode is not
+covered.
 
 ### Added
 
@@ -44,6 +45,27 @@ transports follow.
   sums, never bundled.
 - **Spain:** issuer contracts for runtime issuer data: `VerifactuIssuerResolver`,
   `IssuerContext`, `InMemoryIssuerResolver` and the `AeatCredentials` value object.
+- **Spain:** `AeatClient` submits VERI*FACTU records to the AEAT SOAP service and looks them up
+  (`submit()`, `lookup()`). Mutual TLS runs through the PSR-18 client, with the certificate loaded
+  from PEM or PKCS#12 (`ClientCertificate`, `MaterializedCertificate` with options for Guzzle,
+  Symfony HttpClient and PHP streams) and `CaBundle` checking for the FNMT root. Responses map to
+  `SubmissionResponse`, `RecordResponse` and `RecordStatus`, with one `RecordOutcome` per record
+  and duplicate detection; `AeatErrors` classifies every AEAT error code by scope, category and
+  action; `FlowControl` applies the AEAT wait time per installation (`ThrottleKey`,
+  `ThrottleState`) and groups records by issuer into batches of at most 1,000. Verified offline
+  only, against responses constructed from the AEAT schemas and examples; no AEAT endpoint has
+  been called.
+- **Spain:** `B2BrouterVerifactu` issues Spanish invoices through B2Brouter's VERI*FACTU service,
+  finds an issued invoice by number, reads its tax report back (`TaxReport`, with the record XML,
+  fingerprint and QR image) and waits for registration with bounded polling (`VerifactuPolling`).
+- **Spain:** `VerifactuCrossCheck` checks a B2Brouter tax report in five steps: the record against
+  the XML Schema, its fingerprint, its link to the previous report, its content against the record
+  our own engine maps from the invoice (with documented known divergences reported as such), and
+  its QR code (decoded with `ChillerlanQrDecoder` when available). `CrossCheckResult` fails or
+  only reports by `CrossCheckMode`.
+- **Spain:** live tests against the B2Brouter Spanish sandbox (group `b2brouter-spain-live`,
+  excluded by default): chained invoices, an exempt invoice and a credit note, each issued,
+  registered and cross-checked in all five steps.
 
 ### Changed
 
@@ -53,6 +75,9 @@ transports follow.
 - **QR:** `QrCode`, `QrRenderer` and `ChillerlanQrRenderer` describe a verification link in
   general (KSeF or VERI*FACTU); their exception messages no longer name KSeF. The `Secret`
   credential holder's serialization message no longer names KSeF either.
+- **Composer:** the `suggest` entries say that `chillerlan/php-qrcode` also decodes the
+  B2Brouter VERI*FACTU QR images and that Guzzle or Symfony HttpClient also serve as the client
+  for the AEAT mutual-TLS connection.
 
 ## [1.2.0] - 2026-11-23
 
