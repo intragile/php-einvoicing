@@ -52,7 +52,9 @@ use Throwable;
  * 5. QR: with a decoder and a QR image, the decoded text must equal VerifactuQr::url() of
  *    B2Brouter's record exactly. Without a decoder, without an image, or when decoding fails, the
  *    fallback compares the URL parameters of B2Brouter's record with those of our draft (the
- *    amount by value) and notes that the fallback was used.
+ *    amount by value) and notes that the fallback was used. When step 4 recorded the credit-note
+ *    sign divergence on ImporteTotal, an importe equal to our total negated is accepted with a
+ *    note; step 5 still never yields a known divergence.
  *
  * Only two divergences are known and accepted (KnownDivergence), both in step 4: an exempt line
  * whose OperacionExenta differs from ours (B2Brouter does not take the exemption article from the
@@ -298,7 +300,13 @@ final class VerifactuCrossCheck
             }
         }
         if (! $draft->total->isEqualTo($theirs->total)) {
-            $run->fail($step, 'importe', $draft->total->text, $theirs->total->text, 'The QR parameter importe of the record differs from ours.');
+            // The documented credit-note sign divergence of step 4 carries over to the URL: only
+            // then is our total negated accepted.
+            if ($run->hasDivergence(CrossCheckStep::Semantics, 'ImporteTotal') && $draft->total->negated()->isEqualTo($theirs->total)) {
+                $run->note(sprintf('QR fallback: importe %s accepted as our total %s negated, the known sign divergence of a correction by difference recorded in step 4.', $theirs->total->text, $draft->total->text));
+            } else {
+                $run->fail($step, 'importe', $draft->total->text, $theirs->total->text, 'The QR parameter importe of the record differs from ours.');
+            }
         }
         $run->note(sprintf('QR fallback: %s; compared the URL parameters of B2Brouter\'s record (%s) with our own draft\'s, importe by value.', $reason, $expected));
         $run->close($step);

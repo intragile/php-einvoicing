@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Transport\B2Brouter\Spain;
 
+use DateTimeImmutable;
+use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Model\Extensions;
 use IntrAgile\EInvoicing\Model\Invoice;
+use IntrAgile\EInvoicing\Model\PrecedingInvoiceReference;
 use IntrAgile\EInvoicing\Spain\BreakdownOverride;
 use IntrAgile\EInvoicing\Spain\CorrectionType;
 use IntrAgile\EInvoicing\Spain\ExemptOperation;
@@ -161,17 +164,37 @@ final class VerifactuCrossCheckTest extends TestCase
         self::assertTrue($result->passed());
     }
 
-    public function test_positive_credit_note_fails_the_qr_fallback(): void
+    public function test_positive_credit_note_passes_the_qr_fallback_with_a_note(): void
     {
-        // Without a decoded QR, step 5 compares importe with our own (negated) total; step 5 never
-        // yields a known divergence.
+        // Without a decoded QR, step 5 accepts B2Brouter's positive importe because step 4 recorded
+        // the documented sign divergence on ImporteTotal; step 5 itself never yields one.
         $result = self::check()->verify(self::report('1064501'), self::report('1064500'), self::creditNote(InvoiceType::R1));
 
         self::assertSame(CheckStatus::KnownDivergence, $result->steps[CrossCheckStep::Semantics->value]);
+        self::assertSame(CheckStatus::Passed, $result->steps[CrossCheckStep::Qr->value], $result->summary());
+        self::assertSame([], $result->failures());
+        self::assertSame([], array_values(array_filter($result->differences, static fn (Difference $difference): bool => $difference->step === CrossCheckStep::Qr)));
+        self::assertTrue(self::hasNote($result, 'fallback'));
+        self::assertTrue(self::hasNote($result, 'sign divergence'));
+        self::assertTrue($result->passed());
+    }
+
+    public function test_credit_note_qr_importe_differing_by_more_than_sign_fails(): void
+    {
+        $invoice = SpanishInvoices::invoice(
+            [SpanishInvoices::line('1', '200.00', VatCategory::StandardRate, '21')],
+            spanish: new SpanishInvoice(type: InvoiceType::R1, correctionType: CorrectionType::Difference),
+            number: 'PROBE-ES-CN-0005',
+            type: InvoiceTypeCode::C_381,
+        )->withPrecedingInvoice(new PrecedingInvoiceReference(SpanishInvoices::NUMBER, new DateTimeImmutable(SpanishInvoices::ISSUE_DATE)));
+
+        $result = self::check()->verify(self::report('1064501'), self::report('1064500'), $invoice);
+
         self::assertSame(CheckStatus::Failed, $result->steps[CrossCheckStep::Qr->value]);
-        $failures = $result->failures();
-        self::assertSame(['importe'], self::fields($failures));
-        self::assertSame(['-121.00', '121.0'], [$failures[0]->ours, $failures[0]->theirs]);
+        $qr = array_values(array_filter($result->failures(), static fn (Difference $difference): bool => $difference->step === CrossCheckStep::Qr));
+        self::assertSame(['importe'], self::fields($qr));
+        self::assertSame(['-242.00', '121.0'], [$qr[0]->ours, $qr[0]->theirs]);
+        self::assertFalse(self::hasNote($result, 'sign divergence'));
     }
 
     public function test_type_difference_fails(): void

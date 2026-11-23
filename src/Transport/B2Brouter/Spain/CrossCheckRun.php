@@ -32,6 +32,18 @@ final class CrossCheckRun
         $this->differences[] = new Difference($step, CheckStatus::KnownDivergence, $field, $ours, $theirs, $message);
     }
 
+    /** Whether the step recorded a known divergence on the field. */
+    public function hasDivergence(CrossCheckStep $step, string $field): bool
+    {
+        foreach ($this->differences as $difference) {
+            if ($difference->step === $step && $difference->field === $field && $difference->status === CheckStatus::KnownDivergence) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function note(string $note): void
     {
         $this->notes[] = $note;
