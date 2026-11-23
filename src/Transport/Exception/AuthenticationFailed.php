@@ -11,8 +11,12 @@ use Throwable;
  */
 final class AuthenticationFailed extends TransportException
 {
-    public function __construct(string $message, ?Throwable $previous = null)
-    {
+    public function __construct(
+        string $message,
+        ?Throwable $previous = null,
+        /** The provider's own error code, when it gave one. */
+        public readonly ?int $providerCode = null,
+    ) {
         parent::__construct($message, 0, $previous);
     }
 

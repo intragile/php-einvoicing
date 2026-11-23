@@ -18,6 +18,8 @@ final class DocumentRejected extends TransportException
         string $message,
         public readonly array $errors = [],
         ?Throwable $previous = null,
+        /** The provider's own error code, when it gave one. */
+        public readonly ?int $providerCode = null,
     ) {
         parent::__construct($message, 0, $previous);
     }
