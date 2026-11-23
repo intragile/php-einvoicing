@@ -17,6 +17,13 @@ use LogicException;
  * integrator builds (Guzzle, Symfony HttpClient or PHP streams); every one of them verifies the
  * server certificate and none follows redirects. dispose(), or the destructor, deletes both files;
  * neither touches the network.
+ *
+ * Keep this instance referenced for as long as the HTTP client built from its options is used.
+ * The options only name the files: once the last reference to the instance goes, the destructor
+ * deletes them, and the client fails its next TLS handshake. A chained call such as
+ * `$certificate->materialize($dir)->guzzleOptions()` drops the instance at the end of the
+ * statement and leaves options naming files that no longer exist; assign the instance to a
+ * variable or property that lives as long as the client instead.
  */
 final class MaterializedCertificate
 {
@@ -49,6 +56,8 @@ final class MaterializedCertificate
     /**
      * Request options for Guzzle.
      *
+     * The paths stay valid only while this instance is referenced (see the class description).
+     *
      * @param  string|null  $caBundle  a PEM bundle to verify the server against; null uses the system store
      * @param  float  $timeoutSeconds  the whole request, connection included
      * @return array{cert: string, ssl_key: string|array{0: string, 1: string}, verify: string|true, timeout: float, connect_timeout: float, allow_redirects: false}
@@ -73,6 +82,8 @@ final class MaterializedCertificate
     /**
      * Request options for Symfony HttpClient. Symfony cannot set a separate connect timeout: its
      * "timeout" is the idle timeout and "max_duration" bounds the whole request; both get the argument.
+     *
+     * The paths stay valid only while this instance is referenced (see the class description).
      *
      * @param  string|null  $caBundle  a PEM bundle to verify the server against; null uses the system store
      * @param  float  $timeoutSeconds  the whole request, connection included
@@ -100,6 +111,8 @@ final class MaterializedCertificate
     /**
      * Options for the "ssl" stream context of PHP's stream wrappers. Timeouts and redirects are
      * "http" context options and stay with the client that builds the context.
+     *
+     * The paths stay valid only while this instance is referenced (see the class description).
      *
      * @param  string|null  $caBundle  a PEM bundle to verify the server against; null uses the system store
      * @return array{local_cert: string, local_pk: string, passphrase?: string, cafile?: string, verify_peer: true, verify_peer_name: true}

@@ -249,6 +249,31 @@ final class ClientCertificateTest extends TestCase
         $certificate->materialize($this->directory.'/missing');
     }
 
+    public function test_options_of_a_dropped_temporary_name_deleted_files(): void
+    {
+        $issued = AeatCertificates::client(['commonName' => 'TEMPORARY']);
+        $certificate = ClientCertificate::fromPem($issued['certificate'], $issued['privateKey']);
+
+        $held = $certificate->materialize($this->directory);
+        $heldOptions = $held->guzzleOptions();
+        self::assertIsString($heldOptions['ssl_key']);
+        self::assertFileExists($heldOptions['cert']);
+        self::assertFileExists($heldOptions['ssl_key']);
+
+        // The temporary is destroyed at the end of the statement, and its files with it.
+        $options = $certificate->materialize($this->directory)->guzzleOptions();
+        self::assertIsString($options['ssl_key']);
+        self::assertFileDoesNotExist($options['cert']);
+        self::assertFileDoesNotExist($options['ssl_key']);
+        $stream = $certificate->materialize($this->directory)->streamContextOptions();
+        self::assertFileDoesNotExist($stream['local_cert']);
+
+        self::assertFileExists($heldOptions['cert']);
+        unset($held);
+        self::assertFileDoesNotExist($heldOptions['cert']);
+        self::assertFileDoesNotExist($heldOptions['ssl_key']);
+    }
+
     public function test_materialized_certificate_refuses_cloning(): void
     {
         $issued = AeatCertificates::client(['commonName' => 'CLONE']);

@@ -34,6 +34,11 @@ final readonly class RecordResponse
     /**
      * The duplicate state takes precedence: a duplicate is rejected as a line, yet the record it
      * duplicates is already held by AEAT.
+     *
+     * AlreadyRegistered means AEAT holds a record for this IDFactura, not necessarily the record
+     * just sent: AEAT compares the invoice id, not the Huella. Only a byte-identical resend proves
+     * that the held record is this one; after anything else, confirm it with
+     * AeatClient::lookup() and RecordStatus::matches().
      */
     public function outcome(): RecordOutcome
     {
