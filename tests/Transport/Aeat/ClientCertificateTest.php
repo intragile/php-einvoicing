@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Transport\Aeat;
 
 use DateTimeImmutable;
+use Error;
 use IntrAgile\EInvoicing\Spain\CertificateKind;
 use IntrAgile\EInvoicing\Spain\Verifactu\AeatCredentials;
 use IntrAgile\EInvoicing\Tests\Support\AeatCertificates;
@@ -117,6 +118,56 @@ final class ClientCertificateTest extends TestCase
         self::assertFalse(openssl_error_string(), 'The OpenSSL error queue was left filled.');
     }
 
+    public function test_combined_pem_failures_keep_key_material_out_of_traces(): void
+    {
+        $previous = ini_set('zend.exception_ignore_args', '0');
+        try {
+            $certificate = AeatCertificates::client(['commonName' => 'COMBINED']);
+            $other = AeatCertificates::client(['commonName' => 'OTHER'], 365, self::PASSWORD);
+            $encrypted = AeatCertificates::client(['commonName' => 'COMBINED'], 365, 'the-right-one');
+
+            $this->files[] = $mismatched = AeatCertificates::file($certificate['certificate'].self::plainKey($other['privateKey']), '.pem');
+            $this->files[] = $wrongPassword = AeatCertificates::file($encrypted['certificate'].$encrypted['privateKey'], '.pem');
+
+            foreach ([
+                [new AeatCredentials($mismatched, null, null, CertificateKind::Seal), 'does not match'],
+                [new AeatCredentials($mismatched, self::PASSWORD, null, CertificateKind::Seal), 'does not match'],
+                [new AeatCredentials($wrongPassword, self::PASSWORD, null, CertificateKind::Seal), 'password'],
+            ] as [$credentials, $message]) {
+                $exception = self::thrown(static fn () => ClientCertificate::fromCredentials($credentials));
+                self::assertInstanceOf(InvalidArgumentException::class, $exception);
+                self::assertStringContainsString($message, $exception->getMessage());
+                self::assertTracesHold($exception, static fn (string $argument): bool => str_contains($argument, 'PRIVATE KEY') || str_contains($argument, self::PASSWORD));
+            }
+
+            $direct = self::thrown(static fn () => ClientCertificate::fromPem($certificate['certificate'].$other['privateKey'], $other['privateKey'], self::PASSWORD));
+            self::assertTracesHold($direct, static fn (string $argument): bool => str_contains($argument, 'PRIVATE KEY') || str_contains($argument, self::PASSWORD));
+        } finally {
+            ini_set('zend.exception_ignore_args', $previous === false ? '0' : $previous);
+        }
+    }
+
+    public function test_pkcs12_failures_keep_the_file_and_password_out_of_traces(): void
+    {
+        $previous = ini_set('zend.exception_ignore_args', '0');
+        try {
+            $issued = AeatCertificates::client(['commonName' => 'PKCS12 TRACE']);
+            $bytes = AeatCertificates::pkcs12($issued['certificate'], $issued['privateKey'], 'the-right-one');
+            $this->files[] = $p12 = AeatCertificates::file($bytes, '.p12');
+
+            foreach ([
+                static fn () => ClientCertificate::fromPkcs12($bytes, self::PASSWORD),
+                static fn () => ClientCertificate::fromCredentials(new AeatCredentials($p12, self::PASSWORD, null, CertificateKind::Seal)),
+            ] as $callback) {
+                $exception = self::thrown($callback);
+                self::assertInstanceOf(InvalidArgumentException::class, $exception);
+                self::assertTracesHold($exception, static fn (string $argument): bool => $argument === $bytes || str_contains($argument, self::PASSWORD));
+            }
+        } finally {
+            ini_set('zend.exception_ignore_args', $previous === false ? '0' : $previous);
+        }
+    }
+
     public function test_mismatched_pem_key_is_refused(): void
     {
         $one = AeatCertificates::client(['commonName' => 'ONE']);
@@ -198,6 +249,18 @@ final class ClientCertificateTest extends TestCase
         $certificate->materialize($this->directory.'/missing');
     }
 
+    public function test_materialized_certificate_refuses_cloning(): void
+    {
+        $issued = AeatCertificates::client(['commonName' => 'CLONE']);
+        $materialized = ClientCertificate::fromPem($issued['certificate'], $issued['privateKey'])->materialize($this->directory);
+
+        $exception = self::thrown(static fn (): object => clone self::untyped($materialized));
+        self::assertInstanceOf(Error::class, $exception);
+        self::assertStringContainsString('__clone', $exception->getMessage());
+        self::assertFileExists($materialized->certificatePath);
+        self::assertFileExists($materialized->privateKeyPath);
+    }
+
     public function test_pkcs12_key_is_written_encrypted_when_the_source_had_a_password(): void
     {
         $issued = AeatCertificates::client(['commonName' => 'ENCRYPTED']);
@@ -236,7 +299,7 @@ final class ClientCertificateTest extends TestCase
             $materialized->guzzleOptions($bundle, 12.0),
         );
         self::assertSame(
-            ['local_cert' => $certificate, 'local_pk' => $key, 'passphrase' => null, 'cafile' => $bundle, 'verify_peer' => true, 'verify_host' => true, 'timeout' => 10.0, 'max_duration' => 30.0, 'max_redirects' => 0],
+            ['local_cert' => $certificate, 'local_pk' => $key, 'passphrase' => null, 'cafile' => $bundle, 'verify_peer' => true, 'verify_host' => true, 'timeout' => 30.0, 'max_duration' => 30.0, 'max_redirects' => 0],
             $materialized->symfonyOptions($bundle),
         );
         self::assertSame(
@@ -298,6 +361,36 @@ final class ClientCertificateTest extends TestCase
         self::assertIsString($plain);
 
         return $plain;
+    }
+
+    /**
+     * Fails when any string argument in the traces of $exception and its previous exceptions
+     * matches $leaks.
+     *
+     * @param  callable(string): bool  $leaks
+     */
+    private static function assertTracesHold(Throwable $exception, callable $leaks): void
+    {
+        $frames = 0;
+        for ($current = $exception; $current !== null; $current = $current->getPrevious()) {
+            foreach ($current->getTrace() as $index => $frame) {
+                $frames++;
+                foreach ($frame['args'] ?? [] as $argument) {
+                    if (is_string($argument) && $leaks($argument)) {
+                        self::fail(sprintf('Frame %d (%s) carries secret material.', $index, $frame['function']));
+                    }
+                }
+            }
+        }
+        self::assertGreaterThan(0, $frames);
+    }
+
+    /**
+     * Hides the static type, so the clone attempt above is analysed as cloning any object.
+     */
+    private static function untyped(object $value): object
+    {
+        return $value;
     }
 
     private static function thrown(callable $callback): Throwable

@@ -34,6 +34,13 @@ final class MaterializedCertificate
         private readonly ?Secret $password,
     ) {}
 
+    /**
+     * Cloning is refused: a copy would delete the original's files when destroyed. The method is
+     * private rather than throwing, because a clone that throws is still destroyed, and its
+     * destructor would run.
+     */
+    private function __clone() {}
+
     public function __destruct()
     {
         $this->dispose();
@@ -64,8 +71,8 @@ final class MaterializedCertificate
     }
 
     /**
-     * Request options for Symfony HttpClient. Its "timeout" is the idle (and connection) timeout,
-     * "max_duration" bounds the whole request.
+     * Request options for Symfony HttpClient. Symfony cannot set a separate connect timeout: its
+     * "timeout" is the idle timeout and "max_duration" bounds the whole request; both get the argument.
      *
      * @param  string|null  $caBundle  a PEM bundle to verify the server against; null uses the system store
      * @param  float  $timeoutSeconds  the whole request, connection included
@@ -84,7 +91,7 @@ final class MaterializedCertificate
             'cafile' => $caBundle,
             'verify_peer' => true,
             'verify_host' => true,
-            'timeout' => min(self::CONNECT_TIMEOUT, $timeoutSeconds),
+            'timeout' => $timeoutSeconds,
             'max_duration' => $timeoutSeconds,
             'max_redirects' => 0,
         ];

@@ -29,6 +29,8 @@ final class ClientCertificate
 {
     private const PEM_CERTIFICATE = '/-----BEGIN CERTIFICATE-----\s.+?-----END CERTIFICATE-----/s';
 
+    private const PEM_PRIVATE_KEY = '/-----BEGIN ((?:ENCRYPTED |RSA |EC |DSA )?PRIVATE KEY)-----\s.+?-----END \1-----/s';
+
     /** The certificate in OpenSSL's one-line form, e.g. "/C=ES/O=…/CN=…". */
     public readonly string $subject;
 
@@ -94,7 +96,12 @@ final class ClientCertificate
             return self::fromPem($certificate, self::read($credentials->privateKeyPath), $credentials->password());
         }
         if (str_starts_with(ltrim($certificate), '-----BEGIN')) {
-            return self::fromPem($certificate, $certificate, $credentials->password());
+            // A combined file: only the certificate blocks travel as the certificate argument,
+            // so the key never sits in an argument that is not marked sensitive.
+            preg_match_all(self::PEM_CERTIFICATE, $certificate, $certificates);
+            $privateKey = preg_match(self::PEM_PRIVATE_KEY, $certificate, $key) === 1 ? $key[0] : '';
+
+            return self::fromPem(implode("\n", $certificates[0]), $privateKey, $credentials->password());
         }
 
         return self::fromPkcs12($certificate, $credentials->password());
@@ -153,12 +160,15 @@ final class ClientCertificate
      * Loads a PEM certificate and its private key. The certificate text may hold intermediate
      * certificates; the one matching the key becomes the leaf, the others follow it in order.
      *
+     * The certificate argument is marked sensitive as well, because callers may pass text that
+     * also holds the key.
+     *
      * @param  ?string  $password  the password of an encrypted private key
      *
      * @throws InvalidArgumentException when the certificate or the key cannot be read, or the key
      *                                  belongs to none of the certificates; the password is never quoted
      */
-    public static function fromPem(string $certificatePem, #[SensitiveParameter] string $privateKeyPem, #[SensitiveParameter] ?string $password = null): self
+    public static function fromPem(#[SensitiveParameter] string $certificatePem, #[SensitiveParameter] string $privateKeyPem, #[SensitiveParameter] ?string $password = null): self
     {
         preg_match_all(self::PEM_CERTIFICATE, $certificatePem, $matches);
         $certificates = [];

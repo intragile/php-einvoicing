@@ -55,8 +55,10 @@ final class AeatConfigTest extends TestCase
             self::assertStringContainsString('B2Brouter', $exception->getMessage());
         }
 
+        // A B2Brouter issuer without credentials is refused for its driver, before credentials matter.
         $withoutCredentials = new IssuerContext(Nif::parse('B64829179'), 'Issuer S.L.', IssuerDriver::B2Brouter, VerifactuEnvironment::Test);
         $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('B2Brouter');
         AeatConfig::forIssuer($withoutCredentials, $schemas);
     }
 
