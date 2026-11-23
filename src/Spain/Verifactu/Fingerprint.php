@@ -76,6 +76,18 @@ final class Fingerprint
         return implode('&', $pairs);
     }
 
+    /**
+     * Recomputes the fingerprint of a written RegistroAlta or RegistroAnulacion from the literal
+     * text of its hash fields, so a record written by other software (amounts such as "100.0" or
+     * "41.4") reproduces the Huella it was published with.
+     *
+     * @throws InvalidRecord when the element is neither record
+     */
+    public static function recompute(DOMElement $record): string
+    {
+        return self::ofInput(self::inputOf($record));
+    }
+
     public static function ofInput(string $input): string
     {
         return strtoupper(hash('sha256', $input));

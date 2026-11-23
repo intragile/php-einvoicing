@@ -19,6 +19,8 @@
 /resources/poland/** -text -eol
 # The official FA(3) templates are hashed byte for byte in their SOURCE.md.
 /tests/fixtures/poland/official/** -text -eol
+# The B2Brouter VERI*FACTU sandbox records are kept byte for byte (checksums in their README.md).
+/tests/fixtures/spain/b2brouter/** -text -eol
 
 # Development files are left out of the Composer dist archive.
 /.github            export-ignore

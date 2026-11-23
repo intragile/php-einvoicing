@@ -82,6 +82,9 @@ final class Fixtures
 
     private const POLAND_BROCHURE_DIR = __DIR__.'/fixtures/poland/brochure';
 
+    /** The four VERI*FACTU records B2Brouter produced in its sandbox (see the README there). */
+    private const SPAIN_B2BROUTER_DIR = __DIR__.'/fixtures/spain/b2brouter';
+
     private const STYLESHEETS = [
         'ubl' => 'EN16931-UBL-validation.xslt',
         'cii' => 'EN16931-CII-validation.xslt',
@@ -472,6 +475,24 @@ final class Fixtures
         }
 
         return $path;
+    }
+
+    /**
+     * The VERI*FACTU records captured from the B2Brouter sandbox, kept byte for byte: file name =>
+     * XML, sorted by name, which is also their order in the chain.
+     *
+     * @return array<string, string>
+     */
+    public static function verifactuB2Brouter(): array
+    {
+        $records = [];
+        foreach (self::regularFiles(self::SPAIN_B2BROUTER_DIR) as $file) {
+            if (str_ends_with($file, '.xml')) {
+                $records[$file] = (string) file_get_contents(self::SPAIN_B2BROUTER_DIR.'/'.$file);
+            }
+        }
+
+        return $records;
     }
 
     /**
