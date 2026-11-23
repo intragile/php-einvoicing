@@ -24,9 +24,10 @@ final readonly class ThrottleState
         }
     }
 
-    /** The earliest time the next send is allowed by the wait, or null before the first attempt. */
+    /** The earliest time the next send is allowed by the wait, or null before the first attempt.
+     * The wait is added as elapsed seconds, so a daylight-saving change in the time zone does not shift it. */
     public function nextSendAt(): ?DateTimeImmutable
     {
-        return $this->lastSentAt?->modify('+'.$this->waitSeconds.' seconds');
+        return $this->lastSentAt?->setTimestamp($this->lastSentAt->getTimestamp() + $this->waitSeconds);
     }
 }

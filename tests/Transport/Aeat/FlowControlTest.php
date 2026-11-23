@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Tests\Transport\Aeat;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use IntrAgile\EInvoicing\Spain\Nif;
 use IntrAgile\EInvoicing\Spain\Verifactu\BillingRecord;
 use IntrAgile\EInvoicing\Spain\Verifactu\ChainLink;
@@ -147,8 +148,61 @@ final class FlowControlTest extends TestCase
         $batches = FlowControl::batches($records);
 
         self::assertSame([1000, 1000, 1], array_map('count', $batches));
-        self::assertSame($records[1000], $batches[1][0]);
-        self::assertSame($records[2000], $batches[2][0]);
+        self::assertSame($records, array_merge(...$batches));
+    }
+
+    public function test_batches_cut_per_issuer_group(): void
+    {
+        $records = [];
+        $expectedA = [];
+        $expectedB = [];
+        for ($i = 1; $i <= 1001; $i++) {
+            $a = $this->record('A', 'A'.$i);
+            $b = $this->record('B', 'B'.$i);
+            $records[] = $a;
+            $records[] = $b;
+            $expectedA[] = $a;
+            $expectedB[] = $b;
+        }
+
+        $batches = FlowControl::batches($records);
+
+        self::assertSame([1000, 1, 1000, 1], array_map('count', $batches));
+        self::assertSame($expectedA, array_merge($batches[0], $batches[1]));
+        self::assertSame($expectedB, array_merge($batches[2], $batches[3]));
+    }
+
+    public function test_batch_size_at_the_cap_boundary(): void
+    {
+        $control = $this->control('10:00:00');
+
+        self::assertSame(1000, $control->decide(new ThrottleState, 1000)->batchSize);
+        self::assertSame(1000, $control->decide(new ThrottleState, 1001)->batchSize);
+    }
+
+    public function test_wait_is_measured_in_elapsed_seconds_across_a_dst_change(): void
+    {
+        $sentUtc = new DateTimeImmutable('2026-10-25 00:59:30', new DateTimeZone('UTC'));
+        $sentMadrid = $sentUtc->setTimezone(new DateTimeZone('Europe/Madrid'));
+
+        foreach ([60, 3600] as $wait) {
+            $utc = new ThrottleState($sentUtc, $wait);
+            $madrid = new ThrottleState($sentMadrid, $wait);
+
+            self::assertSame($sentUtc->getTimestamp() + $wait, $utc->nextSendAt()?->getTimestamp());
+            $nextMadrid = $madrid->nextSendAt();
+            self::assertInstanceOf(DateTimeImmutable::class, $nextMadrid);
+            self::assertSame($utc->nextSendAt()->getTimestamp(), $nextMadrid->getTimestamp());
+            self::assertSame('Europe/Madrid', $nextMadrid->getTimezone()->getName());
+
+            foreach ([30, 59, 60, 90, 3599, 3600] as $elapsed) {
+                $now = fn (): DateTimeImmutable => $sentUtc->modify('+'.($elapsed + 30).' seconds');
+                $a = (new FlowControl($now))->decide($utc, 1);
+                $b = (new FlowControl($now))->decide($madrid, 1);
+                self::assertSame($a->sendNow, $b->sendNow);
+                self::assertSame($a->nextSendAt?->getTimestamp(), $b->nextSendAt?->getTimestamp());
+            }
+        }
     }
 
     public function test_keys(): void
