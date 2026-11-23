@@ -33,7 +33,7 @@ final readonly class Amount
             throw new InvalidRecord('The amount is not a number.', 0, $e);
         }
 
-        $rounded = $value->toScale(2, RoundingMode::HALF_UP);
+        $rounded = $value->toScale(2, RoundingMode::HalfUp);
         // A value that rounds to zero is written without a sign.
         $text = $rounded->isZero() ? '0.00' : (string) $rounded;
 

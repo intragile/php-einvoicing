@@ -29,7 +29,7 @@ final readonly class TaxRate
             throw new InvalidRecord('The tax rate is not a number.', 0, $e);
         }
 
-        $rounded = $value->toScale(2, RoundingMode::HALF_UP);
+        $rounded = $value->toScale(2, RoundingMode::HalfUp);
         $text = (string) $rounded;
 
         if (preg_match(self::PATTERN, $text) !== 1) {
