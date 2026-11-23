@@ -39,6 +39,22 @@ final class AeatErrorsTest extends TestCase
         yield '1199 record validation' => [1199, ErrorScope::Record, FailureCategory::Validation, ErrorAction::RegenerateAfterRejection, false];
         yield '2000 accepted with errors' => [2000, ErrorScope::AcceptedWithErrors, FailureCategory::Validation, ErrorAction::CorrectAcceptedRecord, false];
         yield '2005 accepted with errors' => [2005, ErrorScope::AcceptedWithErrors, FailureCategory::Validation, ErrorAction::CorrectAcceptedRecord, false];
+        yield '4111 transient' => [4111, ErrorScope::Submission, FailureCategory::Transport, ErrorAction::RetrySameBytes, false];
+        yield '4118 transient' => [4118, ErrorScope::Submission, FailureCategory::Transport, ErrorAction::RetrySameBytes, false];
+        yield '4128 transient' => [4128, ErrorScope::Submission, FailureCategory::Transport, ErrorAction::RetrySameBytes, false];
+        yield '4134 transient' => [4134, ErrorScope::Submission, FailureCategory::Transport, ErrorAction::RetrySameBytes, false];
+        yield '3501 transient' => [3501, ErrorScope::Submission, FailureCategory::Transport, ErrorAction::RetrySameBytes, false];
+        yield '3004 record configuration' => [3004, ErrorScope::Record, FailureCategory::Validation, ErrorAction::FixConfiguration, false];
+        yield '4100 submission boundary' => [4100, ErrorScope::Submission, FailureCategory::Validation, ErrorAction::FixConfiguration, false];
+        yield '4199 submission boundary' => [4199, ErrorScope::Submission, FailureCategory::Validation, ErrorAction::FixConfiguration, false];
+        yield '3599 submission boundary' => [3599, ErrorScope::Submission, FailureCategory::Validation, ErrorAction::FixConfiguration, false];
+        yield '1100 record boundary' => [1100, ErrorScope::Record, FailureCategory::Validation, ErrorAction::RegenerateAfterRejection, false];
+        yield '1299 record boundary' => [1299, ErrorScope::Record, FailureCategory::Validation, ErrorAction::RegenerateAfterRejection, false];
+        yield '3099 record boundary' => [3099, ErrorScope::Record, FailureCategory::Validation, ErrorAction::RegenerateAfterRejection, false];
+        yield '2099 accepted boundary' => [2099, ErrorScope::AcceptedWithErrors, FailureCategory::Validation, ErrorAction::CorrectAcceptedRecord, false];
+        yield '3100 off range' => [3100, ErrorScope::Record, FailureCategory::Other, ErrorAction::Investigate, false];
+        yield '3600 off range' => [3600, ErrorScope::Record, FailureCategory::Other, ErrorAction::Investigate, false];
+        yield '1300 off range' => [1300, ErrorScope::Record, FailureCategory::Other, ErrorAction::Investigate, false];
         yield '9999 unknown' => [9999, ErrorScope::Record, FailureCategory::Other, ErrorAction::Investigate, false];
     }
 
