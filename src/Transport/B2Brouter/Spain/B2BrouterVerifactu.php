@@ -198,8 +198,8 @@ final class B2BrouterVerifactu
     }
 
     /**
-     * Waits until the invoice's current tax report is final (registered, refused or in error),
-     * within the polling bound.
+     * Waits until the invoice's current tax report is final (see TaxReport::isFinal()), within the
+     * polling bound.
      *
      * Each attempt makes one request: the invoice is read until it lists a tax report, then the
      * report with the highest id is read. Attempts are the configured wait apart, and no request

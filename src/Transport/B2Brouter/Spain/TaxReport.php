@@ -21,18 +21,25 @@ use IntrAgile\EInvoicing\Transport\Timestamp;
  * B2Brouter generated and sent to the AEAT as the invoicing system, with its fingerprint (Huella)
  * and the QR image of the invoice.
  *
- * "registered" is Delivered, "refused" is Failed (Validation) and "error" is Failed (Other); every
- * other state, "processing", "signed" and states this version does not know included, is Pending.
+ * "registered" and "registered_with_errors" (the AEAT's AceptadoConErrores) are Delivered;
+ * "refused" and "invalid" are Failed (Validation); "error" and "annulled" are Failed (Other). These
+ * six states are final. Every other state, "processing", "signed" and states this version does not
+ * know included, is Pending.
  */
 final readonly class TaxReport
 {
     /** The state of a report the AEAT registered. */
     private const REGISTERED = 'registered';
 
+    /** The state of a report the AEAT registered with errors in the record (AceptadoConErrores). */
+    private const REGISTERED_WITH_ERRORS = 'registered_with_errors';
+
     /** Final states that are failures, with their category. */
     private const FAILED_STATES = [
         'refused' => FailureCategory::Validation,
+        'invalid' => FailureCategory::Validation,
         'error' => FailureCategory::Other,
+        'annulled' => FailureCategory::Other,
     ];
 
     /** Bytes of a failure message kept from the report's errors. */
@@ -91,11 +98,12 @@ final readonly class TaxReport
     }
 
     /**
-     * Whether B2Brouter has finished with the report: registered, refused or in error.
+     * Whether B2Brouter has finished with the report: registered (with or without errors),
+     * refused, invalid, in error or annulled.
      */
     public function isFinal(): bool
     {
-        return $this->state === self::REGISTERED || isset(self::FAILED_STATES[$this->state]);
+        return $this->isRegistered() || $this->isRegisteredWithErrors() || isset(self::FAILED_STATES[$this->state]);
     }
 
     /**
@@ -107,6 +115,15 @@ final readonly class TaxReport
     }
 
     /**
+     * Whether the AEAT registered the record with errors (AceptadoConErrores): the record counts
+     * as registered, but its errors must be corrected.
+     */
+    public function isRegisteredWithErrors(): bool
+    {
+        return $this->state === self::REGISTERED_WITH_ERRORS;
+    }
+
+    /**
      * The delivery status the report's state stands for, keyed by the report id. A failure carries
      * the report's errors as its message.
      */
@@ -114,7 +131,7 @@ final readonly class TaxReport
     {
         $category = self::FAILED_STATES[$this->state] ?? null;
         $state = match (true) {
-            $this->isRegistered() => DeliveryState::Delivered,
+            $this->isRegistered(), $this->isRegisteredWithErrors() => DeliveryState::Delivered,
             $category !== null => DeliveryState::Failed,
             default => DeliveryState::Pending,
         };

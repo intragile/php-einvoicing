@@ -69,8 +69,11 @@ final class TaxReportTest extends TestCase
     public static function states(): iterable
     {
         yield 'registered' => ['registered', DeliveryState::Delivered, null];
+        yield 'registered with errors' => ['registered_with_errors', DeliveryState::Delivered, null];
         yield 'refused' => ['refused', DeliveryState::Failed, FailureCategory::Validation];
+        yield 'invalid' => ['invalid', DeliveryState::Failed, FailureCategory::Validation];
         yield 'error' => ['error', DeliveryState::Failed, FailureCategory::Other];
+        yield 'annulled' => ['annulled', DeliveryState::Failed, FailureCategory::Other];
         yield 'new' => ['new', DeliveryState::Pending, null];
         yield 'processing' => ['processing', DeliveryState::Pending, null];
         yield 'signed' => ['signed', DeliveryState::Pending, null];
@@ -90,6 +93,7 @@ final class TaxReportTest extends TestCase
         self::assertSame($category, $status->failure?->category);
         self::assertSame($expected !== DeliveryState::Pending, $report->isFinal());
         self::assertSame($state === 'registered', $report->isRegistered());
+        self::assertSame($state === 'registered_with_errors', $report->isRegisteredWithErrors());
         if ($category !== null) {
             self::assertSame('AEAT code 1100: invalid value', $status->failure?->message);
         }

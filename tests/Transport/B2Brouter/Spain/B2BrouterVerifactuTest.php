@@ -247,6 +247,22 @@ final class B2BrouterVerifactuTest extends TestCase
         self::assertSame([3000], $this->waits);
     }
 
+    public function test_await_registered_stops_at_a_report_registered_with_errors(): void
+    {
+        $recorder = new RecordingHttpClient(self::invoiceWith([7001]), self::report(7001, 'signed'), self::report(7001, 'registered_with_errors'));
+
+        $report = $this->verifactu($recorder)->awaitRegistered('501');
+
+        self::assertNotNull($report);
+        self::assertSame('registered_with_errors', $report->state);
+        self::assertTrue($report->isFinal());
+        self::assertFalse($report->isRegistered());
+        self::assertTrue($report->isRegisteredWithErrors());
+        self::assertSame(DeliveryState::Delivered, $report->deliveryStatus()->state);
+        self::assertSame([3000, 3000], $this->waits);
+        self::assertCount(3, $recorder->requests());
+    }
+
     public function test_await_registered_is_bounded(): void
     {
         $recorder = new RecordingHttpClient(...array_fill(0, 5, self::invoiceWith([])));
