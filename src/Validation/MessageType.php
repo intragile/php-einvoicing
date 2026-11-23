@@ -6,8 +6,8 @@ namespace IntrAgile\EInvoicing\Validation;
 
 /**
  * The kinds of message other than EN 16931 invoices that a validator checks: the French reform
- * lifecycle messages and e-reporting transmissions, the Polish FA(3) structured invoice and the KSeF
- * official receipt (UPO).
+ * lifecycle messages and e-reporting transmissions, the Polish FA(3) structured invoice, the KSeF
+ * official receipt (UPO) and the Spanish VERI*FACTU billing records.
  */
 enum MessageType: string
 {
@@ -22,4 +22,7 @@ enum MessageType: string
 
     /** A KSeF official receipt (UPO, Urzędowe Poświadczenie Odbioru). */
     case Upo = 'upo';
+
+    /** A Spanish VERI*FACTU billing record (RegistroAlta, RegistroAnulacion) or a submission of them. */
+    case Verifactu = 'verifactu';
 }
