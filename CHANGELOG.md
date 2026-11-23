@@ -8,6 +8,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-23
+
+1.2.0 adds the French e-invoicing reform and Polish KSeF. There is no 1.1.0: the French work
+planned for 1.1 ships in this release together with Poland.
+
+Verification: the KSeF transport is live-verified on KSeF TE (API 2.10 RC); DEMO and PRODUCTION
+are not verified. The French flows are live-verified on B2Brouter sandbox and staging accounts;
+an accepted Flux 10 deposit is not live-verified yet (the request and B2Brouter's 422 refusal
+without a DGFiP e-reporting configuration are). See [docs/VERIFICATION.md](docs/VERIFICATION.md).
+
 ### Added
 
 - **France:** `FranceValidator` validates French invoices against the FNFE-MPE France_RFE rules
