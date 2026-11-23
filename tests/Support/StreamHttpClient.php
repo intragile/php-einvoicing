@@ -17,7 +17,14 @@ use RuntimeException;
  */
 final class StreamHttpClient implements ClientInterface
 {
-    public function __construct(private readonly float $timeoutSeconds = 20.0) {}
+    /**
+     * @param  array<string, mixed>  $ssl  extra "ssl" stream context options, such as a client
+     *                                     certificate or a CA file; peer verification stays on
+     */
+    public function __construct(
+        private readonly float $timeoutSeconds = 20.0,
+        private readonly array $ssl = [],
+    ) {}
 
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
@@ -37,7 +44,7 @@ final class StreamHttpClient implements ClientInterface
                 'follow_location' => 0,
                 'protocol_version' => 1.1,
             ],
-            'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
+            'ssl' => ['verify_peer' => true, 'verify_peer_name' => true] + $this->ssl,
         ]);
 
         $error = null;
