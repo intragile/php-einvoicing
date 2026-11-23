@@ -48,7 +48,8 @@ final readonly class ChainHead
      * Rebuilds a head that a store persisted.
      *
      * A seeded head has sequence 0 and no timestamp; any other head has a timestamp and a
-     * sequence of at least 1.
+     * sequence of at least 1. The fingerprint must be 64 upper-case hexadecimal characters, so a
+     * corrupted stored head fails here rather than when the next record is built.
      */
     public static function restore(
         InvoiceId $invoiceId,
@@ -64,6 +65,8 @@ final readonly class ChainHead
         if (! $seeded && ($sequence < 1 || $generatedAt === null)) {
             throw new InvalidRecord('A chain head that is not seeded needs a generation timestamp and a sequence of at least 1.');
         }
+
+        ChainLink::after($invoiceId, $fingerprint);
 
         return new self($invoiceId, $fingerprint, $generatedAt, $sequence, $seeded);
     }

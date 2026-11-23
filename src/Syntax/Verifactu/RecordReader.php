@@ -81,6 +81,10 @@ final class RecordReader
      * Reads a record element of a loaded document, e.g. the RegistroAlta under a
      * sum:RegistroFactura of a submission. The element is copied; its document is not changed.
      *
+     * The caller's DOM is trusted as given: no DOCTYPE or entity check is made here. A document
+     * from a SOAP response, B2Brouter or any other external source must be loaded through
+     * {@see SafeXml::load()} before its elements are passed in.
+     *
      * @throws UnsupportedDocument when the element is not a VERI*FACTU record
      * @throws InvalidRecord when a value is refused by the specification
      */

@@ -239,6 +239,17 @@ final class ChainerTest extends TestCase
             $thrown = self::capture(static fn () => ChainHead::restore($id, self::HASH_1, $generatedAt, $sequence, $seeded));
             $this->assertInstanceOf(InvalidRecord::class, $thrown, $case);
         }
+
+        foreach ([
+            'empty' => '',
+            'lower case' => strtolower(self::HASH_1),
+            'truncated' => substr(self::HASH_1, 0, 63),
+        ] as $case => $fingerprint) {
+            foreach ([[$at, 1, false], [null, 0, true]] as [$generatedAt, $sequence, $seeded]) {
+                $thrown = self::capture(static fn () => ChainHead::restore($id, $fingerprint, $generatedAt, $sequence, $seeded));
+                $this->assertInstanceOf(InvalidRecord::class, $thrown, $case);
+            }
+        }
     }
 
     private function chainer(): Chainer

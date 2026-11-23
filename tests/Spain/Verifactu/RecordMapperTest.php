@@ -7,6 +7,7 @@ namespace IntrAgile\EInvoicing\Tests\Spain\Verifactu;
 use DateTimeImmutable;
 use IntrAgile\EInvoicing\CodeList\CountryCode;
 use IntrAgile\EInvoicing\CodeList\CurrencyCode;
+use IntrAgile\EInvoicing\CodeList\InvoiceTypeCode;
 use IntrAgile\EInvoicing\CodeList\VatCategory;
 use IntrAgile\EInvoicing\Model\Delivery;
 use IntrAgile\EInvoicing\Model\Extensions;
@@ -22,6 +23,7 @@ use IntrAgile\EInvoicing\Spain\EuroAmounts;
 use IntrAgile\EInvoicing\Spain\ExemptOperation;
 use IntrAgile\EInvoicing\Spain\ForeignIdType;
 use IntrAgile\EInvoicing\Spain\InvoiceType;
+use IntrAgile\EInvoicing\Spain\IssuedBy;
 use IntrAgile\EInvoicing\Spain\Nif;
 use IntrAgile\EInvoicing\Spain\OperationQualification;
 use IntrAgile\EInvoicing\Spain\RegimeKey;
@@ -340,12 +342,80 @@ final class RecordMapperTest extends TestCase
             buyer: new Party(name: 'Consumidor Final'),
         );
 
-        self::assertSame(['Destinatarios (BT-48)'], self::fields(self::problems($invoice)));
+        $problems = self::problems($invoice);
+        self::assertSame(['Destinatarios (BT-48)'], self::fields($problems));
+        self::assertStringNotContainsString('Art61d', $problems[0]);
+    }
 
-        $allowed = $invoice->withExtension(new SpanishInvoice(withoutRecipientArt61d: true));
-        $draft = (new RecordMapper)->map($allowed);
-        self::assertSame([], $draft->recipients);
-        self::assertTrue($draft->withoutRecipientArt61d);
+    public function test_without_recipient_art61d_is_refused_for_f1(): void
+    {
+        $invoice = SpanishInvoices::invoice(
+            [SpanishInvoices::line('1', '100.00', VatCategory::StandardRate, '21')],
+            buyer: new Party(name: 'Consumidor Final'),
+        )->withExtension(new SpanishInvoice(withoutRecipientArt61d: true));
+
+        $problems = self::problems($invoice);
+
+        self::assertSame(['FacturaSinIdentifDestinatarioArt61d', 'Destinatarios (BT-48)'], self::fields($problems));
+        self::assertStringContainsString('1185', $problems[0]);
+    }
+
+    public function test_without_recipient_art61d_is_mapped_for_simplified_types(): void
+    {
+        foreach ([InvoiceType::F2, InvoiceType::R5] as $type) {
+            $draft = (new RecordMapper)->map(self::withoutRecipient($type));
+
+            self::assertSame($type, $draft->type);
+            self::assertSame([], $draft->recipients);
+            self::assertTrue($draft->withoutRecipientArt61d);
+        }
+    }
+
+    public function test_without_recipient_art61d_with_recipients_is_refused(): void
+    {
+        $invoice = SpanishInvoices::export()->withExtension(new SpanishInvoice(
+            type: InvoiceType::F2,
+            withoutRecipientArt61d: true,
+            recipients: [VerifactuSamples::recipient()],
+        ));
+
+        self::assertSame(['FacturaSinIdentifDestinatarioArt61d'], self::fields(self::problems($invoice)));
+    }
+
+    public function test_third_party_issuer_needs_the_third_party(): void
+    {
+        $invoice = SpanishInvoices::domestic()->withExtension(new SpanishInvoice(issuedBy: IssuedBy::ThirdParty));
+
+        $problems = self::problems($invoice);
+
+        self::assertSame(['Tercero'], self::fields($problems));
+        self::assertStringContainsString('1186', $problems[0]);
+    }
+
+    public function test_simplified_art7273_is_refused_for_simplified_types(): void
+    {
+        foreach ([InvoiceType::F2, InvoiceType::R5] as $type) {
+            $problems = self::problems(self::withoutRecipient($type, simplifiedArt7273: true));
+
+            self::assertSame(['FacturaSimplificadaArt7273'], self::fields($problems), $type->value);
+            self::assertStringContainsString('1183', $problems[0]);
+        }
+
+        $draft = (new RecordMapper)->map(SpanishInvoices::domestic()->withExtension(new SpanishInvoice(simplifiedArt7273: true)));
+        self::assertTrue($draft->simplifiedArt7273);
+    }
+
+    public function test_buyer_nif_equal_to_the_issuer_is_refused(): void
+    {
+        $invoice = SpanishInvoices::invoice(
+            [SpanishInvoices::line('1', '100.00', VatCategory::StandardRate, '21')],
+            buyer: new Party(name: 'Self', vatIdentifier: 'ES'.SpanishInvoices::SELLER_NIF),
+        );
+
+        $problems = self::problems($invoice);
+
+        self::assertSame(['Destinatarios (BT-48)'], self::fields($problems));
+        self::assertStringContainsString('1193', $problems[0]);
     }
 
     public function test_recipient_override_is_used_without_a_buyer_vat_id(): void
@@ -540,6 +610,7 @@ final class RecordMapperTest extends TestCase
         }
         yield 'creditNote' => [SpanishInvoices::creditNote()];
         yield 'igic' => [SpanishInvoices::igic()];
+        yield 'simplified without recipient' => [self::withoutRecipient(InvoiceType::F2)];
         yield 'usd with EUR amounts' => [SpanishInvoices::usd()->withExtension(new SpanishInvoice(euroAmounts: new EuroAmounts(
             Amount::of('19.40'),
             Amount::of('111.79'),
@@ -559,6 +630,27 @@ final class RecordMapperTest extends TestCase
         $errors = (new SchemaValidator)->validate($document, $schemas->informationXsd(), $schemas->localPrefixes());
 
         self::assertSame([], array_map(static fn ($error): string => $error->message, $errors));
+    }
+
+    /** A simplified invoice to a buyer without any identifier, issued under art. 6.1.d. */
+    private static function withoutRecipient(InvoiceType $type, bool $simplifiedArt7273 = false): Invoice
+    {
+        $corrective = $type->isCorrective();
+        $invoice = SpanishInvoices::invoice(
+            [SpanishInvoices::line('1', '100.00', VatCategory::StandardRate, '21')],
+            buyer: new Party(name: 'Consumidor Final'),
+            spanish: new SpanishInvoice(
+                type: $type,
+                correctionType: $corrective ? CorrectionType::Difference : null,
+                simplifiedArt7273: $simplifiedArt7273,
+                withoutRecipientArt61d: true,
+            ),
+            type: $corrective ? InvoiceTypeCode::C_381 : InvoiceTypeCode::C_380,
+        );
+
+        return $corrective
+            ? $invoice->withPrecedingInvoice(new PrecedingInvoiceReference(SpanishInvoices::NUMBER, new DateTimeImmutable('2026-11-20')))
+            : $invoice;
     }
 
     /** @return list<?string> tax, regime, qualification, exemption, rate, base, quota */

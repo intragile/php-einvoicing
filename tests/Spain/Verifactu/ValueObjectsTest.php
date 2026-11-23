@@ -99,9 +99,10 @@ final class ValueObjectsTest extends TestCase
         string $systemName = 'Sys',
         string $systemId = '01',
         string $installationNumber = 'I-1',
+        string $name = 'Vendor SL',
     ): ComputerSystem {
         return new ComputerSystem(
-            'Vendor SL', $nif, $foreignId, $systemName, $systemId, '1.0', $installationNumber, true, false, false,
+            $name, $nif, $foreignId, $systemName, $systemId, '1.0', $installationNumber, true, false, false,
         );
     }
 
@@ -134,6 +135,8 @@ final class ValueObjectsTest extends TestCase
             fn (): ComputerSystem => $this->system($nif, null, str_repeat('a', 31)),
             fn (): ComputerSystem => $this->system($nif, null, 'Sys', '001'),
             fn (): ComputerSystem => $this->system($nif, null, 'Sys', '01', str_repeat('a', 101)),
+            fn (): ComputerSystem => $this->system($nif, null, 'Sys', '01', ' '),
+            fn (): ComputerSystem => $this->system($nif, null, 'Sys', '01', 'I-1', ''),
         ];
 
         foreach ($attempts as $attempt) {

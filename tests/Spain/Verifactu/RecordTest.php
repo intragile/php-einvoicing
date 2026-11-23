@@ -121,6 +121,9 @@ final class RecordTest extends TestCase
             'thirteen breakdown lines' => [static fn () => VerifactuSamples::draft($id, breakdown: array_fill(0, 13, $line)), 'Desglose'],
             '1001 recipients' => [static fn () => VerifactuSamples::draft($id, recipients: array_fill(0, 1001, $recipient)), 'Destinatarios'],
             '501-character description' => [static fn () => VerifactuSamples::draft($id, description: str_repeat('d', 501)), 'DescripcionOperacion'],
+            'blank description' => [static fn () => VerifactuSamples::draft($id, description: '   '), 'DescripcionOperacion'],
+            'empty issuer name' => [static fn () => VerifactuSamples::draft($id, issuerName: ''), 'NombreRazonEmisor'],
+            '121-character issuer name' => [static fn () => VerifactuSamples::draft($id, issuerName: str_repeat('n', 121)), 'NombreRazonEmisor'],
         ];
 
         foreach ($cases as $name => [$build, $field]) {
@@ -134,5 +137,7 @@ final class RecordTest extends TestCase
         $this->assertCount(1000, VerifactuSamples::draft($id, recipients: array_fill(0, 1000, $recipient))->recipients);
         $this->assertCount(0, VerifactuSamples::draft($id, recipients: [])->recipients);
         $this->assertSame(500, mb_strlen(VerifactuSamples::draft($id, description: str_repeat('é', 500))->description));
+        $this->assertSame('d', VerifactuSamples::draft($id, description: ' d ')->description);
+        $this->assertSame('N', VerifactuSamples::draft($id, issuerName: ' N ')->issuerName);
     }
 }

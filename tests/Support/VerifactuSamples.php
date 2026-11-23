@@ -71,10 +71,11 @@ final class VerifactuSamples
         ?array $breakdown = null,
         ?array $recipients = null,
         string $description = 'Vector invoice',
+        string $issuerName = 'Test Issuer S.L.',
     ): RegistrationDraft {
         return new RegistrationDraft(
             id: $id,
-            issuerName: 'Test Issuer S.L.',
+            issuerName: $issuerName,
             type: InvoiceType::F1,
             correctionType: null,
             corrected: [],

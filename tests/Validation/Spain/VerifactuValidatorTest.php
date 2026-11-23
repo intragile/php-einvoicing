@@ -70,7 +70,7 @@ final class VerifactuValidatorTest extends TestCase
 
     public function test_valid_corpus_holds_every_document(): void
     {
-        self::assertCount(3 + 4 + 11, self::validCorpus());
+        self::assertCount(3 + 4 + 12, self::validCorpus());
     }
 
     /**

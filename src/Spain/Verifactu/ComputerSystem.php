@@ -40,11 +40,11 @@ final readonly class ComputerSystem
             throw new InvalidRecord('A computer system needs exactly one of NIF or IDOtro.');
         }
 
-        $this->name = self::bounded('NombreRazon', $name, 0, 120);
+        $this->name = self::bounded('NombreRazon', $name, 1, 120);
         $this->systemName = self::bounded('NombreSistemaInformatico', $systemName, 0, 30);
         $this->systemId = self::bounded('IdSistemaInformatico', $systemId, 1, 2);
         $this->version = self::bounded('Version', $version, 0, 50);
-        $this->installationNumber = self::bounded('NumeroInstalacion', $installationNumber, 0, 100);
+        $this->installationNumber = self::bounded('NumeroInstalacion', $installationNumber, 1, 100);
     }
 
     private static function bounded(string $field, string $value, int $min, int $max): string

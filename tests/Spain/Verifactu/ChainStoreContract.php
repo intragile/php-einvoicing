@@ -135,6 +135,29 @@ abstract class ChainStoreContract extends TestCase
         $this->assertEquals($before, $store->head($started));
     }
 
+    public function test_seeded_chain_is_continued(): void
+    {
+        $store = $this->store();
+        $key = $this->key();
+        $last = VerifactuSamples::invoiceId('PROBE-ES-0001', '23-11-2026');
+        $store->seed($key, $last, self::SEED_HASH);
+
+        $record = $store->append($key, fn (?ChainHead $head): BillingRecord => $this->record('12345678/G33', $head?->link() ?? ChainLink::first()));
+
+        $previous = $record->chainLink()->previous();
+        $this->assertNotNull($previous);
+        $this->assertTrue($previous->equals($last));
+        $this->assertSame(self::SEED_HASH, $record->chainLink()->previousFingerprint());
+
+        $head = $store->head($key);
+        $this->assertNotNull($head);
+        $this->assertSame(1, $head->sequence);
+        $this->assertFalse($head->seeded);
+        $this->assertTrue($head->invoiceId->equals($record->invoiceId()));
+        $this->assertSame($record->fingerprint(), $head->fingerprint);
+        $this->assertNotNull($head->generatedAt);
+    }
+
     public function test_chains_are_isolated_per_key(): void
     {
         $store = $this->store();

@@ -18,6 +18,7 @@ use IntrAgile\EInvoicing\Spain\EuroAmounts;
 use IntrAgile\EInvoicing\Spain\ExemptOperation;
 use IntrAgile\EInvoicing\Spain\ForeignIdType;
 use IntrAgile\EInvoicing\Spain\InvoiceType;
+use IntrAgile\EInvoicing\Spain\IssuedBy;
 use IntrAgile\EInvoicing\Spain\Nif;
 use IntrAgile\EInvoicing\Spain\OperationQualification;
 use IntrAgile\EInvoicing\Spain\RegimeKey;
@@ -63,8 +64,8 @@ final class RecordMapper
         $id = $issuer === null ? null : $this->invoiceId($issuer, $invoice->number, $invoice->issueDate, 'NumSerieFactura (BT-1)', $problems);
 
         $issuerName = trim($invoice->seller->name);
-        if (mb_strlen($issuerName) > self::NAME_MAX) {
-            $problems[] = sprintf('NombreRazonEmisor (BT-27): the seller name exceeds %d characters.', self::NAME_MAX);
+        if ($issuerName === '' || mb_strlen($issuerName) > self::NAME_MAX) {
+            $problems[] = sprintf('NombreRazonEmisor (BT-27): the seller name must be 1 to %d characters after trimming.', self::NAME_MAX);
         }
 
         $type = $this->type($invoice, $spanish, $problems);
@@ -75,8 +76,10 @@ final class RecordMapper
             $problems[] = sprintf('FacturasSustituidas: only a substitution invoice (F3) lists substituted invoices, the type is %s.', $type->value);
         }
 
+        $this->checkFlags($type, $spanish, $problems);
+
         $description = $this->description($invoice, $spanish, $problems);
-        $recipients = $this->recipients($invoice, $spanish, $type, $problems);
+        $recipients = $this->recipients($invoice, $spanish, $type, $issuer, $problems);
 
         $negate = $invoice->type->isCreditNote() && $spanish->correctionType === CorrectionType::Difference;
         $euro = $this->euroAmounts($invoice, $spanish, $problems);
@@ -212,6 +215,33 @@ final class RecordMapper
     }
 
     /**
+     * FacturaSimplificadaArt7273, FacturaSinIdentifDestinatarioArt61d and Tercero against the
+     * invoice type and each other (Validaciones §3.1.3.8, §3.1.3.9, §3.1.3.11).
+     *
+     * @param  list<string>  $problems
+     */
+    private function checkFlags(?InvoiceType $type, SpanishInvoice $spanish, array &$problems): void
+    {
+        $simplified = $type === InvoiceType::F2 || $type === InvoiceType::R5;
+
+        if ($spanish->simplifiedArt7273 && $simplified) {
+            $problems[] = sprintf('FacturaSimplificadaArt7273: only an F1, F3 or R1 to R4 invoice is issued under art. 7.2 and 7.3, the type is %s (AEAT error 1183).', $type->value);
+        }
+
+        if ($spanish->withoutRecipientArt61d && $type !== null && ! $simplified) {
+            $problems[] = sprintf('FacturaSinIdentifDestinatarioArt61d: only a simplified invoice (F2, R5) is issued without an identified recipient, the type is %s (AEAT error 1185).', $type->value);
+        }
+
+        if ($spanish->withoutRecipientArt61d && $spanish->recipients !== []) {
+            $problems[] = 'FacturaSinIdentifDestinatarioArt61d: an invoice issued without an identified recipient cannot list SpanishInvoice::$recipients.';
+        }
+
+        if ($spanish->issuedBy === IssuedBy::ThirdParty && $spanish->thirdParty === null) {
+            $problems[] = 'Tercero: an invoice issued by a third party (EmitidaPorTerceroODestinatario T) needs SpanishInvoice::$thirdParty (AEAT error 1186).';
+        }
+    }
+
+    /**
      * FacturasRectificadas: one entry per preceding invoice reference (BG-3).
      *
      * @param  list<string>  $problems
@@ -266,12 +296,13 @@ final class RecordMapper
 
     /**
      * Destinatarios: the buyer VAT identifier (BT-48), else SpanishInvoice::$recipients; none for
-     * F2 and R5 invoices or when the invoice is issued without an identified recipient (art. 6.1.d).
+     * F2 and R5 invoices, which may also be issued without an identified recipient (art. 6.1.d).
+     * No recipient may carry the issuer's NIF (AEAT error 1193).
      *
      * @param  list<string>  $problems
      * @return list<TaxParty>
      */
-    private function recipients(Invoice $invoice, SpanishInvoice $spanish, ?InvoiceType $type, array &$problems): array
+    private function recipients(Invoice $invoice, SpanishInvoice $spanish, ?InvoiceType $type, ?Nif $issuer, array &$problems): array
     {
         if ($type === InvoiceType::F2 || $type === InvoiceType::R5) {
             return [];
@@ -280,14 +311,12 @@ final class RecordMapper
         $vat = $invoice->buyer->vatIdentifier === null ? '' : trim($invoice->buyer->vatIdentifier);
 
         if ($vat === '') {
-            if ($spanish->recipients !== [] || $spanish->withoutRecipientArt61d) {
-                return $spanish->recipients;
+            if ($spanish->recipients === []) {
+                $problems[] = 'Destinatarios (BT-48): the buyer has no VAT identifier; give SpanishInvoice::$recipients '
+                    .'or use a simplified type (F2, R5).';
             }
 
-            $problems[] = 'Destinatarios (BT-48): the buyer has no VAT identifier; give SpanishInvoice::$recipients, '
-                .'set withoutRecipientArt61d, or use a simplified type (F2, R5).';
-
-            return [];
+            return $this->withoutIssuer($spanish->recipients, $issuer, 'Destinatarios', $problems);
         }
 
         if ($spanish->recipients !== []) {
@@ -298,7 +327,29 @@ final class RecordMapper
 
         $recipient = $this->buyerRecipient($invoice->buyer->name, $vat, $problems);
 
-        return $recipient === null ? [] : [$recipient];
+        return $recipient === null ? [] : $this->withoutIssuer([$recipient], $issuer, 'Destinatarios (BT-48)', $problems);
+    }
+
+    /**
+     * @param  list<TaxParty>  $recipients
+     * @param  list<string>  $problems
+     * @return list<TaxParty>
+     */
+    private function withoutIssuer(array $recipients, ?Nif $issuer, string $field, array &$problems): array
+    {
+        if ($issuer === null) {
+            return $recipients;
+        }
+
+        foreach ($recipients as $recipient) {
+            if ($recipient->nif?->value === $issuer->value) {
+                $problems[] = sprintf('%s: the recipient NIF %s is the issuer NIF (AEAT error 1193).', $field, $issuer->value);
+
+                return [];
+            }
+        }
+
+        return $recipients;
     }
 
     /**

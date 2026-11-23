@@ -65,8 +65,8 @@ final readonly class RegistrationDraft
         self::countBetween('Destinatarios', $recipients, 0, 1000);
         self::countBetween('Desglose', $breakdown, 1, 12);
 
-        $this->issuerName = self::text('NombreRazonEmisor', $issuerName, 120);
-        $this->description = self::text('DescripcionOperacion', $description, 500);
+        $this->issuerName = self::text('NombreRazonEmisor', $issuerName, 1, 120);
+        $this->description = self::text('DescripcionOperacion', $description, 1, 500);
         $this->externalReference = self::optionalText('RefExterna', $externalReference, 60);
         $this->agreementNumber = self::optionalText('NumRegistroAcuerdoFacturacion', $agreementNumber, 15);
         $this->systemAgreementId = self::optionalText('IdAcuerdoSistemaInformatico', $systemAgreementId, 16);
@@ -84,12 +84,16 @@ final readonly class RegistrationDraft
         }
     }
 
-    private static function text(string $element, string $value, int $max): string
+    /** The trimmed text, refused unless it has $min to $max characters. */
+    private static function text(string $element, string $value, int $min, int $max): string
     {
         $value = trim($value);
+        $length = mb_strlen($value);
 
-        if (mb_strlen($value) > $max) {
-            throw new InvalidRecord(sprintf('%s must be at most %d characters.', $element, $max));
+        if ($length < $min || $length > $max) {
+            throw new InvalidRecord($min === 0
+                ? sprintf('%s must be at most %d characters.', $element, $max)
+                : sprintf('%s must be %d to %d characters after trimming.', $element, $min, $max));
         }
 
         return $value;
@@ -97,6 +101,6 @@ final readonly class RegistrationDraft
 
     private static function optionalText(string $element, ?string $value, int $max): ?string
     {
-        return $value === null ? null : self::text($element, $value, $max);
+        return $value === null ? null : self::text($element, $value, 0, $max);
     }
 }
