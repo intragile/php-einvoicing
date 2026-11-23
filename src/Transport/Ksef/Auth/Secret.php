@@ -48,7 +48,7 @@ final readonly class Secret
      */
     public function __serialize(): never
     {
-        throw new LogicException('A KSeF credential cannot be serialized.');
+        throw new LogicException('A credential cannot be serialized.');
     }
 
     /**
@@ -58,6 +58,6 @@ final readonly class Secret
      */
     public function __unserialize(array $data): never
     {
-        throw new LogicException('A KSeF credential cannot be serialized.');
+        throw new LogicException('A credential cannot be serialized.');
     }
 }

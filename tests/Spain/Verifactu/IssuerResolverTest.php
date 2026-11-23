@@ -15,6 +15,7 @@ use IntrAgile\EInvoicing\Spain\Verifactu\Representative;
 use IntrAgile\EInvoicing\Spain\VerifactuEnvironment;
 use IntrAgile\EInvoicing\Tests\Support\VerifactuSamples;
 use InvalidArgumentException;
+use LogicException;
 use PHPUnit\Framework\TestCase;
 
 final class IssuerResolverTest extends TestCase
@@ -91,6 +92,20 @@ final class IssuerResolverTest extends TestCase
             $this->assertStringNotContainsString('secret-pass', $dump);
         }
         $this->assertStringContainsString('/certs/issuer.p12', print_r($context, true));
+    }
+
+    public function test_password_stays_hidden_after_an_array_cast(): void
+    {
+        $credentials = $this->credentials();
+
+        $this->assertStringNotContainsString('secret-pass', self::varDump((array) $credentials));
+        $this->assertStringNotContainsString('secret-pass', print_r((array) $credentials, true));
+    }
+
+    public function test_credentials_with_a_password_refuse_serialization(): void
+    {
+        $this->expectException(LogicException::class);
+        serialize($this->credentials());
     }
 
     public function test_header_and_chain_key(): void

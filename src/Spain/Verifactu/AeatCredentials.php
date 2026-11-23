@@ -4,20 +4,20 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Spain\Verifactu;
 
-use Closure;
 use IntrAgile\EInvoicing\Spain\CertificateKind;
 use IntrAgile\EInvoicing\Transport\Http\Redactor;
+use IntrAgile\EInvoicing\Transport\Ksef\Auth\Secret;
 use SensitiveParameter;
 
 /**
  * The client certificate location and password for the AEAT web services. This is a value object
- * only: the certificate file is not read here. The password is kept inside a closure so that it
- * stays out of var_export(), print_r() and var_dump() output.
+ * only: the certificate file is not read here. The password is held in a Secret, so it stays out
+ * of var_export(), print_r() and var_dump() output, also after an array cast, and the object
+ * refuses serialization while a password is set.
  */
 final readonly class AeatCredentials
 {
-    /** @var Closure(): ?string */
-    private Closure $password;
+    private ?Secret $secret;
 
     /**
      * @param  string|null  $password  the password of the PKCS#12 file or the private key; null when there is none
@@ -29,7 +29,7 @@ final readonly class AeatCredentials
         public ?string $privateKeyPath,
         public CertificateKind $kind,
     ) {
-        $this->password = static fn (): ?string => $password;
+        $this->secret = $password === null ? null : new Secret($password);
     }
 
     /**
@@ -37,7 +37,7 @@ final readonly class AeatCredentials
      */
     public function password(): ?string
     {
-        return ($this->password)();
+        return $this->secret?->reveal();
     }
 
     /**
@@ -47,7 +47,7 @@ final readonly class AeatCredentials
     {
         return [
             'certificatePath' => $this->certificatePath,
-            'password' => $this->password() === null ? null : Redactor::REDACTED,
+            'password' => $this->secret === null ? null : Redactor::REDACTED,
             'privateKeyPath' => $this->privateKeyPath,
             'kind' => $this->kind,
         ];
