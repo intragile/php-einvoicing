@@ -8,6 +8,52 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+The Spanish VERI*FACTU core: billing records, their fingerprint and chain, the QR link, the
+record XML and its validation. VERI*FACTU mode only; non-VERI*FACTU mode is not covered;
+transports follow.
+
+### Added
+
+- **Spain:** the VERI*FACTU record model: `RegistrationDraft`/`RegistrationRecord`
+  (`RegistroAlta`) and `CancellationDraft`/`CancellationRecord` (`RegistroAnulacion`) behind
+  `BillingRecord`, with text-exact `Amount`, `TaxRate` and `RecordTimestamp`, `InvoiceId`,
+  `ComputerSystem`, `TaxBreakdownLine`, `ChainLink`, `AltaOperation` and `AnulacionOperation`;
+  `Nif` (DNI, NIE and CIF check characters), `VerifactuEnvironment`, `CertificateKind` and the
+  AEAT code lists as enums (`InvoiceType`, `CorrectionType`, `TaxType`, `RegimeKey`,
+  `OperationQualification`, `ExemptOperation`, `ForeignIdType`, `IssuedBy`, `GeneratedBy`).
+- **Spain:** `RecordMapper` maps an EN 16931 `Invoice` to a registration draft. Spanish data the
+  model does not carry comes from the `SpanishInvoice` extension with explicit overrides
+  (`BreakdownOverride` per VAT category and rate, `EuroAmounts` for invoices not in euro); a
+  draft that cannot be built is refused with `MappingRefused`, which lists every problem.
+- **Spain:** `Fingerprint` computes the SHA-256 `Huella` over the exact text written into the
+  record, and `Chainer` links each record to the previous one; both are proven by AEAT's official
+  hash test vectors and by four live records from the B2Brouter sandbox.
+- **Spain:** the `ChainStore` contract, with a chain key per issuer NIF, installation number and
+  environment (`ChainKey`), a seed for chains that continue outside the library, a refusal of
+  records that do not link to the current head (`ChainConflict`), and `InMemoryChainStore`.
+- **Spain:** `VerifactuQr` builds the AEAT verification URL of a registration record and renders
+  it as a `QrCode` for the existing QR renderer.
+- **Spain:** `RecordWriter` and `SubmissionWriter` write records and `RegFactuSistemaFacturacion`
+  submissions (with an optional XML Schema check); `RecordReader` reads a record back keeping the
+  literal text of every hashed field, so a foreign record's fingerprint can be recomputed.
+- **Spain:** `VerifactuValidator` validates records and submissions against the official XML
+  Schemas and the published AEAT business rules (`VerifactuRules`, 24 rules).
+- **Spain:** `vendor/bin/einvoicing-rules install spain --dir=DIR [--from=DIR]` and
+  `check spain --dir=DIR`, and `composer fetch-official -- --spain`. The AEAT XML Schemas, WSDL,
+  error catalogue and the W3C xmldsig schema are downloaded and checked against committed SHA-256
+  sums, never bundled.
+- **Spain:** issuer contracts for runtime issuer data: `VerifactuIssuerResolver`,
+  `IssuerContext`, `InMemoryIssuerResolver` and the `AeatCredentials` value object.
+
+### Changed
+
+- **Validation:** `LocalRuleInstaller::installFiles()` installs a pinned set of files that each
+  have their own download URL, without compiling anything. `MessageType` has the new case
+  `Verifactu`.
+- **QR:** `QrCode`, `QrRenderer` and `ChillerlanQrRenderer` describe a verification link in
+  general (KSeF or VERI*FACTU); their exception messages no longer name KSeF. The `Secret`
+  credential holder's serialization message no longer names KSeF either.
+
 ## [1.2.0] - 2026-11-23
 
 1.2.0 adds the French e-invoicing reform and Polish KSeF. There is no 1.1.0: the French work
