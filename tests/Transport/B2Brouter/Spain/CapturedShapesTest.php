@@ -68,6 +68,17 @@ final class CapturedShapesTest extends TestCase
         self::assertSame($report['id'], $ids === [] ? null : max($ids));
     }
 
+    public function test_invoice_account_id_is_redacted(): void
+    {
+        foreach (['invoice.json', 'import-201.json'] as $file) {
+            $invoice = self::unwrap(self::json($file), 'invoice');
+            $account = $invoice['account'] ?? null;
+
+            self::assertIsArray($account, $file);
+            self::assertSame(999999, $account['id'] ?? null, $file);
+        }
+    }
+
     public function test_qr_is_a_png(): void
     {
         foreach (['tax-report.json', 'tax-report-previous.json'] as $file) {
