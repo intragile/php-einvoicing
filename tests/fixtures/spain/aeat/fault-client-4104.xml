@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://schemas.xmlsoap.org/soap/envelope/">
+  <env:Body>
+    <env:Fault>
+      <faultcode>env:Client</faultcode>
+      <faultstring>Codigo[4104].Error en la cabecera: NIF del obligado no identificado (texto de prueba).</faultstring>
+      <detail>
+        <callstack>Fixture: no call stack</callstack>
+      </detail>
+    </env:Fault>
+  </env:Body>
+</env:Envelope>
