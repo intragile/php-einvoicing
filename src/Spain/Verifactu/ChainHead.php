@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IntrAgile\EInvoicing\Spain\Verifactu;
 
 use DateTimeImmutable;
+use IntrAgile\EInvoicing\Spain\Verifactu\Exception\InvalidRecord;
 
 /**
  * The last record of a chain, as far as the next record needs to know it.
@@ -41,6 +42,30 @@ final readonly class ChainHead
         ChainLink::after($last, $fingerprint);
 
         return new self($last, $fingerprint, null, 0, true);
+    }
+
+    /**
+     * Rebuilds a head that a store persisted.
+     *
+     * A seeded head has sequence 0 and no timestamp; any other head has a timestamp and a
+     * sequence of at least 1.
+     */
+    public static function restore(
+        InvoiceId $invoiceId,
+        string $fingerprint,
+        ?DateTimeImmutable $generatedAt,
+        int $sequence,
+        bool $seeded,
+    ): self {
+        if ($seeded && ($sequence !== 0 || $generatedAt !== null)) {
+            throw new InvalidRecord('A seeded chain head has sequence 0 and no generation timestamp.');
+        }
+
+        if (! $seeded && ($sequence < 1 || $generatedAt === null)) {
+            throw new InvalidRecord('A chain head that is not seeded needs a generation timestamp and a sequence of at least 1.');
+        }
+
+        return new self($invoiceId, $fingerprint, $generatedAt, $sequence, $seeded);
     }
 
     /** The link the next record carries (RegistroAnterior). */

@@ -60,9 +60,31 @@ final class Chainer
         return [$record, ChainHead::after($record, $head)];
     }
 
-    /** Builds the next record of the chain under the store's lock and stores it. */
+    /**
+     * Builds the next record of the chain under the store's lock and stores it.
+     *
+     * @throws ChainConflict when the draft's issuer or this system's installation is not the key's
+     */
     public function appendTo(ChainStore $store, ChainKey $key, RegistrationDraft|CancellationDraft $draft): BillingRecord
     {
+        $issuer = $draft instanceof RegistrationDraft ? $draft->id->issuer : $draft->annulled->issuer;
+
+        if ($issuer->value !== $key->issuer->value) {
+            throw new ChainConflict(sprintf(
+                'The invoice issuer %s does not own chain %s.',
+                $issuer->value,
+                $key->toString(),
+            ));
+        }
+
+        if ($this->system->installationNumber !== $key->installationNumber) {
+            throw new ChainConflict(sprintf(
+                'The installation number "%s" of this computer system does not match chain %s.',
+                $this->system->installationNumber,
+                $key->toString(),
+            ));
+        }
+
         return $store->append($key, fn (?ChainHead $head): BillingRecord => $this->append($draft, $head, ($this->clock)())[0]);
     }
 }
