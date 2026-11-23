@@ -234,25 +234,73 @@ final class RecordReaderTest extends TestCase
         $this->assertSame($record->fingerprint(), Fingerprint::of($record));
     }
 
-    public function test_malformed_huella_is_refused(): void
+    public function test_lower_case_huella_is_kept_verbatim(): void
+    {
+        $lower = '1e823150439412ab8a572fbfd66d676ca366074f933949010ec70fddc1d5fc73';
+        $xml = str_replace('1E823150439412AB8A572FBFD66D676CA366074F933949010EC70FDDC1D5FC73', $lower, self::spike());
+
+        $record = (new RecordReader)->read($xml);
+
+        $this->assertSame($lower, $record->fingerprint());
+        $this->assertStringContainsString('<sum1:Huella>'.$lower.'</sum1:Huella>', (new RecordWriter)->write($record));
+    }
+
+    public function test_huella_of_wrong_length_is_refused_with_error_1262(): void
     {
         $xml = str_replace(
             '1E823150439412AB8A572FBFD66D676CA366074F933949010EC70FDDC1D5FC73',
-            '1e823150439412ab8a572fbfd66d676ca366074f933949010ec70fddc1d5fc73',
+            '1E823150439412AB8A572FBFD66D676CA366074F933949010EC70FDDC1D5FC7',
             self::spike(),
         );
 
-        $this->expectException(InvalidRecord::class);
-        $this->expectExceptionMessage('/sf:RegistroAlta/sf:Huella');
-        (new RecordReader)->read($xml);
+        try {
+            (new RecordReader)->read($xml);
+            $this->fail('A Huella of 63 characters was accepted.');
+        } catch (InvalidRecord $e) {
+            $this->assertStringContainsString('/sf:RegistroAlta/sf:Huella', $e->getMessage());
+            $this->assertStringContainsString('1262', $e->getMessage());
+        }
     }
 
-    public function test_malformed_previous_huella_is_refused(): void
+    public function test_previous_huella_of_63_characters_is_kept_verbatim(): void
+    {
+        $short = substr('D60F9FD2DDDD19313359612C52222CC74E0B7C6E3C0D64AFBC797F2CE54EF812', 0, 63);
+        $xml = str_replace(
+            'D60F9FD2DDDD19313359612C52222CC74E0B7C6E3C0D64AFBC797F2CE54EF812</sum1:Huella>
+    </sum1:RegistroAnterior>',
+            $short.'</sum1:Huella>
+    </sum1:RegistroAnterior>',
+            Fixtures::verifactuB2Brouter()['record-1064500.xml'],
+        );
+
+        $record = (new RecordReader)->read($xml);
+
+        $this->assertSame($short, $record->chainLink()->previousFingerprint());
+        $this->assertSame('1FC6D6D59975C2CFC2E1FE74F3E77643D47B6CB352E291B83AFC825AD7FA9928', $record->fingerprint());
+        $this->assertStringContainsString('<sum1:Huella>'.$short.'</sum1:Huella>', (new RecordWriter)->write($record));
+    }
+
+    public function test_previous_huella_longer_than_64_characters_is_refused(): void
     {
         $xml = str_replace(
             'D60F9FD2DDDD19313359612C52222CC74E0B7C6E3C0D64AFBC797F2CE54EF812</sum1:Huella>
     </sum1:RegistroAnterior>',
-            'D60F9FD2</sum1:Huella>
+            'D60F9FD2DDDD19313359612C52222CC74E0B7C6E3C0D64AFBC797F2CE54EF8120</sum1:Huella>
+    </sum1:RegistroAnterior>',
+            Fixtures::verifactuB2Brouter()['record-1064500.xml'],
+        );
+
+        $this->expectException(InvalidRecord::class);
+        $this->expectExceptionMessage('/sf:RegistroAlta/sf:Encadenamiento/sf:RegistroAnterior/sf:Huella');
+        (new RecordReader)->read($xml);
+    }
+
+    public function test_blank_previous_huella_is_refused(): void
+    {
+        $xml = str_replace(
+            'D60F9FD2DDDD19313359612C52222CC74E0B7C6E3C0D64AFBC797F2CE54EF812</sum1:Huella>
+    </sum1:RegistroAnterior>',
+            ' </sum1:Huella>
     </sum1:RegistroAnterior>',
             Fixtures::verifactuB2Brouter()['record-1064500.xml'],
         );

@@ -200,6 +200,35 @@ final class ValueObjectsTest extends TestCase
         ChainLink::after($this->id(), $fingerprint);
     }
 
+    public function test_chain_link_after_still_refuses_lower_case(): void
+    {
+        $this->expectException(InvalidRecord::class);
+        ChainLink::after($this->id(), strtolower(str_repeat('0A', 32)));
+    }
+
+    public function test_chain_link_restore_keeps_any_text_of_1_to_64_characters(): void
+    {
+        foreach (['x', str_repeat('a', 63), str_repeat('z', 64), strtolower(str_repeat('0A', 32))] as $fingerprint) {
+            $link = ChainLink::restore($this->id(), $fingerprint);
+            $this->assertFalse($link->isFirst());
+            $this->assertSame($fingerprint, $link->previousFingerprint());
+        }
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function unrestorableFingerprints(): iterable
+    {
+        yield 'empty' => [''];
+        yield '65 chars' => [str_repeat('A', 65)];
+    }
+
+    #[DataProvider('unrestorableFingerprints')]
+    public function test_chain_link_restore_refuses_empty_or_too_long(string $fingerprint): void
+    {
+        $this->expectException(InvalidRecord::class);
+        ChainLink::restore($this->id(), $fingerprint);
+    }
+
     public function test_chain_link_states(): void
     {
         $first = ChainLink::first();

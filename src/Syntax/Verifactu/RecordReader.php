@@ -49,8 +49,11 @@ use RuntimeException;
  * TaxRate::fromLiteral(), the generation timestamp through RecordTimestamp::fromLiteral(), so a
  * record written by other software ("100.0", "41.4", "21.00") hashes and writes back exactly as
  * it was read. Every value is trimmed first. The record keeps the Huella it carries, even when it
- * does not match the fingerprint recomputed from its fields (see Fingerprint::recompute()); the
- * Huella and the previous record's Huella must be 64 upper-case hexadecimal characters.
+ * does not match the fingerprint recomputed from its fields (see Fingerprint::recompute()).
+ * AEAT registers records with a miscomputed Huella or a previous Huella of the wrong length or
+ * content with errors (errores.properties 2000, 2002, 2003), so their content is not checked:
+ * the record's own Huella is kept verbatim when it has exactly 64 characters (a different length
+ * is rejected by AEAT, error 1262), the previous Huella when it has 1 to 64 characters.
  *
  * Flags of "N" and absent flags are the same; the Subsanacion/RechazoPrevio and
  * SinRegistroPrevio/RechazoPrevio pairs must be admitted by the operation tables of
@@ -64,8 +67,6 @@ use RuntimeException;
  */
 final class RecordReader
 {
-    private const FINGERPRINT = '/\A[0-9A-F]{64}\z/';
-
     /**
      * @throws UnsafeXml when the document carries a DOCTYPE declaration or declares entities
      * @throws UnsupportedDocument when the document is not a VERI*FACTU record
@@ -110,7 +111,13 @@ final class RecordReader
         $link = self::chainLink($document, $document->requiredChild('Encadenamiento', $root));
         $system = self::system($document, $document->requiredChild('SistemaInformatico', $root));
         $at = $document->requiredParsed('FechaHoraHusoGenRegistro', $root, RecordTimestamp::fromLiteral(...));
-        $fingerprint = $document->requiredParsed('Huella', $root, self::fingerprint(...));
+        $fingerprint = self::huella($document, $root, static function (string $value): string {
+            if (mb_strlen($value) !== 64) {
+                throw new InvalidArgumentException('a Huella must be 64 characters (AEAT error 1262).');
+            }
+
+            return $value;
+        });
 
         return $document->isRegistration()
             ? RegistrationRecord::restore(self::registration($document, $root), $link, $system, $at, $fingerprint)
@@ -224,9 +231,8 @@ final class RecordReader
         }
 
         $id = self::invoiceId($document, $previous);
-        $fingerprint = $document->requiredParsed('Huella', $previous, self::fingerprint(...));
 
-        return ChainLink::after($id, $fingerprint);
+        return self::huella($document, $previous, static fn (string $value): ChainLink => ChainLink::restore($id, $value));
     }
 
     private static function system(VerifactuDocument $document, DOMElement $system): ComputerSystem
@@ -295,12 +301,27 @@ final class RecordReader
         }
     }
 
-    private static function fingerprint(string $value): string
+    /**
+     * Converts the Huella under $parent; a present but blank Huella is converted as the empty
+     * text, so the conversion refuses it naming the path.
+     *
+     * @template T
+     *
+     * @param  callable(string): T  $convert
+     * @return T
+     *
+     * @throws UnsupportedDocument when the element is missing
+     * @throws InvalidRecord naming the path when the conversion refuses the text
+     */
+    private static function huella(VerifactuDocument $document, DOMElement $parent, callable $convert): mixed
     {
-        if (preg_match(self::FINGERPRINT, $value) !== 1) {
-            throw new InvalidArgumentException('a Huella must be 64 upper-case hexadecimal characters.');
-        }
+        $element = $document->requiredChild('Huella', $parent);
+        $value = trim($element->textContent);
 
-        return $value;
+        try {
+            return $convert($value);
+        } catch (InvalidArgumentException $e) {
+            throw new InvalidRecord(sprintf('%s: %s', $document->path($element), $e->getMessage()), 0, $e);
+        }
     }
 }
