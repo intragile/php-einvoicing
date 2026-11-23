@@ -103,7 +103,9 @@ final class B2BrouterVerifactuLiveTest extends TestCase
 
             self::assertNotSame($first->id, $second->id);
             self::assertTrue($result->passed(), $result->summary());
-            self::assertSame(CheckStatus::Passed, $result->steps[CrossCheckStep::Chain->value], $result->summary());
+            foreach (CrossCheckStep::cases() as $step) {
+                self::assertSame(CheckStatus::Passed, $result->steps[$step->value] ?? null, $step->name."\n".$result->summary());
+            }
             $this->assertQrDecoded($result);
         });
     }
