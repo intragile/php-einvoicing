@@ -303,6 +303,22 @@ final class VerifactuCrossCheckTest extends TestCase
         self::assertTrue(self::hasNote($result, 'No QR code found.'));
     }
 
+    public function test_decoder_errors_other_than_runtime_exceptions_propagate(): void
+    {
+        foreach ([new \TypeError('Bad argument.'), new \Error('Broken decoder.')] as $error) {
+            $decoder = self::decoder(static fn (): string => throw $error);
+
+            $thrown = null;
+            try {
+                self::check($decoder)->verify(self::report('1064493', 'PNG'), self::report('1064490'), SpanishInvoices::domestic());
+            } catch (\Throwable $e) {
+                $thrown = $e;
+            }
+
+            self::assertSame($error, $thrown);
+        }
+    }
+
     public function test_fallback_compares_amount_by_value(): void
     {
         // B2Brouter writes importe=121.0; our draft carries 121.00.
@@ -359,6 +375,19 @@ final class VerifactuCrossCheckTest extends TestCase
         foreach (CrossCheckStep::cases() as $step) {
             self::assertSame(CheckStatus::Passed, $result->steps[$step->value], $step->name."\n".$result->summary());
         }
+        self::assertFalse(self::hasNote($result, 'fallback'));
+    }
+
+    #[RequiresPhpExtension('gd')]
+    public function test_default_environment_reads_b2brouter_qr_codes(): void
+    {
+        $report = TaxReport::fromArray(self::json('tax-report.json'));
+        $previous = TaxReport::fromArray(self::json('tax-report-previous.json'));
+        $check = new VerifactuCrossCheck(Fixtures::verifactuSchemas(), qrDecoder: new ChillerlanQrDecoder);
+
+        $result = $check->verify($report, $previous, SpanishInvoices::domestic()->withNumber('LIVE-75058f2f4e70'));
+
+        self::assertSame(CheckStatus::Passed, $result->steps[CrossCheckStep::Qr->value], $result->summary());
         self::assertFalse(self::hasNote($result, 'fallback'));
     }
 

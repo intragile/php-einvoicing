@@ -29,7 +29,7 @@ use IntrAgile\EInvoicing\Syntax\Verifactu\RecordReader;
 use IntrAgile\EInvoicing\Validation\Exception\UnusableSchema;
 use IntrAgile\EInvoicing\Validation\SchemaValidator;
 use IntrAgile\EInvoicing\Validation\Spain\VerifactuSchemas;
-use Throwable;
+use RuntimeException;
 
 /**
  * Cross-checks the VERI*FACTU record B2Brouter generated for an invoice against our own engine,
@@ -50,7 +50,8 @@ use Throwable;
  *    exemption, rate, base and quota, compared by value after sorting both sides the same way),
  *    CuotaTotal and ImporteTotal. A refused mapping fails the step and lists the problems.
  * 5. QR: with a decoder and a QR image, the decoded text must equal VerifactuQr::url() of
- *    B2Brouter's record exactly. Without a decoder, without an image, or when decoding fails, the
+ *    B2Brouter's record exactly. Without a decoder, without an image, or when the decoder throws
+ *    the RuntimeException of its contract (any other Throwable propagates), the
  *    fallback compares the URL parameters of B2Brouter's record with those of our draft (the
  *    amount by value) and notes that the fallback was used. When step 4 recorded the credit-note
  *    sign divergence on ImporteTotal, an importe equal to our total negated is accepted with a
@@ -61,15 +62,16 @@ use Throwable;
  * invoice), and a credit note by difference (TipoRectificativa I) whose amounts B2Brouter writes
  * positive where our engine writes them negated. Every other difference fails its step.
  *
- * B2Brouter prints the production ValidarQR host in its QR codes, in its sandbox too, so callers
- * checking B2Brouter reports pass VerifactuEnvironment::Production; the Test default is the AEAT
- * pre-production host.
+ * The environment names the ValidarQR host the expected URL is built with. B2Brouter prints the
+ * production host in its QR codes, in its sandbox too, so the default is
+ * VerifactuEnvironment::Production; pass VerifactuEnvironment::Test only for QR codes printed with
+ * the AEAT pre-production host.
  */
 final class VerifactuCrossCheck
 {
     public function __construct(
         private readonly VerifactuSchemas $schemas,
-        private readonly VerifactuEnvironment $environment = VerifactuEnvironment::Test,
+        private readonly VerifactuEnvironment $environment = VerifactuEnvironment::Production,
         private readonly ?QrDecoder $qrDecoder = null,
         private readonly RecordMapper $mapper = new RecordMapper,
     ) {}
@@ -278,7 +280,7 @@ final class VerifactuCrossCheck
                 $run->close($step);
 
                 return;
-            } catch (Throwable $e) {
+            } catch (RuntimeException $e) {
                 $reason = 'the QR image could not be decoded: '.$e->getMessage();
             }
         }
