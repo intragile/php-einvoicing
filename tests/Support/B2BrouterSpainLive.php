@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace IntrAgile\EInvoicing\Tests\Support;
 
+use Closure;
 use IntrAgile\EInvoicing\Transport\B2Brouter\B2BrouterConfig;
 use IntrAgile\EInvoicing\Transport\Http\HttpClient;
 use IntrAgile\EInvoicing\Transport\Http\Redactor;
 use Nyholm\Psr7\Factory\Psr17Factory;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
 
 /**
  * Helpers of the opt-in Spanish B2Brouter live tests: the environment, the sandbox-only guard,
@@ -60,12 +64,33 @@ final class B2BrouterSpainLive
 
     /**
      * A client with a fixed timeout that keeps the key and the account id out of its messages.
+     * The observer, when given, sees every response before the client reads it, for example to
+     * record the states a poll went through.
+     *
+     * @param  (Closure(RequestInterface, ResponseInterface): void)|null  $observer
      */
-    public static function http(B2BrouterConfig $config): HttpClient
+    public static function http(B2BrouterConfig $config, ?Closure $observer = null): HttpClient
     {
         $factory = new Psr17Factory;
+        $client = new StreamHttpClient(self::HTTP_TIMEOUT_SECONDS);
+        if ($observer !== null) {
+            $client = new class($client, $observer) implements ClientInterface
+            {
+                /** @param  Closure(RequestInterface, ResponseInterface): void  $observer */
+                public function __construct(private readonly ClientInterface $inner, private readonly Closure $observer) {}
 
-        return (new HttpClient(new StreamHttpClient(self::HTTP_TIMEOUT_SECONDS), $factory, $factory))->withSecrets(self::secrets($config));
+                public function sendRequest(RequestInterface $request): ResponseInterface
+                {
+                    $response = $this->inner->sendRequest($request);
+                    ($this->observer)($request, $response);
+                    $response->getBody()->rewind();
+
+                    return $response;
+                }
+            };
+        }
+
+        return (new HttpClient($client, $factory, $factory))->withSecrets(self::secrets($config));
     }
 
     /**
