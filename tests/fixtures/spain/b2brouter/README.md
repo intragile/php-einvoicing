@@ -2,7 +2,7 @@
 
 Developed and maintained by [IntrAgile Kft.](https://intragile.eu)
 
-Four VERI*FACTU `RegistroAlta` records that the B2Brouter Verifactu API generated in its sandbox on 2026-11-23, for invoices we submitted from our own sandbox account "IntrAgile ES Sandbox". They are the record XML B2Brouter returned for each tax report, kept byte for byte (`.gitattributes` marks the folder `-text -eol`). The issuer NIF `B64829179` and the recipient NIF `A58818501` are fictitious test values with a valid CIF control digit; no real company or person appears in them. The `SistemaInformatico` block names B2Brouter as the producing software, as B2Brouter wrote it.
+Four VERI*FACTU `RegistroAlta` records that the B2Brouter Verifactu API generated in its sandbox on 2026-11-23, for invoices we submitted from our own sandbox account "IntrAgile ES Sandbox". They are the record XML B2Brouter returned for each tax report, kept byte for byte (`.gitattributes` marks the folder `-text -eol`) except for one value: the installation number `NumeroInstalacion`, which B2Brouter derives from the sandbox account id, is replaced by `1-999999` so that no account id is committed. `SistemaInformatico` is not an input of the `Huella`, so every record still reproduces its own fingerprint. The issuer NIF `B64829179` and the recipient NIF `A58818501` are fictitious test values with a valid CIF control digit; no real company or person appears in them. The `SistemaInformatico` block names B2Brouter as the producing software, as B2Brouter wrote it.
 
 The tests use them as records written by other software: each one reproduces its own `Huella` from the literal text of its hash fields, although B2Brouter writes amounts as `100.0`, `21.0` and `121.0` and rates as `21.00`, and the four form one chain in file-name order.
 
@@ -15,13 +15,13 @@ The tests use them as records written by other software: each one reproduces its
 
 ## Checksums
 
-SHA-256 of each file, taken from the captured source before copying and from the copy here afterwards; both lists are identical.
+SHA-256 of each file as committed, after the installation number was replaced.
 
 ```
-38d82eb87e215d7d8fbf8947b956b801d9aa5562434e2cd20b5639e270202757  record-1064490.xml
-36a20a23289cb27621dc25347f3e57bd95bb9757f39561ab7ba6f6b0b1fe8d60  record-1064493.xml
-398bf42ef7954fd02916f3341007a9337c6fe120a9eed02fb72f65bde09569c0  record-1064500.xml
-156881adbf2c54c3649857f0cef0127ef025fc34b4f06fc701e694572f5bff94  record-1064501.xml
+7da540d597d96d476bf632ecaf91f68358ba44d02081b9c3c0e93e27bf7ab5ef  record-1064490.xml
+371338381cb71ec48e9f9f91681b4aa16219dd758773e217bb17f7223d625e60  record-1064493.xml
+f5e6d02319703369d7c549dd8b75fc655cc5928651726e7cc39541e32ceda91f  record-1064500.xml
+ef88a008675373823720bf681fb463180a1756f4a699dabf75852e98a9d07179  record-1064501.xml
 ```
 
 Check them with `shasum -a 256 record-*.xml` in this folder.
