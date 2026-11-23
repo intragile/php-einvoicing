@@ -7,8 +7,9 @@ namespace IntrAgile\EInvoicing\Transport\Ksef\Qr;
 use InvalidArgumentException;
 
 /**
- * A KSeF verification link and the caption printed under its QR code on the invoice
- * visualisation: the KSeF number or "OFFLINE" for KOD I, "CERTYFIKAT" for KOD II.
+ * A verification link and the caption printed under its QR code on the invoice visualisation
+ * (empty for no caption). KSeF captions KOD I with the KSeF number or "OFFLINE" and KOD II with
+ * "CERTYFIKAT"; the VERI*FACTU QR carries none.
  */
 final readonly class QrCode
 {
@@ -20,7 +21,7 @@ final readonly class QrCode
         public string $label,
     ) {
         if (! str_starts_with($url, 'https://')) {
-            throw new InvalidArgumentException('A KSeF verification link is an https URL.');
+            throw new InvalidArgumentException('A verification link is an https URL.');
         }
     }
 }

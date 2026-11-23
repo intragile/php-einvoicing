@@ -15,7 +15,7 @@ use LogicException;
 use RuntimeException;
 
 /**
- * Renders KSeF QR codes with chillerlan/php-qrcode (^5), an optional dependency: install it with
+ * Renders verification QR codes (KSeF, VERI*FACTU) with chillerlan/php-qrcode (^5), an optional dependency: install it with
  * "composer require chillerlan/php-qrcode". PNG output also needs ext-gd.
  *
  * chillerlan only encodes the link (byte mode, error correction level M, a 4-module quiet zone);
@@ -51,7 +51,7 @@ final class ChillerlanQrRenderer implements QrRenderer
     {
         if (! $classExists(ChillerlanQRCode::class)) {
             throw new LogicException(sprintf(
-                'Rendering KSeF QR codes needs the optional package %1$s (^5); install it with "composer require %1$s".',
+                'Rendering QR codes needs the optional package %1$s (^5); install it with "composer require %1$s".',
                 self::PACKAGE,
             ));
         }
@@ -103,7 +103,7 @@ final class ChillerlanQrRenderer implements QrRenderer
         }
 
         if (! extension_loaded('gd')) {
-            throw new LogicException('Rendering KSeF QR codes as PNG needs the gd PHP extension.');
+            throw new LogicException('Rendering QR codes as PNG needs the gd PHP extension.');
         }
 
         $matrix = self::matrix($code->url);

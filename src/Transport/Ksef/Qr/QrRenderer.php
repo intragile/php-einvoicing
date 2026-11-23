@@ -8,7 +8,8 @@ use InvalidArgumentException;
 use LogicException;
 
 /**
- * Renders a KSeF verification link as a QR code image (ISO/IEC 18004) with its caption underneath.
+ * Renders a verification link (KSeF, VERI*FACTU) as a QR code image (ISO/IEC 18004) with its caption
+ * underneath, if it has one.
  */
 interface QrRenderer
 {
