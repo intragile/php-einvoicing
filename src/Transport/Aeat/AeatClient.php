@@ -28,12 +28,16 @@ use Throwable;
  * issuer's certificate. The endpoint comes from the configuration only.
  *
  * The answer body is read first, whatever the HTTP status, because AEAT returns SOAP faults with
- * HTTP 500. A Client fault with an authentication code is AuthenticationFailed; any other Client
- * fault refuses the submission as a whole and is DocumentRejected. A Server fault, an answer that
- * cannot be read and a request that got no answer leave the outcome of a submission unknown:
- * resending the very same bytes is safe, because AEAT answers a record it already holds with
- * RegistroDuplicado. A lookup only reads, so its failures are TransportUnavailable, except an
- * authentication fault.
+ * HTTP 500. A Client fault with an authentication code is AuthenticationFailed; a Client fault
+ * with a code of a temporary AEAT-side failure (AeatErrors::classify() recommends resending the
+ * same bytes) is OutcomeUnknown; any other Client fault refuses the submission as a whole and is
+ * DocumentRejected. A Server fault, an answer that cannot be read and a request that got no answer
+ * leave the outcome of a submission unknown too: resending the very same bytes is safe, because
+ * AEAT answers a record it already holds with RegistroDuplicado. A lookup only reads, so its
+ * failures are TransportUnavailable, except an authentication fault.
+ *
+ * Text taken from an AEAT answer (fault strings, unreadable values) is cut to MESSAGE_BYTES in
+ * exception messages, marked with "...".
  */
 final class AeatClient
 {
@@ -43,6 +47,9 @@ final class AeatClient
         'SOAPAction' => '""',
         'Accept' => 'text/xml',
     ];
+
+    /** The most bytes of AEAT-provided text an exception message or error line carries. */
+    private const MESSAGE_BYTES = 300;
 
     private const RESEND_ADVICE = 'To settle it, resend the same bytes: AEAT answers a duplicate with RegistroDuplicado, or call lookup() for each record.';
 
@@ -62,7 +69,8 @@ final class AeatClient
      * @throws AuthenticationFailed when AEAT refuses the certificate or the caller's authorisation
      * @throws DocumentRejected when AEAT refuses the submission as a whole with a Client fault
      * @throws RateLimited when AEAT answers HTTP 429
-     * @throws OutcomeUnknown when AEAT may or may not have registered the records
+     * @throws OutcomeUnknown when AEAT may or may not have registered the records, a Client fault
+     *                        reporting a temporary AEAT-side failure included
      */
     public function submit(Submission $submission): SubmissionResponse
     {
@@ -101,7 +109,7 @@ final class AeatClient
             throw $this->notSoap(
                 $response,
                 $subject,
-                sprintf('was answered with HTTP %d and a SOAP body that is not a readable submission response (%s)', $status, rtrim($exception->getMessage(), '.')),
+                sprintf('was answered with HTTP %d and a SOAP body that is not a readable submission response (%s)', $status, self::cut(rtrim($exception->getMessage(), '.'))),
                 $exception,
                 true,
             );
@@ -150,7 +158,7 @@ final class AeatClient
                 throw self::authenticationFault($opened, $subject);
             }
 
-            throw new TransportUnavailable(sprintf('%s failed: AEAT answered with a %s fault: %s', $subject, $opened->faultCode, self::sentence($opened->faultString)));
+            throw new TransportUnavailable(sprintf('%s failed: AEAT answered with a %s fault: %s', $subject, self::cut($opened->faultCode), self::sentence(self::cut($opened->faultString))));
         }
 
         return $this->readLookup($opened, $request, $subject, $status);
@@ -162,7 +170,7 @@ final class AeatClient
             return $this->reader->lookup($payload, $request->invoice);
         } catch (UnsupportedDocument $exception) {
             throw new TransportUnavailable(
-                sprintf('%s failed: AEAT answered HTTP %d with a SOAP body that is not a readable query response (%s).', $subject, $status, rtrim($exception->getMessage(), '.')),
+                sprintf('%s failed: AEAT answered HTTP %d with a SOAP body that is not a readable query response (%s).', $subject, $status, self::cut(rtrim($exception->getMessage(), '.'))),
                 $exception,
             );
         }
@@ -170,16 +178,21 @@ final class AeatClient
 
     private function submissionFault(SoapFault $fault, string $subject): AuthenticationFailed|DocumentRejected|OutcomeUnknown
     {
+        $text = self::cut($fault->faultString);
+        $clause = self::cut(rtrim($fault->faultString, '.'));
         if (! $fault->isClient()) {
-            return self::unknown($subject, sprintf('was answered with a %s fault (%s)', $fault->faultCode, rtrim($fault->faultString, '.')));
+            return self::unknown($subject, sprintf('was answered with a %s fault (%s)', self::cut($fault->faultCode), $clause));
         }
         if (self::isAuthentication($fault)) {
             return self::authenticationFault($fault, $subject);
         }
+        if ($fault->code !== null && AeatErrors::classify($fault->code)->action === ErrorAction::RetrySameBytes) {
+            return self::unknown($subject, sprintf('was answered with a Client fault reporting a temporary AEAT failure, code %d (%s)', $fault->code, $clause));
+        }
 
         return new DocumentRejected(
-            sprintf('%s was refused by AEAT: %s', $subject, self::sentence($fault->faultString)),
-            ['errors' => [$fault->code === null ? $fault->faultString : $fault->code.': '.$fault->faultString]],
+            sprintf('%s was refused by AEAT: %s', $subject, self::sentence($text)),
+            ['errors' => [$fault->code === null ? $text : $fault->code.': '.$text]],
             null,
             $fault->code,
         );
@@ -215,7 +228,7 @@ final class AeatClient
     private static function authenticationFault(SoapFault $fault, string $subject): AuthenticationFailed
     {
         return new AuthenticationFailed(
-            sprintf('%s was refused: AEAT did not accept the client certificate or its authorisation: %s', $subject, self::sentence($fault->faultString)),
+            sprintf('%s was refused: AEAT did not accept the client certificate or its authorisation: %s', $subject, self::sentence(self::cut($fault->faultString))),
             null,
             $fault->code,
         );
@@ -235,6 +248,14 @@ final class AeatClient
             sprintf('%s %s, so AEAT may or may not have registered the records. %s', $subject, $what, self::RESEND_ADVICE),
             $previous,
         );
+    }
+
+    /**
+     * AEAT-provided text cut to MESSAGE_BYTES on a UTF-8 character boundary, marked with "...".
+     */
+    private static function cut(string $text): string
+    {
+        return strlen($text) > self::MESSAGE_BYTES ? mb_strcut($text, 0, self::MESSAGE_BYTES, 'UTF-8').'...' : $text;
     }
 
     private static function sentence(string $text): string

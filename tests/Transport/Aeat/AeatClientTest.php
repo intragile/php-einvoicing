@@ -170,6 +170,62 @@ final class AeatClientTest extends TestCase
     }
 
     #[Group('verifactu-official')]
+    public function test_transient_client_fault_is_outcome_unknown_on_submit_and_unavailable_on_lookup(): void
+    {
+        $submitted = self::thrown(fn () => self::client(new RecordingHttpClient(self::clientFault(4134)))->submit(self::submission()));
+        $looked = self::thrown(fn () => self::client(new RecordingHttpClient(self::clientFault(4134)))->lookup(self::lookupRequest()));
+
+        $this->assertInstanceOf(OutcomeUnknown::class, $submitted);
+        $this->assertStringContainsString('4134', $submitted->getMessage());
+        $this->assertStringContainsString(self::RESEND_ADVICE, $submitted->getMessage());
+        $this->assertInstanceOf(TransportUnavailable::class, $looked);
+        $this->assertStringContainsString('4134', $looked->getMessage());
+    }
+
+    #[Group('verifactu-official')]
+    public function test_body_decides_whatever_the_http_status(): void
+    {
+        $rejected = self::thrown(fn () => self::client(new RecordingHttpClient(self::soap(200, 'fault-client-4104.xml')))->submit(self::submission()));
+        $submission = self::submission();
+        $accepted = self::client(new RecordingHttpClient(self::soap(500, 'correcto.xml')))->submit($submission);
+
+        $this->assertInstanceOf(DocumentRejected::class, $rejected);
+        $this->assertSame(4104, $rejected->providerCode);
+        $this->assertSame(SubmissionState::Correcto, $accepted->state);
+        $this->assertSame([RecordOutcome::Accepted, RecordOutcome::Accepted], $accepted->outcomes($submission));
+    }
+
+    #[Group('verifactu-official')]
+    public function test_aeat_text_in_messages_is_bounded(): void
+    {
+        $long = 'Codigo[4104].'.str_repeat('Texto muy largo de la AEAT. ', 100);
+        $xml = str_replace(
+            'Codigo[4104].Error en la cabecera: NIF del obligado no identificado (texto de prueba).',
+            $long,
+            self::fixture('fault-client-4104.xml'),
+        );
+        $serverXml = str_replace('Error interno del servicio (texto de prueba).', str_repeat('Interno. ', 300), self::fixture('fault-server.xml'));
+        $authXml = str_replace('Codigo[4104]', 'Codigo[4112]', $xml);
+
+        $exceptions = [
+            'client fault' => self::thrown(fn () => self::client(new RecordingHttpClient(new Response(500, [], $xml)))->submit(self::submission())),
+            'server fault' => self::thrown(fn () => self::client(new RecordingHttpClient(new Response(500, [], $serverXml)))->submit(self::submission())),
+            'authentication fault' => self::thrown(fn () => self::client(new RecordingHttpClient(new Response(500, [], $authXml)))->submit(self::submission())),
+            'lookup fault' => self::thrown(fn () => self::client(new RecordingHttpClient(new Response(500, [], $xml)))->lookup(self::lookupRequest())),
+        ];
+
+        foreach ($exceptions as $case => $exception) {
+            $this->assertLessThan(1200, strlen($exception->getMessage()), $case);
+            $this->assertStringContainsString('...', $exception->getMessage(), $case);
+        }
+        $this->assertInstanceOf(DocumentRejected::class, $exceptions['client fault']);
+        $lines = $exceptions['client fault']->errors['errors'] ?? null;
+        $this->assertIsArray($lines);
+        $this->assertIsString($lines[0]);
+        $this->assertLessThan(400, strlen($lines[0]));
+    }
+
+    #[Group('verifactu-official')]
     public function test_server_fault_is_outcome_unknown(): void
     {
         $exception = self::thrown(fn () => self::client(new RecordingHttpClient(self::soap(500, 'fault-server.xml')))->submit(self::submission()));
@@ -317,10 +373,15 @@ final class AeatClientTest extends TestCase
             'html' => $html,
             'client fault 4104' => self::soap(500, 'fault-client-4104.xml'),
             'submission response' => self::soap(200, 'correcto.xml'),
+            'oversized' => self::soap(200, 'consulta-con-datos.xml'),
+            'doctype' => new Response(200, [], str_replace('<env:Envelope', "<!DOCTYPE env:Envelope [<!ENTITY x \"EXPANDED\">]>\n<env:Envelope", self::fixture('consulta-con-datos.xml'))),
         ];
 
         foreach ($answers as $case => $answer) {
-            $exception = self::thrown(fn () => self::client(new RecordingHttpClient($answer))->lookup(self::lookupRequest()));
+            $client = $case === 'oversized'
+                ? new AeatClient(new AeatConfig(VerifactuEnvironment::Test, CertificateKind::Seal, Fixtures::verifactuSchemas(), 100), self::http(new RecordingHttpClient($answer)))
+                : self::client(new RecordingHttpClient($answer));
+            $exception = self::thrown(fn () => $client->lookup(self::lookupRequest()));
 
             $this->assertInstanceOf(TransportUnavailable::class, $exception, $case);
             $this->assertStringContainsString('12345678/G33', $exception->getMessage(), $case);
@@ -400,6 +461,11 @@ final class AeatClientTest extends TestCase
     private static function soap(int $status, string $fixture): Response
     {
         return new Response($status, ['Content-Type' => 'text/xml; charset=utf-8'], self::fixture($fixture));
+    }
+
+    private static function clientFault(int $code): Response
+    {
+        return new Response(500, ['Content-Type' => 'text/xml; charset=utf-8'], str_replace('Codigo[4104]', sprintf('Codigo[%d]', $code), self::fixture('fault-client-4104.xml')));
     }
 
     private static function networkError(): NetworkExceptionInterface
