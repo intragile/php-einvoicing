@@ -9,8 +9,9 @@ use InvalidArgumentException;
 
 /**
  * The bound of waiting for a VERI*FACTU tax report: at most $attempts reads, $waitMs milliseconds
- * apart. The default of 40 reads 3 seconds apart waits about two minutes; the B2Brouter sandbox
- * has been seen to keep a report "signed" for more than 80 seconds before it was registered.
+ * apart. The default of 60 reads 3 seconds apart waits about three minutes (177 seconds of
+ * waiting); the B2Brouter sandbox has been seen to keep a report "signed" for more than 80
+ * seconds before it was registered.
  */
 final readonly class VerifactuPolling
 {
@@ -25,7 +26,7 @@ final readonly class VerifactuPolling
      * @throws InvalidArgumentException when the attempts or the wait are not positive
      */
     public function __construct(
-        public int $attempts = 40,
+        public int $attempts = 60,
         public int $waitMs = 3000,
         ?Closure $sleep = null,
     ) {

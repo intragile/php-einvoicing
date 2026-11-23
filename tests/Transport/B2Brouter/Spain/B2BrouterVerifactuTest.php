@@ -287,11 +287,38 @@ final class B2BrouterVerifactuTest extends TestCase
         self::assertCount(3, $recorder->requests());
     }
 
+    public function test_await_reads_a_report_that_first_appears_on_the_last_attempt(): void
+    {
+        $recorder = new RecordingHttpClient(self::invoiceWith([]), self::invoiceWith([]), self::invoiceWith([7001]), self::report(7001, 'signed'));
+
+        $report = $this->verifactu($recorder, new VerifactuPolling(3, 50, $this->recordWait(...)))->awaitRegistered('501');
+
+        self::assertNotNull($report);
+        self::assertSame('signed', $report->state);
+        self::assertSame([50, 50], $this->waits);
+        self::assertSame(
+            ['/invoices/501', '/invoices/501', '/invoices/501', '/tax_reports/7001'],
+            array_map(static fn ($request): string => $request->getUri()->getPath(), $recorder->requests()),
+        );
+    }
+
+    public function test_await_with_one_attempt_reads_the_report_at_once(): void
+    {
+        $recorder = new RecordingHttpClient(self::invoiceWith([7001]), self::report(7001, 'registered'));
+
+        $report = $this->verifactu($recorder, new VerifactuPolling(1, 50, $this->recordWait(...)))->awaitRegistered('501');
+
+        self::assertNotNull($report);
+        self::assertSame('registered', $report->state);
+        self::assertSame([], $this->waits);
+        self::assertCount(2, $recorder->requests());
+    }
+
     public function test_polling_defaults_and_bounds(): void
     {
         $polling = new VerifactuPolling;
 
-        self::assertSame(40, $polling->attempts);
+        self::assertSame(60, $polling->attempts);
         self::assertSame(3000, $polling->waitMs);
         foreach ([[0, 3000], [-1, 3000], [20, 0], [20, -5]] as [$attempts, $waitMs]) {
             self::assertInstanceOf(InvalidArgumentException::class, self::capture(fn () => new VerifactuPolling($attempts, $waitMs)));
@@ -385,6 +412,47 @@ final class B2BrouterVerifactuTest extends TestCase
         $response = self::json(200, ['invoices' => $invoices, 'meta' => ['total_count' => 900, 'offset' => 0, 'limit' => 500]]);
 
         self::assertInstanceOf(UnexpectedResponse::class, self::capture(fn () => $this->verifactu(new RecordingHttpClient($response))->findByNumber('LIVE-1')));
+    }
+
+    public function test_find_by_number_takes_an_exact_match_on_a_page_of_many(): void
+    {
+        $invoices = [['id' => 24433033, 'number' => 'LIVE-75058f2f4e70']];
+        for ($i = 1; $i < 500; $i++) {
+            $invoices[] = ['id' => 30000000 + $i, 'number' => 'LIVE-75058f2f4e70-'.$i];
+        }
+        $recorder = new RecordingHttpClient(
+            self::json(200, ['invoices' => $invoices, 'meta' => ['total_count' => 900, 'offset' => 0, 'limit' => 500]]),
+            self::spain(200, 'invoice.json'),
+        );
+
+        $found = $this->verifactu($recorder)->findByNumber('LIVE-75058f2f4e70');
+
+        self::assertNotNull($found);
+        self::assertSame('24433033', $found->invoiceId);
+    }
+
+    public function test_find_by_number_on_a_complete_full_page_without_match_is_null(): void
+    {
+        $invoices = [];
+        for ($i = 1; $i <= 500; $i++) {
+            $invoices[] = ['id' => $i, 'number' => 'LIVE-1-'.$i];
+        }
+
+        self::assertNull($this->verifactu(new RecordingHttpClient(self::invoiceList($invoices)))->findByNumber('LIVE-1'));
+    }
+
+    public function test_find_by_number_on_a_full_page_without_total_is_not_decided(): void
+    {
+        $invoices = [];
+        for ($i = 1; $i <= 500; $i++) {
+            $invoices[] = ['id' => $i, 'number' => 'LIVE-1-'.$i];
+        }
+        $response = self::json(200, ['invoices' => $invoices]);
+
+        $exception = self::capture(fn () => $this->verifactu(new RecordingHttpClient($response))->findByNumber('LIVE-1'));
+
+        self::assertInstanceOf(UnexpectedResponse::class, $exception);
+        self::assertStringContainsString('cannot decide', $exception->getMessage());
     }
 
     public function test_find_by_blank_number_is_refused_without_request(): void

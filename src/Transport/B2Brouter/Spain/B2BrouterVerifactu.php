@@ -202,11 +202,12 @@ final class B2BrouterVerifactu
      * polling bound.
      *
      * Each attempt makes one request: the invoice is read until it lists a tax report, then the
-     * report with the highest id is read. Attempts are the configured wait apart, and no request
-     * is made after the last one.
+     * report with the highest id is read. Attempts are the configured wait apart. When the invoice
+     * first lists a report on the last attempt, that report is read once right away, without a
+     * further wait; otherwise no request is made after the last attempt.
      *
-     * @return TaxReport|null the last report read, final or not; null when the invoice listed no
-     *                        tax report within the bound
+     * @return TaxReport|null the last report read, final or not; null only when the invoice listed
+     *                        no tax report on any attempt
      *
      * @throws UnexpectedResponse when a response cannot be read
      * @throws UnsupportedDocument when a report body is not a tax report
@@ -226,8 +227,9 @@ final class B2BrouterVerifactu
             }
             if ($reportId === null) {
                 $reportId = $this->invoice($invoiceId)->latestTaxReportId();
-
-                continue;
+                if ($reportId === null || $attempt < $this->polling->attempts) {
+                    continue;
+                }
             }
             $report = $this->taxReport($reportId);
             if ($report->isFinal()) {
@@ -247,8 +249,9 @@ final class B2BrouterVerifactu
      * in full, with its tax report ids.
      *
      * @throws UnexpectedResponse when more than one issued invoice has the number, when the page
-     *                            cannot decide (more invoices start with the number than one page
-     *                            holds and none on it matches), or a response cannot be read
+     *                            cannot decide (none on it matches, and more invoices start with
+     *                            the number than one page holds, or the page is full and the
+     *                            answer gives no total), or a response cannot be read
      * @throws TransportUnavailable when a request failed without an answer; it is safe to retry
      * @throws TransportException when B2Brouter refused the request
      * @throws InvalidArgumentException when the number is blank
@@ -303,6 +306,13 @@ final class B2BrouterVerifactu
                     '%s cannot decide: %d invoices start with the number, more than one page of %d holds',
                     $operation,
                     $total,
+                    self::LIST_LIMIT,
+                ));
+            }
+            if (! is_int($total) && count($invoices) >= self::LIST_LIMIT) {
+                throw $this->config->redactor()->unexpected($response, sprintf(
+                    '%s cannot decide: the page of %d invoices is full and the answer gives no total, so more may start with the number',
+                    $operation,
                     self::LIST_LIMIT,
                 ));
             }

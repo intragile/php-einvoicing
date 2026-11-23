@@ -45,7 +45,7 @@ use Throwable;
  * previous_id is not a tax report id). When no report of this run is at hand, for example
  * because a case runs alone, a domestic invoice is issued first to provide one.
  *
- * Each registration can take up to two minutes, and every case creates one or two sandbox
+ * Each registration can take up to three minutes, and every case creates one or two sandbox
  * invoices. Output never contains the API key or the account id.
  */
 #[Group('b2brouter-spain-live')]
