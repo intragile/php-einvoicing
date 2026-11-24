@@ -578,7 +578,11 @@ record in five steps:
    compared by value.
 5. **QR:** the URL decoded from B2Brouter's QR image equals `VerifactuQr::url()` of its record.
    Decoding needs `chillerlan/php-qrcode` with ext-gd or ext-imagick; without a decoder the URL
-   parameters are compared, with a note.
+   parameters are compared, with a note. The same parameter comparison is used, with a note naming
+   the decoder error, when the decoder cannot read an image: on 2026-11-24, 2 of 28 B2Brouter
+   sandbox QR images did not decode with `ChillerlanQrDecoder` (on PHP 8.3 and 8.5 alike). The
+   comparison still checks every QR parameter; only the image decoding is unverified for those
+   images.
 
 `CrossCheckResult` lists every difference; `failsIn(CrossCheckMode::Strict)` fails on any of them,
 `CrossCheckMode::Report` only reports. **B2Brouter prints the production ValidarQR host

@@ -30,6 +30,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -38,7 +39,9 @@ use Throwable;
  *
  * Needs B2BROUTER_ES_API_KEY and B2BROUTER_ES_ACCOUNT_ID and skips without them. Only a "test_"
  * key on https://api.b2brouter.net is accepted; anything else fails before the first request.
- * The QR codes are read with chillerlan/php-qrcode, which must be installed.
+ * The QR codes are read with chillerlan/php-qrcode, which must be installed. Step 5 may rest on the
+ * parameter fallback only for an image that decoder cannot read (some B2Brouter PNGs), and at least
+ * one QR image of every run must really be decoded.
  *
  * Every case chains its record to the report registered just before it in the same run, so that
  * step 3 is checked against a previous report from the caller's own store (B2Brouter's
@@ -61,6 +64,12 @@ final class B2BrouterVerifactuLiveTest extends TestCase
 
     /** The number and issue date of the first domestic invoice registered in this run. */
     private static ?PrecedingInvoiceReference $original = null;
+
+    /** The QR images of this run that the decoder read. */
+    private static int $qrDecoded = 0;
+
+    /** The QR images of this run that the decoder reported unreadable. */
+    private static int $qrUnreadable = 0;
 
     private Redactor $redactor;
 
@@ -106,7 +115,7 @@ final class B2BrouterVerifactuLiveTest extends TestCase
             foreach (CrossCheckStep::cases() as $step) {
                 self::assertSame(CheckStatus::Passed, $result->steps[$step->value] ?? null, $step->name."\n".$result->summary());
             }
-            $this->assertQrDecoded($result);
+            $this->assertQr($result, $second);
         });
     }
 
@@ -135,7 +144,7 @@ final class B2BrouterVerifactuLiveTest extends TestCase
             foreach (CrossCheckStep::cases() as $step) {
                 self::assertSame(CheckStatus::Passed, $result->steps[$step->value] ?? null, $step->name."\n".$result->summary());
             }
-            $this->assertQrDecoded($result);
+            $this->assertQr($result, $report);
         });
     }
 
@@ -155,7 +164,7 @@ final class B2BrouterVerifactuLiveTest extends TestCase
             foreach ($result->knownDivergences() as $divergence) {
                 self::assertStringEndsWith('OperacionExenta', $divergence->field, $result->summary());
             }
-            $this->assertQrDecoded($result);
+            $this->assertQr($result, $report);
         });
     }
 
@@ -178,7 +187,7 @@ final class B2BrouterVerifactuLiveTest extends TestCase
             foreach ($result->knownDivergences() as $divergence) {
                 self::assertContains(self::fieldName($divergence), self::AMOUNT_FIELDS, $result->summary());
             }
-            $this->assertQrDecoded($result);
+            $this->assertQr($result, $report);
         });
     }
 
@@ -267,12 +276,40 @@ final class B2BrouterVerifactuLiveTest extends TestCase
         return $result;
     }
 
-    /** Step 5 must be decided by the decoder, not by the parameter fallback. */
-    private function assertQrDecoded(CrossCheckResult $result): void
+    /**
+     * Step 5 must pass. A readable image must be decided by the decoder; the parameter fallback is
+     * accepted only for an image the decoder reports unreadable, and then step 5 must say so.
+     */
+    private function assertQr(CrossCheckResult $result, TaxReport $report): void
     {
         self::assertSame(CheckStatus::Passed, $result->steps[CrossCheckStep::Qr->value] ?? null, $result->summary());
-        foreach ($result->notes as $note) {
-            self::assertStringNotContainsString('fallback', $note, 'Step 5 passed only through the QR fallback: '.$note);
+        self::assertNotNull($report->qrPng, 'Tax report '.$report->id.' carries no QR image.');
+
+        $readable = true;
+        try {
+            (new ChillerlanQrDecoder)->decode($report->qrPng);
+        } catch (RuntimeException) {
+            $readable = false;
+        }
+
+        $fallback = array_values(array_filter($result->notes, static fn (string $note): bool => str_contains($note, 'fallback')));
+        if ($readable) {
+            self::$qrDecoded++;
+            self::assertSame([], $fallback, 'Step 5 passed through the QR fallback although the image is readable: '.implode(' ', $fallback));
+
+            return;
+        }
+
+        self::$qrUnreadable++;
+        $unreadable = array_filter($fallback, static fn (string $note): bool => str_contains($note, 'the QR image could not be decoded'));
+        self::assertNotSame([], $unreadable, 'The QR image is unreadable, but step 5 does not name the decoder failure: '.$result->summary());
+    }
+
+    /** At least one QR image of the run must have been decoded, not only checked by its parameters. */
+    public static function tearDownAfterClass(): void
+    {
+        if (self::$qrDecoded + self::$qrUnreadable > 0) {
+            self::assertGreaterThan(0, self::$qrDecoded, sprintf('None of the %d QR images of this run could be decoded.', self::$qrUnreadable));
         }
     }
 

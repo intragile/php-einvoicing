@@ -230,6 +230,17 @@ Each stored record's previous `Huella` equalled its predecessor's, `VerifactuRec
 fired four times in order, and `einvoicing:verifactu-verify-chain` exited 0. The bridge run on
 PHP 8.3 has not been done yet.
 
+### QR images the decoder cannot read
+
+In the release replay of 2026-11-24, 2 of 28 QR images from B2Brouter sandbox tax reports did not
+decode with `ChillerlanQrDecoder` (chillerlan/php-qrcode 5.0.5, GD): "The image holds no readable
+QR code: estimated dimension: 39" and "… 43". One of them was fetched again and failed to decode on
+PHP 8.3 and on PHP 8.5, so the cause is the image, not the PHP version. For such an image step 5
+compares the URL by its parameters (NIF, number, date, total), with a note naming the decoder
+error. Every QR parameter is still checked; only the image decoding is unverified for those PNGs.
+The live tests accept this fallback only when the decoder reports the image unreadable, and each
+run must decode at least one QR image for real.
+
 ### Direct AEAT submission: offline only
 
 `AeatClient` is verified offline only, against SOAP responses and faults built from the AEAT
