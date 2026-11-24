@@ -5,7 +5,8 @@
          colors="true"
          cacheDirectory=".phpunit.cache"
          failOnWarning="true"
-         failOnRisky="true">
+         failOnRisky="true"
+         failOnDeprecation="true">
     <testsuites>
         <testsuite name="EInvoicing"><directory>tests</directory></testsuite>
     </testsuites>
@@ -32,7 +33,10 @@
     <php>
         <ini name="memory_limit" value="512M"/>
     </php>
-    <source>
+    <!-- failOnDeprecation turns a deprecation raised by src/, or by a library that src/ calls,
+         into a failure. Deprecations raised between third-party packages are left out
+         (ignoreIndirectDeprecations), because they are not ours to fix. -->
+    <source ignoreIndirectDeprecations="true">
         <include><directory>src</directory></include>
     </source>
 </phpunit>
