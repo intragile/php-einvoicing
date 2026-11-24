@@ -27,7 +27,7 @@ use IntrAgile\EInvoicing\Validation\SchemaValidator;
  */
 final readonly class Upo
 {
-    public const NAMESPACE = 'http://upo.schematy.mf.gov.pl/KSeF/v4-3';
+    public const XML_NAMESPACE = 'http://upo.schematy.mf.gov.pl/KSeF/v4-3';
 
     private const ROOT = 'Potwierdzenie';
 
@@ -133,12 +133,12 @@ final readonly class Upo
     private static function root(DOMDocument $document): DOMElement
     {
         $root = $document->documentElement;
-        if ($root === null || $root->namespaceURI !== self::NAMESPACE || $root->localName !== self::ROOT) {
+        if ($root === null || $root->namespaceURI !== self::XML_NAMESPACE || $root->localName !== self::ROOT) {
             throw new UnsupportedDocument(sprintf(
                 'The document element {%s}%s is not a KSeF UPO; expected {%s}%s.',
                 $root->namespaceURI ?? '',
                 $root->localName ?? '',
-                self::NAMESPACE,
+                self::XML_NAMESPACE,
                 self::ROOT,
             ));
         }
@@ -196,7 +196,7 @@ final readonly class Upo
             return;
         }
         foreach ($parent->childNodes as $node) {
-            if ($node instanceof DOMElement && $node->namespaceURI === self::NAMESPACE && $node->localName === $name) {
+            if ($node instanceof DOMElement && $node->namespaceURI === self::XML_NAMESPACE && $node->localName === $name) {
                 yield $node;
             }
         }

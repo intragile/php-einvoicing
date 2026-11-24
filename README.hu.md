@@ -534,7 +534,7 @@ Egyik sem helyességi hiba. Az egyes területek korlátai a saját dokumentumukb
   veti össze a Factur-X-eredményeket; az opcionális `verapdf` csoport (`docker/verapdf/run.sh`) a
   veraPDF 1.30.3-mal ellenőrzi az író által előállított PDF-eket
   ([részletek](docs/FACTURX.md#verification), angolul).
-- A CI PHPUnitot és PHPStant (max szint) futtat PHP 8.3, 8.4 és 8.5 alatt, továbbá Pintet, az
+- A CI PHPUnitot és PHPStant (max szint) futtat PHP 8.3, 8.4, 8.5 és 8.6 alatt, továbbá Pintet, az
   oracle-csoportot, és ellenőrzi, hogy a lefordított szabályok egyeznek a hivatalos Schematronnal.
 
 ## Verziókezelés

@@ -50,9 +50,9 @@ final class AuthenticatorTest extends TestCase
         self::assertFalse($xades->hasHeader('Authorization'));
         $document = new DOMDocument;
         self::assertTrue($document->loadXML((string) $xades->getBody()));
-        self::assertSame(AuthTokenRequest::NAMESPACE, $document->documentElement?->namespaceURI);
-        self::assertSame(self::CHALLENGE, $document->getElementsByTagNameNS(AuthTokenRequest::NAMESPACE, 'Challenge')->item(0)?->textContent);
-        self::assertSame('5265877635', $document->getElementsByTagNameNS(AuthTokenRequest::NAMESPACE, 'Nip')->item(0)?->textContent);
+        self::assertSame(AuthTokenRequest::XML_NAMESPACE, $document->documentElement?->namespaceURI);
+        self::assertSame(self::CHALLENGE, $document->getElementsByTagNameNS(AuthTokenRequest::XML_NAMESPACE, 'Challenge')->item(0)?->textContent);
+        self::assertSame('5265877635', $document->getElementsByTagNameNS(AuthTokenRequest::XML_NAMESPACE, 'Nip')->item(0)?->textContent);
         self::assertSame(1, $document->getElementsByTagNameNS(XadesSigner::DS_NAMESPACE, 'Signature')->length);
 
         self::assertSame('Bearer '.self::AUTH_TOKEN, $requests[2]->getHeaderLine('Authorization'));

@@ -18,7 +18,7 @@ use InvalidArgumentException;
  */
 final class AuthTokenRequest
 {
-    public const NAMESPACE = 'http://ksef.mf.gov.pl/auth/token/2.1';
+    public const XML_NAMESPACE = 'http://ksef.mf.gov.pl/auth/token/2.1';
 
     /** The SubjectIdentifierTypeEnum values of the schema. */
     public const SUBJECT_TYPES = ['certificateSubject', 'certificateFingerprint'];
@@ -43,11 +43,11 @@ final class AuthTokenRequest
         }
 
         $document = new DOMDocument('1.0', 'UTF-8');
-        $root = $document->createElementNS(self::NAMESPACE, 'AuthTokenRequest');
+        $root = $document->createElementNS(self::XML_NAMESPACE, 'AuthTokenRequest');
         $document->appendChild($root);
 
         $root->appendChild(self::element($document, 'Challenge', $challenge));
-        $contextElement = $document->createElementNS(self::NAMESPACE, 'ContextIdentifier');
+        $contextElement = $document->createElementNS(self::XML_NAMESPACE, 'ContextIdentifier');
         $contextElement->appendChild(self::element($document, $context->xmlElement(), $context->value));
         $root->appendChild($contextElement);
         $root->appendChild(self::element($document, 'SubjectIdentifierType', $subjectType));
@@ -57,7 +57,7 @@ final class AuthTokenRequest
 
     private static function element(DOMDocument $document, string $name, string $text): DOMElement
     {
-        $element = $document->createElementNS(self::NAMESPACE, $name);
+        $element = $document->createElementNS(self::XML_NAMESPACE, $name);
         // A text node, so that markup characters are escaped rather than parsed.
         $element->appendChild($document->createTextNode($text));
 

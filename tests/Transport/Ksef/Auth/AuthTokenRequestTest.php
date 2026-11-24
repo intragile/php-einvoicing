@@ -36,7 +36,7 @@ final class AuthTokenRequestTest extends TestCase
             self::assertStringContainsString($sha256, (string) file_get_contents(self::SCHEMA_DIR.'/SOURCE.md'), $file);
         }
         self::assertStringContainsString(
-            'targetNamespace="'.AuthTokenRequest::NAMESPACE.'"',
+            'targetNamespace="'.AuthTokenRequest::XML_NAMESPACE.'"',
             (string) file_get_contents(self::SCHEMA_DIR.'/schemat_auth_v2-1.xsd'),
         );
     }
@@ -76,7 +76,7 @@ final class AuthTokenRequestTest extends TestCase
         $errors = self::schemaErrors(AuthTokenRequest::xml(self::CHALLENGE, $context));
 
         self::assertCount(1, $errors);
-        self::assertStringContainsString('{'.AuthTokenRequest::NAMESPACE.'}NipVatUe', $errors[0]->message);
+        self::assertStringContainsString('{'.AuthTokenRequest::XML_NAMESPACE.'}NipVatUe', $errors[0]->message);
         self::assertStringContainsString("[facet 'pattern']", $errors[0]->message);
     }
 
@@ -157,7 +157,7 @@ final class AuthTokenRequestTest extends TestCase
         $document = new DOMDocument;
         self::assertTrue($document->loadXML($xml));
         $xpath = new DOMXPath($document);
-        $xpath->registerNamespace('a', AuthTokenRequest::NAMESPACE);
+        $xpath->registerNamespace('a', AuthTokenRequest::XML_NAMESPACE);
 
         return $xpath;
     }

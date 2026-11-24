@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.3', '8.4', '8.5']
+        php: ['8.3', '8.4', '8.5', '8.6']
     name: PHP ${{ matrix.php }}
     steps:
       - uses: actions/checkout@v7
@@ -64,7 +64,9 @@ jobs:
 
   oracle:
     # Runs the official CEN EN 16931, Peppol and Factur-X validation stylesheets
-    # through SaxonC-HE (docker/oracle).
+    # through SaxonC-HE (docker/oracle). PHP 8.6 is not in this matrix: the SaxonC-HE 13.1.1 PHP
+    # extension does not compile against PHP 8.6 (it uses macros PHP 8.6 removed). Add 8.6 with
+    # a SaxonC release that builds; the tests job above covers PHP 8.6.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -109,7 +111,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { php: '8.6' }
+          - { php: '8.7' }
     name: Next / PHP ${{ matrix.php }}
     steps:
       - uses: actions/checkout@v7

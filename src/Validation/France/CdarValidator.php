@@ -25,7 +25,7 @@ use IntrAgile\EInvoicing\Validation\MessageValidationReport;
  */
 final class CdarValidator
 {
-    private const NAMESPACE = 'urn:un:unece:uncefact:data:standard:CrossDomainAcknowledgementAndResponse:100';
+    private const XML_NAMESPACE = 'urn:un:unece:uncefact:data:standard:CrossDomainAcknowledgementAndResponse:100';
 
     private const ROOT = 'CrossDomainAcknowledgementAndResponse';
 
@@ -55,12 +55,12 @@ final class CdarValidator
     {
         $document = SafeXml::loadPreservingWhitespace($xml);
         $root = $document->documentElement;
-        if ($root?->namespaceURI !== self::NAMESPACE || $root->localName !== self::ROOT) {
+        if ($root?->namespaceURI !== self::XML_NAMESPACE || $root->localName !== self::ROOT) {
             throw new UnsupportedDocument(sprintf(
                 'The document element {%s}%s is not a CDAR lifecycle message; expected {%s}%s.',
                 $root->namespaceURI ?? '',
                 $root->localName ?? '',
-                self::NAMESPACE,
+                self::XML_NAMESPACE,
                 self::ROOT,
             ));
         }

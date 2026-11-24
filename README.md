@@ -500,7 +500,7 @@ example [Peppol transport](docs/TRANSPORT.md#known-limitations).
 - The same oracle group also runs the official Factur-X 1.09.2 XSLT through SaxonC and compares
   the Factur-X verdicts, and the optional `verapdf` group (`docker/verapdf/run.sh`) runs veraPDF
   1.30.3 on the PDFs the writer produces ([details](docs/FACTURX.md#verification)).
-- CI runs PHPUnit and PHPStan (level max) on PHP 8.3, 8.4 and 8.5, plus Pint, the oracle and a
+- CI runs PHPUnit and PHPStan (level max) on PHP 8.3, 8.4, 8.5 and 8.6, plus Pint, the oracle and a
   check that the compiled rules match the official Schematron.
 
 ## Versioning

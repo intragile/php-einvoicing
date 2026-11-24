@@ -32,7 +32,7 @@ final class ScenarioTableCompiler
      */
     public const FORMAT = 1;
 
-    public const NAMESPACE = 'http://www.xoev.de/de/validator/framework/1/scenarios';
+    public const XML_NAMESPACE = 'http://www.xoev.de/de/validator/framework/1/scenarios';
 
     /**
      * The only acceptance expression the table supports: the document is accepted when the
@@ -86,7 +86,7 @@ final class ScenarioTableCompiler
         }
         $root = $document->documentElement;
         if (! $loaded || $root === null || $document->doctype !== null || ! self::is($root, 'scenarios')) {
-            throw new UnexpectedValueException('Not a KoSIT scenarios document: expected a well-formed {'.self::NAMESPACE.'}scenarios root without a DOCTYPE.');
+            throw new UnexpectedValueException('Not a KoSIT scenarios document: expected a well-formed {'.self::XML_NAMESPACE.'}scenarios root without a DOCTYPE.');
         }
 
         $scenarios = [];
@@ -388,7 +388,7 @@ final class ScenarioTableCompiler
 
     private static function is(DOMElement $element, ?string $localName = null): bool
     {
-        return $element->namespaceURI === self::NAMESPACE && ($localName === null || $element->localName === $localName);
+        return $element->namespaceURI === self::XML_NAMESPACE && ($localName === null || $element->localName === $localName);
     }
 
     /**
@@ -401,7 +401,7 @@ final class ScenarioTableCompiler
 
     private static function unmodelled(DOMElement $element, string $where): UnexpectedValueException
     {
-        $name = $element->namespaceURI === self::NAMESPACE ? $element->localName : '{'.$element->namespaceURI.'}'.$element->localName;
+        $name = $element->namespaceURI === self::XML_NAMESPACE ? $element->localName : '{'.$element->namespaceURI.'}'.$element->localName;
 
         return new UnexpectedValueException("Unsupported element \"{$name}\" in {$where}: the scenario table does not model it.");
     }

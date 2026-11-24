@@ -91,6 +91,13 @@ Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-
 - **Composer:** the `suggest` entries say that `chillerlan/php-qrcode` also decodes the
   B2Brouter VERI\*FACTU QR images and that Guzzle or Symfony HttpClient also serve as the client
   for the AEAT mutual-TLS connection.
+- **PHP 8.6 (public API):** the class constants `Transport\Ksef\Auth\AuthTokenRequest::NAMESPACE`
+  and `Transport\Ksef\Session\Upo::NAMESPACE` are renamed to `XML_NAMESPACE`, because PHP 8.6
+  deprecates class constants named `namespace`; code that reads them must use the new name. Two
+  internal constants are renamed the same way, and a test keeps the name out of `src/`.
+- **CI:** the `tests` job also runs on PHP 8.6, and the `next-versions` job moves to the PHP 8.7
+  nightly. The `oracle` job stays on PHP 8.3 to 8.5, because the SaxonC-HE 13.1.1 PHP extension
+  does not compile against PHP 8.6.
 
 ## [1.2.0] - 2026-11-23
 

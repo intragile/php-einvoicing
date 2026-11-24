@@ -34,7 +34,7 @@ final class UpoTest extends TestCase
             self::assertSame($sha256, hash_file('sha256', self::SCHEMA_DIR.'/'.$file), $file);
             self::assertStringContainsString($sha256, (string) file_get_contents(self::SCHEMA_DIR.'/SOURCE.md'), $file);
         }
-        self::assertStringContainsString('targetNamespace="'.Upo::NAMESPACE.'"', (string) file_get_contents(self::SCHEMA_DIR.'/upo-v4-3.xsd'));
+        self::assertStringContainsString('targetNamespace="'.Upo::XML_NAMESPACE.'"', (string) file_get_contents(self::SCHEMA_DIR.'/upo-v4-3.xsd'));
     }
 
     public function test_spike_upo_parses(): void
