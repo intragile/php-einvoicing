@@ -17,6 +17,13 @@ covered.
 
 Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate
 
+**Backward-incompatible change (PHP 8.6):** the public class constants
+`Transport\Ksef\Auth\AuthTokenRequest::NAMESPACE` and `Transport\Ksef\Session\Upo::NAMESPACE` are
+renamed to `XML_NAMESPACE`. PHP 8.6 deprecates class constants named `namespace`, and the old name
+cannot be kept as an alias, because declaring it is what PHP 8.6 deprecates. This is the one
+exception to Semantic Versioning in 1.3.0: replace `AuthTokenRequest::NAMESPACE` with
+`AuthTokenRequest::XML_NAMESPACE` and `Upo::NAMESPACE` with `Upo::XML_NAMESPACE`.
+
 ### Added
 
 - **Spain:** the VERI\*FACTU record model: `RegistrationDraft`/`RegistrationRecord`
