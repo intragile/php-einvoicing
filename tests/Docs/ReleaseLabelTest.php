@@ -19,7 +19,7 @@ final class ReleaseLabelTest extends TestCase
      */
     public static function documents(): iterable
     {
-        foreach (['docs/countries/SPAIN.md', 'README.md', 'README.hu.md', 'CHANGELOG.md', 'docs/VERIFICATION.md'] as $document) {
+        foreach (['docs/countries/SPAIN.md', 'README.md', 'README.hu.md', 'CHANGELOG.md', 'docs/VERIFICATION.md', 'docs/TRANSPORT.md'] as $document) {
             yield $document => [$document];
         }
     }
