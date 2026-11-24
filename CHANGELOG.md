@@ -105,6 +105,9 @@ exception to Semantic Versioning in 1.3.0: replace `AuthTokenRequest::NAMESPACE`
 - **CI:** the `tests` job also runs on PHP 8.6, and the `next-versions` job moves to the PHP 8.7
   nightly. The `oracle` job stays on PHP 8.3 to 8.5, because the SaxonC-HE 13.1.1 PHP extension
   does not compile against PHP 8.6.
+- **France:** an accepted Flux 10 deposit is now live-verified on the B2Brouter sandbox
+  (2026-11-24, ledger state `new`); FRANCE.md and VERIFICATION.md no longer list it as
+  offline-only.
 
 ## [1.2.0] - 2026-11-23
 

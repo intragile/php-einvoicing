@@ -161,6 +161,7 @@ Live-tested: directory lookup only, against the B2Brouter sandbox (a `test_` key
 | `b2brouter-france-live` with the same account, 2026-11-18 (2 tests, 8 assertions) | full payment of a sent services invoice; import of a received invoice bought by the account, `lifecycle()` on it, then `respond()` with an approval | payment: platform state `paid`; received invoice `new`, after `mark_as` `accepted` | `Collected`; no status before the answer, `Approved` after it |
 | `b2brouter-france-live` with the same account, 2026-11-18 (2 tests, 29 + 16 assertions) | send of every other French document type (CII invoice, Factur-X EN 16931 PDF, UBL credit note, UBL EXTENDED-CTC-FR invoice and credit note); every buyer answer on its own received invoice | each document: platform state `sent`; answers: `read`, `accepted`, `annotated`, `refused`, `paid` | each document `Deposited`, delivery `Delivered`; `InProcess`, `Approved` (partial approval), `null` (dispute), `Refused`, `PaymentSent` |
 | Factur-X MINIMUM and BASIC WL sent past the local refusal, manual probe, 2026-11-18 | `B2BrouterFrance::send()` with a hand-built `FrenchDocument` | 422 "Validation failed: Invoice Must have lines" for both | `DocumentRejected`; confirms the local refusal |
+| `b2brouter-france-live`, `test_flux10_deposit_is_accepted` (commit `559f399`, PHP 8.5), same account after a DGFiP e-reporting configuration was enabled on it, 2026-11-24 (1 test, 2 assertions) | Flux 10 deposit | accepted, ledger state `new` | `LedgerState::New` |
 | Bridge `B2BrouterFranceSmokeTest` (laravel-einvoicing commit `6080cb6`), same account, 2026-11-18 (1 test, 5 assertions) | `Annuaire` binding lookup, `EInvoicing::france()->send()` and `recordPayment()` | lookup `NotListed`; platform state `sent`, then `paid` | `NotListed`; `Deposited`, delivery `Delivered`; `Collected` |
 | B2Brouter webhooks, French sandbox account, 2026-11-18: a web hook on a temporary public capture endpoint (removed afterwards) for `issued_invoice.state_change`, `received_invoice.created`, `received_invoice.state_change` and `ledger.state_change`; deliveries replayed through the bridge (`B2BrouterWebhookReplayTest`, 1 test, 13 assertions) | send, payment, received invoice and its approval | 8 signed deliveries: `issued`, `sending`, `sent` per issued invoice, `received_invoice.created` `new`, `received_invoice.state_change` `accepted`; no delivery for the `paid` state after a payment (checked twice, 90 s) | every signature verified, every delivery answered 204; `LifecycleStatusChanged` with `Deposited` (issued) and `Approved` (received); a changed body answered 401 |
 | Disputed received invoice read back, manual probe, 2026-11-18 | `GET /invoices/{id}` after `mark_as` with `annotated` and `dispute: true` | 200, `state` `annotated`; the invoice carries no dispute flag | `null`, as documented |
@@ -168,11 +169,13 @@ Live-tested: directory lookup only, against the B2Brouter sandbox (a `test_` key
 The send case ran in the B2Brouter sandbox with a French account of a fictitious company and
 reached `Deposited`. The Flux 10 deposit was refused because the account has no DGFiP e-reporting
 configuration; the refusal confirms that a 422 answer of the ledger endpoint maps to
-`DocumentRejected` with B2Brouter's message, but an accepted deposit is not yet verified live.
+`DocumentRejected` with B2Brouter's message. On 2026-11-24, after a DGFiP e-reporting
+configuration was enabled on the account, the deposit was accepted with ledger state `new`; its
+progress beyond `new` and any DGFiP acknowledgement were not observed.
 A full payment of a services invoice read back as `Collected`; every French document type reached
 `Deposited`, and every buyer answer read back as documented, a dispute as `null` because B2Brouter
-keeps no dispute flag. The ledger webhook and an accepted Flux 10 deposit are verified offline
-only, against fixtures hand-written from B2Brouter's API reference and guides.
+keeps no dispute flag. The ledger webhook is verified offline only, against fixtures
+hand-written from B2Brouter's API reference and guides.
 
 ## D2e: VERI\*FACTU on the B2Brouter sandbox
 

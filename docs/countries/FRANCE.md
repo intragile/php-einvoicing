@@ -713,8 +713,8 @@ channel, not for B2Brouter.
 `B2BrouterFrance` is not a `Transport`: it does not plug into `ValidatingTransport`, and Peppol
 documents still go through `B2BrouterTransport`. Every call is a synchronous request.
 
-> **Live-tested in the sandbox: directory lookup, sending, lifecycle, buyer approval and
-> payment.** An accepted Flux 10 deposit is tested offline only (see
+> **Live-tested in the sandbox: directory lookup, sending, lifecycle, buyer approval,
+> payment and an accepted Flux 10 deposit** (ledger state `new`; see
 > [What is verified live](#what-is-verified-live)).
 
 ### Send
@@ -1072,8 +1072,10 @@ account has no DGFiP e-reporting configuration. Every French document type (UBL 
 Factur-X EN 16931 PDF, UBL credit note, UBL EXTENDED-CTC-FR invoice and credit note) reached
 `Deposited`; a full payment of a services invoice read back as `Collected`; every buyer answer read
 back as the table above says, a dispute as `null`. Factur-X MINIMUM and BASIC WL sent past the
-local refusal were refused by B2Brouter with 422 "Invoice Must have lines". An accepted deposit is
-tested offline only. See [VERIFICATION.md](../VERIFICATION.md).
+local refusal were refused by B2Brouter with 422 "Invoice Must have lines". On 2026-11-24, after a
+DGFiP e-reporting configuration was enabled on the account, a Flux 10 deposit was accepted with
+ledger state `new`; its progress beyond `new` was not observed. See
+[VERIFICATION.md](../VERIFICATION.md).
 
 ```bash
 # Directory lookup (sandbox):
@@ -1127,8 +1129,8 @@ and guides, and only its directory lookup is live-tested (see
 - **Other plateformes agréées.** B2Brouter is the only PA supported, through its own API. The
   standard PA API (AFNOR XP Z12-013) is not implemented. e-invoice.be and Recommand are Peppol
   access points, not PAs, and do not satisfy a French sender's obligation.
-- **Live test of an accepted Flux 10 deposit.** It needs a DGFiP e-reporting configuration on the
-  account and is not yet run live.
+- **Flux 10 deposit beyond `new`.** An accepted deposit was live-tested (ledger state `new`); its
+  progress to a later state and any DGFiP acknowledgement are not observed live.
 - **Queued French sends in the Laravel bridge.** The bridge's queued sending pipeline stays
   Peppol-only; French sends are synchronous calls.
 - **Received Factur-X PDFs.** French invoices are received with
