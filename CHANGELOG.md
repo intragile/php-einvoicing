@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-24
+
 The Spanish VERI\*FACTU core: billing records, their fingerprint and chain, the QR link, the
 record XML and its validation, plus two transports: a direct AEAT client (verified offline only)
 and B2Brouter (verified live on its sandbox). VERI\*FACTU mode only; non-VERI\*FACTU mode is not

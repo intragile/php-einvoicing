@@ -228,7 +228,8 @@ through `EInvoicing::verifactu()->register()` and the poll job, with `VerifactuP
 
 Each stored record's previous `Huella` equalled its predecessor's, `VerifactuRecordRegistered`
 fired four times in order, and `einvoicing:verifactu-verify-chain` exited 0. The bridge run on
-PHP 8.3 has not been done yet.
+PHP 8.3 passed in the release replay of 2026-11-24 (1 test, 79 assertions), as did the core run
+on PHP 8.3 at the release commit (4 tests, 59 assertions).
 
 ### QR images the decoder cannot read
 

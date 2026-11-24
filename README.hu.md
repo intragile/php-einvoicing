@@ -10,7 +10,7 @@ Futásidőben nincs szükség Javára.
 
 [English description → README.md](README.md)
 
-> **Állapot:** 1.2.0-s verzió, kiadva 2026-11-23-án. Mit és hogyan ellenőriztünk: [Ellenőrzés](#ellenőrzés) és [docs/VERIFICATION.md](docs/VERIFICATION.md) (angolul).
+> **Állapot:** 1.3.0-s verzió, kiadva 2026-11-24-én. Mit és hogyan ellenőriztünk: [Ellenőrzés](#ellenőrzés) és [docs/VERIFICATION.md](docs/VERIFICATION.md) (angolul).
 
 ## Mi van benne, és mi nincs
 
@@ -75,7 +75,7 @@ Jelenleg tartalmazza:
   technikai javítás. Élő hívásokkal ellenőrizve a KSeF TE tesztkörnyezetben (API 2.10 RC); a DEMO
   és a PRODUCTION nincs ellenőrizve, az UPO aláírását a csomag nem ellenőrzi
   ([Lengyelország](docs/countries/POLAND.md#send-to-ksef), angolul).
-- Spanyol VERI\*FACTU számlázási nyilvántartások (még nincs kiadva; a következő minor verzióban):
+- Spanyol VERI\*FACTU számlázási nyilvántartások (az 1.3.0-s verzióban jelent meg):
   a `RegistroAlta` és `RegistroAnulacion` rekordok a számlamodellből, kifejezett spanyol
   felülírásokkal, a SHA-256 `Huella` és a lánc (a hivatalos AEAT tesztvektorokkal igazolva), az AEAT
   ellenőrző QR-linkje, a rekord XML-je és ellenőrzése a hivatalos AEAT sémák (telepítéskor
