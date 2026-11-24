@@ -174,6 +174,70 @@ A full payment of a services invoice read back as `Collected`; every French docu
 keeps no dispute flag. The ledger webhook and an accepted Flux 10 deposit are verified offline
 only, against fixtures hand-written from B2Brouter's API reference and guides.
 
+## D2e: VERI\*FACTU on the B2Brouter sandbox
+
+Release label: Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate
+
+All runs used the B2Brouter Spanish sandbox only (a `test_` key on `https://api.b2brouter.net`,
+API version 2026-06-26) with a Spanish account of a fictitious company. B2Brouter acted as the
+billing system: it generated, chained and submitted each record, and its tax report reached
+`registered`. Every registered record was cross-checked by `VerifactuCrossCheck` in five steps
+(1 schema, 2 `Huella`, 3 chain, 4 content, 5 QR), with the QR decoded from B2Brouter's PNG by
+`ChillerlanQrDecoder`; no QR fallback was used. No AEAT endpoint was called.
+
+### Core (`b2brouter-spain-live`, 2026-11-23)
+
+| Run | Commit | PHP | Result |
+|---|---|---|---|
+| 1 | `e307e37` | 8.3.22 | OK, 4 tests, 47 assertions (4 min 52 s) |
+| 2 | `e307e37` | 8.5.0 | OK, 4 tests, 47 assertions (5 min 40 s) |
+| 3, after a stricter chain assertion | `5634be9` | 8.3.22 | OK, 4 tests, 51 assertions (5 min 29 s) |
+
+Each run issues five invoices: a first invoice (the chain head of the run, not cross-checked), a
+second domestic invoice chained to it, a domestic F1, an exempt invoice (E6) and a credit note by
+difference (R1, I) correcting the first invoice. Each case passes the report registered just
+before it as the previous report.
+
+| Case | Tax report states | Registered after (runs 1 / 2 / 3) | Steps 1–5 |
+|---|---|---|---|
+| chained domestic invoice | `signed` → `registered` | 104.4 s / 116.8 s / 82.1 s | P P P P P |
+| domestic F1 | `signed` → `registered` | 56.3 s / 58.5 s / 61.7 s | P P P P P |
+| exempt (E6) | `signed` → `registered` | 63.8 s / 60.0 s / 59.5 s | P P P KD P |
+| credit note (R1, I) | `signed` → `registered` | 62.2 s / 61.9 s / 119.8 s | P P P KD P |
+
+P = Passed, KD = KnownDivergence. The exempt record differs only in `OperacionExenta` (ours E6,
+B2Brouter's E1, the account default); the credit note differs only in the sign of
+`BaseImponibleOimporteNoSujeto`, `CuotaRepercutida`, `CuotaTotal` and `ImporteTotal` (ours
+negative, B2Brouter's positive). Every decoded QR named the production host
+`www2.agenciatributaria.gob.es`, in the sandbox too. `findByNumber()` returned the invoice just
+issued while it was still `sending`. No `registered_with_errors`, `refused` or `error` state
+appeared. The runs polled 40 times 3 s apart; because one registration took 119.8 s, the
+`VerifactuPolling` default is now 60 reads 3,000 ms apart.
+
+### Laravel bridge (`b2brouter-spain-live`, 2026-11-24)
+
+Run with laravel-einvoicing commit `96e7059` on PHP 8.5: OK, 1 test, 79 assertions (3 min 28 s),
+through `EInvoicing::verifactu()->register()` and the poll job, with `VerifactuPolling(60, 3000)`.
+
+| Case | Registered after | Cross-check |
+|---|---|---|
+| domestic F1, seeding the bridge chain from B2Brouter's earlier record | 20.3 s | passed; step 3 skipped (no previous report in the store, seeded head trusted) |
+| domestic F1, chained | 61.0 s | all five steps passed |
+| exempt (E6) | 61.2 s | passed; known divergence `OperacionExenta` E6 / E1 |
+| credit note (R1, I) | 64.8 s | passed; known divergence on the four amount signs |
+
+Each stored record's previous `Huella` equalled its predecessor's, `VerifactuRecordRegistered`
+fired four times in order, and `einvoicing:verifactu-verify-chain` exited 0. The bridge run on
+PHP 8.3 has not been done yet.
+
+### Direct AEAT submission: offline only
+
+`AeatClient` is verified offline only, against SOAP responses and faults built from the AEAT
+schemas, WSDL and examples; the Laravel bridge's TLS handshake check (`einvoicing:doctor --live`)
+was run against a local test server only. The client has never been run
+against an AEAT endpoint, test or production: the AEAT web service accepts only a client
+certificate qualified for a Spanish NIF, which this project does not hold.
+
 ## D3: import into Lexware Office
 
 Run on 2026-11-16 in a Lexware Office XL trial (web app; no version number is shown). The five

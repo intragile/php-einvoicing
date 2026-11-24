@@ -821,6 +821,33 @@ not throttle.
 The sandbox returned document ids of the form `doc-…` on every live run, and `GET /api/me/` has
 no field that tells a sandbox company apart (see above).
 
+## Spain: AEAT and B2Brouter VERI\*FACTU
+
+Spanish VERI\*FACTU billing records are not Peppol documents and do not go through the
+`Transport` interface. Two country facades send them, both on the `HttpClient` above:
+
+- **`AeatClient`** (`Transport\Aeat`) submits records to the AEAT SOAP web service with mutual
+  TLS and looks a record up. The client certificate is configured on your PSR-18 client from
+  `ClientCertificate::materialize()` (keep the returned `MaterializedCertificate` referenced while
+  the client is used); the CA bundle must contain the FNMT root (`CaBundle::containsFnmtRoot()`).
+  `FlowControl` applies the AEAT wait per installation and never sleeps. A temporary AEAT failure,
+  a Server fault or a missing answer is `OutcomeUnknown`: resend the same bytes. The submission's
+  CSV is only in its response, so store it at once. **Verified offline only**: no AEAT endpoint has
+  been called; a live run needs a Spanish NIF and a qualified certificate.
+- **`B2BrouterVerifactu`** (`Transport\B2Brouter\Spain`) imports and sends a Spanish invoice
+  through B2Brouter, which acts as the billing system: it generates, chains and submits the record
+  and reports the outcome asynchronously in a tax report. `awaitRegistered()` polls within
+  `VerifactuPolling` (60 reads 3,000 ms apart by default). The import takes no idempotency key;
+  after `OutcomeUnknown`, call `findByNumber()` before sending again. `VerifactuCrossCheck`
+  verifies the returned record in five steps: schema, `Huella`, chain (against the previous report
+  from your own store), content and QR. B2Brouter prints the production ValidarQR host even in its
+  sandbox, so the cross-check expects that host by default. **Live-tested on the B2Brouter Spanish
+  sandbox.**
+
+Release label: Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate.
+See [SPAIN.md](countries/SPAIN.md#send-to-aeat) for the code, the error table and the known
+B2Brouter divergences.
+
 ## What is verified
 
 | Area | How | Status |
@@ -832,6 +859,8 @@ no field that tells a sandbox company apart (see above).
 | Recommand driver | Offline tests with JSON fixtures hand-written from Recommand's published API description (OpenAPI document and source); live test group `recommand-live` | **Live-tested on the Peppol test network** (2026-11-15) |
 | B2Brouter driver | Offline contract tests with JSON fixtures hand-written from B2Brouter's public API reference (OpenAPI 2026-06-26) and developer guides; live test group `b2brouter-live` | **Live-tested against the provider sandbox (simulated network)** (2026-11-15) |
 | B2Brouter French flow (`B2BrouterFrance`, `B2BrouterAnnuaire`) | Offline contract tests with JSON fixtures hand-written from B2Brouter's API reference and its DGFiP and Flux 10 guides; live test group `b2brouter-france-live` | **Live-tested (sandbox, 2026-11-18): directory lookup, every document type, lifecycle, every buyer answer and payment**; an accepted Flux 10 deposit offline only (the deposit was refused live for a missing DGFiP e-reporting configuration) |
+| AEAT VERI\*FACTU client (`AeatClient`) | Offline tests against responses and SOAP faults built from the AEAT schemas, WSDL and examples | **Verified offline only**; no AEAT endpoint called |
+| B2Brouter VERI\*FACTU (`B2BrouterVerifactu`, `VerifactuCrossCheck`) | Offline contract tests with redacted captures of sandbox responses; live test group `b2brouter-spain-live` | **Live-tested (Spanish sandbox, 2026-11-23): chained, exempt and credit-note invoices registered, every record cross-checked in five steps** |
 | e-invoice.be driver | Offline contract tests with JSON fixtures hand-written from e-invoice.be's public API reference (OpenAPI 1.1.0) and guides; live test group `einvoicebe-live` | **Live-tested against the provider sandbox (simulated network)** (2026-11-15) |
 | Webhook signatures | Offline tests against each provider's documented signing scheme; e-invoice.be also against its published test vector | Verified offline; **B2Brouter webhooks live-tested** (2026-11-18: real signed sandbox deliveries replayed through the bridge); Recommand and e-invoice.be webhooks not live-tested |
 

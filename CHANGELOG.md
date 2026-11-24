@@ -8,14 +8,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-The Spanish VERI*FACTU core: billing records, their fingerprint and chain, the QR link, the
+The Spanish VERI\*FACTU core: billing records, their fingerprint and chain, the QR link, the
 record XML and its validation, plus two transports: a direct AEAT client (verified offline only)
-and B2Brouter (verified live on its sandbox). VERI*FACTU mode only; non-VERI*FACTU mode is not
+and B2Brouter (verified live on its sandbox). VERI\*FACTU mode only; non-VERI\*FACTU mode is not
 covered.
+
+Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate
 
 ### Added
 
-- **Spain:** the VERI*FACTU record model: `RegistrationDraft`/`RegistrationRecord`
+- **Spain:** the VERI\*FACTU record model: `RegistrationDraft`/`RegistrationRecord`
   (`RegistroAlta`) and `CancellationDraft`/`CancellationRecord` (`RegistroAnulacion`) behind
   `BillingRecord`, with text-exact `Amount`, `TaxRate` and `RecordTimestamp`, `InvoiceId`,
   `ComputerSystem`, `TaxBreakdownLine`, `ChainLink`, `AltaOperation` and `AnulacionOperation`;
@@ -45,7 +47,7 @@ covered.
   sums, never bundled.
 - **Spain:** issuer contracts for runtime issuer data: `VerifactuIssuerResolver`,
   `IssuerContext`, `InMemoryIssuerResolver` and the `AeatCredentials` value object.
-- **Spain:** `AeatClient` submits VERI*FACTU records to the AEAT SOAP service and looks them up
+- **Spain:** `AeatClient` submits VERI\*FACTU records to the AEAT SOAP service and looks them up
   (`submit()`, `lookup()`). Mutual TLS runs through the PSR-18 client, with the certificate loaded
   from PEM or PKCS#12 (`ClientCertificate`, `MaterializedCertificate` with options for Guzzle,
   Symfony HttpClient and PHP streams) and `CaBundle` checking for the FNMT root. Responses map to
@@ -55,7 +57,7 @@ covered.
   `ThrottleState`) and groups records by issuer into batches of at most 1,000. Verified offline
   only, against responses constructed from the AEAT schemas and examples; no AEAT endpoint has
   been called.
-- **Spain:** `B2BrouterVerifactu` issues Spanish invoices through B2Brouter's VERI*FACTU service,
+- **Spain:** `B2BrouterVerifactu` issues Spanish invoices through B2Brouter's VERI\*FACTU service,
   finds an issued invoice by number, reads its tax report back (`TaxReport`, with the record XML,
   fingerprint and QR image) and waits for registration with bounded polling (`VerifactuPolling`).
 - **Spain:** `VerifactuCrossCheck` checks a B2Brouter tax report in five steps: the record against
@@ -66,6 +68,12 @@ covered.
 - **Spain:** live tests against the B2Brouter Spanish sandbox (group `b2brouter-spain-live`,
   excluded by default): chained invoices, an exempt invoice and a credit note, each issued,
   registered and cross-checked in all five steps.
+- **Spain:** documentation: `docs/countries/SPAIN.md` (legal basis and dates, what is verified and
+  what is not covered, installing the official files, the mapping and overrides, the chain, the QR,
+  validation, sending to the AEAT and through B2Brouter, the *declaración responsable*, testing),
+  a VERI\*FACTU section in `docs/TRANSPORT.md`, the D2e runs in `docs/VERIFICATION.md`, and the
+  Spain entries of both READMEs. A test checks that every document stating the release label
+  quotes it word for word.
 
 ### Changed
 
@@ -73,10 +81,13 @@ covered.
   have their own download URL, without compiling anything. `MessageType` has the new case
   `Verifactu`.
 - **QR:** `QrCode`, `QrRenderer` and `ChillerlanQrRenderer` describe a verification link in
-  general (KSeF or VERI*FACTU); their exception messages no longer name KSeF. The `Secret`
+  general (KSeF or VERI\*FACTU); their exception messages no longer name KSeF. The `Secret`
   credential holder's serialization message no longer names KSeF either.
+- **Composer:** the description names Spanish VERI\*FACTU billing records, the keywords gain
+  `verifactu`, `aeat` and `spain`, and the `main` branch alias of the core and the three rule
+  packages is `1.3.x-dev`.
 - **Composer:** the `suggest` entries say that `chillerlan/php-qrcode` also decodes the
-  B2Brouter VERI*FACTU QR images and that Guzzle or Symfony HttpClient also serve as the client
+  B2Brouter VERI\*FACTU QR images and that Guzzle or Symfony HttpClient also serve as the client
   for the AEAT mutual-TLS connection.
 
 ## [1.2.0] - 2026-11-23

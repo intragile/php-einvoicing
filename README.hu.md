@@ -75,6 +75,20 @@ Jelenleg tartalmazza:
   technikai javítás. Élő hívásokkal ellenőrizve a KSeF TE tesztkörnyezetben (API 2.10 RC); a DEMO
   és a PRODUCTION nincs ellenőrizve, az UPO aláírását a csomag nem ellenőrzi
   ([Lengyelország](docs/countries/POLAND.md#send-to-ksef), angolul).
+- Spanyol VERI\*FACTU számlázási nyilvántartások (még nincs kiadva; a következő minor verzióban):
+  a `RegistroAlta` és `RegistroAnulacion` rekordok a számlamodellből, kifejezett spanyol
+  felülírásokkal, a SHA-256 `Huella` és a lánc (a hivatalos AEAT tesztvektorokkal igazolva), az AEAT
+  ellenőrző QR-linkje, a rekord XML-je és ellenőrzése a hivatalos AEAT sémák (telepítéskor
+  letöltve, soha nem a csomag része) és 24 közzétett AEAT-szabály szerint, közvetlen AEAT SOAP
+  kliens kölcsönös TLS-sel és forgalomszabályozással, valamint küldés a B2Brouteren keresztül, az
+  általa visszaadott rekord ötlépéses keresztellenőrzésével. Csak VERI\*FACTU mód; nem tanúsított
+  számlázórendszer ([Spanyolország](docs/countries/SPAIN.md), angolul).
+
+  > Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate
+
+  (Magyarul: a Verifactu élő hívásokkal ellenőrizve a B2Brouter sandboxban – regisztrálva, a
+  hash és a QR keresztellenőrizve; a közvetlen AEAT-beküldés csak offline ellenőrizve, mert spanyol
+  NIF és minősített tanúsítvány kell hozzá.)
 
 Országjegyzetek: [Németország](docs/countries/DE.md) (jogalap, formátumok, csatornák és az ellenőrzés, angolul),
 [Franciaország](docs/countries/FRANCE.md) (a reform, a profilok, a francia szabályok telepítése és
@@ -83,7 +97,10 @@ még hiányzik; angolul), [Lengyelország](docs/countries/POLAND.md) (az FA(3) �
 számlák készítése, olvasása és ellenőrzése, a leképezés, a KSeF-szám és az ellenőrző link, küldés,
 kötegelt küldés, fogadás és export a KSeF-en keresztül, offline mód és határidők,
 KSeF-tanúsítványok, QR-kódok, technikai javítás, hibák és újrapróbálás, tesztelés a KSeF TE
-környezetben, mit ellenőriztünk, és ami még hiányzik; angolul).
+környezetben, mit ellenőriztünk, és ami még hiányzik; angolul), [Spanyolország](docs/countries/SPAIN.md)
+(VERI\*FACTU: jogalap és határidők, a leképezés és a felülírások, a lánc, a QR, az ellenőrzés, küldés
+az AEAT-nek és a B2Brouteren keresztül, a *declaración responsable*, mit ellenőriztünk, és mi
+nincs benne; angolul).
 
 Nincs benne: önszámlázó (self-billing) számlák küldése Peppolon, valamint CII a Peppol BIS
 Billing 3.0 szerint (CII Peppolon csak XRechnungként megy). A számla PDF-jének megjelenítése
@@ -464,6 +481,10 @@ nem tartalmaz hitelesítő adatot és fiókazonosítót.
 - **D2b-D2c, szolgáltatói sandboxok (2026-11-15).** A B2Brouter és az e-invoice.be a hálózatot
   szimuláló sandboxuk ellen: küldés, állapot és beérkező postafiók. Ez a szolgáltató
   API-szerződését igazolja, nem a Peppolon történő kézbesítést.
+- **D2e, VERI\*FACTU a B2Brouter sandboxban (2026-11-23, még nincs kiadva).** A B2Brouteren
+  keresztül kiállított láncolt, adómentes és jóváíró számlák `registered` állapotba jutottak, és
+  minden rekord átment a séma, a `Huella`, a lánc, a tartalom és a QR keresztellenőrzésén. Címke
+  (angolul): Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate.
 - **D3, import a Lexware Office-ba (2026-11-16).** Az öt kiadási fájl változtatás nélkül importálva;
   minden fájlt e-számlaként ismert fel, és minden ellenőrzött mező egyezett.
 - **Offline egyezés.** A validátor eredményei megegyeznek a hivatalos XSLT-ével 1892 (CEN), 1611

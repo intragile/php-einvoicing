@@ -45,6 +45,7 @@ final class CodeSamplesTest extends TestCase
         'docs/TRANSPORT.md' => 1,
         'docs/countries/FRANCE.md' => 9,
         'docs/countries/POLAND.md' => 8,
+        'docs/countries/SPAIN.md' => 3,
     ];
 
     /**

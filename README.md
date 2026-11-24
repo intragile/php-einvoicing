@@ -71,6 +71,16 @@ Included today:
   with optional rendering, and technical corrections. Live-verified on KSeF TE (API 2.10 RC); DEMO
   and PRODUCTION not verified; the UPO signature is not verified
   ([Poland](docs/countries/POLAND.md#send-to-ksef)).
+- Spanish VERI\*FACTU billing records (not yet released; in the next minor version): the
+  `RegistroAlta` and `RegistroAnulacion` records mapped from the invoice model with explicit Spanish
+  overrides, the SHA-256 `Huella` and its chain (proven by the official AEAT test vectors), the AEAT
+  verification QR link, the record XML with validation against the official AEAT schemas (downloaded
+  at install time, never bundled) and 24 published AEAT rules, a direct AEAT SOAP client with mutual
+  TLS and flow control, and sending through B2Brouter with a five-step cross-check of the record it
+  returns. VERI\*FACTU mode only; not a certified billing system
+  ([Spain](docs/countries/SPAIN.md)).
+
+  > Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate
 
 Country notes: [Germany](docs/countries/DE.md) (legal basis, formats, channels and what is
 verified), [France](docs/countries/FRANCE.md) (the reform, profiles, installing and running the
@@ -79,7 +89,9 @@ covered yet), [Poland](docs/countries/POLAND.md) (FA(3) and KSeF transport: buil
 validating Polish invoices, the mapping, the KSeF number and verification link, sending, batch,
 receiving and exporting through KSeF, offline mode and deadlines, KSeF certificates, QR codes,
 technical corrections, errors and retries, testing on KSeF TE, what is verified and what is not
-covered yet).
+covered yet), [Spain](docs/countries/SPAIN.md) (VERI\*FACTU: legal basis and dates, the mapping
+and overrides, the chain, the QR, validation, sending to the AEAT and through B2Brouter, the
+*declaración responsable*, what is verified and what is not covered).
 
 Not included: self-billing over Peppol, and CII under Peppol BIS Billing 3.0 (CII goes over
 Peppol only as XRechnung). Rendering the invoice PDF is out of scope: you supply the PDF. The
@@ -442,6 +454,9 @@ credentials and no account identifiers.
 - **D2b-D2c, provider sandboxes (2026-11-15).** B2Brouter and e-invoice.be were exercised
   against their sandboxes, which simulate the network: sends, status, and the inbox round trip.
   This proves the provider API contract, not delivery over Peppol.
+- **D2e, VERI\*FACTU on the B2Brouter sandbox (2026-11-23, unreleased).** Chained, exempt and
+  credit-note invoices issued through B2Brouter reached `registered`, and every record passed the
+  cross-check of its schema, `Huella`, chain, content and QR. Label: Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate.
 - **D3, Lexware Office import (2026-11-16).** The five release artefacts were imported unchanged
   into Lexware Office; every file was recognised as an e-invoice and every checked field matched.
 - **Offline parity.** The validator's verdicts equal the official XSLT on 1,892 documents (CEN),
