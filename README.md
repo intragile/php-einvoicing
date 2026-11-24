@@ -454,9 +454,11 @@ credentials and no account identifiers.
 - **D2b-D2c, provider sandboxes (2026-11-15).** B2Brouter and e-invoice.be were exercised
   against their sandboxes, which simulate the network: sends, status, and the inbox round trip.
   This proves the provider API contract, not delivery over Peppol.
-- **D2e, VERI\*FACTU on the B2Brouter sandbox (2026-11-23, unreleased).** Chained, exempt and
-  credit-note invoices issued through B2Brouter reached `registered`, and every record passed the
-  cross-check of its schema, `Huella`, chain, content and QR. Label: Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate.
+- **D2e, VERI\*FACTU on the B2Brouter sandbox (2026-11-23 core, 2026-11-24 Laravel bridge,
+  unreleased).** Chained, exempt and credit-note invoices issued through B2Brouter reached
+  `registered`, and every record passed the cross-check of its schema, `Huella`, chain, content and
+  QR. The Laravel bridge repeated the run through `EInvoicing::verifactu()->register()` and its poll
+  job: four records registered, cross-checked and attached to the bridge's B2Brouter chain. Label: Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate.
 - **D3, Lexware Office import (2026-11-16).** The five release artefacts were imported unchanged
   into Lexware Office; every file was recognised as an e-invoice and every checked field matched.
 - **Offline parity.** The validator's verdicts equal the official XSLT on 1,892 documents (CEN),

@@ -86,9 +86,9 @@ Jelenleg tartalmazza:
 
   > Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate
 
-  (Magyarul: a Verifactu élő hívásokkal ellenőrizve a B2Brouter sandboxban – regisztrálva, a
-  hash és a QR keresztellenőrizve; a közvetlen AEAT-beküldés csak offline ellenőrizve, mert spanyol
-  NIF és minősített tanúsítvány kell hozzá.)
+  (Magyarul: a VERI\*FACTU élesben ellenőrzött a B2Brouter sandboxán (regisztrált rekordok; a
+  hash és a QR keresztellenőrizve); a közvetlen AEAT-beküldés csak offline ellenőrzött, mert ahhoz
+  spanyol adószám (NIF) és minősített tanúsítvány kell.)
 
 Országjegyzetek: [Németország](docs/countries/DE.md) (jogalap, formátumok, csatornák és az ellenőrzés, angolul),
 [Franciaország](docs/countries/FRANCE.md) (a reform, a profilok, a francia szabályok telepítése és
@@ -481,10 +481,15 @@ nem tartalmaz hitelesítő adatot és fiókazonosítót.
 - **D2b-D2c, szolgáltatói sandboxok (2026-11-15).** A B2Brouter és az e-invoice.be a hálózatot
   szimuláló sandboxuk ellen: küldés, állapot és beérkező postafiók. Ez a szolgáltató
   API-szerződését igazolja, nem a Peppolon történő kézbesítést.
-- **D2e, VERI\*FACTU a B2Brouter sandboxban (2026-11-23, még nincs kiadva).** A B2Brouteren
-  keresztül kiállított láncolt, adómentes és jóváíró számlák `registered` állapotba jutottak, és
-  minden rekord átment a séma, a `Huella`, a lánc, a tartalom és a QR keresztellenőrzésén. Címke
-  (angolul): Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate.
+- **D2e, VERI\*FACTU a B2Brouter sandboxán (2026-11-23 core, 2026-11-24 Laravel híd, még nincs
+  kiadva).** A B2Brouteren keresztül kiállított láncolt, adómentes és jóváíró számlák `registered`
+  állapotba jutottak, és minden rekord átment a séma, a `Huella`, a lánc, a tartalom és a QR
+  keresztellenőrzésén. A Laravel híd az `EInvoicing::verifactu()->register()` hívással és a
+  lekérdező jobjával megismételte a futtatást: négy rekord regisztrálva, keresztellenőrizve és a híd
+  B2Brouter-láncába fűzve. Címke (angolul): Verifactu live-verified on the B2Brouter sandbox (registered; hash and QR cross-checked); direct AEAT submission verified offline only — it needs a Spanish NIF and a qualified certificate.
+  Magyarul: a VERI\*FACTU élesben ellenőrzött a B2Brouter sandboxán (regisztrált rekordok; a hash
+  és a QR keresztellenőrizve); a közvetlen AEAT-beküldés csak offline ellenőrzött, mert ahhoz
+  spanyol adószám (NIF) és minősített tanúsítvány kell.
 - **D3, import a Lexware Office-ba (2026-11-16).** Az öt kiadási fájl változtatás nélkül importálva;
   minden fájlt e-számlaként ismert fel, és minden ellenőrzött mező egyezett.
 - **Offline egyezés.** A validátor eredményei megegyeznek a hivatalos XSLT-ével 1892 (CEN), 1611

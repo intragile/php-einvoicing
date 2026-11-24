@@ -46,7 +46,9 @@ library depends on which date applies.
   business rules.
 - **B2Brouter, live.** Invoices issued through the B2Brouter Spanish sandbox reached `registered`
   at the AEAT through B2Brouter, and each record passed the five-step cross-check (schema,
-  `Huella`, chain, content, QR). The runs are in [VERIFICATION.md](../VERIFICATION.md#d2e-verifactu-on-the-b2brouter-sandbox).
+  `Huella`, chain, content, QR): the core runs of 2026-11-23, and the Laravel bridge run of
+  2026-11-24 through `EInvoicing::verifactu()->register()` and its poll job (four records
+  registered, cross-checked and chained). The runs are in [VERIFICATION.md](../VERIFICATION.md#d2e-verifactu-on-the-b2brouter-sandbox).
 - **Direct AEAT, offline only.** `AeatClient` is tested against responses and faults built from the
   AEAT schemas, WSDL and examples. No AEAT endpoint has been called: a live run needs a Spanish NIF
   and a qualified certificate.
